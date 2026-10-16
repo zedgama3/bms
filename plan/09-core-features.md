@@ -122,7 +122,7 @@ subscriber's failures logged and retried by `jobs`, never rolling back the publi
 - Passwords are hashed with Argon2id; minimum 12 characters, checked against a list of common
   passwords; no other composition rules.
 - Failed logins are rate-limited per account and per address, and the error doesn't reveal
-  whether the username exists.
+  whether an account exists for that address.
 - Sessions are an HTTP-only, same-site cookie, with CSRF protection on every change.
 - **Sessions work on the read-only copy:** the session is a signed token checked without a
   database write; logout and "end all sessions" work by a per-account counter that the token
