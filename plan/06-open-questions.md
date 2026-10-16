@@ -12,7 +12,9 @@ here, copy it into the document it affects, and tick the box.
       users come first (for management); volunteering needs several core features first
       (editions, departments and more). Agree the core feature list
       ([09-core-features.md](09-core-features.md)) before building. `volunteers` remains the
-      likely first module. Regional-specific details go in `private/`.
+      likely first module. Regional-specific details go in `private/`. The plan, its
+      milestones and six smaller questions (Q-CORE1–6, each with a recommendation) are in
+      [09-core-features.md](09-core-features.md#questions-for-the-owner).
 - [ ] **Q-OFFLINE (Blocking, Phase 0):** Which workflows must work with no internet at the
       event (incident logging, shift check-in, gate)? Options: (a) online only; (b) an
       on-site instance on the local network, synced with the main one before and after;
