@@ -6,8 +6,9 @@ description: Checklist for adding or changing a feature module (volunteers, regi
 # Adding a module
 
 The contract is defined by `plan/design/module-contract.md` and is authoritative once
-Approved. This is the checklist that wraps it. Until the contract is Approved, treat the
-layout below as the intended shape, not as settled.
+Approved (2026-10-16). This is the checklist that wraps it. Module names are letters and
+digits only (`afterreports`): one name is the Go package, the schema, the URL segment and
+the message-key prefix.
 
 ## 1. Spec first
 
@@ -16,8 +17,8 @@ cover:
 
 - the jobs to be done, by role (participant, lead, admin, ...)
 - the tables, in schema `<name>`, with a sensitivity level for each personal-data column
-- the permissions it declares, their scopes (department, event, own records), and the
-  default roles that get them
+- the permissions it declares, their scopes (department, event, own records), the Reaches
+  level of each permission, and the default roles that get them
 - the signals it publishes and subscribes to (payloads carry IDs, not personal data)
 - its settings, with defaults (anything regionals would do differently)
 - its screens and who sees them
@@ -29,9 +30,13 @@ cover:
 
 ```
 internal/modules/<name>/
-  module.go        New(deps) (module.Module, error); registry init(); declares permissions,
+  module.go        var Manifest = module.Manifest{...}: declares permissions (with Reaches),
                    routes, signals, settings, migrations, jobs, and what it provides,
-                   requires, uses and contributes to (D19)
+                   requires, uses and contributes to (D19). Titles and descriptions are
+                   catalogue keys derived from the names, not text (decision 8).
+                   func New(ctx context.Context, deps module.Deps) (module.Module, error);
+                   func init() { module.Register(Manifest, New) }
+                   Start registers signal handlers and jobs and never writes
   service.go       use cases; each one checks its permission via authz first. Declares the
                    storage interface it needs (no SQL or driver types in it)
   postgres/        the PostgreSQL implementation of that interface (D8). Only this
@@ -42,8 +47,8 @@ internal/modules/<name>/
                    highest number is the module's schema version, checked at init (D17)
   http.go          handlers: decode, call service, encode. No business logic.
   signals.go       signals published, and subscribers
-  privacy.go       export and delete for one person
-  <name>_test.go   black-box tests (test-author)
+  privacy.go       implements module.PersonData: export and delete for one person
+  <name>_test.go   black-box tests (test-author); calls moduletest.Conformance
 web/src/modules/<name>/
   index.ts         registers routes, navigation and screens with the web shell
   screens/, components/
@@ -75,7 +80,7 @@ web/src/modules/<name>/
 
 - [ ] Spec Approved, then Implemented through the build loop
 - [ ] Migrations apply cleanly on an empty database and on one with the previous release
-- [ ] Every permission rule and failure mode has a test
+- [ ] Every permission rule and failure mode has a test; `moduletest.Conformance` passes
 - [ ] Export and delete for one person are tested
 - [ ] `make check` passes, including `make imports`
 - [ ] UI reviewed by `web-reviewer`

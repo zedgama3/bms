@@ -61,12 +61,13 @@ copy and can fork it. Features are modules.
     later feature (D29); retention is configurable, default forever (D30); module UI folders
     in `web/` (D31); forms built in code (D32); ticketing and payments out of scope (D33).
     Q-QUAL: department leads verify their department's qualifications (shape still open).
-  - Design specs approved by the owner: `model` is Approved (design/README.md).
+  - Design specs approved by the owner: `model` is Approved, and `module-contract` is Approved
+    2026-10-16 (design/README.md).
 - **Next steps:**
   1. Done 2026-10-16: the owner agreed [09-core-features.md](09-core-features.md)
      (milestones M0–M4, done criteria, spec order). `architect` drafted `model`, now Approved.
-  2. Next: `architect` drafts `module-contract`, the spec everything else hangs off, then the
-     rest of the spec order in [09-core-features.md](09-core-features.md).
+  2. Next: `config` (design/README.md row 3), then the rest of the spec order in
+     [09-core-features.md](09-core-features.md).
   3. CI on GitHub (`make check`), once the owner pushes the branch.
 
 ## Conventions

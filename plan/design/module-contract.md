@@ -1,6 +1,6 @@
 # module: the module contract and registry
 
-- **Status:** Draft (2026-10-16)
+- **Status:** Approved (2026-10-16)
 - **Package:** `internal/core/module` (Go module `github.com/zedgama3/bms`), plus the test
   helper package `internal/core/module/moduletest`. **UI:** none of its own; the admin
   "modules" screen is `web-shell.md`'s, fed by `GET /api/modules` (`api.md`), both drawing

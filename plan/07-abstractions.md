@@ -16,7 +16,7 @@ is tracked in [design/README.md](design/README.md).
                         ▼                      ▼
                  ┌─────────────┐   ┌─────────────────────────────────────────┐
                  │ api shell   │   │ modules: volunteers, registrations,      │   features
-                 │ (HTTP)      │   │ incidents, after-reports, <yours>        │   (never import each other)
+                 │ (HTTP)      │   │ incidents, afterreports, <yours>         │   (never import each other)
                  └──────┬──────┘   └───────────────────┬─────────────────────┘
                         │                              │ share through
                         │                              ▼
@@ -40,7 +40,8 @@ Rules (enforced by depguard and `make imports`):
 
 1. `model` and `lib/*` depend on nothing in the project except `lib`.
 2. **Core** packages (`internal/core/...`) depend on `model`, `lib` and other core packages
-   (acyclic). They never import a module, the api shell, `app` or `config`.
+   (acyclic). They never import a module, the api shell, `app` or `config`. `core/module`
+   is the top of the core graph: it imports core contracts; no core package imports it.
 3. A **module** (`internal/modules/<name>/...`) depends on core contracts, shared
    `contracts`, `model` and `lib`. It **never imports another module**, the api shell, `app`
    or `config`.
@@ -86,11 +87,14 @@ Rules (enforced by depguard and `make imports`):
 
 ### module: the module contract and registry
 - **Purpose:** define what a module gives the core, and register the modules compiled in.
-- **Owns:** the `Module` interface, the manifest (what a module provides, requires, uses
-  optionally, contributes to, publishes and subscribes to; D19), the registry, and the
-  start-up check of that graph (a required capability with no provider, an event nobody
-  publishes).
+- **Owns:** the `Manifest` (static declaration), the `Module` interface and its optional
+  interfaces, `Deps` (what the core gives a module), the registry, `Resolve` (graph check,
+  build order, graph for the admin screen), `Build` (schema check per D17, verification
+  against the manifest, linking), `Set` (start and stop in order), and the mandatory
+  `PersonData` (export and deletion of one person's data).
 - **Doesn't do:** run migrations (`db`), mount routes (api shell), authorize (`authz`).
+- **Spec:** [design/module-contract.md](design/module-contract.md), Approved. Module names
+  are letters and digits only (`afterreports`).
 
 ### db: database access
 - **Purpose:** give modules a PostgreSQL connection with transactions and deadlines.
@@ -108,7 +112,8 @@ Rules (enforced by depguard and `make imports`):
 ### authz: may they do this?
 - **Purpose:** decide whether a person may perform an action on a resource.
 - **Owns:** roles, grants (site-wide or scoped to one department, with an optional end date),
-  separation-of-duties rules (D23), the permissions modules declare, the `Authorizer`.
+  separation-of-duties rules (D23), the permissions modules declare, the `Authorizer`, and
+  the `Permission`, `Scope` and `PermissionDecl` types.
 - **Doesn't do:** authentication, audit logging, the superuser (`identity`; it bypasses
   `authz` by design and is audited).
 
@@ -126,7 +131,7 @@ Rules (enforced by depguard and `make imports`):
 ### signals: in-process domain events (D24)
 - **Purpose:** let modules react to each other without importing each other.
 - **Owns:** publish and subscribe, delivery inside a transaction or after commit (decided in
-  the spec), the catalog of event types and their payloads.
+  the spec), the catalog of event types and their payloads, the `Name` type.
 - **Doesn't do:** cross-process messaging.
 
 ### notify: tell someone something
@@ -178,4 +183,5 @@ Rules (enforced by depguard and `make imports`):
 ## Modules
 
 Each gets its own spec (`plan/design/module-<name>.md`), written with the `add-module`
-skill: `volunteers`, `registrations`, `incidents`, `after-reports`.
+skill: `volunteers`, `registrations`, `incidents`, `afterreports`. Module names are letters
+and digits only (`after-reports` is `afterreports` in code, schema and URLs).

@@ -35,6 +35,10 @@ data export and deletion.
 | `registrations` | theme camps, RVs and vehicles, art, calendar events: application, review, approval | Module 3 (D26) |
 | `after-reports` | per-department after-burn reports, lessons learned, carried into the next event | Module 4 (D26) |
 
+The module named `after-reports` here is `afterreports` in code, schema and URLs (module names
+are letters and digits only; confirmed by the owner, 2026-10-16; see
+[design/module-contract.md](design/module-contract.md), decision 10).
+
 Later, in the core: **trust between regionals** (D18, Q-TRUST), so that records such as
 volunteer credit can be recognized across a group of regionals.
 

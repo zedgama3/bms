@@ -25,17 +25,24 @@ cmd/bms                     main                          imports: app, config
 
 - A module **never** imports another module, `api`, `app` or `config`. Modules cooperate
   through core contracts and signals (domain events, `core/signals`).
-- Modules add themselves to the registry in `core/module` (`module.Register(volunteers.New)`).
-  `app` imports the modules it ships with for their side effect.
+- Modules add themselves to the registry in `core/module` with `module.Register(Manifest, New)`
+  in `init`, where `module.go` holds `var Manifest = module.Manifest{...}` and
+  `func New(ctx context.Context, deps module.Deps) (module.Module, error)`. `app` imports
+  the modules it ships with for their side effect. Module names are letters and digits only
+  (`afterreports`).
 - depguard in `.golangci.yml` and `make imports` enforce these rules. A failure is a design
   problem, not a lint nuisance.
 
 ## Module package layout
 
-See the `add-module` skill. In short: `module.go` (the contract), `service.go` (use cases,
-each checking its permission, and declaring the storage interface it needs), `postgres/`
-(the only place with SQL and the driver: `store.go`, `sql/`, `migrations/`; D8), `http.go`
-(handlers, thin), `signals.go`.
+See the `add-module` skill. In short: `module.go` (the manifest, `New` and the registry
+`init`), `service.go` (use cases, each checking its permission, and declaring the storage
+interface it needs), `postgres/` (the only place with SQL and the driver: `store.go`, `sql/`,
+`migrations/`; D8), `http.go` (handlers, thin), `signals.go`, `privacy.go` (implements
+`module.PersonData`). `Start` registers signal handlers and jobs and never writes, so it
+succeeds on a read-only copy. The manifest carries no human-readable text: titles and
+descriptions are catalogue keys derived from the names (module-contract decision 8). Every
+module's tests call `moduletest.Conformance`.
 
 ## Errors: `internal/lib/errs`
 

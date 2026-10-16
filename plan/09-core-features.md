@@ -191,7 +191,7 @@ training and certificates come with qualifications (Q-QUAL), not as profile fiel
 
 **Done when:**
 - Permissions are declared in code by each module (`volunteers.shifts.manage`) with a
-  description an admin can read, and a flag for whether they reach `sensitive` data.
+  description an admin can read, and the highest sensitivity level they reach.
 - **No everyday role holds every permission** (D23). The starter roles, which a regional can
   change, split the site admin's work:
 
