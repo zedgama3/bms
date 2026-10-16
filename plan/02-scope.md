@@ -34,11 +34,15 @@ data export and deletion.
 | `incidents` | report, triage, assign, follow up, close; strict access and audit | Planned; depends on Q-OFFLINE |
 | `after-reports` | per-department after-burn reports, lessons learned, carried into next edition | Planned |
 
+Later, in the core: **trust between regionals** (D18, Q-TRUST), so that records such as
+volunteer credit can be recognized across a group of regionals.
+
 Possible later modules (not committed; listed so the core doesn't rule them out): placement
 and mapping, art grants and budgets, early arrival and work access passes, gate and
 check-in, inventory and assets, announcements, surveys, ticketing integration.
 
 ## MVP
 
-To be set with Q-MVP. Proposed: the core plus the `volunteers` module, used by at least one
-department at one real event.
+To be set with Q-MVP. Proposed: the core features in [09-core-features.md](09-core-features.md)
+marked **MVP**, plus the `volunteers` module, used by at least one department at one real
+event.

@@ -37,7 +37,8 @@ internal/modules/<name>/
                    package imports the driver.
     store.go       implements the interface
     sql/           .sql files embedded with go:embed
-    migrations/    forward-only, numbered: 0001_init.sql, ... applied by `bms migrate` (D17)
+    migrations/    forward-only, numbered: 0001_init.sql, ... applied by `bms migrate`; the
+                   highest number is the module's schema version, checked at init (D17)
   http.go          handlers: decode, call service, encode. No business logic.
   events.go        event types published, and subscribers
   privacy.go       export and delete for one person

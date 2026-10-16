@@ -25,8 +25,9 @@
 - **One database.** The core owns the `core` schema. Each module owns its own schema (D10).
 - **Storage is a seam** (D8). Business logic talks to a storage interface; the PostgreSQL
   code sits in a `postgres/` package behind it.
-- **Migrations are an install step** (D17, Proposed). `bms migrate` applies them; `bms serve`
-  only checks the schema is current.
+- **Migrations are an install step** (D17). `bms migrate` applies them and records each
+  module's schema version; when `bms serve` starts, each module checks its version and the
+  app stops if any is out of date.
 
 ## How a module plugs in
 

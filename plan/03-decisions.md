@@ -140,9 +140,9 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
 - The owner reviews the branch, merges it and pushes. Supersedes the "agents never commit"
   part of D7.
 
-## D17. Modules ship their migrations; an explicit `bms migrate` step applies them
+## D17. The installer applies migrations; each module checks its schema version
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-10-16)
 - **Where they live:** each module's migrations sit in its `postgres/migrations/` folder,
   embedded in the binary. The schema changes in the same commit as the code that needs it,
   and a fork adds a module by adding a folder, with no separate install script to edit.
@@ -150,10 +150,29 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
   `bms migrate` command that an operator runs before starting a new version. It applies the
   core's migrations first, then each enabled module's, records what ran, and refuses to run
   on a read-only replica.
-- **At start-up,** the app only checks: if the database is behind (or ahead of) what the
-  binary expects, it stops with a message saying to run `bms migrate`. It never changes the
-  schema itself.
+- **Each module stores its schema version.** The core keeps one row per module (and one for
+  the core itself) with the schema version applied, written by the installer in the same
+  transaction as the migration.
+- **Each module checks its version when it initializes.** It compares the stored version
+  with the version it was built for. If they differ, or the row is missing, it fails with an
+  error that names the module, both versions, and says to run `bms migrate`. The app stops;
+  nothing is changed. The app never changes a schema itself.
 - Why not at start-up: during the event there are two copies and only one may write
   (Q-OFFLINE); start-up migrations would race between instances or fail on the replica;
   and operators should take a backup and choose when the schema changes. Development and
   tests can run `bms migrate` automatically.
+
+## D18. Logins are local to each regional; trust between regionals comes later
+
+- **Status:** Accepted (2026-10-16)
+- There is no open, shared burner identity system; each tool has its own. bms supports local
+  accounts and any OIDC provider a regional already runs (D15). No shared login is assumed.
+- **Later: trust between regionals** (federation). A regional can declare which other
+  regionals it trusts, and records such as volunteer credit can be recognized across them.
+  For example, a group of regionals in one area might agree that volunteering at any of
+  their burns counts at all of them. The mechanism (for example a document published at a
+  `/.well-known/` URL, plus signed records) is Q-TRUST.
+- **What we do now so it's possible later:** each installation has a stable identity (its
+  public URL) and can hold a signing key; each person has a stable ID within an
+  installation; and records that might be shared (for example completed shifts and hours)
+  are kept as distinct, dated records rather than only as running totals.

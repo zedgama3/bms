@@ -75,8 +75,8 @@ Rules (enforced by depguard and `make imports`):
 ### db: database access
 - **Purpose:** give modules a PostgreSQL connection with transactions and deadlines.
 - **Owns:** the pool, transactions, read-only detection (Q-OFFLINE), the migration runner
-  (per-schema, forward only) that `bms migrate` calls (D17), the start-up schema-version
-  check, translating driver errors into `errs` kinds.
+  (per-schema, forward only) that `bms migrate` calls, the table of schema versions per
+  module and the check each module calls when it initializes (D17), translating driver errors into `errs` kinds.
 - **Doesn't do:** any module's queries.
 
 ### identity: who is this?
@@ -140,7 +140,8 @@ Rules (enforced by depguard and `make imports`):
 
 ### app: composition root
 - **Purpose:** build everything from configuration, start it and stop it cleanly. Provides
-  the commands: `serve`, and `migrate` (D17).
+  the commands: `serve`, and the installer commands (`migrate`, and creating the first
+  admin; D17).
 
 ## Modules
 

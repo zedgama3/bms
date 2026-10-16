@@ -24,7 +24,9 @@ spec). The `db` spec, once Approved, is authoritative where it differs from this
 ## Migrations
 
 - Forward only, numbered per module: `postgres/migrations/0001_init.sql`, `0002_...`.
-- Applied by the `bms migrate` command, never by the app at start-up (D17). They must be safe
+- Applied by the `bms migrate` command, never by the app at start-up (D17). The installer
+  records the module's schema version in the same transaction; the module checks it when
+  it initializes and refuses to start on a mismatch. They must be safe
   to apply on the primary while a replica keeps serving reads.
 - Each runs in a transaction. A migration that can't (for example `CREATE INDEX
   CONCURRENTLY`) says so at the top.

@@ -17,6 +17,7 @@ copy and can fork it. Features are modules.
 | [06-open-questions.md](06-open-questions.md) | Questions that still need answers |
 | [07-abstractions.md](07-abstractions.md) | **Map of abstractions:** purpose and boundaries of each, and the dependency rules |
 | [08-agent-workflow.md](08-agent-workflow.md) | Agents, skills, models, and the loop from building to checking |
+| [09-core-features.md](09-core-features.md) | What the core lets people do, in build order, and what's MVP |
 | [design/](design/) | One design spec per abstraction or module (written before any code) |
 | [notes/](notes/) | Research notes |
 | `private/` | **Gitignored.** Notes about a specific regional, people or vendors. Never committed. |
@@ -32,10 +33,12 @@ copy and can fork it. Features are modules.
   - D16 accepted: Claude may commit to local feature branches, but never pushes.
   - Repository: `github.com/zedgama3/bms`; GitHub CLI installed.
   - Accepted D8 (PostgreSQL only for now, behind a storage seam), D9, D10, D11, D13, D14.
-    Proposed D17 (migrations applied by `bms migrate`, not at start-up).
+    Accepted D17 (the installer applies migrations; each module checks its schema version)
+    and D18 (logins local to each regional; trust between regionals later).
+  - Drafted the core feature list (09-core-features.md) for review.
 - **Next steps:**
-  1. The owner reviews D17 and the Blocking open questions (Q-MVP, Q-IDP, and the details of
-     Q-OFFLINE).
+  1. The owner reviews [09-core-features.md](09-core-features.md) (Q-MVP) and answers
+     Q-LOGIN.
   2. Port the foundation libraries from Sojourn (D11): `lib-errs`, `lib-core`, `lib-secret`.
   3. `architect` drafts `model` and `module-contract`, the spec everything else hangs off.
 

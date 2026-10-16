@@ -8,8 +8,11 @@ here, copy it into the document it affects, and tick the box.
 ### Product
 
 - [ ] **Q-MVP (Blocking, Phase 0):** Which module comes first, which regional pilots it, and
-      what's the date of the event it must be ready for? Proposed: `volunteers` first.
-      Regional-specific details go in `private/`.
+      what's the date of the event it must be ready for? **Direction (owner, 2026-10-16):**
+      users come first (for management); volunteering needs several core features first
+      (editions, departments and more). Agree the core feature list
+      ([09-core-features.md](09-core-features.md)) before building. `volunteers` remains the
+      likely first module. Regional-specific details go in `private/`.
 - [ ] **Q-OFFLINE (Blocking, Phase 0):** Which workflows must work with no internet at the
       event (incident logging, shift check-in, gate)? Options: (a) online only; (b) an
       on-site instance on the local network, synced with the main one before and after;
@@ -19,11 +22,13 @@ here, copy it into the document it affects, and tick the box.
       becomes the **single primary** during the event; the other copy keeps serving reads.
       One writer at a time, never two. Still open: how the handover works (planned
       switchover, by whom, how fast), and which workflows must keep working on site.
-- [ ] **Q-IDP (Blocking, Phase 0):** How do people log in? Proposed: local accounts
-      (e-mail plus password or magic link) and any OIDC provider. Is there an existing
-      burner identity that regionals would want to use? D15 settles the provider model
-      (local, OIDC, optional trusted proxy header). Still open: an existing burner identity,
-      and the local-account login method (password or magic link).
+- [ ] **Q-LOGIN:** How do local accounts log in: password, magic link (e-mailed), or both?
+      Passkeys later? (The rest of Q-IDP is resolved; see below.)
+- [ ] **Q-TRUST:** How do regionals trust each other (D18)? For example: each publishes a
+      document at a `/.well-known/` URL with its public key and the regionals it trusts;
+      shared records such as volunteer credit are signed by the issuing regional. What's
+      shared, with whose consent, and how a person proves both accounts are theirs.
+      Not needed for the MVP.
 - [ ] **Q-TICKET:** Is ticketing in scope, or do we integrate with existing ticketing vendors
       (for example, import ticket holders to link to profiles)?
 - [ ] **Q-PAY:** Are payments in scope (camp dues, fees, grants)? If so, behind a payments
@@ -68,3 +73,6 @@ here, copy it into the document it affects, and tick the box.
       self-hosted. → D4
 - [x] **Q-EXTEND:** How do regionals extend it? Compile-time modules. → D5
 - [x] **Q-VIS:** Public or private? Public and open source from the start. → D12
+- [x] **Q-IDP:** Is there an existing burner identity to use? No: there's no open, shared
+      burner login; each tool has its own. Local accounts and OIDC (D15); trust between
+      regionals later (Q-TRUST). → D18
