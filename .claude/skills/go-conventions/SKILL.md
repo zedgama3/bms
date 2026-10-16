@@ -132,7 +132,9 @@ func (r *reader) query(ctx context.Context) (out []Row, err error) {
 - `log/slog` only, with structured fields (`slog.String("instance", id)`). Loggers are passed
   in, never global.
 - Log an error **once**, where it's handled. Don't log and also return it.
-- Never log secrets, passwords, connection strings or full SQL parameter values.
+- Never log secrets, passwords, connection strings or full SQL parameter values. Hold them in
+  `secret.Secret`, read them once with `Value()`, and compare with `Value()`, never with
+  `==`.
 - Never log personal data: log person IDs, not names, e-mails or phone numbers. Never log
   fields marked sensitive (`privacy-data`).
 
