@@ -49,4 +49,8 @@ Building and checking are always done by different agents. The full roster and l
 
 Skills: `go-conventions` (before writing any Go), `design-spec`, `build-loop` (how the main
 session orchestrates the above), `add-module`, `privacy-data`, `postgres-sql`,
-`plan-maintenance`.
+`plan-maintenance`, `burn-domain` (how burns work and the words burners use).
+
+**Keep `burn-domain` current.** Whenever the owner explains how burns work, add it to
+`.claude/skills/burn-domain/SKILL.md` in the same session, generically; details about one
+regional go in `plan/private/regional-notes.md`.

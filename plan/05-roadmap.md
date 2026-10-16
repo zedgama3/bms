@@ -15,7 +15,7 @@ Design comes before code. Specs are tracked in [design/README.md](design/README.
 - [x] Port `lib-errs`, `lib-core`, `lib-secret` from Sojourn (D11)
 - [x] Development observability stack: Grafana, Loki, Tempo, Prometheus, Alloy (D20)
 - [ ] **Design specs, foundation and core:** `model`, `config`, `module-contract`, `db`,
-      `identity`, `authz`, `people`, `events`, `notify`, `audit`, `files`, `jobs`, `api`,
+      `identity`, `authz`, `people`, `departments-events`, `signals`, `notify`, `audit`, `files`, `jobs`, `api`,
       `web-shell`, `app` (architect writes, owner approves)
 - [ ] Implement the core with the build loop
 - [ ] A "hello" module that exercises every part of the module contract, as the reference for

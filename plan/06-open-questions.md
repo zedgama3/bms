@@ -10,7 +10,7 @@ here, copy it into the document it affects, and tick the box.
 - [ ] **Q-MVP (Blocking, Phase 0):** Which module comes first, which regional pilots it, and
       what's the date of the event it must be ready for? **Direction (owner, 2026-10-16):**
       users come first (for management); volunteering needs several core features first
-      (editions, departments and more). Agree the core feature list
+      (departments, events and more). Agree the core feature list
       ([09-core-features.md](09-core-features.md)) before building. `volunteers` remains the
       likely first module. Regional-specific details go in `private/`. The plan, its
       milestones and the owner's answers to Q-CORE1–6 are in
@@ -43,7 +43,7 @@ here, copy it into the document it affects, and tick the box.
 - [ ] **Q-I18N:** Which languages are needed at launch? Proposed: English, with every string
       ready for translation.
 - [ ] **Q-IMPORT:** Do regionals need to import data from their current systems (CSV of
-      volunteers, camps, past editions)?
+      volunteers, camps, past events)?
 - [ ] **Q-RETAIN:** What are the default retention periods for sensitive data (incidents,
       medical notes)? These depend on law and insurance, so they must be configurable.
       Which defaults do we ship?
@@ -86,6 +86,7 @@ here, copy it into the document it affects, and tick the box.
 - [x] **Q-LOGIN:** How do local accounts log in? For now, username and password only. E-mail
       reset, magic links, passkeys and OIDC come later, behind the same provider model (D15).
       Refined 2026-10-16: the username is the primary e-mail address. → D21
-- [x] **Q-CORE1–6:** sign-up, password reset, login name, minors, sub-teams, showing people
-      their audit trail. Answered 2026-10-16. → [09-core-features.md](09-core-features.md#owners-answers-2026-10-16),
-      D21, D22, Q-QUAL
+- [x] **Q-CORE1–12:** sign-up, password reset, login name, minors, sub-teams, showing people
+      their audit trail, emergency contacts, "edition", departments, work outside the event,
+      leadership terms, superuser and separation of duties. Answered 2026-10-16. → [09-core-features.md](09-core-features.md#owners-answers-2026-10-16),
+      D21, D22, D23, D24, Q-QUAL

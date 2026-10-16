@@ -26,8 +26,8 @@ is tracked in [design/README.md](design/README.md).
                         │          └───────────────────┬─────────────────────┘
                         ▼                              ▼
      ┌──────────────────────────────────────────────────────────────────────────┐
-     │ core contracts: module · db · identity · authz · people · editions ·     │   core
-     │ departments · events · notify · audit · files · jobs · settings          │
+     │ core contracts: module · db · identity · authz · people · departments ·  │   core
+     │ events · signals · notify · audit · files · jobs · settings              │
      └──────────────────────────────────┬───────────────────────────────────────┘
                                         │ implemented by
        local, oidc (identity) · email (notify) · disk, s3-compatible (files) · postgres (db)
@@ -57,7 +57,7 @@ Rules (enforced by depguard and `make imports`):
 ## Foundation
 
 ### model: shared value types
-- **Purpose:** the vocabulary every layer shares (IDs, person reference, edition, department
+- **Purpose:** the vocabulary every layer shares (IDs, person reference, event, department
   reference, time range, money if needed, sensitivity level).
 - **Owns:** type definitions and their own validation (`Validate() error`).
 - **Doesn't do:** I/O, storage, anything specific to one module.
@@ -98,14 +98,15 @@ Rules (enforced by depguard and `make imports`):
 
 ### identity: who is this?
 - **Purpose:** authenticate a person and manage their session.
-- **Owns:** login providers (local, OIDC, optional trusted proxy header; D15), sessions, password or magic-link flow.
+- **Owns:** login providers (local, OIDC, optional trusted proxy header; D15), sessions, password or magic-link flow, the break-glass superuser (D23).
 - **Doesn't do:** decide what they may do (`authz`), hold their profile (`people`).
 
 ### authz: may they do this?
 - **Purpose:** decide whether a person may perform an action on a resource.
-- **Owns:** roles, grants (optionally scoped to a department or edition), the permissions
-  modules declare, the `Authorizer`.
-- **Doesn't do:** authentication, audit logging.
+- **Owns:** roles, grants (site-wide or scoped to one department, with an optional end date),
+  separation-of-duties rules (D23), the permissions modules declare, the `Authorizer`.
+- **Doesn't do:** authentication, audit logging, the superuser (`identity`; it bypasses
+  `authz` by design and is audited).
 
 ### people: the directory of participants
 - **Purpose:** hold each person's profile and contact details, with consent.
@@ -113,11 +114,12 @@ Rules (enforced by depguard and `make imports`):
   export and deletion of a person's data across modules (through the module contract).
 - **Doesn't do:** module-specific data about a person.
 
-### editions and departments
-- **Purpose:** the event years, and the departments that exist in each.
+### departments and events
+- **Purpose:** the regional's standing departments (archivable, with their leadership) and
+  its events (one per burn, D24).
 - **Doesn't do:** anything about what a department does (that's the modules).
 
-### events: in-process domain events
+### signals: in-process domain events (D24)
 - **Purpose:** let modules react to each other without importing each other.
 - **Owns:** publish and subscribe, delivery inside a transaction or after commit (decided in
   the spec), the catalog of event types and their payloads.

@@ -29,8 +29,10 @@ community, and easy for any regional to run and adapt. It follows the principle 
 
 ## Shape of the problem
 
-- **One event a year, with work all year.** Data is organized by **edition** (for example
-  "2027"), and history matters across editions.
+- **Events, with work all year.** Most regionals hold one burn a year, some two. Data is
+  organized by **department** and, where it applies, **event**, and history matters across
+  events. Work happens well before and after the gates open (land prep, build, strike,
+  inventory).
 - **Departments differ by regional.** Names, structure and policies are data, not code.
 - **Connectivity at the event can be poor or absent.** Some workflows (incident logging,
   shift check-in, gate) may need to work offline. See Q-OFFLINE.

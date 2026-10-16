@@ -41,11 +41,16 @@ copy and can fork it. Features are modules.
     the primary e-mail address), D22 (people can see that their data was viewed; how much is
     a setting), no sub-teams (positions belong to `volunteers`), and Q-QUAL opened for
     training, certificates and age requirements.
+  - Owner's further answers (Q-CORE7–12): optional, multiple emergency contacts; D23
+    (separation of duties; a break-glass superuser; departments run themselves); D24 ("event"
+    means one burn, replacing "edition"; departments are standing and archivable; domain
+    events renamed signals). Added the `burn-domain` skill, kept current as the owner explains
+    how burns work.
   - Ported the foundation libraries from Sojourn (D11).
   - D20: observability with OpenTelemetry; Grafana, Loki, Tempo, Prometheus and Alloy in the
     dev compose (`make observe`); the web UI reports its errors.
   - Q-LOGIN: username and password only for now. Accepted D19 (modules declare the
-    capabilities, extension points and events they provide and use).
+    capabilities, extension points and signals they provide and use).
 - **Next steps:**
   1. The owner confirms the rest of [09-core-features.md](09-core-features.md) (milestones,
      done criteria, spec order) to close Q-MVP's core part.

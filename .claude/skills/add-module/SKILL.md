@@ -1,6 +1,6 @@
 ---
 name: add-module
-description: Checklist for adding or changing a feature module (volunteers, registrations, incidents, after-reports, or a regional's own) — spec, package layout, the module contract, its own schema and migrations, permissions, domain events, settings, UI screens, data export and deletion, tests and docs. Load when designing, implementing or reviewing a module.
+description: Checklist for adding or changing a feature module (volunteers, registrations, incidents, after-reports, or a regional's own) — spec, package layout, the module contract, its own schema and migrations, permissions, signals (domain events), settings, UI screens, data export and deletion, tests and docs. Load when designing, implementing or reviewing a module.
 ---
 
 # Adding a module
@@ -16,21 +16,21 @@ cover:
 
 - the jobs to be done, by role (participant, lead, admin, ...)
 - the tables, in schema `<name>`, with a sensitivity level for each personal-data column
-- the permissions it declares, their scopes (department, edition, own records), and the
+- the permissions it declares, their scopes (department, event, own records), and the
   default roles that get them
-- the events it publishes and subscribes to (payloads carry IDs, not personal data)
+- the signals it publishes and subscribes to (payloads carry IDs, not personal data)
 - its settings, with defaults (anything regionals would do differently)
 - its screens and who sees them
 - how it answers "export my data" and "delete my data" for one person
-- how its data rolls over to a new edition, and what's kept for history
-- what it does if a module it reacts to (through events) isn't enabled
+- how its data carries over to a new event, and what's kept for history
+- what it does if a module it reacts to (through signals) isn't enabled
 
 ## 2. Package layout
 
 ```
 internal/modules/<name>/
   module.go        New(deps) (module.Module, error); registry init(); declares permissions,
-                   routes, events, settings, migrations, jobs, and what it provides,
+                   routes, signals, settings, migrations, jobs, and what it provides,
                    requires, uses and contributes to (D19)
   service.go       use cases; each one checks its permission via authz first. Declares the
                    storage interface it needs (no SQL or driver types in it)
@@ -41,7 +41,7 @@ internal/modules/<name>/
     migrations/    forward-only, numbered: 0001_init.sql, ... applied by `bms migrate`; the
                    highest number is the module's schema version, checked at init (D17)
   http.go          handlers: decode, call service, encode. No business logic.
-  events.go        event types published, and subscribers
+  signals.go       signals published, and subscribers
   privacy.go       export and delete for one person
   <name>_test.go   black-box tests (test-author)
 web/src/modules/<name>/
@@ -58,7 +58,7 @@ web/src/modules/<name>/
   - to **call a service** only one module provides, `require` or optionally `use` a
     **capability** from `internal/contracts/`. Prefer optional use, and hide the feature
     when the capability is missing.
-  - to **react** when something happens, subscribe to a **domain event**.
+  - to **react** when something happens, subscribe to a **signal** (domain event, D24).
   - Declare all of it in the manifest. Contract calls take batches, and providers check
     permissions for the person asking. A new contract or a change to one is a design
     change: stop and send it to `architect`.

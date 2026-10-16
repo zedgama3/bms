@@ -47,9 +47,9 @@ Tables (schema-qualified), owned by this abstraction. For each personal-data col
 sensitivity level and retention rule (`privacy-data`).
 
 ## Permissions
-| Permission | Allows | Scoped by (department / edition / own records) | Default roles |
+| Permission | Allows | Scoped by (department / event / own records) | Default roles |
 
-## Events
+## Signals
 Published: name, when, payload (no sensitive fields). Subscribed: name, what it does, and
 what happens if handling fails.
 

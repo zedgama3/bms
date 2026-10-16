@@ -27,7 +27,8 @@ explains how they fit together. Adapted from Sojourn (D7).
 | `go-conventions` | every Go agent | the tenets in concrete Go form: layers, error kinds, constructors, contexts, testing patterns |
 | `design-spec` | architect, reviewers | the spec template and the checklist a spec must pass |
 | `build-loop` | the main session (orchestrator) | the sequence spec → build → test → check → review → fix, and when to stop |
-| `add-module` | architect, implementers, reviewers | checklist for a new feature module: layout, contract, schema, permissions, events, UI, tests |
+| `burn-domain` | everyone, before naming or designing what burners see | how burns work and their vocabulary; updated whenever the owner explains more |
+| `add-module` | architect, implementers, reviewers | checklist for a new feature module: layout, contract, schema, permissions, signals, UI, tests |
 | `privacy-data` | architect, implementers, reviewers | how personal and sensitive data is classified, accessed, audited, exported and deleted |
 | `postgres-sql` | sql-author, go-implementer, go-reviewer | schema-per-module, migrations, query style, driver error mapping |
 | `plan-maintenance` | plan-keeper | how plan files are organized and updated |

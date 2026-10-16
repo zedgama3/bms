@@ -41,7 +41,7 @@ unless a decision in [03-decisions.md](03-decisions.md) explicitly changes it.
   (`internal/lib/...`) or the **core**, so behavior stays consistent and a fix is made in one
   place.
 - **Dependencies point inward.** Modules depend on core contracts, never on each other. Two
-  modules cooperate only through core contracts and domain events. Only the composition root
+  modules cooperate only through core contracts and signals (domain events). Only the composition root
   (`internal/app`) knows which modules exist. These rules are enforced by tooling (depguard
   and `make imports`), not by memory.
 

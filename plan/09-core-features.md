@@ -1,11 +1,12 @@
 # Core Features
 
-> **Draft for the owner's review (2026-10-16).** The owner answered Q-CORE1–6 on 2026-10-16
-> (see the end); the answers are applied below. Next, the architect starts the specs.
+> **Draft for the owner's review (2026-10-16).** The owner's answers (Q-CORE1–12, at the end)
+> are applied below. Next, the architect starts the specs.
 
 This is what the core lets people *do*, in the order it has to be built, and how each feature
 breaks down into specs. [07-abstractions.md](07-abstractions.md) describes the code that
-provides it, and specs in [design/](design/) describe each piece in detail.
+provides it, and specs in [design/](design/) describe each piece in detail. How burns work,
+and the words they use, is in the `burn-domain` skill.
 
 **MVP** means it's needed before the first module (likely `volunteers`) can be used at a
 real event. **Later** means it waits until after the pilot.
@@ -15,8 +16,9 @@ real event. **Later** means it waits until after the pilot.
 | Who | What they need from the core |
 |---|---|
 | **Participant** | an account, a profile they control, notices that reach them, their data on request |
-| **Department lead** | to see and manage the people in their department for an edition, and nobody else's |
-| **Administrator** | to set up the regional: editions, departments, roles, settings, accounts |
+| **Department lead or admin** | to run their own department: its details, its people and positions, its own admins, and nobody else's |
+| **Site admins** (several separate jobs) | to manage accounts, access, departments, events and settings, each job held by whoever the regional chooses |
+| **Superuser** | break-glass access to everything, for development and emergencies only |
 | **Operator** | to install, upgrade, back up and troubleshoot one copy, without being an expert |
 | **Maintainer** | to see errors and trace a reported problem to its cause (D20) |
 | **Module author** | one contract to plug into, and a reference module that uses all of it |
@@ -28,9 +30,13 @@ These apply everywhere, so the specs don't repeat them.
 - **A person is not an account.** `people` holds the person (profile, contacts); `identity`
   holds how they log in. A person can exist without an account (for example, added by a lead
   or imported later), and later gain one. Modules refer to the person ID, never the account.
+- **Separation of duties** (D23). No everyday role can do everything. Each admin job is its
+  own permission set, departments run themselves, and a regional can forbid combinations
+  (for example, "board members never see incident reports"). Only the break-glass superuser
+  sees everything.
 - **Mobile first.** Every screen works on a phone at the event. WCAG 2.1 AA.
 - **Ready for translation.** Every string goes through the translation layer, English only at
-  launch (Q-I18N). Terminology (what the regional calls "edition", "department") is a
+  launch (Q-I18N). Terminology (what the regional calls an "event", a "department") is a
   setting, applied through the same layer.
 - **Works on a read-only copy (Q-OFFLINE).** Every read screen works when the database is
   read-only; every write fails with a clear "this copy is read-only" message, not an error
@@ -46,9 +52,9 @@ Each milestone is something the owner can try on bms-vm, not just code.
 | Milestone | Features | You can... |
 |---|---|---|
 | **M0. Skeleton** | 1 | install with `bms migrate`, start it, see the empty shell, see its traces in Grafana; a "hello" module shows up |
-| **M1. Accounts** | 2, 8 (basic) | create the first admin by command, sign up, log in and out, have an admin disable an account |
-| **M2. People and permissions** | 3, 4, 9 (basic) | edit a profile, give someone a role, see menus change, see who viewed whose contact details |
-| **M3. Event structure** | 5, 7 | set up an edition and departments, appoint leads for one department and one edition |
+| **M1. Accounts** | 2, 8 (basic) | create the superuser by command, sign up, log in and out, disable an account |
+| **M2. People and permissions** | 3, 4, 9 (basic) | edit a profile, give someone an admin job, see menus change, see who viewed whose contact details |
+| **M3. Departments and events** | 5, 7 | set up departments and an event, appoint a department's leadership, have that department manage itself, archive a department |
 | **M4. Ready for a module** | 6, 11 (basic) | receive e-mail, reset a forgotten password by e-mail, export or delete one person by command; start `volunteers` |
 
 ```
@@ -56,9 +62,9 @@ Each milestone is something the owner can try on bms-vm, not just code.
       │
  M1  2. Accounts and login ──────── 8. Audit log (writes start here)
       │
- M2  3. People and profiles ─▶ 4. Roles and permissions      9. Settings (basic)
+ M2  3. People and profiles ─▶ 4. Roles, permissions, separation of duties    9. Settings (basic)
       │
- M3  5. Editions and departments ─▶ 7. Admin screens
+ M3  5. Departments and events ─▶ 7. Admin screens
       │
  M4  6. Notifications ─▶ e-mail password reset · 11. Export and deletion (basic)
       │
@@ -73,12 +79,12 @@ The framework every feature plugs into. Nothing a participant sees yet, but ever
 it depends on getting this right.
 
 **People can:**
-- *Operator:* run `bms migrate` to install or upgrade, `bms create-admin` to create the first
-  administrator, `bms serve` to run it, and `bms check` to see whether the configuration,
-  database and schema versions are fine without starting.
+- *Operator:* run `bms migrate` to install or upgrade, `bms create-superuser` to create the
+  break-glass account, `bms serve` to run it, and `bms check` to see whether the
+  configuration, database and schema versions are fine without starting.
 - *Maintainer:* follow any error reference from a screen to its trace and logs in Grafana.
 - *Module author:* write a module that adds a migration, a route, a screen, a permission and
-  an event, and see the core pick it up.
+  a signal, and see the core pick it up.
 
 **Done when:**
 - `bms migrate` applies the core's and each enabled module's migrations in one transaction per
@@ -96,12 +102,12 @@ it depends on getting this right.
 - A `hello` module exercises every part of the module contract and is the reference for
   module authors.
 
-**Specs:** `model`, `config`, `module-contract`, `db`, `events`, `telemetry`, `api`,
+**Specs:** `model`, `config`, `module-contract`, `db`, `signals`, `telemetry`, `api`,
 `web-shell`, `app`.
 
-**Settled here:** domain events are delivered **after commit**, in process, with the
-subscriber's failures logged and retried by `jobs`, never rolling back the publisher. The
-`events` spec confirms the details.
+**Settled here:** signals (in-process domain events, D24) are delivered **after commit**, with
+the subscriber's failures logged and retried by `jobs`, never rolling back the publisher. The
+`signals` spec confirms the details.
 
 ## 2. Accounts and login (MVP, M1)
 
@@ -109,14 +115,14 @@ subscriber's failures logged and retried by `jobs`, never rolling back the publi
 - *Participant:* create an account with their e-mail address and a password, and log in with
   that address (D21); log in and out; change their password; see and end their other
   sessions; reset a forgotten password by e-mail (from M4, Q-CORE2).
-- *Administrator:* disable and re-enable an account; set a temporary password that must be
+- *Account admin:* disable and re-enable an account; set a temporary password that must be
   changed at next login; see when an account last logged in.
 
 **Done when:**
 - **The login name is the person's primary e-mail address** (D21), unique ignoring case. It's
-  `personal` data: shown only to the person and to roles with the right permission (admins,
-  volunteer admins), never on lists other participants see. People are known by their playa
-  name everywhere else.
+  `personal` data: shown only to the person and to roles with the right permission (account
+  admins, volunteer admins), never on lists other participants see. People are known by their
+  playa name everywhere else.
 - Changing the primary address changes the login; it's audited, and (once e-mail exists, M4)
   the new address is confirmed and the old one told.
 - Passwords are hashed with Argon2id; minimum 12 characters, checked against a list of common
@@ -129,19 +135,22 @@ subscriber's failures logged and retried by `jobs`, never rolling back the publi
   must match. (Ends the need to write a session row on every request.)
 - Logins, failures, password changes and account changes are audited.
 - Sign-up is open by default and can be switched to invitation only in settings (Q-CORE1).
+- **The superuser** (D23) is created and reset only by command, never through the web. Its
+  sessions are short, every login alerts the maintainers and the site admins, every action is
+  audited, and the UI shows a banner while it's in use.
 
 **Later:** e-mail verification at sign-up, magic links, passkeys, two-factor authentication
-for admins, OIDC with the regional's own provider (D15).
+(first for the superuser and site admins), OIDC with the regional's own provider (D15).
 
 **Specs:** `identity`.
 
 ## 3. People and profiles (MVP, M2)
 
 **People can:**
-- *Participant:* fill in and edit their profile; choose who can see optional fields; record
-  consent where a field needs it.
-- *Lead or admin (with permission):* find people by playa name (or e-mail, if their role may
-  see it), and see the fields their role allows.
+- *Participant:* fill in and edit their profile; add, change and remove emergency contacts;
+  choose who can see optional fields; record consent where a field needs it.
+- *Department or site admin (with permission):* find people by playa name (or e-mail, if their
+  role may see it), and see the fields their role allows.
 - *Module:* add sections to a person's page and to "my page" through an extension point
   (D19), such as "departments I volunteer with" from `volunteers`.
 
@@ -154,9 +163,9 @@ for admins, OIDC with the regional's own provider (D15).
 | Legal name | personal | setting (some regionals need it for waivers) |
 | E-mail (primary; also the login, D21) | personal | yes |
 | Phone | personal | setting |
-| Emergency contact (name, phone, relationship) | personal | setting |
+| Emergency contacts: **any number**, each a name, phone and relationship | personal | **never required** (Q-CORE7) |
 
-Each regional can make the optional fields required or hidden in settings. No address, no
+A regional can make legal name and phone required or hidden in settings. No address, no
 photo, no age and no free-text "about me" in the MVP: collect only what's needed. Age,
 training and certificates come with qualifications (Q-QUAL), not as profile fields.
 
@@ -169,60 +178,87 @@ training and certificates come with qualifications (Q-QUAL), not as profile fiel
 
 **Specs:** `people`, plus the person-page extension point in `contracts/people`.
 
-## 4. Roles and permissions (MVP, M2)
+## 4. Roles, permissions and separation of duties (MVP, M2)
 
 **People can:**
-- *Administrator:* create roles from the permissions the core and modules declare; grant a
-  role to a person, optionally limited to one department, one edition, or both; revoke it;
-  see everyone who holds a permission.
+- *Access admin:* create roles from the permissions the core and modules declare; grant a role
+  to a person site-wide or for one department; revoke it; see everyone who holds a
+  permission; set the regional's separation-of-duties rules.
+- *Department admin:* grant and revoke department roles **within their own department** only,
+  including appointing other department admins.
 - *Participant:* see only the menus, screens and buttons they're allowed to use.
 
 **Done when:**
 - Permissions are declared in code by each module (`volunteers.shifts.manage`) with a
-  description an admin can read.
-- Built-in roles: **administrator** (everything, can't be deleted, at least one must remain),
-  **department lead** (meant to be granted per department and edition), **participant**
-  (everyone signed in).
-- Grants can expire (for example, at the end of an edition).
+  description an admin can read, and a flag for whether they reach `sensitive` data.
+- **No everyday role holds every permission** (D23). The starter roles, which a regional can
+  change, split the site admin's work:
+
+  | Starter role | Can |
+  |---|---|
+  | Account admin | manage accounts: disable, re-enable, temporary passwords |
+  | Access admin | manage roles, grants and separation-of-duties rules |
+  | Department steward | create and archive departments, set and reset a department's leadership |
+  | Event admin | create, change and close events |
+  | Settings admin | branding, terminology, module settings, SMTP |
+  | Audit reviewer | search the audit log; export who viewed a person's data |
+  | Department lead / department admin | run one department: details, people, positions, its own roles |
+  | Participant | everyone signed in |
+
+- **Separation-of-duties rules** are data a regional sets: "a person holding role A may never
+  hold permission B" (for example, board members never `incidents.reports.read`). A rule
+  blocks the grant, and is checked again on every decision, so a later role change can't get
+  around it. Rules are audited, and changing them needs its own permission.
+- **The superuser** bypasses roles and rules. It isn't a role and can't be granted (D23).
+- A grant can have an end date (for example, a regional that has leads re-apply every year
+  sets the end date when it appoints them; Q-CORE11). Nothing renews automatically.
+- A person can't grant a permission they don't hold, or outside the department they hold it
+  for. At least one person must keep the access admin role.
 - The `Authorizer` answers in batches ("which of these 50 records may this person see?") so
   lists don't make a query per row.
-- Granting and revoking are audited. A person can't grant a permission they don't hold.
+- Granting and revoking are audited.
 - The web shell gets the person's permissions once per page load and hides what they can't use;
   the server checks again on every call.
 
 **Specs:** `authz`.
 
-## 5. Editions and departments (MVP, M3)
+## 5. Departments and events (MVP, M3)
+
+**Departments** are standing parts of the regional, not tied to any event (Q-CORE9).
 
 **People can:**
-- *Administrator:* create an edition (name, dates, time zone), mark one as current, and close
-  it when it's over; create departments with a description and contact address; turn a
-  department on or off for an edition; appoint leads.
-- *Participant:* see the current edition and the departments taking part.
+- *Department steward:* create a department; archive one that's no longer needed (and restore
+  it); set or reset its leadership, so a department whose leads have all left doesn't need
+  the superuser.
+- *Department admin:* change their department's description and contact address, and run it
+  (its people and, through `volunteers`, its positions).
+- *Event admin:* create an event (name, dates, time zone), mark which is current, and close it
+  when it's over.
+- *Participant:* see the departments and the current event.
 
 **Done when:**
-- An edition is one event, not one year: a regional with a spring and a fall event has two
-  editions in a year.
-- Departments are defined once and **carry over**: a new edition starts with the previous
-  edition's departments switched on.
-- Departments are flat: no sub-teams (Q-CORE5). Roles *within* a department, such as Khaki
-  or R12 on a Ranger team, are **positions**, which belong to the `volunteers` module. A
-  position can have requirements (training, a certificate such as ICS-100, being over 18);
-  see Q-QUAL.
-- A lead is a department-lead grant scoped to that department and edition (step 4), so
-  "leads of Rangers for 2027" needs no separate table.
-- Starting a new edition calls an extension point, so modules can copy what they need
+- Departments are flat: no sub-teams (Q-CORE5). Roles within a department, such as Khaki or
+  R12 on a Ranger team, are **positions**, which belong to `volunteers`, with requirements
+  (Q-QUAL).
+- An archived department keeps its history, takes no new work, and disappears from lists
+  except to stewards. A department with nothing for an event simply shows nothing for it.
+- Leadership is a department-scoped grant (step 4); there's no separate leads table.
+- **An event is one burn** (Q-CORE8): a regional with a spring and a fall burn has two events
+  in a year. An event has its gate dates, and work for it can fall well outside them (land
+  prep, build, strike, inventory; Q-CORE10).
+- Modules attach their data to a department and, where it applies, an event, by ID (D19).
+  Some work belongs to a department and no event at all (for example, winter inventory).
+- Creating a new event calls an extension point, so modules can copy what they need
   (for example, shift templates).
-- Modules attach their data to an edition and, where it applies, a department, by ID (D19).
 
-**Specs:** `editions-departments`.
+**Specs:** `departments-events`.
 
 ## 6. Notifications (MVP, M4)
 
 **People can:**
 - *Participant:* receive e-mail from the regional (account, password reset, and module notices
   such as shift reminders).
-- *Administrator:* set the SMTP server, the sender address, and edit the wording of each
+- *Settings admin:* set the SMTP server, the sender address, and edit the wording of each
   template; send a test e-mail.
 
 **Done when:**
@@ -241,9 +277,11 @@ training and certificates come with qualifications (Q-QUAL), not as profile fiel
 ## 7. Admin screens (MVP, M3)
 
 **People can:**
-- *Administrator:* manage people and accounts, roles and grants, editions, departments and
-  settings, from one admin area; see which modules are compiled in, which are enabled, and the
-  provides/uses graph (D19); see the schema version of each.
+- *Each admin:* reach the screens for the jobs they hold, and only those: accounts, roles and
+  grants, separation-of-duties rules, departments, events, settings, audit.
+- *Department admin:* a page per department they run.
+- *Any site admin:* see which modules are compiled in and enabled, the provides/uses graph
+  (D19) and each schema version.
 
 **Done when:** each screen is built from the features above (no admin-only back doors), and
 each action is permission-checked and audited like any other.
@@ -253,17 +291,18 @@ each action is permission-checked and audited like any other.
 ## 8. Audit log (MVP, from M1)
 
 **People can:**
-- *Administrator (with `core.audit.read`):* search the log by person, actor, record and date.
+- *Audit reviewer:* search the log by person, actor, record and date; export the detailed
+  record of who viewed one person's data, as an internal process. The export is itself
+  audited.
 - *Participant (Later, Q-CORE6, D22):* see **that** their personal data was viewed, never
   by whom, as far as the regional's setting allows.
-- *Administrator (with a separate permission):* export the detailed record of who viewed one
-  person's data, as an internal process; the export itself is audited.
 
 **Done when:**
 - Entries record who, what action, which record, **which fields**, the viewer's role or
   position title at that moment, when, from which copy, and the trace ID. Never the personal
   data itself. Recording fields and title from the start keeps every D22 setting possible
   later without a migration.
+- Superuser actions are marked, so they're easy to review.
 - Nobody can change or delete entries through the app; the database role the app uses can only
   insert and read.
 - **On a read-only copy,** audited reads are written to a local append-only file and imported
@@ -275,7 +314,7 @@ each action is permission-checked and audited like any other.
 ## 9. Settings and branding (MVP, basic, from M2)
 
 **People can:**
-- *Administrator:* set the regional's name, logo, colors, contact address and public URL;
+- *Settings admin:* set the regional's name, logo, colors, contact address and public URL;
   choose terminology; change each module's settings.
 
 **Done when:**
@@ -294,7 +333,7 @@ Local disk first, S3-compatible storage optional. Files follow the data to the o
 
 ## 11. Data export and deletion
 
-- **MVP (M4):** an administrator exports one person's data (JSON, every module through the
+- **MVP (M4):** an account admin exports one person's data (JSON, every module through the
   extension point) or deletes it, by command, with the action audited.
 - **Later:** a person downloads their data from their page; asks for deletion, which an admin
   reviews; retention periods delete data automatically (Q-RETAIN).
@@ -316,8 +355,11 @@ distinct, dated records.
 
 ## Not in the core
 
-Shifts, sign-ups, camps, incidents, reports and the rest are **modules**, built on top of
-this list. See [02-scope.md](02-scope.md).
+Shifts, positions, sign-ups, camps, incidents, reports and the rest are **modules**, built on
+top of this list. See [02-scope.md](02-scope.md). Notes for the `volunteers` spec, gathered so
+far: positions with requirements (Q-QUAL); shifts before, during and after the event (land
+prep, build, strike, inventory); a shift or activity can be open to all, invitation only, or
+limited to certain positions (Q-CORE10).
 
 ## Specs to write, in order
 
@@ -330,16 +372,16 @@ The architect drafts them in this order; each is reviewed before the next that d
 | 3 | `config` | process configuration | M0 |
 | 4 | `db` | pool, read-only detection, migrations, schema versions | M0 |
 | 5 | `telemetry` | logs, traces, metrics, error references, client errors | M0 |
-| 6 | `events` | domain events, after commit | M0 |
+| 6 | `signals` | in-process domain events, after commit (D24) | M0 |
 | 7 | `api` | router, middleware, error mapping | M0 |
 | 8 | `web-shell` | frame, API client, screen registry, error reporting | M0 |
 | 9 | `app` | commands, wiring, lifecycle | M0 |
 | 10 | `audit` | the log and its read-only spool | M1 |
-| 11 | `identity` | accounts, passwords, sessions | M1 |
+| 11 | `identity` | accounts, passwords, sessions, the superuser | M1 |
 | 12 | `settings` | typed settings and terminology | M2 |
 | 13 | `people` | profiles, consent, person-page and export extension points | M2 |
-| 14 | `authz` | permissions, roles, scoped grants | M2 |
-| 15 | `editions-departments` | editions, departments, leads | M3 |
+| 14 | `authz` | permissions, roles, department-scoped grants, separation of duties | M2 |
+| 15 | `departments-events` | departments, archiving, leadership, events | M3 |
 | 16 | `jobs` | queued and scheduled work, writer only | M4 |
 | 17 | `notify` | e-mail and templates | M4 |
 | — | `files`, `switchover` | Later | — |
@@ -360,3 +402,19 @@ The architect drafts them in this order; each is reviewed before the next that d
   *that* their personal data was viewed, never by whom. How much is shown is configurable per
   regional. The detailed "who" is an internal export for people with the right permission.
   → D22
+- **Q-CORE7. Emergency contacts:** optional, and a person can have several.
+- **Q-CORE8. "Edition":** not a word burners use, and likely misunderstood. Use **event**.
+  → D24
+- **Q-CORE9. Departments:** standing, not tied to an event; an unused department just has
+  nothing for that event. Departments can be archived. A permission to archive departments
+  and to set or reset leadership exists, so this doesn't need the superuser.
+- **Q-CORE10. Work outside the event:** there are pre- and post-event activities (land prep,
+  inventory and more). Some are open to all, some invitation only, some only for certain
+  positions. → notes for `volunteers` above.
+- **Q-CORE11. Leadership terms:** some regionals make leads re-apply every year, with no
+  automatic reinstatement; others don't. Not built in for now; a grant's optional end date is
+  enough.
+- **Q-CORE12. Superuser and separation of duties:** a superuser role has full access, for
+  development and break-glass only, not normal use. Everyone else has separated duties;
+  each department has its own admins and manages itself; a regional can forbid combinations,
+  for example that board (LLC) members never review incident reports. → D23

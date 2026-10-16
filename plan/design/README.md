@@ -21,8 +21,8 @@ The order follows dependencies: foundation first, then the core, then modules.
 | 6 | `identity.md` | login providers and sessions | Not started |
 | 7 | `authz.md` | roles, grants, permissions, Authorizer | Not started |
 | 8 | `people.md` | profiles, contacts, consent, export and deletion | Not started |
-| 9 | `editions-departments.md` | event years and departments | Not started |
-| 10 | `events.md` | in-process domain events | Not started |
+| 9 | `departments-events.md` | departments, leadership, archiving, events (D24) | Not started |
+| 10 | `signals.md` | in-process domain events (D24) | Not started |
 | 11 | `notify.md` | notifier contract, e-mail | Not started |
 | 12 | `audit.md` | append-only audit log | Not started |
 | 13 | `files.md` | attachments and storage | Not started |

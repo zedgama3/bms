@@ -21,10 +21,10 @@ Check, in this order:
    - Is anything implemented that the spec says the abstraction does *not* do?
 2. **Access and privacy:**
    - Does every operation check the permission the spec names, through the authorizer, before
-     touching data? Is scoping by department or edition applied?
+     touching data? Is scoping by department or event applied?
    - Can a list, search, export or error message leak a record or field the caller may not
      see?
-   - Are sensitive reads audited? Are sensitive fields kept out of logs, events and
+   - Are sensitive reads audited? Are sensitive fields kept out of logs, signals and
      notifications?
    - Is there real personal data in fixtures or tests?
 3. **Boundaries:**

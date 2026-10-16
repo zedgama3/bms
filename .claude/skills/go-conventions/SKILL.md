@@ -24,7 +24,7 @@ cmd/bms                     main                          imports: app, config
 ```
 
 - A module **never** imports another module, `api`, `app` or `config`. Modules cooperate
-  through core contracts and domain events (`core/events`).
+  through core contracts and signals (domain events, `core/signals`).
 - Modules add themselves to the registry in `core/module` (`module.Register(volunteers.New)`).
   `app` imports the modules it ships with for their side effect.
 - depguard in `.golangci.yml` and `make imports` enforce these rules. A failure is a design
@@ -35,7 +35,7 @@ cmd/bms                     main                          imports: app, config
 See the `add-module` skill. In short: `module.go` (the contract), `service.go` (use cases,
 each checking its permission, and declaring the storage interface it needs), `postgres/`
 (the only place with SQL and the driver: `store.go`, `sql/`, `migrations/`; D8), `http.go`
-(handlers, thin), `events.go`.
+(handlers, thin), `signals.go`.
 
 ## Errors: `internal/lib/errs`
 

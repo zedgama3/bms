@@ -10,14 +10,15 @@ spec). The `db` spec, once Approved, is authoritative where it differs from this
 
 ## Schemas
 
-- The core owns schema `core` (people, editions, departments, roles, grants, audit, settings,
+- The core owns schema `core` (people, departments, events, roles, grants, audit, settings,
   files, jobs).
 - Each module owns schema `<module>` (for example `volunteers`). Its tables reference only
   its own tables and `core` tables. Never another module's schema.
 - Table names are singular, lowercase, `snake_case` (`volunteers.shift`). Primary keys are
   `id` (UUID v7 or bigint identity, decided in the `db` spec). Every table has
   `created_at` and `updated_at` (`timestamptz`).
-- Data that belongs to an event year carries `edition_id`.
+- Data that belongs to a department carries `department_id`; data that belongs to an event
+  (one burn, D24) carries `event_id`.
 - Comment personal-data columns with their sensitivity level:
   `COMMENT ON COLUMN core.person.legal_name IS 'sensitivity: personal';`
 
@@ -51,8 +52,8 @@ spec). The `db` spec, once Approved, is authoritative where it differs from this
 
 - A use case that writes more than one row runs in one transaction, obtained from the `db`
   contract.
-- Domain events are published through the `events` contract in the same transaction
-  (delivery after commit, as the `events` spec defines).
+- Signals (domain events, D24) are published through the `signals` contract in the same transaction
+  (delivery after commit, as the `signals` spec defines).
 
 ## Error mapping (at the `db` boundary)
 

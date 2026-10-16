@@ -11,7 +11,7 @@
       ▼
   bms (one Go binary)
    ├─ api shell: router, auth middleware, error mapping, OpenAPI
-   ├─ core: identity, authz, people, editions, departments, notify, files, audit, events, jobs
+   ├─ core: identity, authz, people, departments, events, notify, files, audit, signals, jobs
    └─ modules: volunteers, registrations, incidents, after-reports, (your module)
       │
       ▼
@@ -39,7 +39,7 @@ A module is a Go package under `internal/modules/<name>/` (and a matching folder
   roles a regional can assign
 - its **HTTP routes**, mounted by the api shell under `/api/<module>/`
 - its **navigation entries and screens** for the UI
-- the **domain events** it publishes and subscribes to
+- the **signals** (domain events, D24) it publishes and subscribes to
 - its **background jobs** and **settings** (with defaults and validation)
 
 The exact shape is the `module-contract` spec. Until it's Approved, this list is a sketch.
@@ -49,10 +49,10 @@ The exact shape is the `module-contract` spec. Until it's Approved, this list is
 | Data | Owner | Others get it through |
 |---|---|---|
 | accounts, profiles, contact details | core `people` | the people directory contract (with permission checks) |
-| editions, departments | core | core contracts |
+| departments, events | core | core contracts |
 | roles, permissions, grants | core `authz` | the authorizer |
-| shifts, sign-ups | `volunteers` | domain events (for example `volunteers.shift-completed`) |
-| applications | `registrations` | domain events |
+| shifts, sign-ups | `volunteers` | signals (for example `volunteers.shift-completed`) |
+| applications | `registrations` | signals |
 | incidents | `incidents` | nothing by default; sensitive |
 
 ## Offline at the event

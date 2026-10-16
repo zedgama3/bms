@@ -136,7 +136,7 @@ Consumers per method:
 |---|---|
 | `Now` | `jobs` scheduler (tick timestamps), `identity` sessions (expiry), `audit` (event timestamps), `api` middleware (request duration) |
 | `Since` | `jobs` scheduler (job run duration for overrun detection), `telemetry` (health) |
-| `After` | `events` and `notify` (a deadline in a `select` with an input channel) |
+| `After` | `signals` and `notify` (a deadline in a `select` with an input channel) |
 | `NewTimer` | `retry.Do`, `clock.Wait` (must `Stop` when ctx wins, so no goroutine or fake waiter leaks) |
 | `NewTicker` | `jobs` scheduler (one per job interval), `identity` (expired-session sweep) |
 | `Wait` | `retry.Do`, `jobs` runner (sleep for `Backoff.Next()` without ignoring shutdown) |

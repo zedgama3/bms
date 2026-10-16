@@ -1,6 +1,6 @@
 ---
 name: privacy-data
-description: How bms classifies, stores, accesses, audits, exports and deletes personal and sensitive data — sensitivity levels, least-privilege access, audit of sensitive reads, keeping personal data out of logs, events and fixtures, retention, and per-person export and deletion. Load before designing, implementing or reviewing anything that touches information about people (profiles, contacts, shifts, registrations, incidents, reports).
+description: How bms classifies, stores, accesses, audits, exports and deletes personal and sensitive data — sensitivity levels, least-privilege access, audit of sensitive reads, keeping personal data out of logs, signals and fixtures, retention, and per-person export and deletion. Load before designing, implementing or reviewing anything that touches information about people (profiles, contacts, shifts, registrations, incidents, reports).
 ---
 
 # Personal and sensitive data
@@ -31,7 +31,7 @@ When in doubt, pick the higher level.
 - **Audit.** Every read of a `personal` field by someone other than the person, and every
   read of a `sensitive` field, writes an audit record (who, what record, when, why if the
   workflow asks).
-- **Never in logs, events, notifications or error messages.** Use IDs. An e-mail
+- **Never in logs, signals, notifications or error messages.** Use IDs. An e-mail
   notification says "a new incident was assigned to you" with a link, never the narrative.
 - **Never in the browser's storage, URLs or analytics.** There's no third-party analytics.
 - **Never real data in development.** Fixtures, seeds, screenshots and tests use invented

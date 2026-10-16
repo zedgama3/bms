@@ -82,7 +82,7 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
 - **Status:** Accepted (2026-10-16)
 - Each module's tables live in its own PostgreSQL schema (for example `volunteers.shift`),
   and the module is responsible for that schema. Modules may reference core tables (people,
-  editions, departments) but never another module's tables.
+  events, departments) but never another module's tables.
 - How migrations are shipped and run is D17.
 
 ## D11. Port the foundation libraries from Sojourn
@@ -122,7 +122,7 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
 - The binary serves the API and the built web UI itself, so no reverse proxy is required.
   Example configs for optional front ends (Cloudflare Tunnel, nginx, Caddy) ship in
   `deploy/`.
-- Reasons: authorization (per department, edition and record) has to live in the app
+- Reasons: authorization (per department, event and record) has to live in the app
   anyway; participants register themselves, which a proxy could only support with a
   separate identity server to operate; modules declare their own public and private routes
   in one place, so a fork changes one thing; and trusting an identity header is dangerous
@@ -177,14 +177,14 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
   installation; and records that might be shared (for example completed shifts and hours)
   are kept as distinct, dated records rather than only as running totals.
 
-## D19. Modules declare what they provide and use: capabilities, extension points, events
+## D19. Modules declare what they provide and use: capabilities, extension points, signals
 
 - **Status:** Accepted (2026-10-16)
 - **Problem:** features need each other's data (a person's page shows the departments they
   volunteer with and the events they're registered for), but modules never import each
   other (D9) or read each other's tables (D10). Without a planned mechanism, this turns into
   hidden coupling.
-- **Shared keys.** People, editions and departments belong to the core. Every module refers
+- **Shared keys.** People, departments and events belong to the core. Every module refers
   to them by ID, so data from different modules lines up without the modules knowing each
   other.
 - **Contracts package.** `internal/contracts/<name>/` holds shared interfaces and data types
@@ -194,15 +194,16 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
   1. **Extension points** (many contributors, the consumer defines the shape). The
      consumer asks "who has something to add?" and shows whatever comes back. Examples: the
      sections on a person's page, items on "my dashboard", what to include when exporting or
-     deleting a person's data, what to do when a new edition starts. Removing a module just
+     deleting a person's data, what to do when a new event is created. Removing a module just
      removes its contribution. **This is the default.**
   2. **Capabilities** (one provider, a named service). A module `provides` a capability
      and others `require` it (start-up fails if it's missing, with a clear message) or
      `use` it optionally (the feature hides itself when it's missing). Example: a gate
      module optionally uses `volunteer-credit` to check early-arrival eligibility.
-  3. **Domain events** (something happened). For reactions, not for reading data.
+  3. **Signals** (domain events: something happened; renamed by D24). For reactions, not for
+     reading data.
 - **The registry checks everything at start-up:** every required capability has exactly one
-  provider, every event subscribed to has a publisher, and an admin screen shows the
+  provider, every signal subscribed to has a publisher, and an admin screen shows the
   provides/uses graph.
 - **Rules for contracts:** calls take batches (a list of person IDs, not one at a time), so
   pages don't make a call per row; the provider applies its own permission checks for the
@@ -268,3 +269,37 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
   as an export for an internal process; that export is itself audited.
 - So that any setting works later, every audited read records the fields viewed and the
   viewer's role or position title at that moment.
+
+## D23. Separation of duties; a break-glass superuser is the only all-access account
+
+- **Status:** Accepted (2026-10-16)
+- **Superuser:** full access to the whole site, for development and emergencies ("break
+  glass") only, never normal use. It isn't a role and can't be granted in the app: it's
+  created and reset only by command. Every login alerts the maintainers and site admins;
+  every action is audited and marked; its sessions are short; the UI shows a banner while
+  it's in use.
+- **Everyone else has separated duties.** No everyday role holds every permission. Site admin
+  work is split into separate jobs (accounts, access, departments, events, settings, audit),
+  which a regional assigns as it chooses.
+- **Departments run themselves.** Each department has its own admins, who manage the
+  department, its people and positions, and grant roles within it, and nowhere else. A
+  separate permission archives departments and sets or resets their leadership, so that
+  doesn't need the superuser.
+- **A regional can forbid combinations.** Separation-of-duties rules are data: "a person
+  holding role A may never hold permission B" (for example, board members never read
+  incident reports). Rules are checked when granting and on every decision.
+- Why: burns differ on who may see what, and some forbid particular combinations outright;
+  one all-powerful admin role would make those rules impossible to keep.
+
+## D24. "Event" means one burn; in-process domain events are called signals
+
+- **Status:** Accepted (2026-10-16). Replaces the word "edition" used in earlier drafts.
+- An **event** is one burn, with its dates. A regional with a spring and a fall burn has two
+  events a year. "Edition" was not a word burners use and would be misunderstood.
+- **Departments are standing**, not tied to an event, and can be archived. Module data
+  attaches to a department and, where it applies, an event; some work (for example, winter
+  inventory) belongs to no event. Work for an event can fall outside its dates (land prep,
+  build, strike).
+- So "event" has one meaning in code and UI, the in-process publish/subscribe mechanism
+  (formerly `events`, "domain events") is renamed **signals** (`core/signals`; for example the
+  signal `volunteers.shift-completed`).

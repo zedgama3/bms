@@ -25,7 +25,7 @@ Method:
 2. **One test, or one table row, per failure mode in the spec.** Check the error *kind* with
    the `errs` helpers. Never match on error message text.
 3. **One test per permission rule:** the allowed role succeeds; a person without the
-   permission gets `Permission`; a person scoped to another department or edition gets
+   permission gets `Permission`; a person scoped to another department or event gets
    `Permission` (or `NotFound`, if the spec hides existence). Sensitive reads write an audit
    record.
 4. Also cover the boundaries the spec implies:
