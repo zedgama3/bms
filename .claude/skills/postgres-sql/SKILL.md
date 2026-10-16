@@ -62,7 +62,8 @@ spec). The `db` spec, once Approved, is authoritative where it differs from this
 | `23503` foreign_key_violation | `Invalid` (bad reference) or `Conflict` (in use), per spec |
 | `23514` check_violation, `22xxx` data exceptions | `Invalid` |
 | `40001` serialization_failure, `40P01` deadlock | `Unavailable` (retryable) |
-| `57014` query_canceled with a passed deadline | `Timeout` |
+| `57014` query_canceled, deadline passed | `Timeout` |
+| `57014` query_canceled, caller canceled the context | `Canceled` |
 | connection errors, `08xxx`, `53xxx` | `Unavailable` |
 | `pgx.ErrNoRows` | `NotFound` |
 | anything else | `Internal` |

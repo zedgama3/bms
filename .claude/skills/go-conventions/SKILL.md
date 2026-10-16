@@ -60,7 +60,7 @@ set by `plan/design/lib-errs.md` (ported from Sojourn, D11): `errs.E(op, kind, e
 
 ```go
 // create, with an operation name and a kind
-return errs.E("volunteers.store.CreateShift", errs.Unavailable, err)
+return errs.E("volunteers.postgres.CreateShift", errs.Unavailable, err)
 
 // add context while keeping the kind
 if err := r.load(ctx); err != nil {
@@ -75,9 +75,10 @@ Rules:
 
 - **Never** `_ = f()` on a fallible call, and never call `if err != nil { log; continue }`
   without returning or recording the error somewhere the spec names.
-- Translate driver errors into kinds **at the plugin boundary** (for example, a unique
-  violation becomes `Conflict`, a network error becomes `Unavailable`; see `postgres-sql`). Nothing above
-  the plugin sees driver error types.
+- Translate driver errors into kinds **at the storage boundary**: core `db` and each
+  `postgres/` package (D8). For example, a unique violation becomes `Conflict` and a network
+  error becomes `Unavailable` (see `postgres-sql`). Nothing above the storage boundary sees
+  driver error types.
 - `panic` only for impossible states in `init`/`main` setup. Library code returns errors.
 - Collect multiple validation errors with `errors.Join` so config problems show up all at
   once.

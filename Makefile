@@ -3,7 +3,7 @@ GO       ?= go
 GOLANGCI_LINT ?= $(shell command -v golangci-lint || echo $(HOME)/go/bin/golangci-lint)
 COMPOSE  ?= docker compose -f deploy/compose/docker-compose.yml --env-file deploy/compose/.env
 
-.PHONY: fmt vet build test test-integration lint imports check up down ps
+.PHONY: fmt vet build test test-integration lint imports check up observe down ps
 
 fmt:              ## fails if any file needs gofmt
 	@out=$$(gofmt -l $$(git ls-files -co --exclude-standard '*.go')); if [ -n "$$out" ]; then echo "$$out"; exit 1; fi
@@ -31,8 +31,11 @@ check: fmt vet build test lint imports
 up:
 	$(COMPOSE) up -d
 
+observe:
+	$(COMPOSE) --profile observability up -d
+
 down:
-	$(COMPOSE) down
+	$(COMPOSE) --profile observability --profile oidc down
 
 ps:
 	$(COMPOSE) ps

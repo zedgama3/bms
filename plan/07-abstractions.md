@@ -139,6 +139,14 @@ Rules (enforced by depguard and `make imports`):
 ### jobs: background work
 - **Purpose:** run scheduled and deferred work (reminders, retention) once, with retries.
 
+### telemetry: logs, traces, metrics and client error reports (D20)
+- **Purpose:** let maintainers see problems early and trace any one request end to end.
+- **Owns:** logger, tracer and meter set-up (OpenTelemetry, OTLP), request and trace IDs, the
+  short error reference shown to people, and the intake of error reports from the web UI
+  (validation, scrubbing, rate limits).
+- **Doesn't do:** dashboards or alerts (those are deployment config), audit (`audit`),
+  analytics about people.
+
 ### settings: what a regional configures at runtime
 - **Purpose:** typed, validated settings per module and for the core (terminology, branding,
   retention periods), editable by admins.
@@ -147,13 +155,13 @@ Rules (enforced by depguard and `make imports`):
 
 ### api shell
 - **Purpose:** expose the core's and modules' routes over HTTP.
-- **Owns:** router, middleware (session, CSRF, request IDs, limits), the error mapper
+- **Owns:** router, middleware (session, CSRF, request IDs and tracing, limits), the error mapper
   (`errs` kind → HTTP status), the OpenAPI document assembled from module fragments.
 - **Doesn't do:** business logic.
 
 ### web shell
 - **Purpose:** the React app frame: login, navigation, layout, the API client, and the
-  registry modules add screens to.
+  registry modules add screens to. Catches errors and reports them (D20).
 
 ### app: composition root
 - **Purpose:** build everything from configuration, start it and stop it cleanly. Provides

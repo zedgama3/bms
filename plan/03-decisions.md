@@ -210,3 +210,35 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
   breaking changes (Q-UPGRADE).
 - Cross-module SQL joins and reporting across modules are not allowed through the database;
   reporting is a later extension point.
+
+## D20. Observability: OpenTelemetry out, the Grafana stack as the reference; the UI reports its errors
+
+- **Status:** Accepted (2026-10-16)
+- **Why:** maintainers should see problems before people report them, and when someone does
+  report one, find exactly what happened.
+- **What bms emits.** Structured logs (JSON on stdout, always), plus traces, metrics and logs
+  over OpenTelemetry (OTLP) when an endpoint is configured with the standard `OTEL_*`
+  variables. bms speaks only OTLP, so a regional can use any compatible backend, or none.
+- **Reference stack:** Grafana, Loki (logs), Tempo (traces), Prometheus (metrics, including
+  rates, errors and durations derived from traces), and Alloy as the collector. Every piece
+  is OSI-licensed. Development runs it with `make observe`; an example production setup
+  ships in `deploy/`. It's recommended, not required.
+- **Every request is traceable.** Each request gets a trace ID. Error responses and error
+  screens show a short reference that a participant can quote, and that reference finds the
+  trace and its logs.
+- **The UI reports its own errors.** The web shell catches uncaught errors, unhandled promise
+  rejections, crashed screens (React error boundaries) and failed API calls, and sends them
+  in batches to a bms endpoint (`POST /api/client-errors`). The server validates them,
+  limits the rate and size, and logs them with `source=client`. Browser API calls carry the
+  trace context, so one trace covers the click and the server work.
+- **Through bms, not straight to the collector,** so there's no extra public endpoint (it
+  works through a tunnel), and the server enforces the privacy rules below.
+- **Privacy (privacy-data skill).** Reports and logs carry no form values, request or
+  response bodies, query strings, names, e-mail addresses or other personal data. URLs are
+  reported as the route pattern (`/people/:id`), and the person only by internal ID. Log
+  retention is set (proposed default: 30 days), and Grafana access is limited to the
+  regional's maintainers.
+- **Proactive alerts:** the example setup includes alert rules for error-rate and
+  client-error spikes and for slow requests, sent to the maintainers by e-mail.
+- Each copy (on-site and off-site, Q-OFFLINE) reports to its own collector; how the on-site
+  copy's telemetry gets back afterwards is part of the switchover design.

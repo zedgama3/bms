@@ -3,6 +3,10 @@
 #   cp deploy/compose/.env.example deploy/compose/.env   # then edit the passwords
 #   make up                                              # database + mail
 #   docker compose ... --profile oidc up -d              # optional local OIDC provider
+#   make observe                                         # + Grafana, Loki, Tempo, Prometheus, Alloy
+#
+# Observability: point bms at OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 and open
+# Grafana on :3000 (no login in development).
 #
 # Integration tests (go test -tags integration) read the BMS_TEST_* variables in .env.example.
 name: bms-dev
@@ -35,6 +39,51 @@ services:
     command: ["dex", "serve", "/etc/dex/config.yaml"]
     volumes: ["./dex/config.yaml:/etc/dex/config.yaml:ro"]
     ports: ["${DEX_PORT:-5556}:5556"]
+
+  # --- Observability (profile "observability", D20). bms sends OTLP to Alloy only. ---
+  alloy:
+    profiles: [observability]
+    image: grafana/alloy:v1.19.2
+    command: ["run", "--server.http.listen-addr=0.0.0.0:12345", "/etc/alloy/config.alloy"]
+    volumes: ["./observability/alloy.alloy:/etc/alloy/config.alloy:ro"]
+    ports:
+      - "${OTLP_GRPC_PORT:-4317}:4317"
+      - "${OTLP_HTTP_PORT:-4318}:4318"
+      - "${ALLOY_UI_PORT:-12345}:12345"
+    depends_on: [loki, tempo, prometheus]
+
+  loki:
+    profiles: [observability]
+    image: grafana/loki:3.7.8
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    ports: ["${LOKI_PORT:-3100}:3100"]
+
+  tempo:
+    profiles: [observability]
+    image: grafana/tempo:2.10.8
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes: ["./observability/tempo.yaml:/etc/tempo.yaml:ro"]
+    ports: ["${TEMPO_PORT:-3200}:3200"]
+
+  prometheus:
+    profiles: [observability]
+    image: prom/prometheus:v3.13.4
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --web.enable-remote-write-receiver
+      - --enable-feature=exemplar-storage
+    ports: ["${PROMETHEUS_PORT:-9090}:9090"]
+
+  grafana:
+    profiles: [observability]
+    image: grafana/grafana:13.0.10
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    volumes: ["./observability/grafana/datasources.yaml:/etc/grafana/provisioning/datasources/bms.yaml:ro"]
+    ports: ["${GRAFANA_PORT:-3000}:3000"]
+    depends_on: [loki, tempo, prometheus]
 
 volumes:
   db-data:

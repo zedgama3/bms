@@ -39,6 +39,9 @@ The framework every feature plugs into. Nothing a participant sees yet.
 - The module contract and registry: turning modules on and off in configuration, and the
   capabilities, extension points and events each module provides and uses (D19).
 - Health check, structured logs, clean shutdown.
+- Troubleshooting (D20): traces, metrics and logs sent to Grafana, Loki and Tempo when
+  configured; a short error reference on every error screen; errors in the web UI are
+  reported to the server and logged for maintainers.
 - An empty web shell: layout, navigation, sign-in page.
 
 ## 2. Accounts and login (MVP)
