@@ -176,3 +176,37 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
   public URL) and can hold a signing key; each person has a stable ID within an
   installation; and records that might be shared (for example completed shifts and hours)
   are kept as distinct, dated records rather than only as running totals.
+
+## D19. Modules declare what they provide and use: capabilities, extension points, events
+
+- **Status:** Proposed
+- **Problem:** features need each other's data (a person's page shows the departments they
+  volunteer with and the events they're registered for), but modules never import each
+  other (D9) or read each other's tables (D10). Without a planned mechanism, this turns into
+  hidden coupling.
+- **Shared keys.** People, editions and departments belong to the core. Every module refers
+  to them by ID, so data from different modules lines up without the modules knowing each
+  other.
+- **Contracts package.** `internal/contracts/<name>/` holds shared interfaces and data types
+  only, with no implementation. Modules may import contracts; contracts import only `model`
+  and `lib`. A fork adds a contract by adding a package.
+- **Three ways to cooperate, each declared in the module's manifest:**
+  1. **Extension points** (many contributors, the consumer defines the shape). The
+     consumer asks "who has something to add?" and shows whatever comes back. Examples: the
+     sections on a person's page, items on "my dashboard", what to include when exporting or
+     deleting a person's data, what to do when a new edition starts. Removing a module just
+     removes its contribution. **This is the default.**
+  2. **Capabilities** (one provider, a named service). A module `provides` a capability
+     and others `require` it (start-up fails if it's missing, with a clear message) or
+     `use` it optionally (the feature hides itself when it's missing). Example: a gate
+     module optionally uses `volunteer-credit` to check early-arrival eligibility.
+  3. **Domain events** (something happened). For reactions, not for reading data.
+- **The registry checks everything at start-up:** every required capability has exactly one
+  provider, every event subscribed to has a publisher, and an admin screen shows the
+  provides/uses graph.
+- **Rules for contracts:** calls take batches (a list of person IDs, not one at a time), so
+  pages don't make a call per row; the provider applies its own permission checks for the
+  person asking, so nothing leaks through a contract; and contract changes are reviewed as
+  breaking changes (Q-UPGRADE).
+- Cross-module SQL joins and reporting across modules are not allowed through the database;
+  reporting is a later extension point.

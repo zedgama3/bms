@@ -36,16 +36,18 @@ The framework every feature plugs into. Nothing a participant sees yet.
   can be managed before any login provider is set up.
 - `bms serve`: serves the API and the web UI. Each module checks its schema version when it
   initializes, and the app stops if any is out of date.
-- The module contract and registry: turning modules on and off in configuration.
+- The module contract and registry: turning modules on and off in configuration, and the
+  capabilities, extension points and events each module provides and uses (D19).
 - Health check, structured logs, clean shutdown.
 - An empty web shell: layout, navigation, sign-in page.
 
 ## 2. Accounts and login (MVP)
 
-- Sign up with an e-mail address, and verify it.
-- Log in and out. The method is Q-LOGIN (password, magic link, or both).
-- Account recovery.
-- Log in with an OIDC provider the regional already runs (optional, per installation).
+- Sign up with a username and password (Q-LOGIN). E-mail is collected as a contact detail.
+- Log in and out.
+- An administrator can reset a forgotten password.
+- *Later:* e-mail verification and self-service reset, magic links, passkeys, and logging in
+  with an OIDC provider the regional already runs (D15).
 - Sessions that work on a read-only copy (Q-OFFLINE).
 - Administrators can disable an account.
 
@@ -54,6 +56,8 @@ The framework every feature plugs into. Nothing a participant sees yet.
 - A person's profile: playa name, legal name, pronouns, contact details, emergency contact.
 - Each field has a sensitivity level and is shown only to people allowed to see it.
 - People edit their own profile; consent is recorded where it's needed.
+- Other modules add sections to a person's page through an extension point (D19), for
+  example "departments I volunteer with" from `volunteers`.
 - Administrators can find people (with permission).
 - *Later:* download my data, delete my account (full version in step 11).
 

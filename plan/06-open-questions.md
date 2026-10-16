@@ -22,8 +22,6 @@ here, copy it into the document it affects, and tick the box.
       becomes the **single primary** during the event; the other copy keeps serving reads.
       One writer at a time, never two. Still open: how the handover works (planned
       switchover, by whom, how fast), and which workflows must keep working on site.
-- [ ] **Q-LOGIN:** How do local accounts log in: password, magic link (e-mailed), or both?
-      Passkeys later? (The rest of Q-IDP is resolved; see below.)
 - [ ] **Q-TRUST:** How do regionals trust each other (D18)? For example: each publishes a
       document at a `/.well-known/` URL with its public key and the regionals it trusts;
       shared records such as volunteer credit are signed by the issuing regional. What's
@@ -76,3 +74,5 @@ here, copy it into the document it affects, and tick the box.
 - [x] **Q-IDP:** Is there an existing burner identity to use? No: there's no open, shared
       burner login; each tool has its own. Local accounts and OIDC (D15); trust between
       regionals later (Q-TRUST). → D18
+- [x] **Q-LOGIN:** How do local accounts log in? For now, username and password only. E-mail
+      reset, magic links, passkeys and OIDC come later, behind the same provider model (D15).
