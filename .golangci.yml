@@ -1,0 +1,112 @@
+# Lint configuration. depguard encodes the layer rules in plan/07-abstractions.md:
+# a depguard failure is a design problem, not a lint nuisance.
+# "A module never imports another module" is checked by scripts/check-module-imports.sh
+# (make imports), because depguard can't express "any sibling".
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: standard # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    - depguard
+    - errorlint     # %w wrapping, errors.Is/As instead of == and type switches
+    - wrapcheck     # errors from other packages are wrapped with context
+    - bodyclose
+    - rowserrcheck
+    - sqlclosecheck
+    - noctx         # outbound I/O takes a context
+    - contextcheck
+    - nilerr        # returning nil after checking err != nil
+    - errname
+    - gosec
+    - misspell
+    - revive
+    - sloglint      # structured, attribute-only slog calls
+    - forbidigo
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: true # "_ = f()" on a fallible call is not allowed
+    wrapcheck:
+      ignore-package-globs:
+        - github.com/zedgama3/bms/internal/lib/errs # errs.E is the wrapper
+    sloglint:
+      attr-only: true
+      no-global: all
+      context: scope
+    forbidigo:
+      forbid:
+        - pattern: ^time\.Sleep$
+          msg: use lib/clock; tests must not sleep
+        - pattern: ^log\.(Print|Fatal|Panic).*$
+          msg: use a *slog.Logger passed in
+        - pattern: ^fmt\.Print.*$
+          msg: use a *slog.Logger passed in (cmd/ may write to stdout explicitly)
+    depguard:
+      rules:
+        third-party-bans:
+          files: ["$all"]
+          deny:
+            - pkg: github.com/stretchr/testify
+              desc: "use the standard testing package"
+            - pkg: github.com/golang/mock
+              desc: "hand-written fakes only"
+            - pkg: go.uber.org/mock
+              desc: "hand-written fakes only"
+            - pkg: github.com/pkg/errors
+              desc: "use internal/lib/errs and the errors package"
+            - pkg: gorm.io
+              desc: "no ORM: plain SQL (postgres-sql skill)"
+        foundation-lib:
+          # lib depends on nothing in the project except lib.
+          files:
+            - "**/internal/lib/**"
+            - "!**/internal/lib/testkit/**"
+          list-mode: strict
+          allow:
+            - "$gostd"
+            - github.com/zedgama3/bms/internal/lib
+        foundation-model:
+          # model depends only on lib (its black-box tests also import model itself).
+          files:
+            - "**/internal/model/**"
+          list-mode: strict
+          allow:
+            - "$gostd"
+            - github.com/zedgama3/bms/internal/lib
+            - github.com/zedgama3/bms/internal/model
+        core:
+          # Core contracts and their implementations never know about modules, HTTP or app.
+          files:
+            - "**/internal/core/**"
+          deny:
+            - pkg: github.com/zedgama3/bms/internal/modules
+              desc: "the core never imports a module; modules plug into the core"
+            - pkg: github.com/zedgama3/bms/internal/api
+              desc: "the core doesn't know about HTTP"
+            - pkg: github.com/zedgama3/bms/internal/app
+              desc: "only main imports app"
+            - pkg: github.com/zedgama3/bms/internal/config
+              desc: "the core receives typed options from app, not the app config"
+        modules:
+          # A module depends on core contracts, model and lib. Never another module
+          # (make imports), app, the api shell or the app config.
+          files:
+            - "**/internal/modules/**"
+          deny:
+            - pkg: github.com/zedgama3/bms/internal/app
+              desc: "modules never import the composition root"
+            - pkg: github.com/zedgama3/bms/internal/api
+              desc: "modules contribute routes through the module contract, not by importing the api shell"
+            - pkg: github.com/zedgama3/bms/internal/config
+              desc: "modules receive typed options from app, not the app config"
+        api:
+          files: ["**/internal/api/**"]
+          deny:
+            - pkg: github.com/zedgama3/bms/internal/modules
+              desc: "the api shell mounts routes it is given; only app knows the modules"
+            - pkg: github.com/zedgama3/bms/internal/app
+              desc: "only main imports app"

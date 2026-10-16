@@ -1,0 +1,47 @@
+# Private, regional-specific notes (plan/00-principles.md). Never commit.
+plan/private/
+
+# Secrets and local configuration. Commit only *.example files.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.crt
+bms.local.*
+
+# Go build and test output
+/bin/
+/dist/
+*.test
+*.out
+coverage.*
+/tmp/
+
+# Web
+web/node_modules/
+web/dist/
+web/coverage/
+web/.vite/
+*.tsbuildinfo
+
+# Local data from running the app (uploads, dumps)
+/data/
+*.dump
+*.sql.gz
+
+# Claude Code: personal settings (shared agents and skills are committed)
+.claude/settings.local.json
+CLAUDE.local.md
+
+# Editors and OS
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

@@ -1,0 +1,40 @@
+# Development and test infrastructure for bms. Not a production deployment.
+#
+#   cp deploy/compose/.env.example deploy/compose/.env   # then edit the passwords
+#   make up                                              # database + mail
+#   docker compose ... --profile oidc up -d              # optional local OIDC provider
+#
+# Integration tests (go test -tags integration) read the BMS_TEST_* variables in .env.example.
+name: bms-dev
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: bms
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      POSTGRES_DB: bms
+    ports: ["${DB_PORT:-5432}:5432"]
+    volumes: [db-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bms -d bms"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # SMTP catcher for notification tests. Web UI on :8025.
+  mailpit:
+    image: axllent/mailpit:latest
+    ports: ["${SMTP_PORT:-1025}:1025", "${MAILPIT_UI_PORT:-8025}:8025"]
+
+  # Local OIDC provider for login tests (stands in for any OIDC provider).
+  # Needs deploy/compose/dex/config.yaml, written with the identity spec.
+  dex:
+    profiles: [oidc]
+    image: ghcr.io/dexidp/dex:v2.41.1
+    command: ["dex", "serve", "/etc/dex/config.yaml"]
+    volumes: ["./dex/config.yaml:/etc/dex/config.yaml:ro"]
+    ports: ["${DEX_PORT:-5556}:5556"]
+
+volumes:
+  db-data:
