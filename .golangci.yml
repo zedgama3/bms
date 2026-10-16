@@ -103,6 +103,19 @@ linters:
               desc: "modules contribute routes through the module contract, not by importing the api shell"
             - pkg: github.com/zedgama3/bms/internal/config
               desc: "modules receive typed options from app, not the app config"
+        storage-seam:
+          # D8: only postgres/ packages and core db touch the driver. Everything else talks
+          # to a storage interface, so PostgreSQL can be replaced later.
+          files:
+            - "$all"
+            - "!**/postgres/**"
+            - "!**/internal/core/db/**"
+            - "!**/internal/lib/testkit/**"
+          deny:
+            - pkg: github.com/jackc/pgx
+              desc: "SQL lives only in a postgres/ package behind a storage interface (D8)"
+            - pkg: database/sql
+              desc: "SQL lives only in a postgres/ package behind a storage interface (D8)"
         api:
           files: ["**/internal/api/**"]
           deny:

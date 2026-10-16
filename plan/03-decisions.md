@@ -52,30 +52,42 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
   agents with matched models, building and checking by different agents, and owner control
   of what's published (D16). Agents and skills were adapted from Sojourn's `.claude/`.
 
-## D8. PostgreSQL is the only database
+## D8. PostgreSQL only for now, behind a storage seam; no ORM
 
-- **Status:** Proposed
-- Unlike Sojourn, there's no pluggable storage backend. With many modules, each pluggable
-  backend would multiply the work, and PostgreSQL is OSI-licensed and available everywhere.
-- Modules write plain SQL against PostgreSQL (no ORM).
+- **Status:** Accepted (2026-10-16)
+- PostgreSQL is the only database we build for now. It's OSI-licensed, available
+  everywhere, and its replication supports the offline plan (Q-OFFLINE).
+- No ORM and no query builder: plain SQL.
+- **Storage is its own section, so it can be replaced later without touching business
+  logic.** In each module and core service:
+  - The service declares the storage interface it needs, in its own terms (for example
+    `ShiftStore`), with no SQL or driver types in it.
+  - The PostgreSQL implementation lives in a `postgres/` subpackage, together with its SQL
+    files and migrations.
+  - Only `postgres/` packages and the core `db` package may import the database driver
+    (enforced by depguard). Services, handlers and events never see SQL.
+  - Replacing PostgreSQL later means writing new storage packages, not rewriting modules.
+- Behavior tests run against the service with a hand-written fake store (D14); the
+  `postgres/` package has its own integration tests.
 
 ## D9. Modules never import each other
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-10-16)
 - Two modules cooperate only through core contracts (for example, the people directory) and
   in-process **domain events** published through the core (for example, "camp registration
   approved"). Enforced by `make imports`.
 
-## D10. Each module owns its own schema and migrations
+## D10. Each module owns its own schema
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-10-16)
 - Each module's tables live in its own PostgreSQL schema (for example `volunteers.shift`),
-  with forward-only migrations shipped in the module. Modules may reference core tables
-  (people, editions, departments) but never another module's tables.
+  and the module is responsible for that schema. Modules may reference core tables (people,
+  editions, departments) but never another module's tables.
+- How migrations are shipped and run is D17.
 
 ## D11. Port the foundation libraries from Sojourn
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-10-16)
 - Copy the `lib-errs`, `lib-core` (clock, retry, validate, timeutil) and `lib-secret` specs
   and code from Sojourn, relicensed under AGPL-3.0. The owner holds the copyright on both.
   They go through `go-reviewer` once, to remove anything specific to Sojourn.
@@ -89,13 +101,13 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
 
 ## D13. Docker Compose for development infrastructure
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-10-16)
 - `deploy/compose` runs PostgreSQL, Mailpit, and Dex (profile `oidc`) for development and
   integration tests. Production packaging is a later decision.
 
 ## D14. Testing with the standard library and hand-written fakes
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-10-16)
 - `testing` only; no testify and no mocking frameworks (enforced by depguard). Integration
   tests sit behind the `integration` build tag.
 
@@ -127,3 +139,21 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
 - Subagents never touch git, so building and checking stay separate from recording.
 - The owner reviews the branch, merges it and pushes. Supersedes the "agents never commit"
   part of D7.
+
+## D17. Modules ship their migrations; an explicit `bms migrate` step applies them
+
+- **Status:** Proposed
+- **Where they live:** each module's migrations sit in its `postgres/migrations/` folder,
+  embedded in the binary. The schema changes in the same commit as the code that needs it,
+  and a fork adds a module by adding a folder, with no separate install script to edit.
+- **Who runs them:** an installer step, not the app at start-up. The same binary has a
+  `bms migrate` command that an operator runs before starting a new version. It applies the
+  core's migrations first, then each enabled module's, records what ran, and refuses to run
+  on a read-only replica.
+- **At start-up,** the app only checks: if the database is behind (or ahead of) what the
+  binary expects, it stops with a message saying to run `bms migrate`. It never changes the
+  schema itself.
+- Why not at start-up: during the event there are two copies and only one may write
+  (Q-OFFLINE); start-up migrations would race between instances or fail on the replica;
+  and operators should take a backup and choose when the schema changes. Development and
+  tests can run `bms migrate` automatically.

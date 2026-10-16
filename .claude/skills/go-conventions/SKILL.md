@@ -33,8 +33,9 @@ cmd/bms                     main                          imports: app, config
 ## Module package layout
 
 See the `add-module` skill. In short: `module.go` (the contract), `service.go` (use cases,
-each checking its permission), `store.go` + `sql/` (its own schema), `http.go` (handlers,
-thin), `events.go`, `migrations/`.
+each checking its permission, and declaring the storage interface it needs), `postgres/`
+(the only place with SQL and the driver: `store.go`, `sql/`, `migrations/`; D8), `http.go`
+(handlers, thin), `events.go`.
 
 ## Errors: `internal/lib/errs`
 

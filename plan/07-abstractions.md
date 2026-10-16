@@ -41,6 +41,8 @@ Rules (enforced by depguard and `make imports`):
 4. The **api shell** mounts the routes it's given. It never imports a module.
 5. Only `app` imports modules and core implementations, and turns modules on from
    configuration through the registry.
+6. **Storage seam (D8).** Only `postgres/` subpackages and core `db` import the database
+   driver. Services depend on a storage interface they declare themselves.
 
 ---
 
@@ -72,8 +74,9 @@ Rules (enforced by depguard and `make imports`):
 
 ### db: database access
 - **Purpose:** give modules a PostgreSQL connection with transactions and deadlines.
-- **Owns:** the pool, transactions, the migration runner (per-schema, forward only),
-  translating driver errors into `errs` kinds.
+- **Owns:** the pool, transactions, read-only detection (Q-OFFLINE), the migration runner
+  (per-schema, forward only) that `bms migrate` calls (D17), the start-up schema-version
+  check, translating driver errors into `errs` kinds.
 - **Doesn't do:** any module's queries.
 
 ### identity: who is this?
@@ -136,7 +139,8 @@ Rules (enforced by depguard and `make imports`):
   registry modules add screens to.
 
 ### app: composition root
-- **Purpose:** build everything from configuration, start it and stop it cleanly.
+- **Purpose:** build everything from configuration, start it and stop it cleanly. Provides
+  the commands: `serve`, and `migrate` (D17).
 
 ## Modules
 

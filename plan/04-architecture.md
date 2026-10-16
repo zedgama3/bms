@@ -22,8 +22,11 @@
   (reminders, retention). Nothing else to install.
 - **No proxy required** (D15). The binary serves HTTP itself; Cloudflare Tunnel, nginx or
   Caddy in front are optional deployment choices.
-- **One database.** The core owns the `core` schema. Each module owns its own schema and
-  migrations (D10).
+- **One database.** The core owns the `core` schema. Each module owns its own schema (D10).
+- **Storage is a seam** (D8). Business logic talks to a storage interface; the PostgreSQL
+  code sits in a `postgres/` package behind it.
+- **Migrations are an install step** (D17, Proposed). `bms migrate` applies them; `bms serve`
+  only checks the schema is current.
 
 ## How a module plugs in
 

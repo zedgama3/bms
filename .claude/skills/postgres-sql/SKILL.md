@@ -23,7 +23,9 @@ spec). The `db` spec, once Approved, is authoritative where it differs from this
 
 ## Migrations
 
-- Forward only, numbered per module: `migrations/0001_init.sql`, `0002_...`.
+- Forward only, numbered per module: `postgres/migrations/0001_init.sql`, `0002_...`.
+- Applied by the `bms migrate` command, never by the app at start-up (D17). They must be safe
+  to apply on the primary while a replica keeps serving reads.
 - Each runs in a transaction. A migration that can't (for example `CREATE INDEX
   CONCURRENTLY`) says so at the top.
 - Safe on a live database with data: add columns as nullable or with a default; backfill in
@@ -34,6 +36,8 @@ spec). The `db` spec, once Approved, is authoritative where it differs from this
 
 - Plain SQL in `.sql` files embedded with `go:embed`, executed with `pgx` through the `db`
   contract. No ORM, no query builder.
+- All of it lives in the `postgres/` subpackage, behind the storage interface the service
+  declares (D8). The interface speaks in domain types; no `pgx` or SQL types leak out.
 - Parameters only (`$1`). Dynamic sort columns or filters come from a fixed allow-list in Go.
 - Every list query is paginated (keyset preferred) and has a stable order.
 - Permission filters are part of the query (for example `WHERE department_id = ANY($2)`),

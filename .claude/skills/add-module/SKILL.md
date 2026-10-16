@@ -31,10 +31,13 @@ cover:
 internal/modules/<name>/
   module.go        New(deps) (module.Module, error); registry init(); declares permissions,
                    routes, events, settings, migrations, jobs
-  service.go       use cases; each one checks its permission via authz first
-  store.go         queries for this module's own schema
-  sql/             .sql files embedded with go:embed
-  migrations/      forward-only, numbered: 0001_init.sql, ...
+  service.go       use cases; each one checks its permission via authz first. Declares the
+                   storage interface it needs (no SQL or driver types in it)
+  postgres/        the PostgreSQL implementation of that interface (D8). Only this
+                   package imports the driver.
+    store.go       implements the interface
+    sql/           .sql files embedded with go:embed
+    migrations/    forward-only, numbered: 0001_init.sql, ... applied by `bms migrate` (D17)
   http.go          handlers: decode, call service, encode. No business logic.
   events.go        event types published, and subscribers
   privacy.go       export and delete for one person

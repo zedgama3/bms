@@ -33,7 +33,7 @@ Tell no agent about another's output. Their independence is the point.
   the spec, including the spec's happy-path and permission test names.
 - `go-implementer` writes only `example_test.go` and, if it needs white-box tests,
   `internal_test.go` with test names that do **not** appear in the spec.
-- `sql-author` owns `migrations/` and `sql/` in the package.
+- `sql-author` owns `postgres/sql/` and `postgres/migrations/` in the package.
 - `frontend-implementer` owns `web/`.
 - Say this in every prompt.
 

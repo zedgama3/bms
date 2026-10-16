@@ -31,9 +31,11 @@ copy and can fork it. Features are modules.
   - D15 accepted: the app handles login and permissions itself; no reverse proxy required.
   - D16 accepted: Claude may commit to local feature branches, but never pushes.
   - Repository: `github.com/zedgama3/bms`; GitHub CLI installed.
+  - Accepted D8 (PostgreSQL only for now, behind a storage seam), D9, D10, D11, D13, D14.
+    Proposed D17 (migrations applied by `bms migrate`, not at start-up).
 - **Next steps:**
-  1. The owner reviews the Proposed decisions (D8–D14) and the Blocking open questions,
-     especially Q-OFFLINE and Q-MVP.
+  1. The owner reviews D17 and the Blocking open questions (Q-MVP, Q-IDP, and the details of
+     Q-OFFLINE).
   2. Port the foundation libraries from Sojourn (D11): `lib-errs`, `lib-core`, `lib-secret`.
   3. `architect` drafts `model` and `module-contract`, the spec everything else hangs off.
 
