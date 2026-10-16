@@ -15,6 +15,10 @@ here, copy it into the document it affects, and tick the box.
       on-site instance on the local network, synced with the main one before and after;
       (c) an offline-capable web app that queues changes. This shapes the module contract
       and the `incidents` design.
+      **Direction (owner, 2026-10-16):** it must work offline. Likely (b): an on-site mirror
+      becomes the **single primary** during the event; the other copy keeps serving reads.
+      One writer at a time, never two. Still open: how the handover works (planned
+      switchover, by whom, how fast), and which workflows must keep working on site.
 - [ ] **Q-IDP (Blocking, Phase 0):** How do people log in? Proposed: local accounts
       (e-mail plus password or magic link) and any OIDC provider. Is there an existing
       burner identity that regionals would want to use? D15 settles the provider model

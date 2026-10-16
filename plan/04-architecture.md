@@ -53,5 +53,19 @@ The exact shape is the `module-contract` spec. Until it's Approved, this list is
 
 ## Offline at the event
 
-Open (Q-OFFLINE). Whatever the answer, the module contract must not rule out a local,
-on-site instance that syncs later.
+Direction from the owner (Q-OFFLINE, still open in its details): an on-site copy runs on
+the event's local network and becomes the **single primary** for the event; the off-site
+copy keeps serving reads. There is only ever one writer, so there's no merge or conflict
+resolution. A likely mechanism is PostgreSQL replication with a planned switchover.
+
+Constraints this puts on the design (the architect checks each in its spec):
+
+- **Read-only mode.** Any instance may be a read-only replica. Writes fail early with a clear
+  error kind, and the UI says the site is read-only instead of failing on save.
+- **Logging in without writing.** Sessions on a replica can't rely on writing to the
+  database (for example, signed session cookies, or sessions kept outside PostgreSQL).
+- **Side effects only on the primary.** Jobs, e-mail and other notifications run only where
+  writes happen, so nothing is sent twice.
+- **No identifiers that depend on one server.** Use IDs that don't need a central counter
+  (for example UUIDs), so a switchover never collides.
+- **Files follow the data.** Attachments must be on the primary's side of the switchover.
