@@ -16,7 +16,7 @@ The order follows dependencies: foundation first, then the core, then modules.
 | 1c | `lib-secret.md` | a string that can't be printed (port from Sojourn, D11) | Implemented (ported, D11) |
 | 2 | `model.md` | shared value types | Approved |
 | 3 | `config.md` | config loading and validation | Not started |
-| 4 | `module-contract.md` | the Module interface and registry | Not started |
+| 4 | `module-contract.md` | the Module interface and registry | Draft |
 | 5 | `db.md` | pool, transactions, per-schema migrations, error mapping | Not started |
 | 6 | `identity.md` | login providers and sessions | Not started |
 | 7 | `authz.md` | roles, grants, permissions, Authorizer | Not started |
