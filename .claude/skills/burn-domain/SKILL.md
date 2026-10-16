@@ -35,6 +35,10 @@ before a design depends on it.
 
 ## Events and the year around them
 
+- An event has a **start and an end, each a date and time** (owner, 2026-10-16). Inside it
+  there are further scheduled dates and times, such as **gate hours** (when the gate is open
+  to arrivals) and the **temple burn** (owner, 2026-10-16). Some of these are windows, some
+  a single moment.
 - An event has its dates, but the work runs far beyond them (owner, 2026-10-16): **land
   prep, build, inventory** before; **strike**, clean-up and inventory after. This work is
   made of activities related to an event, not events themselves. **Training** is probably

@@ -36,7 +36,7 @@ core and from different modules line up without the packages knowing each other.
 | Signal names and payload shapes | `signals` |
 | Event kinds (burn, decompression, other) and their regional names | `departments-events` and `settings`: a regional can name them, so they are data, not a model enum |
 | Money | not defined. Q-PAY is open and no spec needs it; add it to this spec when a consumer appears. |
-| Calendar dates and time zones (an event's dates "in its zone") | `departments-events` stores instants (`TimeRange`) plus the IANA zone name; see Open question 1 |
+| Calendar dates and time zones (an event's dates "in its zone") | `departments-events`. Confirmed by the owner (2026-10-16): an event's start and end are each a date and a time, so instants; `departments-events` stores a `TimeRange` plus the IANA zone name and the UI renders in that zone. No civil `Date` type in `model` for now. Schedule items inside an event (gate hours, the temple burn) are also `departments-events`' (Proposed change 8). |
 | Reading or writing anything: SQL, JSON over HTTP, files | the storage seam (D8) and `api`. `model` types only implement the standard `encoding.TextMarshaler`/`TextUnmarshaler` so any encoder can carry them. |
 | Scanning database columns (`sql.Scanner`, `driver.Valuer`) | the `postgres/` packages, which convert by underlying type (see Behaviour: "At the storage seam"). depguard forbids `database/sql` in `model`. |
 | Time: reading it or waiting for it | `lib/clock`. No type here reads the clock; `NewID` needs no time (see decision 1). |
@@ -234,7 +234,7 @@ func (e Email) LogValue() slog.Value
 | `Sensitivity.Validate` | `module-contract` manifest validation; `people` field declarations at start-up | — | nil iff one of the four |
 | `Sensitivity.ReadIsAudited` | `people` reads, module reads of personal fields (`incidents`), the `audit` helper | — | the `privacy-data` table, mechanically |
 | `Sensitivity.MarshalText`/`UnmarshalText` | `api` (admin screens showing field levels), `settings` | — | names round trip |
-| `TimeRange` and `Validate` | `departments-events` (an event's dates), `volunteers` (shift times), `audit` (search by date range), `api` (query validation) | — | FieldErrors `start`, `end` |
+| `TimeRange` and `Validate` | `departments-events` (an event's dates; windows inside an event such as gate hours, Proposed change 8), `volunteers` (shift times), `audit` (search by date range), `api` (query validation) | — | FieldErrors `start`, `end` |
 | `TimeRange.Contains` | `departments-events` ("current" and "upcoming" events), `volunteers` (is this shift now?) | valid range | half-open semantics |
 | `TimeRange.Overlaps` | `volunteers` (a person's shifts must not overlap; a shift must fall in its activity's window), `departments-events` (several events may be open at once, so overlap is allowed there, but the admin screen shows it) | both valid | touching ranges do not overlap |
 | `TimeRange.Duration` | `volunteers` (hours credited per completed shift, kept as dated records for D18) | valid range | `End.Sub(Start)` |
@@ -331,8 +331,9 @@ names, `{start, end}`) in TypeScript; `web-shell.md` decides where those types l
     the same pattern as every other model type (a converted value is validated at the
     boundary), not a sealed struct as `secret.Secret` is: an address must be printable to be
     sent and shown, so the guard is only against logging. `Canonical()` lower-cases the
-    whole address, as D21 says "unique ignoring case"; nothing else is normalised (see
-    Open question 2).
+    whole address, as D21 says "unique ignoring case"; nothing else is normalised. Case-only
+    is confirmed by the owner (2026-10-16): no dot or `+tag` stripping, because that is
+    provider-specific and would merge addresses that are genuinely different elsewhere.
 12. **Error reasons never echo input.** `ParseID`, `ParseSensitivity` and `ParseEmail` build
     their `FieldError.Reason` from the rule ("must be a UUID in the form
     xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"), never from the value, so an e-mail address or a
@@ -438,15 +439,16 @@ real addresses.
 
 ## Open questions
 
-1. **Event dates: instants or calendar dates?** An event has "dates" and a time zone
-   (09-core-features §5). Proposed: `departments-events` stores a `TimeRange` of instants
-   plus the IANA zone name, and the UI renders in that zone; a civil `Date` type is added to
-   `model` only when a second consumer needs one. Owner to confirm when `departments-events`
-   is written.
-2. **Canonical e-mail beyond case.** D21 says unique ignoring case; some providers also
-   ignore dots or `+tags` in the local part. Proposed: no; only case, because stripping is
-   provider-specific and would merge addresses that are genuinely different elsewhere. A
-   regional that wants more can propose a setting later.
+None. The two questions in the first draft were answered by the owner on 2026-10-16:
+
+1. **Event dates: instants or calendar dates?** Answered: instants. An event has a start and
+   an end, each a date and a time; `departments-events` stores a `TimeRange` plus the IANA
+   zone name and the UI renders in that zone; no civil `Date` type in `model` for now. The
+   owner added that an event has further dates and times inside it (gate hours, possibly
+   several windows; the temple burn, a single moment); those are for `departments-events`
+   (Proposed change 8). Recorded in "Not responsible for".
+2. **Canonical e-mail beyond case.** Answered: only ignore capitalisation; no dot or `+tag`
+   stripping. Recorded in decision 11.
 
 ## Proposed changes elsewhere
 
@@ -477,3 +479,8 @@ real addresses.
 7. **`plan/design/lib-core.md`, `timeutil` consumer table:** `CheckRange` is no longer
    listed as used by `model.TimeRange.Validate` (decision 10); module stores remain its
    consumers.
+8. **`plan/design/departments-events.md` (when written):** design the schedule items within
+   an event that the owner described (2026-10-16): windows such as gate hours, of which an
+   event may have several, and single moments such as the temple burn. They are expected to
+   use `model.TimeRange` for a window and a single instant (`time.Time`) for a moment, both
+   rendered in the event's IANA zone. `model` adds nothing for them.

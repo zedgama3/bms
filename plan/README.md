@@ -51,10 +51,14 @@ copy and can fork it. Features are modules.
     dev compose (`make observe`); the web UI reports its errors.
   - Q-LOGIN: username and password only for now. Accepted D19 (modules declare the
     capabilities, extension points and signals they provide and use).
+  - The owner answered `model`'s two open questions: event start and end are date-times, with
+    schedule items such as gate hours inside events left to `departments-events`; e-mail
+    uniqueness ignores case only. `model` is ready for the owner's approval (still Draft).
 - **Next steps:**
   1. Done 2026-10-16: the owner agreed [09-core-features.md](09-core-features.md)
-     (milestones M0–M4, done criteria, spec order). `architect` now drafts `model`.
-  2. `architect` drafts `model` and `module-contract`, the spec everything else hangs off.
+     (milestones M0–M4, done criteria, spec order). `architect` drafted `model`.
+  2. Owner approves `model` (Draft; answers recorded 2026-10-16). `architect` then drafts
+     `module-contract`, the spec everything else hangs off.
   3. CI on GitHub (`make check`), once the owner pushes the branch.
 
 ## Conventions

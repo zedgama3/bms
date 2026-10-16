@@ -91,3 +91,11 @@ here, copy it into the document it affects, and tick the box.
       leadership terms, superuser and separation of duties, what counts as an event.
       Answered 2026-10-16. → [09-core-features.md](09-core-features.md#owners-answers-2026-10-16),
       D21, D22, D23, D24, Q-QUAL
+- [x] **Q-MODEL1:** Event dates: instants or calendar dates? Answered by the owner 2026-10-16:
+      an event has a start and an end, each a date and time (instants, with the IANA zone
+      name); no civil `Date` type in `model`. Further dates and times inside an event (gate
+      hours, possibly several; the temple burn, a single moment) are for `departments-events`
+      to settle. → [design/model.md](design/model.md) (Open question 1, Proposed change 8).
+- [x] **Q-MODEL2:** Canonical e-mail beyond case? Answered by the owner 2026-10-16: only
+      capitalization is ignored; no dot or `+tag` stripping. → [design/model.md](design/model.md)
+      (decision 11).

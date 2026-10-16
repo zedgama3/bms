@@ -232,7 +232,9 @@ training and certificates come with qualifications (Q-QUAL), not as profile fiel
   the superuser.
 - *Department admin:* change their department's description and contact address, and run it
   (its people and, through `volunteers`, its positions).
-- *Event admin:* create an event (name, kind, dates, time zone), and close it when it's over.
+- *Event admin:* create an event (name, kind, a start and end date-time, and time zone), and
+  close it when it's over. An event may also have scheduled times within it, such as gate hours
+  or the temple burn; how those are modelled is for `departments-events` to settle.
   Several events can be open at once (a burn and its decompression party).
 - *Participant:* see the departments and the upcoming events.
 
