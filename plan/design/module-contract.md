@@ -806,10 +806,11 @@ None of its own. What this spec provides for screens elsewhere:
    start-up would force every subscriber to require its publisher, which is the coupling
    D19 avoids; silently accepting an unknown name would hide typos. So: unknown name →
    `Invalid` (F20, F21); known but disabled → `Warning`, logged at warn by `app` and shown
-   in the graph. (Open question 1.)
+   in the graph. Confirmed by the owner (2026-10-16).
 7. **Every compiled-in module is enabled unless configuration names it.** D5 says a fork
    adds a module with one import line; an opt-in list would make that two edits and a
-   silent no-op when forgotten. (Open question 2.)
+   silent no-op when forgotten. Enablement is opt-out via `modules.disabled`. Confirmed by
+   the owner (2026-10-16).
 8. **The manifest carries no human-readable text; every title and description is a message
    key derived from the name, held in the module's web catalogue.** D28 says every string
    is translation-ready from day one; an English `Description` in Go would be the one
@@ -820,7 +821,7 @@ None of its own. What this spec provides for screens elsewhere:
    `module.<name>.signal.<rest>.title`; `module.<name>.kept.<kind>`. `web-shell.md` owns the
    catalogue files and checks that `en` has every key the module's declarations imply
    (Proposed change 7). `Warning.Message` and error messages are English, like logs: they
-   are for operators. (Open question 3.)
+   are for operators. Confirmed by the owner (2026-10-16).
 9. **The manifest does not say whether a module has UI.** The core would do nothing with
    the flag; the web shell's build-time registry (D31) is the source of truth for screens,
    and it shows a module only when both registries have it (UI section). The two cannot
@@ -831,7 +832,7 @@ None of its own. What this spec provides for screens elsewhere:
     the message-key segment; hyphens and underscores are legal in some of those and not
     others, and a mapping between spellings is a bug waiting to happen. So the module the
     plan calls `after-reports` is `afterreports` in code, schema, URL and keys; the plan's
-    prose may keep the hyphen. (Open question 4.)
+    prose may keep the hyphen. Confirmed by the owner (2026-10-16).
 11. **`PersonData` is mandatory and part of `Module`, not an extension point.** privacy-data
     says every module answers export and delete; an optional contribution could be
     forgotten. Making it part of the interface means a module does not compile without it,
@@ -1049,24 +1050,21 @@ implement `PersonData` over the greetings a person saved, start one goroutine, a
 
 ## Open questions
 
-1. **Subscribing to a signal whose publisher is compiled in but disabled.** Proposed:
-   allowed, with a warning in the log and the graph (decision 6), because D19 prefers
-   optional cooperation. The alternative, failing start-up, would make every subscriber
-   effectively require its publisher. Owner to confirm.
-2. **Enabling modules: opt-out or opt-in?** Proposed: every compiled-in module runs unless
-   named in `modules.disabled` (decision 7), so a fork's one import line is enough. The
-   alternative, an explicit `modules.enabled` list, is safer against an unwanted module
-   being on by accident but adds a config edit per module. Owner to confirm.
-3. **No English text in Go manifests.** Proposed: titles and descriptions are message keys
-   by convention, with the English text in the module's web catalogue (decision 8), so D28
-   holds for admin screens too. The alternative is an English `Description` field in Go
-   plus translation overrides in the web catalogue; simpler for a module author, but then
-   the core ships one untranslatable string per permission. Owner to confirm.
-4. **Module names are letters and digits only.** Proposed (decision 10), so one name fits
-   every place; `after-reports` becomes `afterreports` in code and URLs. The alternative is
-   to allow `_` (fine for a PostgreSQL schema and a URL, against Go package-name convention)
-   or `-` (fine for a URL, illegal in a Go package name and an unquoted schema name), with a
-   per-place mapping. Owner to confirm.
+None. The four questions in the first draft were answered by the owner on 2026-10-16, each
+with the proposed answer:
+
+1. **Subscribing to a signal whose publisher is compiled in but disabled.** Answered: allowed,
+   with a warning in the log and the graph, not a start-up error; an unknown name is still
+   `Invalid`. Recorded in decision 6 and failure modes F20 and F21.
+2. **Enabling modules: opt-out or opt-in?** Answered: opt-out. Every compiled-in module is
+   enabled unless named in `modules.disabled`. Recorded in decision 7 and Proposed change 10
+   (`config.md`).
+3. **No English text in Go manifests.** Answered: no English text. Titles and descriptions
+   are message keys fixed by convention, with the text in the module's web catalogue.
+   Recorded in decision 8 and Proposed changes 7 and 11.
+4. **Module names are letters and digits only.** Answered: yes. `after-reports` is
+   `afterreports` in code, schema, URLs and keys; the plan's prose may keep the hyphen.
+   Recorded in decision 10 and Proposed changes 11 and 14.
 
 ## Proposed changes elsewhere
 
@@ -1131,8 +1129,8 @@ implement `PersonData` over the greetings a person saved, start one goroutine, a
    §11): through `people`.
 10. **`plan/design/config.md` (row 3):** `modules.disabled` (list of module names, default
     empty, each must be registered; `BMS_MODULES_DISABLED` as a comma-separated list);
-    `app` derives `Env.Enabled`. If Open question 2 goes the other way, `modules.enabled`
-    instead.
+    `app` derives `Env.Enabled`. Opt-out enablement confirmed by the owner (2026-10-16;
+    decision 7).
 11. **`.claude/skills/go-conventions/SKILL.md` and `.claude/skills/add-module/SKILL.md`:**
     the registration line is `module.Register(Manifest, New)` in `init`, with
     `var Manifest = module.Manifest{...}` and `func New(ctx context.Context, deps module.Deps)
@@ -1147,6 +1145,7 @@ implement `PersonData` over the greetings a person saved, start one goroutine, a
     `Deps.Notify` are scoped to the module (job and template names prefixed `<name>.`); jobs
     are registered in `Module.Start` and run only on the writing copy.
 14. **`plan/02-scope.md`, `plan/09-core-features.md`:** note that `after-reports` is
-    `afterreports` in code, schema and URLs (if Open question 4 is confirmed); 09 §4's "a
+    `afterreports` in code, schema and URLs (confirmed by the owner, 2026-10-16; decision
+    10); 09 §4's "a
     flag for whether they reach sensitive data" becomes "the highest sensitivity level they
     reach" (model.md Proposed change 3).
