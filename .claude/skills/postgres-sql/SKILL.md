@@ -18,7 +18,7 @@ spec). The `db` spec, once Approved, is authoritative where it differs from this
   `id` (UUID v7 or bigint identity, decided in the `db` spec). Every table has
   `created_at` and `updated_at` (`timestamptz`).
 - Data that belongs to a department carries `department_id`; data that belongs to an event
-  (one burn, D24) carries `event_id`.
+  (a gathering such as a burn, D24) carries `event_id`.
 - Comment personal-data columns with their sensitivity level:
   `COMMENT ON COLUMN core.person.legal_name IS 'sensitivity: personal';`
 

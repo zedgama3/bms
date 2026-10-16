@@ -291,11 +291,17 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
 - Why: burns differ on who may see what, and some forbid particular combinations outright;
   one all-powerful admin role would make those rules impossible to keep.
 
-## D24. "Event" means one burn; in-process domain events are called signals
+## D24. "Event" means a gathering the regional puts on; in-process domain events are called signals
 
-- **Status:** Accepted (2026-10-16). Replaces the word "edition" used in earlier drafts.
-- An **event** is one burn, with its dates. A regional with a spring and a fall burn has two
-  events a year. "Edition" was not a word burners use and would be misunderstood.
+- **Status:** Accepted (2026-10-16); refined the same day (Q-CORE13). Replaces the word
+  "edition" used in earlier drafts, which burners don't use and would misunderstand.
+- An **event** is a gathering the regional puts on, with its own dates: usually a burn, but
+  also, for example, an after-burn decompression party. A regional with a spring and a fall
+  burn and a decompression party has three events that year.
+- **Work is not an event.** Clearing land before a burn, build, strike, inventory and
+  training are activities: they may relate to an event (land prep for the spring burn) or to
+  none, and they belong to the module that runs them (for example `volunteers`), not to the
+  core's events.
 - **Departments are standing**, not tied to an event, and can be archived. Module data
   attaches to a department and, where it applies, an event; some work (for example, winter
   inventory) belongs to no event. Work for an event can fall outside its dates (land prep,

@@ -29,7 +29,8 @@ community, and easy for any regional to run and adapt. It follows the principle 
 
 ## Shape of the problem
 
-- **Events, with work all year.** Most regionals hold one burn a year, some two. Data is
+- **Events, with work all year.** Most regionals hold one or two burns a year, plus other
+  gatherings such as a decompression party. Data is
   organized by **department** and, where it applies, **event**, and history matters across
   events. Work happens well before and after the gates open (land prep, build, strike,
   inventory).

@@ -11,7 +11,7 @@ Design comes before code. Specs are tracked in [design/README.md](design/README.
 - [x] Scaffold the repo: plan, agents, skills, `.golangci.yml`, Makefile, dev compose
 - [ ] Answer the Blocking open questions for Phase 0 (Q-MVP; Q-IDP and Q-OFFLINE have a
       direction, D18 and 04-architecture)
-- [ ] Agree the core feature list and its MVP items (09-core-features.md)
+- [x] Agree the core feature list and its MVP items (09-core-features.md; owner, 2026-10-16)
 - [x] Port `lib-errs`, `lib-core`, `lib-secret` from Sojourn (D11)
 - [x] Development observability stack: Grafana, Loki, Tempo, Prometheus, Alloy (D20)
 - [ ] **Design specs, foundation and core:** `model`, `config`, `module-contract`, `db`,

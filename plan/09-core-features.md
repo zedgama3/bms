@@ -1,7 +1,7 @@
 # Core Features
 
-> **Draft for the owner's review (2026-10-16).** The owner's answers (Q-CORE1–12, at the end)
-> are applied below. Next, the architect starts the specs.
+> **Agreed by the owner (2026-10-16):** milestones M0–M4, what "done" means and the order of
+> the specs. The owner's answers (Q-CORE1–13, at the end) are applied below.
 
 This is what the core lets people *do*, in the order it has to be built, and how each feature
 breaks down into specs. [07-abstractions.md](07-abstractions.md) describes the code that
@@ -232,9 +232,9 @@ training and certificates come with qualifications (Q-QUAL), not as profile fiel
   the superuser.
 - *Department admin:* change their department's description and contact address, and run it
   (its people and, through `volunteers`, its positions).
-- *Event admin:* create an event (name, dates, time zone), mark which is current, and close it
-  when it's over.
-- *Participant:* see the departments and the current event.
+- *Event admin:* create an event (name, kind, dates, time zone), and close it when it's over.
+  Several events can be open at once (a burn and its decompression party).
+- *Participant:* see the departments and the upcoming events.
 
 **Done when:**
 - Departments are flat: no sub-teams (Q-CORE5). Roles within a department, such as Khaki or
@@ -243,9 +243,12 @@ training and certificates come with qualifications (Q-QUAL), not as profile fiel
 - An archived department keeps its history, takes no new work, and disappears from lists
   except to stewards. A department with nothing for an event simply shows nothing for it.
 - Leadership is a department-scoped grant (step 4); there's no separate leads table.
-- **An event is one burn** (Q-CORE8): a regional with a spring and a fall burn has two events
-  in a year. An event has its gate dates, and work for it can fall well outside them (land
-  prep, build, strike, inventory; Q-CORE10).
+- **An event is a gathering the regional puts on** (Q-CORE8, Q-CORE13): usually a burn, but
+  also, for example, a decompression party. An event has its own dates and a kind (burn,
+  decompression, other) the regional can name.
+- **Work is not an event.** Land prep, build, strike, inventory and training are activities
+  that may relate to an event and fall well outside its dates (Q-CORE10); they belong to
+  modules such as `volunteers`.
 - Modules attach their data to a department and, where it applies, an event, by ID (D19).
   Some work belongs to a department and no event at all (for example, winter inventory).
 - Creating a new event calls an extension point, so modules can copy what they need
@@ -418,3 +421,6 @@ The architect drafts them in this order; each is reviewed before the next that d
   development and break-glass only, not normal use. Everyone else has separated duties;
   each department has its own admins and manages itself; a regional can forbid combinations,
   for example that board (LLC) members never review incident reports. → D23
+- **Q-CORE13. What counts as an event:** usually a burn, but anything the regional puts on as
+  a gathering, such as an after-burn decompression party. Clearing land before a burn is not
+  an event. Training is probably an event-related activity, not an event. → D24

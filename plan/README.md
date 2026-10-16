@@ -43,7 +43,7 @@ copy and can fork it. Features are modules.
     training, certificates and age requirements.
   - Owner's further answers (Q-CORE7–12): optional, multiple emergency contacts; D23
     (separation of duties; a break-glass superuser; departments run themselves); D24 ("event"
-    means one burn, replacing "edition"; departments are standing and archivable; domain
+    means a gathering the regional puts on, usually a burn, replacing "edition"; departments are standing and archivable; domain
     events renamed signals). Added the `burn-domain` skill, kept current as the owner explains
     how burns work.
   - Ported the foundation libraries from Sojourn (D11).
@@ -52,8 +52,8 @@ copy and can fork it. Features are modules.
   - Q-LOGIN: username and password only for now. Accepted D19 (modules declare the
     capabilities, extension points and signals they provide and use).
 - **Next steps:**
-  1. The owner confirms the rest of [09-core-features.md](09-core-features.md) (milestones,
-     done criteria, spec order) to close Q-MVP's core part.
+  1. Done 2026-10-16: the owner agreed [09-core-features.md](09-core-features.md)
+     (milestones M0–M4, done criteria, spec order). `architect` now drafts `model`.
   2. `architect` drafts `model` and `module-contract`, the spec everything else hangs off.
   3. CI on GitHub (`make check`), once the owner pushes the branch.
 

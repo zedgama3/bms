@@ -20,7 +20,8 @@ before a design depends on it.
 | Word | Meaning | Don't say |
 |---|---|---|
 | **Regional** | an organization that runs a burn in a region, usually under a nonprofit or LLC | tenant, customer |
-| **Event** | one burn, with its dates. Some regionals hold two a year (owner, 2026-10-16) | edition (owner: burners won't understand it) |
+| **Event** | a gathering the regional puts on, with its dates: usually a burn, but also, for example, an after-burn decompression party. Work such as land clearing is **not** an event (owner, 2026-10-16) | edition (owner: burners won't understand it) |
+| **Decompression (decomp)** | a party some time after the burn; an event in its own right (owner, 2026-10-16) | |
 | **Participant** | anyone who attends | user (in the UI), attendee |
 | **Playa name** | the name a person goes by at burns; how people know each other | nickname, display name (in the UI) |
 | **Department** | a standing part of the regional (Rangers, Gate, Greeters, Medical, DPW, Placement, Art...) | team (ambiguous) |
@@ -34,8 +35,10 @@ before a design depends on it.
 
 ## Events and the year around them
 
-- An event has gate dates, but the work runs far beyond them (owner, 2026-10-16): **land
-  prep, build, inventory** before; **strike**, clean-up and inventory after. Some work
+- An event has its dates, but the work runs far beyond them (owner, 2026-10-16): **land
+  prep, build, inventory** before; **strike**, clean-up and inventory after. This work is
+  made of activities related to an event, not events themselves. **Training** is probably
+  the same: an event-related activity (owner, 2026-10-16, tentative). Some work
   belongs to a department and no event at all (for example, winter inventory).
 - Each of these activities may be **open to anyone**, **invitation only**, or **only for
   certain positions** (owner, 2026-10-16).
