@@ -1,7 +1,7 @@
 # Core Features
 
-> **Draft for the owner's review (2026-10-16).** Q-MVP: agree this plan, its MVP cut and the
-> questions at the end before the architect starts the specs.
+> **Draft for the owner's review (2026-10-16).** The owner answered Q-CORE1–6 on 2026-10-16
+> (see the end); the answers are applied below. Next, the architect starts the specs.
 
 This is what the core lets people *do*, in the order it has to be built, and how each feature
 breaks down into specs. [07-abstractions.md](07-abstractions.md) describes the code that
@@ -106,15 +106,19 @@ subscriber's failures logged and retried by `jobs`, never rolling back the publi
 ## 2. Accounts and login (MVP, M1)
 
 **People can:**
-- *Participant:* create an account with a username and password (Q-LOGIN), giving an e-mail
-  address as a contact detail; log in and out; change their password; see and end their
-  other sessions.
+- *Participant:* create an account with their e-mail address and a password, and log in with
+  that address (D21); log in and out; change their password; see and end their other
+  sessions; reset a forgotten password by e-mail (from M4, Q-CORE2).
 - *Administrator:* disable and re-enable an account; set a temporary password that must be
   changed at next login; see when an account last logged in.
 
 **Done when:**
-- Usernames are unique ignoring case. E-mail addresses are unique too, so they can be used for
-  reset later.
+- **The login name is the person's primary e-mail address** (D21), unique ignoring case. It's
+  `personal` data: shown only to the person and to roles with the right permission (admins,
+  volunteer admins), never on lists other participants see. People are known by their playa
+  name everywhere else.
+- Changing the primary address changes the login; it's audited, and (once e-mail exists, M4)
+  the new address is confirmed and the old one told.
 - Passwords are hashed with Argon2id; minimum 12 characters, checked against a list of common
   passwords; no other composition rules.
 - Failed logins are rate-limited per account and per address, and the error doesn't reveal
@@ -124,11 +128,10 @@ subscriber's failures logged and retried by `jobs`, never rolling back the publi
   database write; logout and "end all sessions" work by a per-account counter that the token
   must match. (Ends the need to write a session row on every request.)
 - Logins, failures, password changes and account changes are audited.
-- Sign-up can be turned off in settings (invitation by an admin only).
+- Sign-up is open by default and can be switched to invitation only in settings (Q-CORE1).
 
-**Later:** e-mail verification, self-service reset (moves to M4 if Q-CORE2 says so), magic
-links, passkeys, two-factor authentication for admins, OIDC with the regional's own provider
-(D15).
+**Later:** e-mail verification at sign-up, magic links, passkeys, two-factor authentication
+for admins, OIDC with the regional's own provider (D15).
 
 **Specs:** `identity`.
 
@@ -137,8 +140,8 @@ links, passkeys, two-factor authentication for admins, OIDC with the regional's 
 **People can:**
 - *Participant:* fill in and edit their profile; choose who can see optional fields; record
   consent where a field needs it.
-- *Lead or admin (with permission):* find people by playa name or username, and see the fields
-  their role allows.
+- *Lead or admin (with permission):* find people by playa name (or e-mail, if their role may
+  see it), and see the fields their role allows.
 - *Module:* add sections to a person's page and to "my page" through an extension point
   (D19), such as "departments I volunteer with" from `volunteers`.
 
@@ -149,13 +152,13 @@ links, passkeys, two-factor authentication for admins, OIDC with the regional's 
 | Playa name (the name people know them by) | internal | yes |
 | Pronouns | internal | no |
 | Legal name | personal | setting (some regionals need it for waivers) |
-| E-mail | personal | yes (also the account's contact address) |
+| E-mail (primary; also the login, D21) | personal | yes |
 | Phone | personal | setting |
 | Emergency contact (name, phone, relationship) | personal | setting |
-| Date of birth or "I am 18 or over" | personal | setting (Q-CORE4) |
 
 Each regional can make the optional fields required or hidden in settings. No address, no
-photo and no free-text "about me" in the MVP: collect only what's needed.
+photo, no age and no free-text "about me" in the MVP: collect only what's needed. Age,
+training and certificates come with qualifications (Q-QUAL), not as profile fields.
 
 **Done when:**
 - Every read of a `personal` field by someone other than the person is audited.
@@ -202,7 +205,10 @@ photo and no free-text "about me" in the MVP: collect only what's needed.
   editions in a year.
 - Departments are defined once and **carry over**: a new edition starts with the previous
   edition's departments switched on.
-- Departments can have sub-teams one level deep (for example, Rangers > Khaki). Q-CORE5.
+- Departments are flat: no sub-teams (Q-CORE5). Roles *within* a department, such as Khaki
+  or R12 on a Ranger team, are **positions**, which belong to the `volunteers` module. A
+  position can have requirements (training, a certificate such as ICS-100, being over 18);
+  see Q-QUAL.
 - A lead is a department-lead grant scoped to that department and edition (step 4), so
   "leads of Rangers for 2027" needs no separate table.
 - Starting a new edition calls an extension point, so modules can copy what they need
@@ -248,11 +254,16 @@ each action is permission-checked and audited like any other.
 
 **People can:**
 - *Administrator (with `core.audit.read`):* search the log by person, actor, record and date.
-- *Participant:* see who viewed or changed their personal data (Q-CORE6).
+- *Participant (Later, Q-CORE6, D22):* see **that** their personal data was viewed, never
+  by whom, as far as the regional's setting allows.
+- *Administrator (with a separate permission):* export the detailed record of who viewed one
+  person's data, as an internal process; the export itself is audited.
 
 **Done when:**
-- Entries record who, what action, which record, when, from which copy, and the trace ID.
-  Never the personal data itself.
+- Entries record who, what action, which record, **which fields**, the viewer's role or
+  position title at that moment, when, from which copy, and the trace ID. Never the personal
+  data itself. Recording fields and title from the start keeps every D22 setting possible
+  later without a migration.
 - Nobody can change or delete entries through the app; the database role the app uses can only
   insert and read.
 - **On a read-only copy,** audited reads are written to a local append-only file and imported
@@ -333,22 +344,19 @@ The architect drafts them in this order; each is reviewed before the next that d
 | 17 | `notify` | e-mail and templates | M4 |
 | — | `files`, `switchover` | Later | — |
 
-## Questions for the owner
+## Owner's answers (2026-10-16)
 
-Each has a recommendation; agree or change it.
-
-- **Q-CORE1. Sign-up.** Open sign-up, or accounts by invitation only? *Recommended:* open
-  sign-up by default, with a setting to switch to invitation only.
-- **Q-CORE2. Password reset in the MVP.** Admin reset only works for a handful of people; a
-  volunteer drive means hundreds. *Recommended:* add e-mail reset in M4, once notifications
-  exist.
-- **Q-CORE3. Login name.** Username, or e-mail address as the username? *Recommended:*
-  username (as you said in Q-LOGIN), with e-mail unique so reset works.
-- **Q-CORE4. Minors.** Do any regionals let minors have accounts (for example, teen
-  volunteers with a guardian)? *Recommended:* adults only in the MVP, with an optional
-  "I am 18 or over" confirmation; minors handled later.
-- **Q-CORE5. Sub-teams.** Do departments need sub-teams? *Recommended:* one level, because
-  big departments (Rangers, Gate, Medical) usually have them and leads are often per
-  sub-team.
-- **Q-CORE6. Showing people their audit trail.** Should participants see who viewed their
-  personal data? *Recommended:* yes, later (not MVP); the log records it from the start.
+- **Q-CORE1. Sign-up:** open by default, with a setting to switch to invitation only.
+- **Q-CORE2. Password reset:** by e-mail, in M4.
+- **Q-CORE3. Login name:** the person's primary e-mail address is the username, visible only to
+  those with the rights to see it (admins, volunteer admins). → D21
+- **Q-CORE4. Minors / over 18:** not asked for now. Age is one of several **requirements** that
+  volunteer shifts and positions will have (training done, certificates such as ICS-100,
+  over 18), to be designed with qualifications. → Q-QUAL
+- **Q-CORE5. Sub-teams:** none. Khaki and R12 are **positions** on the Ranger team, not
+  sub-teams; positions have requirements (Khaki needs ICS-100 and training, R12 needs
+  ICS-200 and training). Positions belong to `volunteers`.
+- **Q-CORE6. Showing people their audit trail:** yes, as a later feature: a person can see
+  *that* their personal data was viewed, never by whom. How much is shown is configurable per
+  regional. The detailed "who" is an internal export for people with the right permission.
+  → D22

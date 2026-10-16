@@ -13,8 +13,8 @@ here, copy it into the document it affects, and tick the box.
       (editions, departments and more). Agree the core feature list
       ([09-core-features.md](09-core-features.md)) before building. `volunteers` remains the
       likely first module. Regional-specific details go in `private/`. The plan, its
-      milestones and six smaller questions (Q-CORE1–6, each with a recommendation) are in
-      [09-core-features.md](09-core-features.md#questions-for-the-owner).
+      milestones and the owner's answers to Q-CORE1–6 are in
+      [09-core-features.md](09-core-features.md#owners-answers-2026-10-16).
 - [ ] **Q-OFFLINE (Blocking, Phase 0):** Which workflows must work with no internet at the
       event (incident logging, shift check-in, gate)? Options: (a) online only; (b) an
       on-site instance on the local network, synced with the main one before and after;
@@ -29,6 +29,13 @@ here, copy it into the document it affects, and tick the box.
       shared records such as volunteer credit are signed by the issuing regional. What's
       shared, with whose consent, and how a person proves both accounts are theirs.
       Not needed for the MVP.
+- [ ] **Q-QUAL:** How are qualifications held and checked? Volunteer positions and shifts
+      have requirements: training completed, certificates such as ICS-100 or ICS-200 (often
+      with an expiry date), being over 18. Other modules may need the same facts (for
+      example, early-arrival passes). Proposed: a `qualifications` capability (D19): a
+      person's qualifications, who recorded or verified them, and their expiry, provided by
+      one module and required by `volunteers`. Decide before the `volunteers` spec; not
+      needed for the core MVP.
 - [ ] **Q-TICKET:** Is ticketing in scope, or do we integrate with existing ticketing vendors
       (for example, import ticket holders to link to profiles)?
 - [ ] **Q-PAY:** Are payments in scope (camp dues, fees, grants)? If so, behind a payments
@@ -78,3 +85,7 @@ here, copy it into the document it affects, and tick the box.
       regionals later (Q-TRUST). → D18
 - [x] **Q-LOGIN:** How do local accounts log in? For now, username and password only. E-mail
       reset, magic links, passkeys and OIDC come later, behind the same provider model (D15).
+      Refined 2026-10-16: the username is the primary e-mail address. → D21
+- [x] **Q-CORE1–6:** sign-up, password reset, login name, minors, sub-teams, showing people
+      their audit trail. Answered 2026-10-16. → [09-core-features.md](09-core-features.md#owners-answers-2026-10-16),
+      D21, D22, Q-QUAL

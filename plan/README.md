@@ -37,15 +37,18 @@ copy and can fork it. Features are modules.
     and D18 (logins local to each regional; trust between regionals later).
   - Drafted the core feature list (09-core-features.md) for review, then planned it in
     detail: users, milestones M0–M4, what "done" means for each feature, the order of specs,
-    and six questions for the owner (Q-CORE1–6).
+    and six questions for the owner (Q-CORE1–6), which the owner answered: D21 (log in with
+    the primary e-mail address), D22 (people can see that their data was viewed; how much is
+    a setting), no sub-teams (positions belong to `volunteers`), and Q-QUAL opened for
+    training, certificates and age requirements.
   - Ported the foundation libraries from Sojourn (D11).
   - D20: observability with OpenTelemetry; Grafana, Loki, Tempo, Prometheus and Alloy in the
     dev compose (`make observe`); the web UI reports its errors.
   - Q-LOGIN: username and password only for now. Accepted D19 (modules declare the
     capabilities, extension points and events they provide and use).
 - **Next steps:**
-  1. The owner reviews [09-core-features.md](09-core-features.md) and answers Q-CORE1–6
-     (Q-MVP).
+  1. The owner confirms the rest of [09-core-features.md](09-core-features.md) (milestones,
+     done criteria, spec order) to close Q-MVP's core part.
   2. `architect` drafts `model` and `module-contract`, the spec everything else hangs off.
   3. CI on GitHub (`make check`), once the owner pushes the branch.
 

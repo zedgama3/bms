@@ -242,3 +242,29 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
   client-error spikes and for slow requests, sent to the maintainers by e-mail.
 - Each copy (on-site and off-site, Q-OFFLINE) reports to its own collector; how the on-site
   copy's telemetry gets back afterwards is part of the switchover design.
+
+## D21. A person logs in with their primary e-mail address
+
+- **Status:** Accepted (2026-10-16). Refines Q-LOGIN.
+- The username for a local account is the person's primary e-mail address, unique ignoring
+  case. There's no separate username.
+- The address is `personal` data: visible to the person and to roles with permission (for
+  example admins and volunteer admins), never on lists other participants see. Everywhere
+  else people are shown by playa name.
+- Sign-up is open by default, with a setting to make it invitation only (Q-CORE1). Password
+  reset by e-mail comes with notifications in M4 (Q-CORE2).
+
+## D22. People can see that their personal data was viewed; how much is a setting
+
+- **Status:** Accepted (2026-10-16), feature Later; the audit log records what it needs from
+  the start.
+- A person can see **that** someone viewed their personal data, never **who**. Each regional
+  chooses how much to show, because there's no single right answer:
+  - off;
+  - that it was viewed, and when;
+  - plus which fields (for example name, e-mail, phone);
+  - plus the viewer's role or position title (not their name).
+- The detailed record of who viewed it is available only to people with a separate permission,
+  as an export for an internal process; that export is itself audited.
+- So that any setting works later, every audited read records the fields viewed and the
+  viewer's role or position title at that moment.
