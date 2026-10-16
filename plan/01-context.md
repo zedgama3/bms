@@ -12,7 +12,8 @@ often lives in proprietary systems maintained by a single person, or in spreadsh
 nobody can find a year later. When the one maintainer burns out or moves on, the regional
 loses its tools and its history.
 
-bms is meant to be the opposite: open source, built by many contributors, owned by the
+BMS (Burn Management System, D25) is meant to be the opposite: open source, built by many
+contributors, owned by the
 community, and easy for any regional to run and adapt. It follows the principle of
 **communal effort** in how it's built, not only in what it supports.
 
@@ -35,8 +36,10 @@ community, and easy for any regional to run and adapt. It follows the principle 
   events. Work happens well before and after the gates open (land prep, build, strike,
   inventory).
 - **Departments differ by regional.** Names, structure and policies are data, not code.
-- **Connectivity at the event can be poor or absent.** Some workflows (incident logging,
-  shift check-in, gate) may need to work offline. See Q-OFFLINE.
+- **Connectivity at the event can be poor or absent.** Offline is not in the MVP (D27). The
+  workflows that will need it are incident management, volunteer management and looking up a
+  participant's personal and emergency information; the direction is an on-site mirror as
+  the single primary. The handover mechanism is still open (Q-OFFLINE).
 - **Volunteer operators.** Whoever runs the server is probably a volunteer. Install, upgrade
   and backup must be simple and well documented.
 - **Sensitive data.** Incident reports, medical notes and legal names carry real legal and

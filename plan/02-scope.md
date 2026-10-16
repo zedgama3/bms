@@ -16,7 +16,8 @@
 - **Hosting several regionals in one deployment** (multi-tenant). Each regional runs its own
   copy (D4).
 - **Runtime-loaded third-party plugins.** Modules are compiled in (D5).
-- **Replacing ticketing vendors.** Whether to integrate is Q-TICKET.
+- **Ticketing, including integration with ticketing vendors.** Not in scope at this time (D33).
+- **Payments** (camp dues, fees, grants). Not in scope at this time (D33).
 - **Native mobile apps.** The web UI is mobile-first instead.
 
 ## Core (always present)
@@ -29,10 +30,10 @@ data export and deletion.
 
 | Module | Covers | Status |
 |---|---|---|
-| `volunteers` | departments' roles, shifts, sign-up, leads, check-in, hours, reporting | First candidate (Q-MVP) |
-| `registrations` | theme camps, RVs and vehicles, art, calendar events: application, review, approval | Planned |
-| `incidents` | report, triage, assign, follow up, close; strict access and audit | Planned; depends on Q-OFFLINE |
-| `after-reports` | per-department after-burn reports, lessons learned, carried into the next event | Planned |
+| `volunteers` | departments' roles, shifts, sign-up, leads, check-in, hours, reporting | Module 1 (D26) |
+| `incidents` | report, triage, assign, follow up, close; strict access and audit | Module 2 (D26); offline workflows answered, mechanism deferred (D27) |
+| `registrations` | theme camps, RVs and vehicles, art, calendar events: application, review, approval | Module 3 (D26) |
+| `after-reports` | per-department after-burn reports, lessons learned, carried into the next event | Module 4 (D26) |
 
 Later, in the core: **trust between regionals** (D18, Q-TRUST), so that records such as
 volunteer credit can be recognized across a group of regionals.
@@ -43,6 +44,6 @@ check-in, inventory and assets, announcements, surveys, ticketing integration.
 
 ## MVP
 
-To be set with Q-MVP. Proposed: the core features in [09-core-features.md](09-core-features.md)
-marked **MVP**, plus the `volunteers` module, used by at least one department at one real
-event.
+The core features in [09-core-features.md](09-core-features.md) marked **MVP**, plus the
+`volunteers` module (module 1, D26), used by at least one department at one real event.
+Modules follow in the order in D26. No pilot regional or date is tracked (Q-MVP).

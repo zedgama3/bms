@@ -7,7 +7,7 @@ description: How bms classifies, stores, accesses, audits, exports and deletes p
 
 Regionals hold information that can hurt people if it leaks: legal names, addresses, phone
 numbers, emergency contacts, medical notes, incident reports. The rules below make the safe
-path the default. They're a starting point; the owner refines them (Q-RETAIN).
+path the default. They're a starting point the owner refines.
 
 ## Sensitivity levels
 
@@ -36,8 +36,9 @@ When in doubt, pick the higher level.
 - **Never in the browser's storage, URLs or analytics.** There's no third-party analytics.
 - **Never real data in development.** Fixtures, seeds, screenshots and tests use invented
   people.
-- **Retention is a setting** per module and level, with a job that enforces it. Deleted
-  means deleted (or irreversibly anonymized), including attachments.
+- **Retention is a setting** per module and level, with a job that enforces it. The
+  shipped default is **keep forever**; a regional sets shorter periods (owner, 2026-10-16,
+  Q-RETAIN). Deleted means deleted (or irreversibly anonymized), including attachments.
 - **Export and delete.** Every module answers "export everything about person X" and
   "delete everything about person X" (or anonymize, where the module's spec explains a
   legal or safety reason to keep a record).

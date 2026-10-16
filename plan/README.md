@@ -1,6 +1,6 @@
 # Planning
 
-Planning workspace for **bms** (burn management system, a working name): an open-source,
+Planning workspace for **BMS** (Burn Management System; D25): an open-source,
 community-built web application for running a regional burn. Each regional self-hosts its own
 copy and can fork it. Features are modules.
 
@@ -53,12 +53,20 @@ copy and can fork it. Features are modules.
     capabilities, extension points and signals they provide and use).
   - The owner answered `model`'s two open questions: event start and end are date-times, with
     schedule items such as gate hours inside events left to `departments-events`; e-mail
-    uniqueness ignores case only. `model` is ready for the owner's approval (still Draft).
+    uniqueness ignores case only.
+  - Owner's answers recorded 2026-10-16: the name is BMS, Burn Management System (D25,
+    supersedes D6); module order after the core is volunteers, incidents, registrations,
+    after-reports (D26); offline is not MVP, and Q-OFFLINE is no longer Blocking (D27);
+    default language per regional, every string translation-ready (D28); importing data is a
+    later feature (D29); retention is configurable, default forever (D30); module UI folders
+    in `web/` (D31); forms built in code (D32); ticketing and payments out of scope (D33).
+    Q-QUAL: department leads verify their department's qualifications (shape still open).
+  - Design specs approved by the owner: `model` is Approved (design/README.md).
 - **Next steps:**
   1. Done 2026-10-16: the owner agreed [09-core-features.md](09-core-features.md)
-     (milestones M0–M4, done criteria, spec order). `architect` drafted `model`.
-  2. Owner approves `model` (Draft; answers recorded 2026-10-16). `architect` then drafts
-     `module-contract`, the spec everything else hangs off.
+     (milestones M0–M4, done criteria, spec order). `architect` drafted `model`, now Approved.
+  2. Next: `architect` drafts `module-contract`, the spec everything else hangs off, then the
+     rest of the spec order in [09-core-features.md](09-core-features.md).
   3. CI on GitHub (`make check`), once the owner pushes the branch.
 
 ## Conventions

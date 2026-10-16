@@ -7,28 +7,19 @@ here, copy it into the document it affects, and tick the box.
 
 ### Product
 
-- [ ] **Q-MVP (Blocking, Phase 0):** Which module comes first, which regional pilots it, and
-      what's the date of the event it must be ready for? **Direction (owner, 2026-10-16):**
-      users come first (for management); volunteering needs several core features first
-      (departments, events and more). Core feature list agreed 2026-10-16
-      ([09-core-features.md](09-core-features.md)): milestones M0–M4. `volunteers` remains the
-      likely first module. Regional-specific details go in `private/`. The plan, its
-      milestones and the owner's answers to Q-CORE1–13 are in
-      [09-core-features.md](09-core-features.md#owners-answers-2026-10-16).
-- [ ] **Q-OFFLINE (Blocking, Phase 0):** Which workflows must work with no internet at the
-      event (incident logging, shift check-in, gate)? Options: (a) online only; (b) an
-      on-site instance on the local network, synced with the main one before and after;
-      (c) an offline-capable web app that queues changes. This shapes the module contract
-      and the `incidents` design.
-      **Direction (owner, 2026-10-16):** it must work offline. Likely (b): an on-site mirror
-      becomes the **single primary** during the event; the other copy keeps serving reads.
-      One writer at a time, never two. Still open: how the handover works (planned
-      switchover, by whom, how fast), and which workflows must keep working on site.
 - [ ] **Q-TRUST:** How do regionals trust each other (D18)? For example: each publishes a
       document at a `/.well-known/` URL with its public key and the regionals it trusts;
       shared records such as volunteer credit are signed by the issuing regional. What's
       shared, with whose consent, and how a person proves both accounts are theirs.
       Not needed for the MVP.
+- [ ] **Q-OFFLINE (Phase 0, no longer Blocking):** The workflows and the direction are
+      answered (2026-10-16, D27): offline can come later, not MVP. The workflows most needed
+      offline are incident management, volunteer management, and looking up a participant's
+      personal and emergency information. The direction is an on-site mirror as the single
+      primary during the event, the other copy serving reads. Still open: the handover
+      mechanism (planned switchover, by whom, how fast) and which workflows keep working on
+      site. The emergency-information lookup offline has privacy implications (sensitive data
+      on an on-site copy) to address when it's designed.
 - [ ] **Q-QUAL:** How are qualifications held and checked? Volunteer positions and shifts
       have requirements: training completed, certificates such as ICS-100 or ICS-200 (often
       with an expiry date), being over 18. Other modules may need the same facts (for
@@ -36,38 +27,25 @@ here, copy it into the document it affects, and tick the box.
       person's qualifications, who recorded or verified them, and their expiry, provided by
       one module and required by `volunteers`. Decide before the `volunteers` spec; not
       needed for the core MVP.
-- [ ] **Q-TICKET:** Is ticketing in scope, or do we integrate with existing ticketing vendors
-      (for example, import ticket holders to link to profiles)?
-- [ ] **Q-PAY:** Are payments in scope (camp dues, fees, grants)? If so, behind a payments
-      interface with a self-hostable option.
-- [ ] **Q-I18N:** Which languages are needed at launch? Proposed: English, with every string
-      ready for translation.
-- [ ] **Q-IMPORT:** Do regionals need to import data from their current systems (CSV of
-      volunteers, camps, past events)?
-- [ ] **Q-RETAIN:** What are the default retention periods for sensitive data (incidents,
-      medical notes)? These depend on law and insurance, so they must be configurable.
-      Which defaults do we ship?
+      **Partly answered (owner, 2026-10-16):** department leads check off (verify) the
+      qualifications related to their department. Some qualifications apply to several
+      departments (for example, ICS-100), but most are specific to one department. Recorded in
+      [09-core-features.md](09-core-features.md) (§5 and the notes for `volunteers`). The shape
+      (the `qualifications` capability) is still open for the architect when the `volunteers`
+      spec is written.
+- [ ] **Q-NAME (GitHub org):** Does the project move to a GitHub org? It lives at
+      `github.com/zedgama3/bms` for now. The name is answered: BMS, for "Burn Management
+      System" → D25. The org question was not answered and stays open; the repository stays
+      at `github.com/zedgama3/bms` for now.
 
 ### Project
 
-- [ ] **Q-NAME:** What's the final name, and does it move to a GitHub org? It lives at
-      `github.com/zedgama3/bms` for now. `bms` is the working name
-      (D6). Alternatives to consider: something that reads well to burners and isn't already
-      taken by another burn tool.
 - [ ] **Q-GOV1:** Governance: who can merge, how are maintainers added, which code of
       conduct? Proposed: Contributor Covenant.
 - [ ] **Q-GOV2:** Contribution sign-off: DCO (`Signed-off-by`) or a CLA? Proposed: DCO, which
       keeps the AGPL promise symmetric for everyone.
 - [ ] **Q-UPGRADE:** What's the upgrade promise between versions for forks that add their own
       modules (a stable module contract, semver)?
-
-### Design (for the architect)
-
-- [ ] **Q-WEBMOD:** How do modules contribute UI screens: a build-time registry in `web/`,
-      so a fork adds a module folder and one import? Proposed: yes, mirroring the Go side.
-- [ ] **Q-FORMS:** Do registrations need forms that a regional configures (custom
-      questions per application type), or are fields fixed per module? Configurable forms are
-      powerful but add a lot of complexity.
 
 ## Resolved
 
@@ -99,3 +77,30 @@ here, copy it into the document it affects, and tick the box.
 - [x] **Q-MODEL2:** Canonical e-mail beyond case? Answered by the owner 2026-10-16: only
       capitalization is ignored; no dot or `+tag` stripping. → [design/model.md](design/model.md)
       (decision 11).
+- [x] **Q-MVP:** Which module comes first, and which regional pilots it? The owner delegated
+      the choice of order and dropped the pilot regional and date. Order after the core
+      (M0–M4): `volunteers`, `incidents`, `registrations`, `after-reports`. → D26, and
+      [02-scope.md](02-scope.md), [05-roadmap.md](05-roadmap.md)
+- [x] **Q-TICKET:** Is ticketing in scope, or do we integrate with existing ticketing vendors?
+      Not in scope at this time. → D33, [02-scope.md](02-scope.md)
+- [x] **Q-PAY:** Are payments in scope (camp dues, fees, grants)? Not in scope at this time.
+      → D33, [02-scope.md](02-scope.md)
+- [x] **Q-I18N:** Which languages are needed at launch? English today, Spanish soon, then
+      maybe others. The default language is a per-regional setting; every string is
+      translation-ready from day one. → D28, [09-core-features.md](09-core-features.md)
+- [x] **Q-IMPORT:** Do regionals need to import data from their current systems? Useful, but
+      low priority; a later feature, not in the MVP. → D29
+- [x] **Q-RETAIN:** What are the default retention periods for sensitive data? Retention is
+      configurable by each regional; the default is forever (keep data until a regional sets
+      a period). → D30, [09-core-features.md](09-core-features.md) (§8, §11)
+- [x] **Q-WEBMOD:** How do modules contribute UI screens? Yes: each module gets its own folder
+      in `web/`, with a build-time registry mirroring the Go side. `web-shell.md` (row 17)
+      owns the registry. → D31, [design/README.md](design/README.md)
+- [x] **Q-FORMS:** Do registrations need forms that a regional configures, or are fields fixed
+      per module? Forms are built in code for now, with fields fixed per module; configurable
+      forms may come later. → D32
+
+### Design (for the architect)
+
+- None open. Q-WEBMOD and Q-FORMS are resolved above. The shape of qualifications (Q-QUAL) is
+  still open under Product.

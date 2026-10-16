@@ -41,7 +41,7 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
 
 ## D6. Working name: bms
 
-- **Status:** Accepted (2026-10-16) as a working name. The final name is Q-NAME.
+- **Status:** Superseded by D25 (2026-10-16). Was: Accepted (2026-10-16) as a working name.
 - Repository: `github.com/zedgama3/bms` (Go module path `github.com/zedgama3/bms`). If the
   project moves to a GitHub org later, the module path changes with it; do that early.
 
@@ -309,3 +309,77 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
 - So "event" has one meaning in code and UI, the in-process publish/subscribe mechanism
   (formerly `events`, "domain events") is renamed **signals** (`core/signals`; for example the
   signal `volunteers.shift-completed`).
+
+## D25. The name is BMS, for "Burn Management System"
+
+- **Status:** Accepted (2026-10-16). Supersedes D6's "working name" status (Q-NAME, name part).
+- The project is called **BMS** (Burn Management System). It's no longer a working name.
+- The repository and Go module path stay `github.com/zedgama3/bms` for now. Whether the
+  project moves to a GitHub org is still open (Q-NAME).
+
+## D26. Module order after the core: volunteers, incidents, registrations, after-reports
+
+- **Status:** Accepted (2026-10-16). Answers Q-MVP. The owner delegated the choice of order.
+- After the core milestones M0–M4 ([09-core-features.md](09-core-features.md)), build the
+  modules in this order:
+  1. `volunteers`: the owner's stated direction; it exercises departments, events, positions
+     and qualifications.
+  2. `incidents`: the most sensitive data and the most important offline workflow, so it
+     proves `privacy-data` and shapes the offline design early.
+  3. `registrations`
+  4. `after-reports`
+- No pilot regional or date is tracked.
+
+## D27. Offline is not in the MVP; its first workflows are known, its mechanism is deferred
+
+- **Status:** Accepted (2026-10-16). Answers the scope of Q-OFFLINE; Q-OFFLINE stays open for
+  the mechanism and is no longer Blocking for Phase 0.
+- Offline can come later, after the MVP.
+- The workflows most often needed offline are: incident management, volunteer management, and
+  looking up a participant's personal and emergency information.
+- The direction is kept as the likely approach: an on-site mirror that becomes the **single
+  primary** during the event, with the other copy serving reads. The handover details (planned
+  switchover, who runs it, how fast, which workflows keep working on site) stay open.
+- For design later: an offline emergency-information lookup puts sensitive data on an on-site
+  copy, so it has privacy implications to address when it's designed.
+
+## D28. Every string is translation-ready; the default language is a per-regional setting
+
+- **Status:** Accepted (2026-10-16). Answers Q-I18N.
+- Languages: English today, Spanish soon, then possibly others.
+- Some regionals may default to a language other than English, so the default language is a
+  per-regional setting.
+- Every string is translation-ready from day one.
+
+## D29. Importing data from other systems is a later feature
+
+- **Status:** Accepted (2026-10-16). Answers Q-IMPORT.
+- Useful, but low priority and not in the MVP. Kept as a later feature.
+- Imported IDs are already allowed by `model` (decision 5 in
+  [design/model.md](design/model.md)).
+
+## D30. Retention is configurable; the default is to keep data
+
+- **Status:** Accepted (2026-10-16). Answers Q-RETAIN.
+- Retention periods are configurable by each regional. The default is forever: data is kept
+  until a regional sets a period.
+- D20's 30-day retention applies to telemetry logs and is not affected.
+
+## D31. Module UI lives in one folder per module under `web/`, registered at build time
+
+- **Status:** Accepted (2026-10-16). Answers Q-WEBMOD.
+- Each module has its own folder in `web/`, and a build-time registry imports it, mirroring
+  the Go side. A fork adds a module folder and one import.
+- `web-shell.md` (row 17 in [design/README.md](design/README.md)) owns the registry.
+
+## D32. Forms are built in code; fields are fixed per module
+
+- **Status:** Accepted (2026-10-16). Answers Q-FORMS.
+- Registration and other forms are built in code for now, with fields fixed per module.
+- Forms a regional can configure may come later.
+
+## D33. Ticketing and payments are out of scope for now
+
+- **Status:** Accepted (2026-10-16). Answers Q-TICKET and Q-PAY.
+- Ticketing (including integration with ticketing vendors) is not in scope at this time.
+- Payments (camp dues, fees, grants) are not in scope at this time.

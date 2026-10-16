@@ -32,7 +32,8 @@
 ## How a module plugs in
 
 A module is a Go package under `internal/modules/<name>/` (and a matching folder under
-`web/src/modules/<name>/`). It gives the core:
+`web/src/modules/<name>/`, imported by the web shell's build-time registry; D31). It gives
+the core:
 
 - its **migrations**
 - its **permissions** (for example `incidents.read-sensitive`), which the core turns into
@@ -57,12 +58,15 @@ The exact shape is the `module-contract` spec. Until it's Approved, this list is
 
 ## Offline at the event
 
-Direction from the owner (Q-OFFLINE, still open in its details): an on-site copy runs on
-the event's local network and becomes the **single primary** for the event; the off-site
-copy keeps serving reads. There is only ever one writer, so there's no merge or conflict
-resolution. A likely mechanism is PostgreSQL replication with a planned switchover.
+Offline is not in the MVP (D27). The workflows that will need it are incident management,
+volunteer management and looking up a participant's personal and emergency information.
+Direction from the owner: an on-site copy runs on the event's local network and becomes the
+**single primary** for the event; the off-site copy keeps serving reads. There is only ever
+one writer, so there's no merge or conflict resolution. A likely mechanism is PostgreSQL
+replication with a planned switchover; the handover mechanism is still open (Q-OFFLINE).
 
-Constraints this puts on the design (the architect checks each in its spec):
+Constraints this puts on the design now, so offline can be added later without rework (the
+architect checks each in its spec):
 
 - **Read-only mode.** Any instance may be a read-only replica. Writes fail early with a clear
   error kind, and the UI says the site is read-only instead of failing on save.

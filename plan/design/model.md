@@ -1,6 +1,6 @@
 # model: shared value types
 
-- **Status:** Draft (2026-10-16)
+- **Status:** Approved (2026-10-16)
 - **Package:** `internal/model` (Go module `github.com/zedgama3/bms`; foundation, not a bms
   module). **UI:** none.
 - **Depends on specs:** `lib-errs.md` (Implemented): `errs.E`, `errs.Is`, kinds `Invalid`

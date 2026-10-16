@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-**bms** (burn management system, a working name) is an open-source, community-built web
+**BMS** (Burn Management System; `bms` in code and paths) is an open-source, community-built web
 application for running a regional burn: volunteers and shifts, incidents, camp, RV, art and
 event registration, after-burn reports, and whatever regionals need next. Each regional
 self-hosts its own copy and can fork it. Every feature is a **module** that can be turned

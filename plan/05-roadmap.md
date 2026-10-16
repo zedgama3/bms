@@ -1,7 +1,7 @@
 # Roadmap
 
-No dates yet. The real constraint is the next event a pilot regional wants to use it for
-(Q-MVP).
+No dates yet. No pilot regional or date is tracked (Q-MVP, answered 2026-10-16: module order
+in D26).
 
 ## Phase 0: Foundations
 
@@ -9,8 +9,8 @@ Design comes before code. Specs are tracked in [design/README.md](design/README.
 
 - [x] Working name, license, stack, hosting model, extension model (D2–D6)
 - [x] Scaffold the repo: plan, agents, skills, `.golangci.yml`, Makefile, dev compose
-- [ ] Answer the Blocking open questions for Phase 0 (Q-MVP; Q-IDP and Q-OFFLINE have a
-      direction, D18 and 04-architecture)
+- [x] Answer the Blocking open questions for Phase 0 (Q-MVP answered, D26; Q-OFFLINE is no
+      longer Blocking, D27; Q-IDP answered, D18)
 - [x] Agree the core feature list and its MVP items (09-core-features.md; owner, 2026-10-16)
 - [x] Port `lib-errs`, `lib-core`, `lib-secret` from Sojourn (D11)
 - [x] Development observability stack: Grafana, Loki, Tempo, Prometheus, Alloy (D20)
@@ -25,16 +25,18 @@ Design comes before code. Specs are tracked in [design/README.md](design/README.
 
 ## Phase 1: First module (MVP)
 
-- [ ] Spec and build the first module (proposed: `volunteers`)
+- [ ] Spec and build the first module (`volunteers`, D26)
 - [ ] Packaging for a volunteer operator: one container image, compose file, backup and
       upgrade docs
 - [ ] Pilot at one real event
 
 ## Phase 2: More modules
 
-- [ ] `registrations` (camps, vehicles, art, calendar events)
-- [ ] `incidents`, after a privacy review, and once Q-OFFLINE is settled
-- [ ] `after-reports`
+Order after the core, from D26:
+
+- [ ] `incidents` (module 2), after a privacy review, and once Q-OFFLINE is settled
+- [ ] `registrations` (module 3): camps, vehicles, art, calendar events
+- [ ] `after-reports` (module 4)
 
 ## Phase 3: Many regionals
 

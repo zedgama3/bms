@@ -8,7 +8,7 @@ breaks down into specs. [07-abstractions.md](07-abstractions.md) describes the c
 provides it, and specs in [design/](design/) describe each piece in detail. How burns work,
 and the words they use, is in the `burn-domain` skill.
 
-**MVP** means it's needed before the first module (likely `volunteers`) can be used at a
+**MVP** means it's needed before the first module (`volunteers`, D26) can be used at a
 real event. **Later** means it waits until after the pilot.
 
 ## Who uses the core
@@ -35,8 +35,9 @@ These apply everywhere, so the specs don't repeat them.
   (for example, "board members never see incident reports"). Only the break-glass superuser
   sees everything.
 - **Mobile first.** Every screen works on a phone at the event. WCAG 2.1 AA.
-- **Ready for translation.** Every string goes through the translation layer, English only at
-  launch (Q-I18N). Terminology (what the regional calls an "event", a "department") is a
+- **Ready for translation.** Every string goes through the translation layer, from day one.
+  English at launch, Spanish soon, then possibly others; the default language is a setting per
+  regional (D28). Terminology (what the regional calls an "event", a "department") is a
   setting, applied through the same layer.
 - **Works on a read-only copy (Q-OFFLINE).** Every read screen works when the database is
   read-only; every write fails with a clear "this copy is read-only" message, not an error
@@ -241,7 +242,7 @@ training and certificates come with qualifications (Q-QUAL), not as profile fiel
 **Done when:**
 - Departments are flat: no sub-teams (Q-CORE5). Roles within a department, such as Khaki or
   R12 on a Ranger team, are **positions**, which belong to `volunteers`, with requirements
-  (Q-QUAL).
+  (Q-QUAL). Department leads check off (verify) the qualifications related to their department.
 - An archived department keeps its history, takes no new work, and disappears from lists
   except to stewards. A department with nothing for an event simply shows nothing for it.
 - Leadership is a department-scoped grant (step 4); there's no separate leads table.
@@ -312,15 +313,16 @@ each action is permission-checked and audited like any other.
   insert and read.
 - **On a read-only copy,** audited reads are written to a local append-only file and imported
   when that copy writes again, so audit isn't lost and reads don't need the database to write.
-- Entries are kept for a set time (a setting; Q-RETAIN).
+- Entries are kept for a set time (a setting; the default is to keep them until a regional sets
+  a period, D30).
 
 **Specs:** `audit`.
 
 ## 9. Settings and branding (MVP, basic, from M2)
 
 **People can:**
-- *Settings admin:* set the regional's name, logo, colors, contact address and public URL;
-  choose terminology; change each module's settings.
+- *Settings admin:* set the regional's name, logo, colors, contact address, public URL and
+  default language (D28); choose terminology; change each module's settings.
 
 **Done when:**
 - Settings are typed, have defaults, and are validated before saving; a module declares its
@@ -341,7 +343,8 @@ Local disk first, S3-compatible storage optional. Files follow the data to the o
 - **MVP (M4):** an account admin exports one person's data (JSON, every module through the
   extension point) or deletes it, by command, with the action audited.
 - **Later:** a person downloads their data from their page; asks for deletion, which an admin
-  reviews; retention periods delete data automatically (Q-RETAIN).
+  reviews; retention periods set by the regional (default: keep forever, D30) delete data
+  automatically.
 
 **Specs:** part of `people` (the extension point), `jobs` (retention).
 
@@ -362,7 +365,8 @@ distinct, dated records.
 
 Shifts, positions, sign-ups, camps, incidents, reports and the rest are **modules**, built on
 top of this list. See [02-scope.md](02-scope.md). Notes for the `volunteers` spec, gathered so
-far: positions with requirements (Q-QUAL); shifts before, during and after the event (land
+far: positions with requirements (Q-QUAL), checked off by department leads for their department
+(some qualifications, such as ICS-100, apply to several departments; most apply to one); shifts before, during and after the event (land
 prep, build, strike, inventory); a shift or activity can be open to all, invitation only, or
 limited to certain positions (Q-CORE10).
 
@@ -379,7 +383,7 @@ The architect drafts them in this order; each is reviewed before the next that d
 | 5 | `telemetry` | logs, traces, metrics, error references, client errors | M0 |
 | 6 | `signals` | in-process domain events, after commit (D24) | M0 |
 | 7 | `api` | router, middleware, error mapping | M0 |
-| 8 | `web-shell` | frame, API client, screen registry, error reporting | M0 |
+| 8 | `web-shell` | frame, API client, screen registry (one folder per module under `web/`, build-time, D31), error reporting | M0 |
 | 9 | `app` | commands, wiring, lifecycle | M0 |
 | 10 | `audit` | the log and its read-only spool | M1 |
 | 11 | `identity` | accounts, passwords, sessions, the superuser | M1 |

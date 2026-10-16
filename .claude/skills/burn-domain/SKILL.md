@@ -46,6 +46,9 @@ before a design depends on it.
   belongs to a department and no event at all (for example, winter inventory).
 - Each of these activities may be **open to anyone**, **invitation only**, or **only for
   certain positions** (owner, 2026-10-16).
+- **At the event, the internet may be gone.** The work most often needed offline is incident
+  management, volunteer management, and looking up a participant's personal and emergency
+  information (owner, 2026-10-16).
 - After the event, departments write after-burn reports and carry lessons into the next one.
 
 ## Departments, positions and leadership
@@ -71,7 +74,9 @@ before a design depends on it.
 - **ICS-100, ICS-200**: Incident Command System courses (FEMA, United States), common
   requirements for safety and emergency positions. Certificates can be recorded with the
   date earned; whether they expire depends on the regional.
-- How bms holds and checks these is Q-QUAL.
+- **Department leads check off** the qualifications that relate to their department
+  (owner, 2026-10-16). Most qualifications belong to one department; a few, such as ICS-100,
+  count for several departments (owner, 2026-10-16).
 
 ## Who may see what
 
@@ -96,4 +101,5 @@ before a design depends on it.
 When a rule above says "differs by regional", it becomes a setting or data in bms, never
 code. Known differences so far: leadership terms, who may see incident reports, how much a
 person sees about views of their data, whether legal name and phone are required,
-open or invitation-only sign-up, terminology.
+open or invitation-only sign-up, terminology, and the default language: most use English,
+some another (owner, 2026-10-16).

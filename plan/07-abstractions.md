@@ -57,10 +57,13 @@ Rules (enforced by depguard and `make imports`):
 ## Foundation
 
 ### model: shared value types
-- **Purpose:** the vocabulary every layer shares (IDs, person reference, event, department
-  reference, time range, money if needed, sensitivity level).
-- **Owns:** type definitions and their own validation (`Validate() error`).
-- **Doesn't do:** I/O, storage, anything specific to one module.
+- **Purpose:** the vocabulary every layer shares (typed IDs (`ID[E]`; `PersonID`,
+  `AccountID`, `DepartmentID`, `EventID`), sensitivity level, time range, e-mail address).
+- **Owns:** type definitions and their own validation (`Validate() error`). No I/O;
+  generates IDs with the standard library.
+- **Doesn't do:** I/O, storage, anything specific to one module. Money is not defined
+  (Q-PAY; D33 puts payments out of scope) and is added only when a consumer appears.
+- **Spec:** [design/model.md](design/model.md), Approved.
 
 ### lib: internal shared libraries
 - **Purpose:** small helpers every layer needs, so behavior is consistent.
@@ -91,7 +94,8 @@ Rules (enforced by depguard and `make imports`):
 
 ### db: database access
 - **Purpose:** give modules a PostgreSQL connection with transactions and deadlines.
-- **Owns:** the pool, transactions, read-only detection (Q-OFFLINE), the migration runner
+- **Owns:** the pool, transactions, read-only detection (for the post-MVP on-site mirror,
+  D27; the handover mechanism is still open under Q-OFFLINE), the migration runner
   (per-schema, forward only) that `bms migrate` calls, the table of schema versions per
   module and the check each module calls when it initializes (D17), translating driver errors into `errs` kinds.
 - **Doesn't do:** any module's queries.
@@ -151,7 +155,7 @@ Rules (enforced by depguard and `make imports`):
 
 ### settings: what a regional configures at runtime
 - **Purpose:** typed, validated settings per module and for the core (terminology, branding,
-  retention periods), editable by admins.
+  default language (D28), retention periods (D30; default: keep forever)), editable by admins.
 
 ## Delivery
 
@@ -163,7 +167,8 @@ Rules (enforced by depguard and `make imports`):
 
 ### web shell
 - **Purpose:** the React app frame: login, navigation, layout, the API client, and the
-  registry modules add screens to. Catches errors and reports them (D20).
+  build-time registry that imports each module's own folder under `web/` (D31). Catches
+  errors and reports them (D20). Every string is translation-ready (D28).
 
 ### app: composition root
 - **Purpose:** build everything from configuration, start it and stop it cleanly. Provides
