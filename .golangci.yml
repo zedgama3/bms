@@ -78,6 +78,16 @@ linters:
             - "$gostd"
             - github.com/zedgama3/bms/internal/lib
             - github.com/zedgama3/bms/internal/model
+        contracts:
+          # D19: shared interfaces and data types only; they depend on model, lib and other contracts.
+          files:
+            - "**/internal/contracts/**"
+          list-mode: strict
+          allow:
+            - "$gostd"
+            - github.com/zedgama3/bms/internal/lib
+            - github.com/zedgama3/bms/internal/model
+            - github.com/zedgama3/bms/internal/contracts
         core:
           # Core contracts and their implementations never know about modules, HTTP or app.
           files:

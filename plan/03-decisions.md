@@ -179,7 +179,7 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
 
 ## D19. Modules declare what they provide and use: capabilities, extension points, events
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-10-16)
 - **Problem:** features need each other's data (a person's page shows the departments they
   volunteer with and the events they're registered for), but modules never import each
   other (D9) or read each other's tables (D10). Without a planned mechanism, this turns into

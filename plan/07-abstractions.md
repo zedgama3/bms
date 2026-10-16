@@ -18,7 +18,12 @@ is tracked in [design/README.md](design/README.md).
                  │ api shell   │   │ modules: volunteers, registrations,      │   features
                  │ (HTTP)      │   │ incidents, after-reports, <yours>        │   (never import each other)
                  └──────┬──────┘   └───────────────────┬─────────────────────┘
-                        │                              │
+                        │                              │ share through
+                        │                              ▼
+                        │          ┌─────────────────────────────────────────┐
+                        │          │ contracts: interfaces and data types     │   capabilities and
+                        │          │ only, no implementation (D19)            │   extension points
+                        │          └───────────────────┬─────────────────────┘
                         ▼                              ▼
      ┌──────────────────────────────────────────────────────────────────────────┐
      │ core contracts: module · db · identity · authz · people · editions ·     │   core
@@ -36,12 +41,15 @@ Rules (enforced by depguard and `make imports`):
 1. `model` and `lib/*` depend on nothing in the project except `lib`.
 2. **Core** packages (`internal/core/...`) depend on `model`, `lib` and other core packages
    (acyclic). They never import a module, the api shell, `app` or `config`.
-3. A **module** (`internal/modules/<name>/...`) depends on core contracts, `model` and
-   `lib`. It **never imports another module**, the api shell, `app` or `config`.
+3. A **module** (`internal/modules/<name>/...`) depends on core contracts, shared
+   `contracts`, `model` and `lib`. It **never imports another module**, the api shell, `app`
+   or `config`.
 4. The **api shell** mounts the routes it's given. It never imports a module.
 5. Only `app` imports modules and core implementations, and turns modules on from
    configuration through the registry.
-6. **Storage seam (D8).** Only `postgres/` subpackages and core `db` import the database
+6. **Shared contracts (D19).** `internal/contracts/<name>/` holds interfaces and data types
+   only. Contracts import only `model`, `lib` and other contracts.
+7. **Storage seam (D8).** Only `postgres/` subpackages and core `db` import the database
    driver. Services depend on a storage interface they declare themselves.
 
 ---
@@ -64,12 +72,21 @@ Rules (enforced by depguard and `make imports`):
 - **Purpose:** load and validate the process configuration, reporting every problem at once.
 - **Doesn't do:** module settings that a regional edits at runtime (that's `settings`).
 
+### contracts: what modules share (D19)
+- **Purpose:** the shared shapes modules cooperate through: capability interfaces (one
+  provider) and extension points (many contributors), with their data types.
+- **Owns:** interfaces and plain data types. Calls take batches; providers check
+  permissions for the person asking.
+- **Doesn't do:** any implementation, storage, or HTTP.
+
 ## Core
 
 ### module: the module contract and registry
 - **Purpose:** define what a module gives the core, and register the modules compiled in.
-- **Owns:** the `Module` interface, the registry, the enabled-modules check at start-up
-  (for example, a module that subscribes to an event nobody publishes).
+- **Owns:** the `Module` interface, the manifest (what a module provides, requires, uses
+  optionally, contributes to, publishes and subscribes to; D19), the registry, and the
+  start-up check of that graph (a required capability with no provider, an event nobody
+  publishes).
 - **Doesn't do:** run migrations (`db`), mount routes (api shell), authorize (`authz`).
 
 ### db: database access

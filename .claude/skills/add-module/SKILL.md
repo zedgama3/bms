@@ -30,7 +30,8 @@ cover:
 ```
 internal/modules/<name>/
   module.go        New(deps) (module.Module, error); registry init(); declares permissions,
-                   routes, events, settings, migrations, jobs
+                   routes, events, settings, migrations, jobs, and what it provides,
+                   requires, uses and contributes to (D19)
   service.go       use cases; each one checks its permission via authz first. Declares the
                    storage interface it needs (no SQL or driver types in it)
   postgres/        the PostgreSQL implementation of that interface (D8). Only this
@@ -50,8 +51,17 @@ web/src/modules/<name>/
 
 ## 3. Rules
 
-- **Never import another module**, in Go or in `web/`. If you need another module's data,
-  subscribe to its events or use a core contract. If neither fits, stop: it's a core change.
+- **Never import another module**, in Go or in `web/`. To work with another module (D19):
+  - to **show or collect** something another module knows (a section on a person's page,
+    data to export), use an **extension point**: the asking side defines the shape in
+    `internal/contracts/`, and any module contributes. This is the default.
+  - to **call a service** only one module provides, `require` or optionally `use` a
+    **capability** from `internal/contracts/`. Prefer optional use, and hide the feature
+    when the capability is missing.
+  - to **react** when something happens, subscribe to a **domain event**.
+  - Declare all of it in the manifest. Contract calls take batches, and providers check
+    permissions for the person asking. A new contract or a change to one is a design
+    change: stop and send it to `architect`.
 - **Never read or write another module's schema.** Foreign keys go only to your own tables
   and core tables.
 - **Permissions are declared, not hard-coded to role names.** A regional decides which roles
