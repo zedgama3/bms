@@ -88,15 +88,17 @@ it depends on getting this right.
   a signal, and see the core pick it up.
 
 **Done when:**
-- `bms migrate` applies the core's and each enabled module's migrations in one transaction per
-  module, records each schema version (D17), and refuses to run on a read-only database.
+- `bms migrate` applies the core's and each enabled module's migrations, one transaction per
+  migration file, recording the version in the same transaction (D17), and refuses to run
+  on a read-only database.
 - `bms serve` stops with a message naming the module and both versions if any schema is out of
   date. It never changes the schema.
 - Configuration errors are all reported at once, with the environment variable's name.
 - `bms migrate` on a new installation generates the secrets file and prints the back-up notice.
 - The registry refuses to start when a required capability has no provider, or two modules
   provide the same one (D19), and says which.
-- `/healthz` (process up) and `/readyz` (database reachable, writable or read-only) respond.
+- `/healthz` (process up) and `/readyz` (database reachable, writable or read-only) respond;
+  `/readyz` reports read-only from `db`'s probe.
 - Shutdown finishes requests in flight, within a deadline.
 - A request gets a trace ID; error responses carry a short reference; the web shell reports its
   errors to `POST /api/client-errors` (D20).

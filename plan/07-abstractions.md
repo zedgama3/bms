@@ -106,11 +106,18 @@ Rules (enforced by depguard and `make imports`):
 
 ### db: database access
 - **Purpose:** give modules a PostgreSQL connection with transactions and deadlines.
-- **Owns:** the pool, transactions, read-only detection (for the post-MVP on-site mirror,
-  D27; the handover mechanism is still open under Q-OFFLINE), the migration runner
-  (per-schema, forward only) that `bms migrate` calls, the table of schema versions per
-  module and the check each module calls when it initializes (D17), translating driver errors into `errs` kinds.
-- **Doesn't do:** any module's queries.
+- **Owns:** the pool and its bounded, retried connect; statements with deadlines, on the
+  pool or on the transaction the context carries; `Transact` with after-commit hooks;
+  `Wrap` and `*Error` (driver errors classified into `errs` kinds, values scrubbed);
+  read-only detection (`pg_is_in_recovery()` or `default_transaction_read_only`, probed on
+  a schedule, on `Ping` and on every refused write) exposed as `ReadOnly()` for `/readyz`,
+  `jobs` and `notify`; `ErrReadOnly` (`Unavailable`) for a write on a read-only copy; the
+  migration runner over ordered sets (the core's, then `Plan.Order()`), one transaction
+  per file, recorded with checksums in `core.schema_migration`; `CheckSchema` for
+  `module.Build` (D17); `dbtest` (a fake `DB`, a temporary database). The handover between
+  copies is still open under Q-OFFLINE (D27).
+- **Doesn't do:** any domain table or query; retrying transactions; delivering signals; the
+  switchover.
 
 ### identity: who is this?
 - **Purpose:** authenticate a person and manage their session.

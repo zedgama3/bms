@@ -8,13 +8,15 @@
 - **Depends on specs:** `lib-errs.md` (Implemented): `errs.E`, `errs.Is`, kinds `Invalid`,
   `Conflict`, `NotFound`, `Internal`, `Canceled`, `Timeout`. `lib-core.md` (Implemented):
   `clock.Clock`, `validate.Errors`, `validate.FieldError`. `model.md` (Approved):
-  `model.PersonID`, `model.Sensitivity`, `ID.Validate`, `Sensitivity.Validate`. Two leaf
+  `model.PersonID`, `model.Sensitivity`, `ID.Validate`, `Sensitivity.Validate`. `db.md`
+  (Approved): `db.DB` (the type of `Deps.DB`), `db.ErrReadOnly` (the sentinel a write gets
+  on a read-only copy), `*db.Migrator` (the `SchemaChecker` that `app` passes to `Build`),
+  `dbtest.Fake` (what `moduletest.Conformance` hands to a factory). Two leaf
   types that this spec places in other core packages and defines here because no spec for
   them exists yet: `authz.Permission`, `authz.Scope`, `authz.PermissionDecl`
   (`internal/core/authz`, row 7) and `signals.Name` (`internal/core/signals`, row 10). See
-  "Types" and Proposed changes 2 and 3. The `Deps` struct also names fields typed by `db.md`
-  (row 5) and `signals.md` (row 10); each is added when that spec is Approved (see "Types:
-  Deps").
+  "Types" and Proposed changes 2 and 3. The `Deps` struct also names a field typed by
+  `signals.md` (row 10), added when that spec is Approved (see "Types: Deps").
   **Used by:** `app` (composition root: resolves, builds, starts and stops the modules; the
   `migrate` and `check` commands), `api` (mounts routes, serves the graph), `authz` (receives
   the declared permissions), `settings` (receives the declared settings), `people` (export
@@ -253,8 +255,8 @@ type PersonData interface {
 	// about person, including attachments, and reports what it did. Records the module's
 	// spec says must be kept (a legal or safety reason) are counted under Kept with their
 	// kind. It is idempotent: a person with no records yields a zero Deletion and nil.
-	// Fails with errs.Invalid for a zero person; on a read-only copy, with the kind db
-	// returns for a write (db.md).
+	// Fails with errs.Invalid for a zero person; on a read-only copy, with
+	// errs.Unavailable wrapping db.ErrReadOnly, the kind db returns for a write (db.md).
 	DeletePerson(ctx context.Context, person model.PersonID) (Deletion, error)
 }
 
@@ -512,7 +514,8 @@ type Warning struct {
 // ---- Build ----
 
 // SchemaChecker is what Build needs from db (D17): compare the schema version recorded
-// for module with the one migrations is built for. db implements it (db.md).
+// for module with the one migrations is built for. *db.Migrator implements it
+// structurally (db may not import module); app asserts it and passes it to Build (db.md).
 type SchemaChecker interface {
 	// CheckSchema fails with errs.Conflict if the recorded version is missing or differs,
 	// with a message naming the module and both versions and saying to run `bms migrate`;
@@ -970,7 +973,7 @@ Standard library (`context`, `encoding/json`, `errors`, `fmt`, `io/fs`, `log/slo
 | F42 | `Links.Contributors` | point not in the owner's `Defines` | Invalid | fix the module | `TestLinksContributors_Undeclared_ReturnsInvalid` |
 | F43 | `Links.Contributors`, `Links.Capability` | called before `Build` froze the links (`Contributors` from a factory), or on a zero `Links` | Internal | move the call to `Start` or request time | `TestLinks_BeforeFreezeOrZero_ReturnsInternal` |
 | F44 | `PersonData.ExportPerson`, `DeletePerson` (obligation) | zero `PersonID` | Invalid | 400 (people) | `moduletest`: `Conformance/export_zero_id`, `delete_zero_id` |
-| F45 | `PersonData.DeletePerson` (obligation) | database read-only | the kind `db` returns for a write | "this copy is read-only" | `moduletest`: `Conformance/delete_read_only` |
+| F45 | `PersonData.DeletePerson` (obligation) | database read-only | Unavailable wrapping `db.ErrReadOnly` (the kind `db` returns for a write) | "this copy is read-only" | `moduletest`: `Conformance/delete_read_only` |
 | F46 | `Module.Start` (obligation) | database read-only | none: `Start` succeeds | — | `moduletest`: `Conformance/start_read_only` |
 | F47 | `Module.Stop` (obligation) | `ctx` already done | Timeout or Canceled within the deadline, never a hang | log | `moduletest`: `Conformance/stop_honors_context` |
 
@@ -1024,11 +1027,13 @@ in the test files (no mocking frameworks, D14). Invented module names (`alpha`, 
 the reference; each rule is a named subtest): `manifest_valid` (`Validate` passes);
 `registers_under_its_name` (a fresh registry `Add` then `Resolve` with only this module
 enabled and its required capabilities faked succeeds); `implements_declared`
-(`Build` passes F29–F34 against the manifest); `start_read_only` (F46, with a fake `DB`
-that fails every write with the read-only kind); `stop_honors_context` (F47);
+(`Build` passes F29–F34 against the manifest); `start_read_only` (F46, with
+`dbtest.NewFake()` after `SetReadOnly(true)`, which fails every write with
+`errs.Unavailable` wrapping `db.ErrReadOnly`); `stop_honors_context` (F47);
 `stop_without_start_is_nil`; `export_zero_id`, `delete_zero_id` (F44);
 `export_unknown_person_is_empty` and `delete_unknown_person_is_zero_and_idempotent` (with
-an empty fake store); `delete_read_only` (F45); `export_is_json_object` (`Data` empty or
+a plain `dbtest.NewFake()`, which holds no rows); `delete_read_only` (F45, with the
+read-only fake); `export_is_json_object` (`Data` empty or
 parses as an object); `routes_under_prefix` (patterns start with `/`; no absolute `/api/`);
 `no_personal_data_in_logs` (a capturing `slog.Handler`; the test runs `Start`, one export
 and one delete of an invented person and asserts no log record contains the fake e-mail or

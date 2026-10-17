@@ -1,6 +1,6 @@
 # db: database access
 
-- **Status:** Draft (2026-10-16)
+- **Status:** Approved (2026-10-16)
 - **Package:** `internal/core/db` (Go module `github.com/zedgama3/bms`), plus the test
   helper package `internal/core/db/dbtest`. **UI:** none of its own; the "this copy is
   read-only" banner and `/readyz` are `web-shell.md`'s and `api.md`'s, fed by `ReadOnly()`
@@ -122,7 +122,7 @@ type Options struct {
 func (o Options) Validate() error
 
 // MinServerVersion is the oldest PostgreSQL server Open accepts, as server_version_num.
-// PostgreSQL 16 (Open question 1).
+// PostgreSQL 16 (decision 20).
 const MinServerVersion = 160000
 
 // Open validates opts, parses the URL, connects with retries until ConnectTimeout, checks
@@ -532,9 +532,13 @@ read-only copy becomes a clear "this copy is read-only" response rather than an 
    `transaction_read_only`, which a session inherits from `default_transaction_read_only`,
    is true when an operator ran `ALTER DATABASE bms SET default_transaction_read_only =
    on`: a one-line lever to freeze writes on one copy before a switchover, usable today
-   without any switchover code (Open question 3), and the way the integration test puts a
-   plain server into read-only mode. One `SELECT pg_is_in_recovery() OR
-   current_setting('transaction_read_only')::bool` answers both.
+   without any switchover code, and the way the integration test puts a plain server into
+   read-only mode. One `SELECT pg_is_in_recovery() OR
+   current_setting('transaction_read_only')::bool` answers both. **Confirmed (owner,
+   2026-10-16):** `default_transaction_read_only = on` counts as "this copy is read-only";
+   the `switchover` spec (Q-OFFLINE) builds on or replaces the lever. The alternative,
+   probing `pg_is_in_recovery()` alone, would make read-only mode untestable without a
+   replica and leave operators with no lever.
 8. **The read-only state is cached and refreshed three ways: a watcher every 15 s, every
    `Ping`, and every `25006` write error.** `Transact(Write)` and `jobs` ask on every call,
    so the answer must be free; `/readyz` wants it fresh, so `Ping` refreshes it; a
@@ -552,11 +556,14 @@ read-only copy becomes a clear "this copy is read-only" response rather than an 
 10. **One transaction per migration file, with its `core.schema_migration` row in the same
     transaction.** The version recorded can then never disagree with what was applied: a
     crash leaves the database at the last complete file and the next run continues from
-    there; a failing file is rolled back and named. 09 §1 says "one transaction per
+    there; a failing file is rolled back and named. 09 §1 said "one transaction per
     module"; per file is what every migration tool does and what makes a later
     non-transactional migration possible, and a module half-applied is no worse than a
     module not applied: `CheckSchema` refuses to start either way until the operator
-    acts. Open question 2 asks the owner to confirm the wording change.
+    acts. The observable promise is unchanged: the recorded version always matches what
+    was applied, and `serve` refuses to start until `migrate` finishes. **Confirmed
+    (owner, 2026-10-16):** per file, not per module; 09 §1's wording changes accordingly
+    (Proposed change 6).
 11. **No non-transactional migrations yet.** `CREATE INDEX CONCURRENTLY` is for tables
     too large to lock, and a regional's tables hold thousands of rows. Supporting a
     `-- bms:no-transaction` marker means a second execution path, an idempotency rule and
@@ -607,6 +614,13 @@ read-only copy becomes a clear "this copy is read-only" response rather than an 
     `default_transaction_read_only` per test, which a schema cannot; it costs about a
     hundred milliseconds and needs `CREATEDB`, which the compose role has. `dbtest` lives
     under `core/db` because `lib/testkit` may not import `core/db` (layer rule 1).
+20. **The minimum PostgreSQL version is 16: `MinServerVersion = 160000` (owner,
+    2026-10-16).** 16 is the oldest release still in community support through the first
+    events this software will run at (support ends November 2028); the development stack
+    runs 17; nothing here needs a 17-only feature, so a regional on a distribution package
+    of 16 is fine. Accepting 14 or 15 would cost nothing in code but would commit the
+    project to testing against them. An older server is refused at `Open` (F8) with both
+    versions named.
 
 ### Migration files
 
@@ -879,31 +893,17 @@ No test uses a real person, host name or password. The compose role is a superus
 
 ## Open questions
 
-1. **Minimum PostgreSQL version: 16?** Proposed: yes (`MinServerVersion = 160000`).
-   Reasons: 16 is the oldest release still supported through the first events this
-   software will run at (community support ends November 2028); the development stack
-   runs 17; nothing here needs a 17-only feature, so a regional on a distribution package
-   of 16 is fine. Accepting 14 or 15 costs nothing in code today but commits the project
-   to testing against them; the owner may prefer that if a known regional host is pinned
-   to an older version.
-2. **One transaction per migration file rather than per module (09 §1 "Done when").**
-   Proposed: per file, with the version row in the same transaction (decision 10). The
-   observable promise an operator cares about is unchanged: the recorded version always
-   matches what was applied, and `serve` refuses to start until `migrate` finishes. If the
-   owner wants per-module atomicity, `Migrate` wraps a set's pending files in one
-   transaction instead; the interface does not change, and decision 11 (no
-   non-transactional files) must then stay permanent.
-3. **Treating `default_transaction_read_only = on` as "this copy is read-only"** gives an
-   operator a manual freeze lever before any switchover design exists (decision 7): run
-   `ALTER DATABASE bms SET default_transaction_read_only = on` on the copy that must stop
-   writing, and bms shows the banner within 15 s and refuses writes. Proposed: keep it,
-   and let the `switchover` spec (Q-OFFLINE) build on or replace it. The alternative is to
-   probe `pg_is_in_recovery()` only, which makes read-only mode untestable without a
-   replica and leaves operators with no lever.
+None. The three questions the Draft asked (minimum PostgreSQL version; one transaction per
+file rather than per module; `default_transaction_read_only` as read-only) were answered by
+the owner on 2026-10-16 and are recorded as decisions 20, 10 and 7.
 
 ## Proposed changes elsewhere
 
-1. **`plan/07-abstractions.md`, `db` entry:** replace "Owns" with: the pool and its
+Status as of 2026-10-16: items 1, 2, 6, 7, 8, 9 and the `.env.example` half of 11 are
+applied. Items 3, 4, 5, 10, 12, 13 and the `docs/operating.md` half of 11 wait for their
+target to be written and are carried by this list until then.
+
+1. **`plan/07-abstractions.md`, `db` entry** (applied 2026-10-16): replace "Owns" with: the pool and its
    bounded, retried connect; statements with deadlines, on the pool or on the transaction
    the context carries; `Transact` with after-commit hooks; `Wrap` and `*Error`
    (driver errors classified into `errs` kinds, values scrubbed); read-only detection
@@ -914,25 +914,25 @@ No test uses a real person, host name or password. The compose role is a superus
    recorded with checksums in `core.schema_migration`; `CheckSchema` for `module.Build`
    (D17); `dbtest` (a fake `DB`, a temporary database). "Doesn't do": any domain table or
    query; retrying transactions; delivering signals; the switchover.
-2. **`plan/design/module-contract.md`:** `Deps.DB` is `db.DB` as defined here;
+2. **`plan/design/module-contract.md`** (applied 2026-10-16): `Deps.DB` is `db.DB` as defined here;
    `moduletest.Conformance` uses `dbtest.NewFake()` with `SetReadOnly(true)` for
    `start_read_only` and `delete_read_only`, and the plain fake for
    `export_unknown_person_is_empty`; F45's kind is `errs.Unavailable` wrapping
    `db.ErrReadOnly`; `Build` passes `*db.Migrator` as the `SchemaChecker` (asserted in
    `app`).
-3. **`plan/design/signals.md` (row 10):** publish inside the publisher's transaction and
+3. **`plan/design/signals.md` (row 10)** (pending: spec not written): publish inside the publisher's transaction and
    deliver from a `db.AfterCommit` hook (09 §1: after commit, failures logged and retried
    by `jobs`, never rolling back the publisher); outside a transaction the hook runs at
    once. If `signals` instead chooses an outbox table, it writes it through the same
    `Transact` and still needs no change here.
-4. **`plan/design/api.md` (row 16):** the error mapper checks `errors.Is(err,
+4. **`plan/design/api.md` (row 16)** (pending: spec not written): the error mapper checks `errors.Is(err,
    db.ErrReadOnly)` before the kind and answers 503 with code `read_only` and the message
    key for "this copy is read-only"; `/readyz` calls `Pool.Ping` and reports `ReadOnly()`
    as `{"database": "ok", "mode": "read-write" | "read-only"}`; `GET /api/modules` adds
    each module's `Status` (`Built`, `Applied`) from `Migrator.Status`; a store turns
    `*db.Error.Constraint` into a `validate.FieldError` itself (api does not know
    constraints).
-5. **`plan/design/app.md` (row 18):** `Open` once per command with `Options` copied from
+5. **`plan/design/app.md` (row 18)** (pending: spec not written): `Open` once per command with `Options` copied from
    `config.DB`, `clock.Real()` and the telemetry logger; `Close` at shutdown after
    `Set.Stop` and the HTTP server, within `http.shutdown_timeout`; build the migration
    sets as the `db` bootstrap (implicit), then each core package's exported `Set` in a
@@ -944,11 +944,11 @@ No test uses a real person, host name or password. The compose role is a superus
    `PG*` variables in the environment; the compile-time assertion `var _
    module.SchemaChecker = (*db.Migrator)(nil)`; development and tests may run `migrate`
    automatically (D17).
-6. **`plan/09-core-features.md` §1 "Done when":** "applies ... in one transaction per
+6. **`plan/09-core-features.md` §1 "Done when"** (applied 2026-10-16): "applies ... in one transaction per
    module" becomes "applies ... one transaction per migration file, recording the version
-   in the same transaction" (Open question 2); add "`/readyz` reports read-only from
+   in the same transaction" (decision 10); add "`/readyz` reports read-only from
    `db`'s probe".
-7. **`.claude/skills/postgres-sql/SKILL.md`:** minimum version 16 (Open question 1);
+7. **`.claude/skills/postgres-sql/SKILL.md`** (applied 2026-10-16): minimum version 16 (decision 20);
    primary keys are `uuid` (model.md decision 1; `bigint identity` dropped); migration
    file grammar `NNNN_name.sql` with contiguous numbers from `0001`, the highest being the
    version, checksummed and never edited; the migrator creates the schema, so `0001` starts
@@ -958,29 +958,30 @@ No test uses a real person, host name or password. The compose role is a superus
    spec's table (with `25006` → `Unavailable` + `ErrReadOnly`, `23503` → `Invalid` by
    default); transactions through `deps.DB.Transact` with the ctx-carried transaction and
    `db.AfterCommit`.
-8. **`.claude/skills/go-conventions/SKILL.md`, "Resources" example:** use
+8. **`.claude/skills/go-conventions/SKILL.md`, "Resources" example** (applied 2026-10-16): use
    `db.Wrap(op, err)` instead of `errs.E(op, kindOf(err), err)`, and note that `Rows.Close`
    releases the statement deadline.
-9. **`plan/design/lib-core.md`, `retry` consumer rows:** `db.Open` uses `retry.Do` with
+9. **`plan/design/lib-core.md`, `retry` consumer rows** (applied 2026-10-16): `db.Open` uses `retry.Do` with
    its own constant policy; note beside `Retryable` that `db.ErrReadOnly` is `Unavailable`
    and a loop around a write must check the sentinel first (decision 9).
 10. **Every core spec with tables (`identity`, `people`, `departments-events`, `authz`,
-    `audit`, `settings`, `jobs`, `files`):** export `var Migrations fs.FS` from its
+    `audit`, `settings`, `jobs`, `files`)** (pending: specs not written): export `var Migrations fs.FS` from its
     `postgres/` package (or a `db.Set`), schema `core`, set name equal to the package name;
     the set names are reserved module names already (module-contract "Reserved module
     names"); `audit`'s migration grants the application role insert and select only on its
     tables.
-11. **`docs/operating.md` (when written) and `deploy/compose/.env.example`:** PostgreSQL 16
+11. **`docs/operating.md` (pending: not written) and `deploy/compose/.env.example` (applied
+    2026-10-16):** PostgreSQL 16
     or newer; the `bms` role needs `CREATE` on the database (schemas) and ownership of
     what it creates; pgx honours `PG*` variables and `~/.pgpass` for anything `BMS_DB_URL`
     leaves unset (decision 14), with `PGSSLMODE`/`PGSSLROOTCERT` as the recommended way to
     pin TLS; `ALTER DATABASE ... SET default_transaction_read_only = on` as the manual
-    freeze (Open question 3); backups contain everything (privacy-data); integration tests
+    freeze (decision 7); backups contain everything (privacy-data); integration tests
     need `CREATEDB` for `dbtest.TempDB`.
-12. **`plan/design/telemetry.md` (row 15b):** if pool metrics are wanted, propose
+12. **`plan/design/telemetry.md` (row 15b)** (pending: spec not written): if pool metrics are wanted, propose
     `Pool.Stats()` returning a plain struct (acquired, idle, total, waits) back to this
     spec; statement tracing through pgx's `QueryTracer` is set in `Open` by an option
     added then.
-13. **`plan/design/jobs.md` (row 14) and `notify.md` (row 11):** read `ReadOnly()` before
+13. **`plan/design/jobs.md` (row 14) and `notify.md` (row 11)** (pending: specs not written): read `ReadOnly()` before
     each run and send, and treat `errors.Is(err, db.ErrReadOnly)` as "stop until the next
     probe", not as a retryable failure.

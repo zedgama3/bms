@@ -121,16 +121,21 @@ func NewService(cfg Config, db db.DB, authz authz.Authorizer, clk clock.Clock) (
 
 ```go
 func (r *reader) query(ctx context.Context) (out []Row, err error) {
-    rows, err := r.db.QueryContext(ctx, q)
-    if err != nil { return nil, errs.E(op, kindOf(err), err) }
-    defer func() { err = errors.Join(err, rows.Close()) }()
+    const op = "volunteers.postgres.list"
+    rows, err := r.db.Query(ctx, q) // r.db is a db.DB; the deadline is derived inside
+    if err != nil { return nil, db.Wrap(op, err) }
+    defer rows.Close() // releases the connection and the statement deadline db derived
     for rows.Next() { ... }
-    if err := rows.Err(); err != nil { return nil, errs.E(op, kindOf(err), err) }
+    if err := rows.Err(); err != nil { return nil, db.Wrap(op, err) }
     return out, nil
 }
 ```
 
-- `rows.Err()` is always checked. A deferred `Close` joins its error into the return value.
+- `rows.Err()` is always checked. Every error that leaves a store method goes through
+  `db.Wrap(op, err)`, which classifies driver errors and scrubs values (db.md). pgx's
+  `Rows.Close` returns nothing; where a `Close` does return an error (a file, a response
+  body), a deferred `Close` joins it into the return value:
+  `defer func() { err = errors.Join(err, f.Close()) }()`.
 - Every goroutine has a documented exit (context cancellation or channel close) and is
   waited on (`errgroup` or a `sync.WaitGroup`) at shutdown.
 

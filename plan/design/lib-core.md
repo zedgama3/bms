@@ -215,8 +215,8 @@ Consumers per method:
 |---|---|
 | `Policy.Validate`, `Default` | `db` (its initial-connect schedule, a constant inside `db.connect_timeout`), `notify` sender (its retry settings). Not `config`: it validates its own keys with `validate` and holds no `retry.Policy` (config.md, Proposed change 10). |
 | `Policy.Delay` | `Do`, `Backoff`; tests assert the schedule table-style |
-| `Retryable` | `Do`; `jobs` runner (decide whether a failure is worth backing off on or is a permanent `Permission` problem to report) |
-| `Do` | `notify` e-mail sender (SMTP sends), `db` (initial connect) |
+| `Retryable` | `Do`; `jobs` runner (decide whether a failure is worth backing off on or is a permanent `Permission` problem to report). Note: `db.ErrReadOnly` is `Unavailable`, so `Retryable` says yes to a write refused on a read-only copy; a loop around a write must check `errors.Is(err, db.ErrReadOnly)` first (db.md decision 9). |
+| `Do` | `notify` e-mail sender (SMTP sends), `db.Open` (initial connect, with `db`'s own constant policy under `db.connect_timeout`; db.md "Settings") |
 | `Backoff.Next/Attempt/Reset` | `jobs` runner; `telemetry` (health) shows `Attempt()` |
 
 Pre- and post-conditions for `Do`:
