@@ -30,7 +30,7 @@ The order follows dependencies: foundation first, then the core, then modules.
 | 14 | `jobs.md` | scheduled and deferred work | Not started |
 | 15 | `settings.md` | runtime settings and terminology | Not started |
 | 15b | `telemetry.md` | logs, traces, metrics, client error intake (D20) | Approved |
-| 16 | `api.md` | router, middleware, error mapper, OpenAPI assembly | Not started |
+| 16 | `api.md` | router, middleware, error mapper, OpenAPI assembly | Draft (2026-10-16) |
 | 17 | `web-shell.md` | UI frame, API client, module screen registry | Not started |
 | 18 | `app.md` | composition root and lifecycle | Not started |
 | 19 | `module-volunteers.md` | volunteers module | Not started |
