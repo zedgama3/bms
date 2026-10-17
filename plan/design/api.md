@@ -85,7 +85,7 @@
 
 **Expects of dependencies:** telemetry (`Tracer.Start` with `WithParentFrom`, `RefFrom`, `TraceIDFrom`, token grammar admitting `_OTHER` and the `<METHOD> <route>` span form, `intake`); module-contract (`Route.Access`, `ModuleRoutes`, `Graph`, `RouteProvider` must also provide an OpenAPI fragment); db (`Ping`, `ReadOnly`, `ErrReadOnly`, `Status`, `Close` tolerant of late callers); identity (Authenticator, cookie rules); authz (PermissionChecker); lib-core (`validate.FieldError.Code/Params`, applied in spec, implementation follow-up needed); app (shutdown order and sub-deadline).
 
-**Pending proposed changes:** items 9 (identity), 10 (authz), 11 (app), 15 (settings: trusted origins and Host allowlist), 16 (module-hello), and the front-end examples and `docs/operating.md` half of 14 wait on targets not yet written; the rest are applied.
+**Pending proposed changes:** items 9 (identity), 10 (authz), 15 (settings: trusted origins and Host allowlist), 16 (module-hello), and the front-end examples and `docs/operating.md` half of 14 wait on targets not yet written; the rest are applied.
 
 ## Purpose
 
@@ -1192,13 +1192,13 @@ and when ctx ends first cancels the base context (decision 17) and returns `Time
 `Close` a ctx deadline so a held connection cannot hang shutdown), and `app` should give
 HTTP a sub-deadline inside `http.shutdown_timeout` so that `signals.Close`, `Set.Stop`,
 `db.Close` and `telemetry.Close` keep their share (Proposed change 11). `app`'s order:
-`Shutdown` first, then `signals.Close`, `Set.Stop`, `db.Close`, `telemetry.Close`
-(signals.md Proposed change 5). **Drain timing:** `/readyz` answers `503` the instant
+`Shutdown` first, then the runnables (jobs, M4), `signals.Close`, `Set.Stop`, `db.Close`,
+`telemetry.Close` (signals.md Proposed change 5; app.md decision 10). **Drain timing:** `/readyz` answers `503` the instant
 `Shutdown` is called, but a balancer that polls it only learns on its next probe, and
 the listener is already closed, so for up to one probe interval new connections to this
 instance are refused rather than served; an operator who needs zero refused connections
 during a rollout needs `app` to wait a probe interval between the signal and `Shutdown`
-(noted in Proposed change 11, not designed here). `httpx` holds no state.
+(not in M0, app.md decision 17; designed with Phase 1 packaging if needed). `httpx` holds no state.
 
 ### Imports
 
@@ -1538,7 +1538,7 @@ this list until then. Item 17 needs nothing.
     ScopeSite, Reaches: SensitivityInternal}`), granted to every site-admin starter role
     by default; refuse to treat a session value as the actor when
     `signals.InDelivery(ctx)` is true.
-11. **`plan/design/app.md` (row 18)** (pending: target not written): build `api.Options` from `config.HTTP` (all but
+11. **`plan/design/app.md` (row 18)** (applied 2026-10-17, by app.md's Proposed change 7: the HTTP sub-deadline is `max(1 s, 2 x shutdown_timeout / 3)`; the order is HTTP, runnables, `signals.Close`, `Set.Stop`, `db.Close`, `telemetry.Close`; there is no drain delay in M0, app.md decision 17, and if one is added later `api` gains `Server.BeginDrain()` so the health routes answer `503` while the listener stays open; `core.modules.read` is registered through `authz`'s part with `corePerms`; `bms check` prints the operation count; the `deliver:hello.greeted` assertion runs in app's e2e test once `module-hello.md` defines the write route): build `api.Options` from `config.HTTP` (all but
     `ShutdownTimeout`), `tel.Logger().With("component","api")`, `tel.Tracer("api")`,
     `tel.Meter("api")`, `clock.Real()`, the build version, `Set.Routes()` plus one
     `module.ModuleRoutes` per core package with routes (`accounts`, `people`, ... as their

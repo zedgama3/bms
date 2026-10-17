@@ -41,10 +41,11 @@ Exported names (package `db`):
 - `Querier{Exec, Query, QueryRow}` returning pgx types, errors already classified; `DB` =
   `Querier` + `Transact(ctx, Mode, func(ctx) error) error` + `ReadOnly() bool`; `Mode`
   (`Read`, `Write`; zero invalid).
+- `None() DB` and `ErrNoDatabase`: a `DB` that refuses every statement with `Unavailable` wrapping the sentinel (`ReadOnly()` false, `AfterCommit` outside a transaction runs at once), for `bms openapi` and `bms check` (app.md decision 7).
 - `AfterCommit(ctx, fn) error`: runs fn after the ctx's transaction commits, at once when
   there is none.
 - `Wrap(op, err) error` (idempotent classifier, nil in nil out), `*Error{Code, Schema, Table,
-  Column, Constraint}` (names only), `ErrReadOnly` sentinel.
+  Column, Constraint}` (names only), `ErrReadOnly` and `ErrNoDatabase` sentinels.
 - Migrations: `Set{Name, Schema, Files fs.FS}` (+`Validate`), `Version(fs.FS) (int, error)`,
   `NewMigrator(*Pool, logger)`, `Migrate(ctx, []Set) ([]Applied, error)`, `Status(ctx, []Set)
   ([]Status, error)`, `CheckSchema(ctx, module, fs.FS) error` (implements
@@ -93,8 +94,7 @@ mirrors `config.DB` bounds), module-contract (`SchemaChecker`, `Deps.DB`, `Manif
 `Plan.Order()`), telemetry (`Tracer`, `Meter`, spans, gauges). Expects of consumers: `app` opens
 once, calls `Close` after `Set.Stop` and the HTTP server; core packages export `Set`s.
 
-Pending proposed changes (targets not yet written): 5 app.md (Open/Close, set order, `bms
-check` prints `PG*` names), 10 core specs with tables export a migration `Set`, 11
+Pending proposed changes (targets not yet written): 10 core specs with tables export a migration `Set`, 11
 `docs/operating.md`, 13 jobs/notify read `ReadOnly()` and stop on `ErrReadOnly`.
 
 ## Purpose
@@ -324,6 +324,19 @@ func (p *Pool) Close(ctx context.Context) error
 // errors.Is(err, db.ErrReadOnly) before the kind (the api does, to answer "this copy is
 // read-only"; a retry loop around a write must, because retry.Retryable would retry it).
 var ErrReadOnly = errors.New("this copy of the database is read-only")
+
+// ErrNoDatabase is wrapped by every error from the DB that None returns. Its kind is
+// errs.Unavailable. A module factory that reads the database at construction fails the
+// build step of `bms openapi` and `bms check` with it (app.md decision 7).
+var ErrNoDatabase = errors.New("no database behind this DB")
+
+// None returns a DB with no database behind it, for `bms openapi` and `bms check`, which
+// build every module without connecting (app.md decision 7). Every Exec, Query,
+// Row.Scan, Rows.Err and Transact fails with errs.Unavailable wrapping ErrNoDatabase;
+// ReadOnly() is false; AfterCommit outside a transaction still runs its hook at once
+// (nothing was written). It lives in db because only db and postgres/ packages may import
+// pgx (depguard storage-seam) and DB's methods return pgx types. Cannot fail.
+func None() DB
 
 // Error is a PostgreSQL server error as db reports it: the SQLSTATE and the names the
 // server attached, never the message's detail, hint or context, which can carry row and
@@ -1047,8 +1060,8 @@ the owner on 2026-10-16 and are recorded as decisions 20, 10 and 7.
 
 ## Proposed changes elsewhere
 
-Status as of 2026-10-17: items 1, 2, 3, 4, 6, 7, 8, 9, 12 and the `.env.example` half of
-11 are applied. Items 5, 10, 13 and the `docs/operating.md` half of 11 wait for their
+Status as of 2026-10-17: items 1, 2, 3, 4, 5, 6, 7, 8, 9, 12 and the `.env.example` half of
+11 are applied. Items 10, 13 and the `docs/operating.md` half of 11 wait for their
 target to be written and are carried by this list until then.
 
 1. **`plan/07-abstractions.md`, `db` entry** (applied 2026-10-16): replace "Owns" with: the pool and its
@@ -1087,7 +1100,7 @@ target to be written and are carried by this list until then.
    each module's `Status` (`Built`, `Applied`) from `Migrator.Status`; a store turns
    `*db.Error.Constraint` into a `validate.FieldError` itself (api does not know
    constraints).
-5. **`plan/design/app.md` (row 18)** (pending: spec not written): `Open` once per command with `Options` copied from
+5. **`plan/design/app.md` (row 18)** (applied 2026-10-17, by app.md's Proposed change 3: "`serve`, step by step" step 5, "`migrate`, step by step", "`check`, step by step" and the compile-time assertion in its test plan; `None()` and `ErrNoDatabase` added above): `Open` once per command with `Options` copied from
    `config.DB`, `clock.Real()` and the telemetry logger; `Close` at shutdown after
    `Set.Stop` and the HTTP server, within `http.shutdown_timeout`; build the migration
    sets as the `db` bootstrap (implicit), then each core package's exported `Set` in a

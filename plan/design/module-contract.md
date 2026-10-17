@@ -55,6 +55,7 @@ Exported names (package `module`):
   `Access` (`AccessSignedIn` zero default, `AccessPublic`).
 - `Deps{Logger, Tracer telemetry.Tracer, Clock, Links *Links, DB db.DB, Signals signals.Bus}`;
   later fields Settings, Authz, People, Audit, Jobs, Notify, Files (M2 to Later).
+- `Set.Contributors(point) ([]Contribution, error)` for core definers (`Invalid` unless point is in `Env.CoreExtensionPoints`); `Factory` needs no database read (`openapi`/`check` build against `db.None()`); `Build`/`Start` run under 30 s, `Stop` shares `http.shutdown_timeout`; decision 9: every module ships `messages/en.json`.
 - `Links.Capability(name) (any, error)`, `Links.Contributors(point) ([]Contribution, error)`,
   `Contribution{Module, Value}`. Frozen after `Build`; safe for concurrent use.
 - `Registry`: `NewRegistry`, `Default`, package `Register(Manifest, Factory)` (called in
@@ -107,8 +108,8 @@ Timeout/Invalid, `dbtest.Fake`); telemetry (`Tracer`, `telemetrytest`); signals 
 `Env`, `Provision`, the checker and the order of Build, Start, Stop; `api` mounts `Set.Routes`;
 `authz`/`settings` take `Plan.Permissions`/`Plan.Settings`; `people` runs `Set.PersonData`.
 
-Pending proposed changes (only 3, 6, 7 are marked applied; the rest carry no status): 1
-07-abstractions, 2 authz, 4 db, 5 settings, 8 people, 9 app, 10 config, 11 skills, 12-14.
+Pending proposed changes (only 3, 6, 7, 9 are marked applied; the rest carry no status): 1
+07-abstractions, 2 authz, 4 db, 5 settings, 8 people, 10 config, 11 skills, 12-14.
 
 ## Purpose
 
@@ -300,9 +301,10 @@ func (m Manifest) Validate() error
 // ---- Module ----
 
 // Factory builds a module from its dependencies. It validates the fields of deps it uses
-// (go-conventions: constructors validate), builds its services, and does no I/O beyond
-// reads; it never writes to the database, so a module builds on a read-only copy. ctx
-// bounds any read it does.
+// (go-conventions: constructors validate), builds its services, and needs no database
+// read and never writes: `bms openapi` and `bms check` build every module against a DB
+// that refuses every statement (app.md decision 7), so a read at construction fails the
+// build step. A module builds on a read-only copy. ctx carries app's 30 s Build deadline.
 type Factory func(ctx context.Context, deps Deps) (Module, error)
 
 // Module is what every module gives the core at runtime. The optional interfaces below
@@ -675,6 +677,13 @@ type ModulePersonData struct {
 	PersonData
 }
 
+// Contributors returns every enabled module's contribution to point, in build order, for
+// core definers that are not modules and hold no Links (people for the person page,
+// departments-events for new-event copying; app.md "How later core services plug in").
+// Fails with errs.Invalid for any point not in Env.CoreExtensionPoints (F43b). Safe for
+// concurrent use.
+func (s *Set) Contributors(point ExtensionPoint) ([]Contribution, error)
+
 // Start calls each module's Start in build order. If one fails, the modules already
 // started are stopped in reverse order with ctx, and the error is returned wrapped with
 // the failing module's name, joined with any Stop errors (F37). Fails with errs.Conflict
@@ -941,7 +950,9 @@ None of its own. What this spec provides for screens elsewhere:
    disagree silently: a Go module without a web folder simply has no screens; a web folder
    without an enabled Go module is not shown. The web registry also lists the core areas
    (`kind: "core"`), which are always enabled because they are not modules (web-shell.md
-   decision 3, 2026-10-17).
+   decision 3, 2026-10-17). Every module ships
+   `web/src/modules/<name>/messages/en.json` even without screens, because the admin
+   "modules" screen shows its title; `app`'s catalogue test requires it (app.md decision 16).
 10. **Module names are letters and digits only.** One name is the Go package, the
     PostgreSQL schema (unquoted), the URL segment, the permission prefix, the web folder and
     the message-key segment; hyphens and underscores are legal in some of those and not
@@ -1026,8 +1037,8 @@ absolute routes.
 and `Set`'s accessors are immutable and safe for concurrent use. `Build`, `Start` and `Stop`
 are called once each by `app`, in that order, never concurrently; `Set` guards against a
 second `Start` (F38). `Set` owns no goroutines: each module's `Start` launches its own and
-`Stop` waits for them, within the `ctx` `app` passes (app.md sets the deadlines; proposed 30 s
-to start, 15 s to stop). `Stop` continues past a failing module so the rest still stop.
+`Stop` waits for them, within the `ctx` `app` passes (app.md sets the deadlines: `Build` and `Set.Start` each
+under 30 s; `Set.Stop` shares `http.shutdown_timeout` with the other closers). `Stop` continues past a failing module so the rest still stop.
 
 ### I/O
 
@@ -1091,6 +1102,7 @@ Standard library (`context`, `encoding/json`, `errors`, `fmt`, `io/fs`, `log/slo
 | F40 | `Links.Capability` | name not in the owner's `Requires` or `Uses` | Invalid | fix the module (declare it) | `TestLinksCapability_Undeclared_ReturnsInvalid` |
 | F41 | `Links.Capability` | in `Uses`, no enabled provider | NotFound | hide the feature | `TestLinksCapability_UsedButAbsent_ReturnsNotFound` |
 | F42 | `Links.Contributors` | point not in the owner's `Defines` | Invalid | fix the module | `TestLinksContributors_Undeclared_ReturnsInvalid` |
+| F43b | `Set.Contributors` | point not in `Env.CoreExtensionPoints` | Invalid | fix the core definer | `TestSetContributors_NotCorePoint_ReturnsInvalid` |
 | F43 | `Links.Contributors`, `Links.Capability` | called before `Build` froze the links (`Contributors` from a factory), or on a zero `Links` | Internal | move the call to `Start` or request time | `TestLinks_BeforeFreezeOrZero_ReturnsInternal` |
 | F44 | `PersonData.ExportPerson`, `DeletePerson` (obligation) | zero `PersonID` | Invalid | 400 (people) | `moduletest`: `Conformance/export_zero_id`, `delete_zero_id` |
 | F45 | `PersonData.DeletePerson` (obligation) | database read-only | Unavailable wrapping `db.ErrReadOnly` (the kind `db` returns for a write) | "this copy is read-only" | `moduletest`: `Conformance/delete_read_only` |
@@ -1261,7 +1273,7 @@ with the proposed answer:
    `people.person-deleted`) in `Env.CoreSignals`; call `Links.Contributors` at request time.
    `departments-events.md` (row 9) likewise declares `events.event-created` as the extension
    point for copying into a new event (09 §5).
-9. **`plan/design/app.md` (row 18):** (pending: app.md is drafted on these steps but not yet Approved) `serve`: `Default().Resolve(env)` → log warnings →
+9. **`plan/design/app.md` (row 18):** (applied 2026-10-17, by app.md "`serve`, step by step"; `Build` and `Set.Start` run under 30 s, `Set.Stop` shares `http.shutdown_timeout`, replacing the proposed 30 s and 15 s) `serve`: `Default().Resolve(env)` → log warnings →
    `Build` (with `db` as the checker and a `Provision` that builds scoped `Deps`) → hand
    `Plan.Permissions()` to `authz`, `Plan.Settings()` to `settings`, `Set.Routes()` to `api`,
    `Set.PersonData()` to `people` → `Set.Start` → serve → `Set.Stop` with deadlines (proposed

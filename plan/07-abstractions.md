@@ -49,7 +49,7 @@ Rules (enforced by depguard and `make imports`):
    any layer reach the shell's error mapper through `lib/httpx.Fail`; `api` is never
    imported.
 5. Only `app` imports modules and core implementations, and turns modules on from
-   configuration through the registry.
+   configuration through the registry. `cmd/bms` is a one-liner over `app.Main`.
 6. **Shared contracts (D19).** `internal/contracts/<name>/` holds interfaces and data types
    only. Contracts import only `model`, `lib` and other contracts.
 7. **Storage seam (D8).** Only `postgres/` subpackages and core `db` import the database
@@ -244,9 +244,20 @@ Rules (enforced by depguard and `make imports`):
 - **Spec:** [design/web-shell.md](design/web-shell.md).
 
 ### app: composition root
-- **Purpose:** build everything from configuration, start it and stop it cleanly. Provides
-  the commands: `serve`, and the installer commands (`migrate`, and creating the first
-  admin; D17).
+- **Purpose:** run the command the operator asked for over the core assembled from its
+  configuration.
+- **Owns:** the command table (`serve`, `migrate`, `check`, `openapi`, `version`, `help`;
+  later `create-superuser`, `export`, `delete`, `rotate-secret` added by their parts) and
+  the exit statuses 0/1/2/3; the assembly (config sections into each package's options;
+  telemetry, registry, database, signals, core parts, modules, HTTP shell, in that order;
+  `Provision`); the lifecycle (start order; SIGINT/SIGTERM; stop order HTTP → runnables →
+  signals → modules → db → telemetry within `http.shutdown_timeout`, HTTP under two thirds
+  of it); the module list (`modules.go`); the installer step (`secrets.Ensure`, migrations
+  in order); the core-part seam each later core service plugs into; the tests only the root
+  can run.
+- **Doesn't do:** anything any assembled package does; packaging; configuration reload; a
+  drain delay (not in M0).
+- **Spec:** [design/app.md](design/app.md).
 
 ## Modules
 

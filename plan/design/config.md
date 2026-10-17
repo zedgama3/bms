@@ -9,7 +9,7 @@
   `validate.OneOf`, `validate.URL`, `validate.ListenAddr`. `lib-secret.md` (Implemented):
   `secret.Secret`, `secret.New`, `Value`, `IsSet`. `module-contract.md` (Approved): decision
   7 and Proposed change 10 (`modules.disabled`, opt-out enablement; `Env.Enabled`).
-  **Used by:** `cmd/bms` (calls `Load` once, prints problems) and `app` (hands each section
+  **Used by:** `app.Main` on `cmd/bms`'s behalf (calls `Load` once per command that needs configuration, prints problems) and `app` (hands each section
   to the core package it is for, derives `module.Env.Enabled`). Nothing else imports
   `config` (layer rules 2 and 3 in `07-abstractions.md`): the core and the modules receive
   typed options from `app`.
@@ -48,7 +48,7 @@
 
 **Expects of dependencies.** `lib-errs`: `E`, `Is`, kinds `Invalid`, `Internal`, `Canceled`, `Timeout`. `lib-core`: `validate.Errors`, `FieldError`, `Fields`, `NonEmpty`, `Range`, `OneOf`, `URL`, `ListenAddr` (holds no `retry.Policy`). `lib-secret`: `Secret`, `New`, `Value`, `IsSet`; a Secret decoded from the secrets file refuses the marker texts. `module-contract` decision 7 / Proposed change 10: opt-out enablement via `modules.disabled`, `Env.Enabled`. Expected of `app`: `Load` once per process, print `<Env>: <Reason>` per field (exit 2), `bms migrate` generates the secrets file via `app/secrets.Ensure`, copies sections into `db`, `api`, `identity`, `telemetry`, `audit` options.
 
-**Pending.** Proposed changes 1-13 to `.golangci.yml`, 07-abstractions, app, db, identity, telemetry, audit, settings (future `settings_sealing_key` generated key), lib-core row, deploy examples and D20 note; 5 is applied. Later keys (OIDC, trusted-proxy-header provider, S3 keys, TLS) are added by their specs.
+**Pending.** Proposed changes 1-13 to `.golangci.yml`, 07-abstractions, app, db, identity, telemetry, audit, settings (future `settings_sealing_key` generated key), lib-core row, deploy examples and D20 note; 3 and 5 are applied. Later keys (OIDC, trusted-proxy-header provider, S3 keys, TLS) are added by their specs.
 
 ## Purpose
 
@@ -322,7 +322,7 @@ func (c Config) Validate() error
 | `Data.Dir` | `Load` (default of `Secrets.File`); `app` (`bms migrate` creates it); `audit` (spool, M1) and `files` (Later) through `app` | — | non-empty path |
 | `Modules.Disabled` | `app` (derives `module.Env.Enabled`) | — | unique, non-empty names |
 | `Default` | `Load`; tests | — | every default from `Keys()` applied |
-| `Load` | `cmd/bms` (every command: `serve`, `migrate`, `check`, `create-superuser`, `export`, `delete`) | `environ` entries are `NAME=value` | a valid `Config`, or every problem at once |
+| `Load` | `app.Main` on `cmd/bms`'s behalf, once per command that needs configuration (`serve`, `migrate`, `check`, and later `create-superuser`, `export`, `delete`); `version`, `help` and `openapi` load none (app.md decision 5) | `environ` entries are `NAME=value` | a valid `Config`, or every problem at once |
 | `Validate` | `Load`; `app` tests | — | nil iff every rule holds |
 
 ## Types
@@ -797,8 +797,8 @@ None. The three questions in the first draft were answered by the owner on 2026-
    (`telemetry`), read-only detection (`db`), checking that a disabled module is registered
    (`app`), a configuration file or flags." Add to the layer rules: "`config` imports only
    `lib`; only `cmd/bms` and `app` import it."
-3. **`plan/design/app.md` (row 18):** `cmd/bms` calls `config.Load(ctx, os.Environ())` once
-   for every command and prints `validate.Fields(err)` one per line as `<Env>: <Reason>` on
+3. **`plan/design/app.md` (row 18)** (applied 2026-10-17, by app.md's Proposed change 1: F3, F5, F6, F22, the `check` output, `secrets.Ensure` and its tests; F22 and F22b's tests are named `TestEnabledModules_UnknownDisabledName_ReturnsInvalid` and `TestCommand_SessionKeyMissing_ReturnsInvalidNamingSecretsFile`; `drain_delay` is deferred, app.md decision 17): `app.Main` calls `config.Load(ctx, environ)` once per command
+   that needs configuration (`version`, `help`, `openapi` load none) and prints `validate.Fields(err)` one per line as `<Env>: <Reason>` on
    failure (exit status 2); derive `module.Env.Enabled` as in Behavior
    "`modules.disabled`" (F22, with its test); copy `config.DB` into `db`'s options,
    `config.HTTP` into `api`'s, `config.Session.Key` into `identity`'s, `config.Log` and

@@ -1,6 +1,6 @@
 # app: the composition root
 
-- **Status:** Draft (2026-10-17)
+- **Status:** Approved (2026-10-17)
 - **Package:** `internal/app` (Go module `github.com/zedgama3/bms`), plus the helper package
   `internal/app/secrets` (the generated-secrets file) and the binary `cmd/bms`. **UI:**
   none of its own; `serve` hands the built web shell to `api`.
@@ -33,7 +33,7 @@
 
 ## Summary
 
-**Purpose:** run the command the operator asked for over the core assembled from its configuration. Composition root: `internal/app`, helper `internal/app/secrets`, binary `cmd/bms` (a one-liner over `app.Main`). Status Draft; the open questions are listed at the end.
+**Purpose:** run the command the operator asked for over the core assembled from its configuration. Composition root: `internal/app`, helper `internal/app/secrets`, binary `cmd/bms` (a one-liner over `app.Main`). Status Draft; the open questions are answered (owner, 2026-10-17).
 
 **Exported (`app`):**
 - `Main(ctx, args, environ []string, stdout, stderr io.Writer) int` runs one command in process, never panics on operator input, never calls `os.Exit`.
@@ -45,12 +45,12 @@
 **Commands:** `serve`, `migrate`, `check`, `openapi`, `version`, `help` (later `create-superuser`, `rotate-secret` from identity; `export`, `delete` from people, added through parts).
 
 **Key decisions:**
-- D1 `app.Main` owns command line, config loading and exit status; second SIGINT/SIGTERM terminates with the OS default (escape hatch).
+- D1 `app.Main` owns command line, config loading and exit status; second SIGINT/SIGTERM terminates immediately with the OS default (escape hatch; owner, 2026-10-17).
 - D2 commands are a table that parts' `declare` appends to; names unique.
 - D3 exactly four exit statuses; `check` uses the same numbers as `serve` would.
-- D4 `serve` logs to stdout; all other commands log to stderr so stdout carries the command's output alone.
+- D4 `serve` logs to stdout; all other commands log to stderr so stdout carries the command's output alone (owner, 2026-10-17; D20 clarification).
 - D5 each command loads config itself; `version`, `help`, `openapi` load none.
-- D6 `serve` requires the session key from M0.
+- D6 `serve` requires the session key from M0 (owner, 2026-10-17).
 - D7 `openapi` and `check` build modules against `db.None()` with the schema check skipped; a factory that reads the database fails.
 - D8 missing or stale web build and a missing collector are warnings/nothing, never fatal.
 - D9 start order: config, telemetry, registry, database, signals, parts, modules, HTTP shell, `Set.Start`, runnables, `Listen`.
@@ -61,6 +61,7 @@
 - D14 `migrate` creates data dir and secrets file before touching the database, only when `cfg.Session.Key` is unset, then reloads config.
 - D15 the module list is `internal/app/modules.go` (blank imports) mirrored by `web/src/modules/index.ts`.
 - D16 `TestMessageCatalogues_EnglishCoversManifests` lives here and requires `messages/en.json` for every registered module.
+- D17 no drain delay in M0 (owner, 2026-10-17); `http.drain_delay` and `api.Server.BeginDrain()` are designed with Phase 1 packaging if a regional needs them.
 
 **Errors callers handle:** `Main` converts everything to exit statuses (F3 config `Invalid` to 2; F4 OTEL `Invalid` to 2; F5 unknown `BMS_MODULES_DISABLED` name to 2; F6 no session key to 2; F7 `Resolve` failure to 2; F8 `db.Open` `Invalid` to 2, `Unavailable` to 1; F9 `Build`: `Conflict` from `CheckSchema` to 3, `Invalid` to 2, others to 1; F10 `api.New` to 2; F11-F13 start/listen/serve failures to 1 after stopping what started; F19 read-only `migrate` to 1; F20 migrate `Conflict` to 3). `Version` and `secrets.Ensure`: `Invalid` (never echoes content or path contents), `Internal` (rand failure), `Canceled`/`Timeout`. F28 duplicate part/command names are `Internal`.
 
@@ -68,13 +69,10 @@
 
 **Expects of dependencies:** config (`Load`, `Keys`, `SecretsFieldSessionKey`, decisions 7/12, F22/F22b); module-contract (`Registry`, `Resolve`, `Plan`, `Provision`, `Deps` incl. `Tracer`, `SchemaChecker`, `Set`, `ModuleRoutes`); db (`Open`, `Migrator`, `Pool.Ping/ReadOnly/Close`, `ErrReadOnly`, plus the proposed `db.None()` and `ErrNoDatabase`); telemetry (`New` with `Stdout`/`Environ`, `Close` last); signals (`New`, `Scope`, `Close`); api (`New`, `Listen`, `Serve`, `Shutdown`, `OpenAPI`); web (`web.FS`, `web.Version`); authz (`PermissionDecl`).
 
-**Open questions (proposed answers in parentheses):**
-- Q1 drain delay between stop signal and closing the listener for probe-based balancers (not in M0; would add `http.drain_delay` and `api.Server.BeginDrain()`).
-- Q2 whether non-`serve` commands log to stderr (yes; D20 gets a clarification).
-- Q3 whether `serve` requires the session key before `identity` exists (yes, from M0).
-- Q4 whether a second signal forces termination (yes, the escape hatch).
+**Open questions:**
+- None. Answered by the owner (2026-10-17): no drain delay in M0 (D17); non-`serve` commands log to stderr (D4); `serve` requires the session key from M0 (D6); a second signal terminates immediately (D1).
 
-**Pending proposed changes:** all 17 items await owner approval of this spec: config (consumer wording), module-contract (`Set.Contributors`, no-read `Factory`, timeouts, `en.json` for every module), db (`None()`, `ErrNoDatabase`), telemetry/signals/web-shell/api (mark their app-targeted changes applied), jobs/identity/people/departments-events/authz/settings/audit/notify/files (part hooks), Makefile and `scripts/e2e.sh`, D20 clarification, 07-abstractions `app` entry, 09 §1, add-module/go-conventions skills, `docs/operating.md`.
+**Proposed changes elsewhere (2026-10-17):** applied to config, module-contract, db, telemetry, signals, web-shell, api, 07-abstractions, 09 §1, add-module and go-conventions. Pending: jobs, identity, people, departments-events, authz, settings, audit, notify, files (targets not written), the D20 clarification (plan-keeper), the Makefile targets and `scripts/e2e.sh` (implementation, created when app is built), `docs/operating.md`.
 
 ## Purpose
 
@@ -129,7 +127,7 @@ Run the command the operator asked for over the core assembled from its configur
 | Any module's behaviour; what a module needs from another | the module's spec; contracts and signals (D19). `app` never calls a module beyond the contract. |
 | Packaging: the container image, systemd unit, compose file for production, backups, upgrades | `docs/operating.md` and `deploy/` (Phase 1 roadmap item). This spec fixes what they rely on: the commands, exit statuses, signals and the shutdown budget. |
 | Reloading configuration on `SIGHUP` | nobody (config.md "Not responsible for": a restart). `SIGHUP` keeps its default disposition. |
-| A drain delay between the stop signal and closing the listener, for probe-based balancers | not in M0 (Open question 1; api.md "Concurrency and lifecycle" notes the timing). |
+| A drain delay between the stop signal and closing the listener, for probe-based balancers | not in M0 (decision 17; api.md "Concurrency and lifecycle" notes the timing). |
 | Cross-process coordination between the on-site and off-site copies | the later `switchover` spec (Q-OFFLINE, D27). Every command here works on a read-only copy except `migrate`, which refuses it. |
 
 ## Sub-abstractions
@@ -451,7 +449,8 @@ stale bundle apart from a bug.
    from `signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)`;
    start a goroutine that calls the returned `stop` once ctx is done, so that a **second
    signal terminates the process with the operating system's default disposition**
-   (the operator's escape hatch when a closer hangs; decision 10); call
+   (the operator's escape hatch when a closer hangs; decision 10; confirmed by the
+   owner, 2026-10-17); call
    `os.Exit(app.Main(ctx, os.Args[1:], os.Environ(), os.Stdout, os.Stderr))`. Nothing
    else lives there. config.md's consumer table says `cmd/bms` calls `Load`; it is
    `app.Main` on `cmd/bms`'s behalf (Proposed change 1).
@@ -476,7 +475,7 @@ stale bundle apart from a bug.
    it); `check` and `migrate` write a plain-text report that an operator reads in a
    terminal, and interleaving JSON log lines with it would make both unreadable.
    `telemetry.Options.Stdout` is `p.stdout` for `serve` and `p.stderr` for the rest.
-   (Open question 2 asks the owner to confirm.)
+   Confirmed (owner, 2026-10-17); D20 gains the clarification (Proposed change 13).
 5. **Each command loads configuration itself; `version`, `help` and `openapi` load
    none.** config.md decision 3 says one `Config`, fully validated, for every command;
    that holds for every command that touches the process's environment. `version` and
@@ -491,7 +490,7 @@ stale bundle apart from a bug.
    Making `serve` require it now rather than in M1 costs nothing (`bms migrate`, which
    generates it, is already required before the first `serve` by D17) and spares an
    operator a surprise at the M1 upgrade. `check` does not require it: it reports "run
-   `bms migrate`" instead. (Open question 3.)
+   `bms migrate`" instead. Confirmed: from M0 (owner, 2026-10-17).
 7. **`openapi` and `check` build the modules against a database that refuses every
    statement, with the schema check skipped.** The OpenAPI document needs every route
    set, and route sets come from built modules (`Set.Routes()`), so the modules must be
@@ -589,6 +588,13 @@ stale bundle apart from a bug.
     `web/src/modules/<name>/messages/en.json` relative to the repository root (found by
     walking up from the test's working directory to `go.mod`) and is skipped only when
     `web/src` is absent; a missing file or key fails it, naming module and key.
+17. **No drain delay in M0 (owner, 2026-10-17).** `/readyz` answers `503` the instant
+    `Shutdown` is called and the listener closes at the same instant, so a probing
+    balancer may send a few connections to a closed port during a rollout. A regional's
+    deployment is one instance behind a tunnel or reverse proxy on the same host, where a
+    restart is a restart. `http.drain_delay` (with `api.Server.BeginDrain()`) is designed
+    with the Phase 1 packaging work if a regional runs two instances behind a probing
+    balancer. Until then it is under "Not responsible for".
 
 ### `serve`, step by step
 
@@ -965,45 +971,21 @@ package; `app`'s e2e test is the one place a module is proven inside the real as
 
 ## Open questions
 
-1. **A drain delay for probe-based balancers.** api.md notes that `/readyz` answers `503`
-   the instant `Shutdown` is called but the listener closes at the same instant, so a
-   balancer that polls every few seconds sends a few connections to a closed port during
-   a rollout. Closing that gap needs a new configuration key (`http.drain_delay`,
-   duration, default `0s`, range `0..30s`) and an `api.Server.BeginDrain()` that flips the
-   health routes to `503` while still accepting connections, with `app` waiting the delay
-   between the signal and `Shutdown`. **Proposed answer:** not in M0. A regional's
-   deployment is one instance behind a tunnel or a reverse proxy on the same host, where
-   a restart is a restart; design it with the packaging work (Phase 1) if a regional runs
-   two instances behind a probing balancer. Recorded under "Not responsible for" until
-   then.
-2. **Where the logs of `migrate`, `check` and `openapi` go.** Decision 4 sends them to
-   stderr so stdout carries the command's output alone (the OpenAPI document, the check
-   report, the applied-migration lines); `serve` keeps stdout per D20. **Proposed
-   answer:** yes, stderr for every command but `serve`; D20 gains the clarification
-   (Proposed change 13).
-3. **Whether `serve` should require the session key before `identity` exists.** Decision
-   6 says yes from M0, so a new installation always runs `bms migrate` first and the M1
-   upgrade changes nothing an operator sees. The alternative is to add the requirement
-   with `identity` in M1. **Proposed answer:** from M0.
-4. **Second signal forces termination.** Decision 1 lets a second `SIGINT`/`SIGTERM` kill
-   the process at once with the operating system's default status, as the operator's
-   escape hatch when a closer hangs past `http.shutdown_timeout`. The alternative is to
-   absorb repeated signals and always finish the orderly shutdown. **Proposed answer:**
-   the escape hatch; the shutdown budget already bounds the orderly path, and an operator
-   who presses twice means it.
+None. The four questions were answered by the owner on 2026-10-17: the drain delay is
+decision 17 (not in M0); the stderr logging of `migrate`, `check` and `openapi` is decision
+4; the session key from M0 is decision 6; the second signal is decision 1.
 
 ## Proposed changes elsewhere
 
-1. **`plan/design/config.md` (row 3):** in `Load`'s consumer wording and "Who needs each
+1. **`plan/design/config.md` (row 3):** (applied 2026-10-17) in `Load`'s consumer wording and "Who needs each
    member", `cmd/bms` becomes "`app.Main` on `cmd/bms`'s behalf, once per command that
    needs configuration (`serve`, `migrate`, `check`, and later `create-superuser`,
    `export`, `delete`); `version`, `help` and `openapi` load none (app.md decision 5)";
    mark Proposed change 3 applied by this spec (F3, F5, F6, F22, the `check` output in
    "`check`, step by step", `secrets.Ensure` with its tests); F22 and F22b's tests are
    named here as `TestEnabledModules_UnknownDisabledName_ReturnsInvalid` and
-   `TestCommand_SessionKeyMissing_ReturnsInvalidNamingSecretsFile`. If Open question 1 is
-   answered yes later, add `http.drain_delay` (duration, default `0s`, `0..30s`).
-2. **`plan/design/module-contract.md` (row 4):** (a) give core definers a way to read
+   `TestCommand_SessionKeyMissing_ReturnsInvalidNamingSecretsFile`. The `http.drain_delay` part is dropped (decision 17).
+2. **`plan/design/module-contract.md` (row 4):** (applied 2026-10-17) (a) give core definers a way to read
    contributions: `func (s *Set) Contributors(point ExtensionPoint) ([]Contribution,
    error)` for points in `Env.CoreExtensionPoints` (`Invalid` for any other point), since
    `people` and `departments-events` are not modules and hold no `Links`; (b) tighten
@@ -1016,7 +998,7 @@ package; `app`'s e2e test is the one place a module is proven inside the real as
    9 applied by "`serve`, step by step"; (d) decision 9 gains: "every module ships
    `web/src/modules/<name>/messages/en.json` even without screens, because the admin
    'modules' screen shows its title; `app`'s catalogue test requires it".
-3. **`plan/design/db.md` (row 5):** add `func None() DB`: a `DB` with no database behind
+3. **`plan/design/db.md` (row 5):** (applied 2026-10-17) add `func None() DB`: a `DB` with no database behind
    it, for `bms openapi` and `bms check` (app.md decision 7): every `Exec`, `Query`,
    `Row.Scan`, `Rows.Err` and `Transact` fails with `errs.Unavailable` wrapping a new
    sentinel `ErrNoDatabase`; `ReadOnly()` is false; `AfterCommit` outside a transaction
@@ -1025,15 +1007,15 @@ package; `app`'s e2e test is the one place a module is proven inside the real as
    methods return pgx types. Mark Proposed change 5 applied by "`serve`, step by step"
    (step 5), "`migrate`, step by step", "`check`, step by step" and the compile-time
    assertion in the test plan.
-4. **`plan/design/telemetry.md` (row 15b):** mark Proposed change 5 applied; refinements:
+4. **`plan/design/telemetry.md` (row 15b):** (applied 2026-10-17) mark Proposed change 5 applied; refinements:
    `Options.Stdout` is `stderr` for every command but `serve` (app.md decision 4);
    `openapi` passes an `Environ` that returns nothing, so a build step never exports;
    `bms check` prints `log: <format> <level>` and `OTLP export: on | off`.
-5. **`plan/design/signals.md` (row 10):** mark Proposed change 5 applied with one
+5. **`plan/design/signals.md` (row 10):** (applied 2026-10-17) mark Proposed change 5 applied with one
    insertion: the runnables (jobs, M4) stop after the HTTP server drained and before
    `signals.Close`, so the order is HTTP → runnables → `signals.Close` → `Set.Stop` →
    `db.Close` → `telemetry.Close` (app.md decision 10).
-6. **`plan/design/web-shell.md` (row 17):** mark Proposed change 4 applied: (a) `bms
+6. **`plan/design/web-shell.md` (row 17):** (applied 2026-10-17) mark Proposed change 4 applied: (a) `bms
    openapi` as specified, with `info.version` fixed to `dev` so the committed document
    is stable across commits; (b), (c) as specified (F17, F18); (d)
    `TestMessageCatalogues_EnglishCoversManifests` requires `messages/en.json` for every
@@ -1041,43 +1023,42 @@ package; `app`'s e2e test is the one place a module is proven inside the real as
    the Makefile targets, with `bin` (not `build`) depending on `web-build`, `check-go`
    as the Go-only subset, and `scripts/e2e.sh` owning the server's start and stop under
    `test-e2e`; (f) confirmed by depguard.
-7. **`plan/design/api.md` (row 16):** mark Proposed change 11 applied: the sub-deadline
-   is `max(1 s, 2 × shutdown_timeout / 3)`; the drain delay is app.md Open question 1
-   (if answered yes, `api` gains `Server.BeginDrain()`: health routes answer `503` while
+7. **`plan/design/api.md` (row 16):** (applied 2026-10-17) mark Proposed change 11 applied: the sub-deadline
+   is `max(1 s, 2 × shutdown_timeout / 3)`; the drain delay is decision 17 (not in M0; if added later, `api` gains `Server.BeginDrain()`: health routes answer `503` while
    the listener stays open); `core.modules.read` is registered through `authz`'s part
    with `corePerms`; `bms check` prints the operation count; the `deliver:hello.greeted`
    assertion runs in app's e2e test once `module-hello.md` defines the write route.
-8. **`plan/design/jobs.md` (row 14):** `jobs` is core part 7: its `build` constructs the
+8. **`plan/design/jobs.md` (row 14):** (pending: target not written) `jobs` is core part 7: its `build` constructs the
    runner before `signals.New` and hands it as `Options.Deferrer`; it then receives the
    `*signals.Dispatcher` for `Redeliver` through a setter (`Runner.SetRedeliverer` or
    equivalent) that `app` calls after `signals.New`; it is a `runnable`: `start` after
    `Set.Start` (modules register jobs in `Start`), `stop` after the HTTP server drained
    and before `signals.Close`; `Deps.Jobs` is scoped per module by `provision`.
-9. **`plan/design/identity.md` (row 6):** core part 1: `declare` registers the commands
+9. **`plan/design/identity.md` (row 6):** (pending: target not written) core part 1: `declare` registers the commands
    `create-superuser` (M1) and `rotate-secret` (later) in app's command table with their
    `usage`, and its migration set; `build` sets `a.authenticator` and the `accounts`
    route set from `cfg.Session.Key`; both commands require the key (app F6) and load
    configuration through `Main` like `serve`.
-10. **`plan/design/people.md` (row 8) and `departments-events.md` (row 9):** parts 5 and
+10. **`plan/design/people.md` (row 8) and `departments-events.md` (row 9):** (pending: target not written) parts 5 and
     6: `declare` lists their core signals and extension points (`Env.CoreSignals`,
     `Env.CoreExtensionPoints`) and, for `people`, the commands `export <person-id>` and
     `delete <person-id>` (`model.ParseID`; audited by `people`); `link` takes
     `a.set.PersonData()` and reads contributions through `Set.Contributors` (item 2(a)).
-11. **`plan/design/authz.md` (row 7):** part 4: `build` receives `a.corePerms`
+11. **`plan/design/authz.md` (row 7):** (pending: target not written) part 4: `build` receives `a.corePerms`
     (`api.PermissionModulesRead` first, then every part's declarations) and
     `a.plan.Permissions()`, sets `a.permissions` and `a.deps.Authz`.
     **`plan/design/settings.md` (row 15), `audit.md` (row 12), `notify.md` (row 11),
     `files.md` (row 13):** parts 3, 2, 8, 9 as the table "How later core services plug
     in" states; each names its `coreDeps` field and whether `provision` scopes it.
-12. **`Makefile` and `scripts/e2e.sh`:** the targets in "The Makefile": add `VERSION`,
+12. **`Makefile` and `scripts/e2e.sh`:** (pending: Makefile exists, but the new targets name web/, cmd/bms and scripts/e2e.sh, which are implementation created when app is built; adding them now would break make check) the targets in "The Makefile": add `VERSION`,
     `web-check`, `web-build`, `openapi-check`, `bin`, `run`, `migrate`, `test-e2e`,
     `check-go`; extend `check` and `imports`; add `scripts/e2e.sh`. `.gitignore` already
     ignores `/bin/`.
-13. **`plan/03-decisions.md`, D20 (for `plan-keeper`):** add: "The server (`bms serve`)
+13. **`plan/03-decisions.md`, D20 (for `plan-keeper`):** (applied 2026-10-17) add: "The server (`bms serve`)
     logs to stdout; every other command logs to stderr so that stdout carries the
     command's output alone (app.md decision 4; pending the owner's answer to its Open
     question 2)."
-14. **`plan/07-abstractions.md`, `app` entry:** replace with: "**Purpose:** run the
+14. **`plan/07-abstractions.md`, `app` entry:** (applied 2026-10-17) replace with: "**Purpose:** run the
     command the operator asked for over the core assembled from its configuration.
     **Owns:** the command table (`serve`, `migrate`, `check`, `openapi`, `version`, `help`;
     later `create-superuser`, `export`, `delete`, `rotate-secret` added by their parts)
@@ -1088,17 +1069,17 @@ package; `app`'s e2e test is the one place a module is proven inside the real as
     under two thirds of it); the module list (`modules.go`); the installer step
     (`secrets.Ensure`, migrations in order); the core-part seam each later core service
     plugs into; the tests only the root can run. **Doesn't do:** anything any assembled
-    package does; packaging; configuration reload; a drain delay (open). **Spec:**
+    package does; packaging; configuration reload; a drain delay (not in M0). **Spec:**
     `design/app.md`." Layer rule 5 may add: "`cmd/bms` is a one-liner over `app.Main`."
-15. **`plan/09-core-features.md` §1:** "People can" gains `bms version` and `bms openapi`
+15. **`plan/09-core-features.md` §1:** (applied 2026-10-17) "People can" gains `bms version` and `bms openapi`
     (for the web build) beside the four commands; "Done when" gains "every command
     returns one of four documented exit statuses, and `bms check` exits as `bms serve`
     would" and "a second SIGINT or SIGTERM terminates the process at once".
-16. **`.claude/skills/add-module/SKILL.md` and `go-conventions`:** the module list line
+16. **`.claude/skills/add-module/SKILL.md` and `go-conventions`:** (applied 2026-10-17) the module list line
     is `_ "github.com/zedgama3/bms/internal/modules/<name>"` in `internal/app/modules.go`
     (plus the web line, D31); a `Factory` needs no database read (item 2(b)); every module
     ships `messages/en.json` (item 2(d)).
-17. **`docs/operating.md` (when written):** the commands and their exit statuses; `bms
+17. **`docs/operating.md` (when written):** (pending: target not written) the commands and their exit statuses; `bms
     check` before `bms serve`; signals (`SIGTERM` for an orderly stop, a second signal to
     force; `SIGHUP` does nothing); a systemd unit example with `KillSignal=SIGTERM` and
     `TimeoutStopSec` greater than `BMS_HTTP_SHUTDOWN_TIMEOUT`; that `serve` logs to

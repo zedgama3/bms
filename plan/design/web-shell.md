@@ -66,7 +66,7 @@
 
 **Expects of dependencies:** api (problem body with `fields[].code/params/reason`, `X-Read-Only`, `X-Trace-Id`, `GET /api/modules` and `/api/admin/modules` shapes, `POST /api/client-errors`, CSP, `Options.UI`); telemetry (intake wire form and limits, `Ref`, `traceparent` form, token grammar for `screen` and `api.route`); module-contract (name grammar, message-key derivation, admin graph); identity (`GET /api/accounts/session`, `POST /api/accounts/sign-in|sign-out`; M0 answers 404 and the shell is signed out); authz (`permissions` in the session response); settings (`GET /api/settings/public`, `/theme.css`); lib-core (field codes `required, range, positive, one_of, url, host_port, malformed`).
 
-**Pending proposed changes:** items 4 (`app.md`: `bms openapi`, `web.FS`/`Version`, Makefile targets), 5 (identity endpoints), 6 (authz session permissions), 7 (settings public endpoint, theme, `language.detect_browser`), 10 (module-hello), 13 (people `language` field), 15 (`docs/operating.md`) wait on targets not yet written; the rest are applied.
+**Pending proposed changes:** items 5 (identity endpoints), 6 (authz session permissions), 7 (settings public endpoint, theme, `language.detect_browser`), 10 (module-hello), 13 (people `language` field), 15 (`docs/operating.md`) wait on targets not yet written; the rest are applied.
 
 ## Purpose
 
@@ -1088,7 +1088,7 @@ requirement (decision 21).
    only when `GET /api/modules` lists the module as enabled; the admin "modules" screen
    renders the graph as tables with the warnings (decision 16). Add to decision 9: the web
    registry lists core areas too (`kind: "core"`), always enabled.
-4. **`plan/design/app.md` (row 18)** (pending: target not written): (a) a `bms openapi` command that prints the assembled
+4. **`plan/design/app.md` (row 18)** (applied 2026-10-17, by app.md's "`openapi`, step by step", decision 16 and "The Makefile"; refinements: `info.version` is fixed to `dev` so the committed document is stable across commits; `TestMessageCatalogues_EnglishCoversManifests` requires `messages/en.json` for every registered module, screens or not, and is skipped only when `web/src` is absent; `bin` (not `build`) depends on `web-build`; `check-go` is the Go-only subset; `scripts/e2e.sh` owns the server's start and stop under `test-e2e`): (a) a `bms openapi` command that prints the assembled
    document (`api.New` with the compiled-in modules' route sets, a stub `Database` and
    `SchemaStatus`, `UI: nil`; no network or database I/O) for `make openapi-check`;
    (b) `serve` calls `web.FS()`, passes it as `api.Options.UI`, and on `errs.NotFound`

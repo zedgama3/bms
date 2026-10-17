@@ -30,7 +30,9 @@ web                         the built web shell (embed)   imports: stdlib, lib/e
 - Modules add themselves to the registry in `core/module` with `module.Register(Manifest, New)`
   in `init`, where `module.go` holds `var Manifest = module.Manifest{...}` and
   `func New(ctx context.Context, deps module.Deps) (module.Module, error)`. `app` imports
-  the modules it ships with for their side effect. Module names are letters and digits only
+  the modules it ships with for their side effect, one line each in
+  `internal/app/modules.go`: `_ "github.com/zedgama3/bms/internal/modules/<name>"` (plus the
+  web line, D31). Module names are letters and digits only
   (`afterreports`).
 - depguard in `.golangci.yml` and `make imports` enforce these rules. A failure is a design
   problem, not a lint nuisance.
@@ -42,7 +44,9 @@ See the `add-module` skill. In short: `module.go` (the manifest, `New` and the r
 interface it needs), `postgres/` (the only place with SQL and the driver: `store.go`, `sql/`,
 `migrations/`; D8), `http.go` (handlers, thin), `signals.go`, `privacy.go` (implements
 `module.PersonData`). `Start` registers signal handlers and jobs and never writes, so it
-succeeds on a read-only copy. The manifest carries no human-readable text: titles and
+succeeds on a read-only copy. `New` needs no database read, because `bms openapi` and
+`bms check` build every module against a `DB` that refuses every statement (app.md decision
+7). Every module ships `web/src/modules/<name>/messages/en.json`, screens or not. The manifest carries no human-readable text: titles and
 descriptions are catalogue keys derived from the names (module-contract decision 8). Every
 module's tests call `moduletest.Conformance`.
 

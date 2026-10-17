@@ -39,7 +39,12 @@ internal/modules/<name>/
                    catalogue keys derived from the names, not text (decision 8).
                    func New(ctx context.Context, deps module.Deps) (module.Module, error);
                    func init() { module.Register(Manifest, New) }
+                   New needs no database read: `bms openapi` and `bms check` build every
+                   module against a DB that refuses every statement (app.md decision 7)
                    Start registers signal handlers and jobs and never writes
+                   The module list is one line in internal/app/modules.go:
+                   _ "github.com/zedgama3/bms/internal/modules/<name>" (plus the web
+                   line, D31)
   service.go       use cases; each one checks its permission via authz first. Declares the
                    storage interface it needs (no SQL or driver types in it)
   postgres/        the PostgreSQL implementation of that interface (D8). Only this
@@ -70,7 +75,9 @@ web/src/modules/<name>/
                    web/src/modules/index.ts (D31; web-shell.md)
   messages/en.json the keys module-contract decision 8 derives from the manifest
                    (module.<name>.title, .description, .permission.<rest>.title, ...) plus
-                   the module's own under module.<name>.*; other languages optional
+                   the module's own under module.<name>.*; other languages optional.
+                   Required even for a module without screens: the admin modules screen
+                   shows its title, and app's catalogue test fails without it
   screens/, components/
 ```
 

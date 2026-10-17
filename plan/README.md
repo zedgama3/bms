@@ -79,8 +79,11 @@ copy and can fork it. Features are modules.
      Done 2026-10-17: `web-shell` is Approved (design/README.md row 17, order 8 in
      09-core-features.md), with the owner's answers recorded in the spec (decisions 2, 7, 15,
      17, 18, 21, 22).
-     Next: `app` (design/README.md row 18, order 9 in 09-core-features.md), then the
-     rest of the spec order in [09-core-features.md](09-core-features.md).
+     Done 2026-10-17: `app` is Approved (design/README.md row 18, order 9 in
+     09-core-features.md), with the owner's answers to its four open questions.
+     Next: `module-hello` (design/README.md row 4b), the reference module and the last M0
+     spec; then `audit` (order 10) and the rest of the spec order in
+     [09-core-features.md](09-core-features.md).
      Pending implementation: the `lib-core` `validate` amendment (FieldError `Code` and
      `Params`), which must land before `httpx`; tracked in [05-roadmap.md](05-roadmap.md).
   3. CI on GitHub (`make check`), once the owner pushes the branch.

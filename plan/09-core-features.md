@@ -85,7 +85,8 @@ it depends on getting this right.
 **People can:**
 - *Operator:* run `bms migrate` to install or upgrade, `bms create-superuser` to create the
   break-glass account, `bms serve` to run it, and `bms check` to see whether the
-  configuration, database and schema versions are fine without starting.
+  configuration, database and schema versions are fine without starting. `bms version`
+  prints the build, and `bms openapi` prints the API description (for the web build).
 - *Maintainer:* follow any error reference from a screen to its trace and logs in Grafana.
 - *Module author:* write a module that adds a migration, a route, a screen, a permission and
   a signal, and see the core pick it up.
@@ -102,7 +103,10 @@ it depends on getting this right.
   provide the same one (D19), and says which.
 - `/healthz` (process up) and `/readyz` (database reachable, writable or read-only) respond;
   `/readyz` reports read-only from `db`'s probe.
-- Shutdown finishes requests in flight, within a deadline.
+- Shutdown finishes requests in flight, within a deadline. A second SIGINT or SIGTERM
+  terminates the process at once.
+- Every command returns one of four documented exit statuses, and `bms check` exits as
+  `bms serve` would.
 - A request gets a trace ID; error responses carry a short reference; the web shell reports its
   errors to `POST /api/client-errors` (D20).
 - An error response is `application/problem+json` with `code` and `ref`.

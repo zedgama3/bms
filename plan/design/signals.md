@@ -91,13 +91,12 @@ ctx unchanged; `ErrReadOnly`; `dbtest.Fake.Transact` runs hooks after fn and ski
 failure); telemetry (`Tracer` Producer/Consumer spans, `Meter` counters,
 `telemetrytest.Capture`); module-contract (`Manifest.Publishes/Subscribes`, `Env.CoreSignals`,
 `Deps.Signals`, `Start`; the graph check of unknown or disabled publishers is `Resolve`'s).
-`app` order at shutdown: HTTP drained, `signals.Close`, `Set.Stop`, `db.Close`,
+`app` order at shutdown: HTTP drained, runnables (jobs, M4), `signals.Close`, `Set.Stop`, `db.Close`,
 `telemetry.Close`.
 
-Pending proposed changes (targets not written): 5 app.md (build and scope the dispatcher,
-shutdown order), 6 jobs.md (implement `Deferrer`, call `Redeliver`), 7 authz/identity (ignore
+Pending proposed changes (targets not written): 6 jobs.md (implement `Deferrer`, call `Redeliver`), 7 authz/identity (ignore
 the session when `InDelivery`), 8 people/departments-events (declare their signals), 11
-module-hello (`hello.greeted`). Items 1, 2, 3, 4, 9, 10 are applied.
+module-hello (`hello.greeted`). Items 1, 2, 3, 4, 5, 9, 10 are applied.
 
 ## Purpose
 
@@ -693,7 +692,7 @@ either the old or the new list, never a torn one. `inflight` is a `sync.WaitGrou
 `Close` waits on within its ctx. The dispatcher starts no goroutine: every delivery runs on
 the goroutine that committed (a request's, or a job runner's for `Redeliver`). After
 `Close`: `Publish` → `Unavailable`, `Subscribe` and `Scope` → `Internal`, `Redeliver` →
-`Unavailable`, `Close` → nil. `app`'s order at shutdown: HTTP server drained → `signals.
+`Unavailable`, `Close` → nil. `app`'s order at shutdown: HTTP server drained → runnables (jobs, M4) stopped → `signals.
 Close` → `Set.Stop` → `db.Close` → `telemetry.Close` (Proposed change 5), so no handler
 runs against a stopped module or a closed pool.
 
@@ -853,7 +852,7 @@ references only; synchronous delivery with 5 s per handler) were answered by the
 
 ## Proposed changes elsewhere
 
-Status as of 2026-10-16: items 1, 2, 3, 4, 9 and 10 are applied. Items 5, 6, 7, 8 and 11
+Status as of 2026-10-17: items 1, 2, 3, 4, 5, 9 and 10 are applied. Items 6, 7, 8 and 11
 wait for their target to be written and are carried by this list until then.
 
 1. **`plan/design/module-contract.md` (row 4)** (applied 2026-10-16): `Deps.Signals` is `signals.Bus` as
@@ -888,13 +887,13 @@ wait for their target to be written and are carried by this list until then.
    messaging, an outbox (until a consumer needs one), retries (`jobs`), the start-up graph
    check (`module`). Drop "delivery inside a transaction or after commit (decided in the
    spec)": it is after commit.
-5. **`plan/design/app.md` (row 18)** (pending: target not written): `serve` builds `signals.New(Options{Logger:
+5. **`plan/design/app.md` (row 18)** (applied 2026-10-17, by app.md decision 10; one insertion: the runnables stop after the HTTP server drained and before `signals.Close`): `serve` builds `signals.New(Options{Logger:
    tel.Logger().With("component", "signals"), Tracer: tel.Tracer("signals"), Meter:
    tel.Meter("signals"), Clock: clock.Real(), HandlerTimeout: 5 * time.Second, Deferrer:
    <jobs, M4>})` after `db.Open` and before `Build`; `Provision` scopes it per module;
    each core publisher gets its scope (`people`, `departments`, `events`, as their specs
    define); `Env.CoreSignals` lists the core's names; shutdown order: HTTP server drained →
-   `signals.Close` → `Set.Stop` → `db.Close` → `telemetry.Close`, all within
+   runnables (jobs, M4) → `signals.Close` → `Set.Stop` → `db.Close` → `telemetry.Close`, all within
    `http.shutdown_timeout`.
 6. **`plan/design/jobs.md` (row 14)** (pending: target not written): implement `signals.Deferrer` (store the `Delivery`
    on the writing copy; the job name `signals.redeliver`); run `Dispatcher.Redeliver` with

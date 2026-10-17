@@ -73,7 +73,7 @@
 
 **Expects of dependencies:** lib-errs (`E`, `KindOf`, `Error.Op`, kinds); lib-core (`clock.Clock`, `validate.*`); lib-secret (`Secret` and `Email` redact via `LogValue`); model (`PersonID`, `ID.String`); config (`app` copies `config.Log`/`Instance.Name` into `Options`; client address derived per config decision 16, by api); module-contract (`Deps.Logger`, `Deps.Tracer`, `Route.Access`); db (`Options.Tracer/Meter`, pgx `QueryTracer`, pool gauges).
 
-**Pending proposed changes:** item 5 (`app.md` wiring) and item 7 (`audit.md` `TraceIDFrom`) wait on their target; item 6 pending for `jobs.md`; item 9 pending for Loki retention, alert rules and `docs/operating.md`; all others applied.
+**Pending proposed changes:** item 7 (`audit.md` `TraceIDFrom`) waits on its target; item 6 pending for `jobs.md`; item 9 pending for Loki retention, alert rules and `docs/operating.md`; all others applied.
 
 ## Purpose
 
@@ -181,7 +181,8 @@ type Options struct {
 	// when unknown): resource attribute service.version. A token (see Token), at most
 	// 64 bytes.
 	Version string
-	// Stdout receives log lines. os.Stdout in app; a buffer in tests. Must not be nil.
+	// Stdout receives log lines. os.Stdout in app for `serve`, os.Stderr for every other
+	// command (app.md decision 4); a buffer in tests. Must not be nil.
 	Stdout io.Writer
 	// Clock drives the rate limits inside this package (violation warnings, export
 	// failure warnings). Must not be nil.
@@ -1203,10 +1204,10 @@ answered by the owner on 2026-10-16 and are recorded in decisions 3, 9, 17, 18 a
 
 ## Proposed changes elsewhere
 
-Status as of 2026-10-17: items 1, 2, 3, 8, 10, 11, 13, 14 and 15 are applied; item 9 is
+Status as of 2026-10-17: items 1, 2, 3, 5, 8, 10, 11, 13, 14 and 15 are applied; item 9 is
 applied for `deploy/compose/.env.example` and Tempo's retention, and Prometheus's retention flag, and pending for
 Loki retention, the alert rules and `docs/operating.md`; item 12 is applied; item 6 is
-applied for `signals.md` and pending for `jobs.md`; item 4 is applied; items 5 and 7 wait for their
+applied for `signals.md` and pending for `jobs.md`; item 4 is applied; item 7 waits for its
 target to be written and are carried by this list until then.
 
 1. **`plan/design/module-contract.md` (row 4)** (applied 2026-10-16): add `Tracer telemetry.Tracer` to `Deps`
@@ -1263,7 +1264,7 @@ target to be written and are carried by this list until then.
    response body; it never reports a failure of `/api/client-errors` itself and backs off
    for `Retry-After` on 429; error screens show the `ref` with the wording in "UI" and a
    copy button; nothing is written to browser storage.
-5. **`plan/design/app.md` (row 18)** (pending: target not written): call `telemetry.New` right after `config.Load` with
+5. **`plan/design/app.md` (row 18)** (applied 2026-10-17, by app.md's Proposed change 4; refinements: `Options.Stdout` is `stderr` for every command but `serve` (app.md decision 4); `openapi` passes an `Environ` that returns nothing, so a build step never exports; `bms check` prints `log: <format> <level>` and `OTLP export: on | off`): call `telemetry.New` right after `config.Load` with
    `Options{Level: cfg.Log.Level, Format: cfg.Log.Format, Instance: cfg.Instance.Name,
    Version: <build version>, Stdout: os.Stdout, Clock: clock.Real()}`; on failure print
    `<VARIABLE>: <reason>` to stderr and exit 2; log the effective configuration once

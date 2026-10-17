@@ -217,11 +217,15 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
 - **Status:** Accepted (2026-10-16)
 - **Why:** maintainers should see problems before people report them, and when someone does
   report one, find exactly what happened.
-- **What bms emits.** Structured logs (JSON on stdout; a `text` format exists only for a
-  developer's terminal, `BMS_LOG_FORMAT=text`, config.md decision 15; owner, 2026-10-16),
-  plus traces, metrics and logs over OpenTelemetry (OTLP) when an endpoint is configured
-  with the standard `OTEL_*` variables. bms exports OTLP over HTTP/protobuf only, so a regional can use any
-  compatible backend, or none.
+- **What bms emits.** Structured logs (JSON on stdout from `bms serve`, stderr from other
+  commands; a `text` format exists only for a developer's terminal, `BMS_LOG_FORMAT=text`,
+  config.md decision 15; owner, 2026-10-16), plus traces, metrics and logs over
+  OpenTelemetry (OTLP) when an endpoint is configured with the standard `OTEL_*` variables.
+  bms exports OTLP over HTTP/protobuf only, so a regional can use any compatible backend, or
+  none.
+- Clarified (owner, 2026-10-17): `bms serve` logs to stdout; every other command (`migrate`,
+  `check`, `openapi`) logs to stderr so stdout carries only the command's output (app.md
+  decision on logs).
 - **Reference stack:** Grafana, Loki (logs), Tempo (traces), Prometheus (metrics, including
   rates, errors and durations derived from traces), and Alloy as the collector. Every piece
   is OSI-licensed. Development runs it with `make observe`; an example production setup
