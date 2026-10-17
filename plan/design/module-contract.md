@@ -6,7 +6,7 @@
   "modules" screen is `web-shell.md`'s, fed by `GET /api/admin/modules` (`api.md`), both
   drawing on the `Graph` this spec provides.
 - **Depends on specs:** `lib-errs.md` (Implemented): `errs.E`, `errs.Is`, kinds `Invalid`,
-  `Conflict`, `NotFound`, `Internal`, `Canceled`, `Timeout`. `lib-core.md` (Implemented):
+  `Conflict`, `NotFound`, `Unavailable`, `Internal`, `Canceled`, `Timeout`. `lib-core.md` (Implemented):
   `clock.Clock`, `validate.Errors`, `validate.FieldError`. `model.md` (Approved):
   `model.PersonID`, `model.Sensitivity`, `ID.Validate`, `Sensitivity.Validate`. `db.md`
   (Approved): `db.DB` (the type of `Deps.DB`), `db.ErrReadOnly` (the sentinel a write gets
@@ -307,7 +307,7 @@ type Factory func(ctx context.Context, deps Deps) (Module, error)
 
 // Module is what every module gives the core at runtime. The optional interfaces below
 // add routes, an API description, capability implementations and contributions; Build
-// checks that a module implements exactly what its manifest declares (F29–F32).
+// checks that a module implements exactly what its manifest declares (F29–F31 and F33–F34).
 type Module interface {
 	PersonData
 
@@ -321,7 +321,8 @@ type Module interface {
 
 	// Stop ends the work Start began and waits for it, within ctx. It is called once,
 	// after Start returned nil, and must be safe to call when Start was never called.
-	// Fails with errs.Timeout if ctx ends first, joined with any goroutine's error.
+	// Fails with errs.Timeout or errs.Canceled when ctx ends first (F47), joined with any
+	// goroutine's error.
 	Stop(ctx context.Context) error
 }
 
@@ -1198,7 +1199,7 @@ with the proposed answer:
 
 ## Proposed changes elsewhere
 
-1. **`plan/07-abstractions.md`, `module` entry:** replace "Owns" with: the `Manifest`
+1. **`plan/07-abstractions.md`, `module` entry:** (applied, verified 2026-10-17) replace "Owns" with: the `Manifest`
    (static declaration), the `Module` interface and its optional interfaces, `Deps` (what the
    core gives a module), the registry, `Resolve` (graph check, build order, graph for the
    admin screen), `Build` (schema check per D17, verification against the manifest,
@@ -1207,7 +1208,7 @@ with the proposed answer:
    core graph: it imports core contracts; no core package imports it." Add to the `authz`
    entry: owns the `Permission`, `Scope` and `PermissionDecl` types; to the `signals` entry:
    owns the `Name` type. Note that module names are letters and digits only (`afterreports`).
-2. **`plan/design/authz.md` (row 7):** adopt `authz.Permission`, `authz.Scope` and
+2. **`plan/design/authz.md` (row 7):** (pending: target not written) adopt `authz.Permission`, `authz.Scope` and
    `authz.PermissionDecl` as defined in this spec's "Types"; receive `Plan.Permissions()`
    from `app` at start-up; show `Reaches` in the role editor and allow separation-of-duties
    rules to refer to it ("may never hold a permission reaching sensitive"); declare
@@ -1218,7 +1219,7 @@ with the proposed answer:
    handed to a module through `Deps.Signals` is scoped by `app` to the module's `Publishes`
    and `Subscribes` and fails with `errs.Invalid` outside them; the core's published names
    are listed for `Env.CoreSignals`; subscriptions are registered in `Module.Start`.
-4. **`plan/design/db.md` (row 5):** implement `module.SchemaChecker` (message names the
+4. **`plan/design/db.md` (row 5):** (applied, verified 2026-10-17: db.md carries `SchemaChecker`, `ErrReadOnly` and the read-only state) implement `module.SchemaChecker` (message names the
    module and both versions, says to run `bms migrate`; `Conflict` on mismatch or missing
    row); define the migration file layout for `Manifest.Migrations`
    (`postgres/migrations/NNNN_name.sql`, highest number is the version); `bms migrate`
@@ -1227,7 +1228,7 @@ with the proposed answer:
    say "this copy is read-only" and `retry` would not hammer it); expose read-only state for
    `/readyz`. The `db` integration test proves pgx scans `model.ID[E]` (model.md Proposed
    change 4) and that `CheckSchema` works on an empty database.
-5. **`plan/design/settings.md` (row 15):** consume `Plan.Settings()` (`SettingDecl`: kinds,
+5. **`plan/design/settings.md` (row 15):** (pending: target not written) consume `Plan.Settings()` (`SettingDecl`: kinds,
    defaults, options, `Validate`); store values under `<module>.<key>`; add the retention
    settings per module and sensitivity level automatically (D30, default keep forever);
    give modules a scoped `Deps.Settings`; show titles and descriptions through the message
@@ -1252,7 +1253,7 @@ with the proposed answer:
    manifest through a generated JSON, or the check runs in Go against the catalogue files);
    show a module's navigation and screens only when `GET /api/modules` lists it as enabled;
    the admin "modules" screen renders the graph with its warnings.
-8. **`plan/design/people.md` (row 8):** orchestrate export and deletion over
+8. **`plan/design/people.md` (row 8):** (pending: target not written) orchestrate export and deletion over
    `Set.PersonData()` behind `people.data.export` and `people.data.delete`, in one audited
    operation; assemble `{ "<module>": <Export.Data>, ... }`; report `Deletion` per module;
    declare the person-page extension point (`people.person-page`, with its `Accepts`) in
@@ -1260,18 +1261,18 @@ with the proposed answer:
    `people.person-deleted`) in `Env.CoreSignals`; call `Links.Contributors` at request time.
    `departments-events.md` (row 9) likewise declares `events.event-created` as the extension
    point for copying into a new event (09 §5).
-9. **`plan/design/app.md` (row 18):** `serve`: `Default().Resolve(env)` → log warnings →
+9. **`plan/design/app.md` (row 18):** (pending: app.md is drafted on these steps but not yet Approved) `serve`: `Default().Resolve(env)` → log warnings →
    `Build` (with `db` as the checker and a `Provision` that builds scoped `Deps`) → hand
    `Plan.Permissions()` to `authz`, `Plan.Settings()` to `settings`, `Set.Routes()` to `api`,
    `Set.PersonData()` to `people` → `Set.Start` → serve → `Set.Stop` with deadlines (proposed
    30 s and 15 s). `check`: `Resolve` plus `CheckSchema` per enabled module, no build.
    `migrate`: `Resolve` then `db` over `Plan.Order()`. `export`/`delete` by command (09
    §11): through `people`.
-10. **`plan/design/config.md` (row 3):** `modules.disabled` (list of module names, default
+10. **`plan/design/config.md` (row 3):** (applied, verified 2026-10-17) `modules.disabled` (list of module names, default
     empty, each must be registered; `BMS_MODULES_DISABLED` as a comma-separated list);
     `app` derives `Env.Enabled`. Opt-out enablement confirmed by the owner (2026-10-16;
     decision 7).
-11. **`.claude/skills/go-conventions/SKILL.md` and `.claude/skills/add-module/SKILL.md`:**
+11. **`.claude/skills/go-conventions/SKILL.md` and `.claude/skills/add-module/SKILL.md`:** (applied, verified 2026-10-17)
     the registration line is `module.Register(Manifest, New)` in `init`, with
     `var Manifest = module.Manifest{...}` and `func New(ctx context.Context, deps module.Deps)
     (module.Module, error)` in `module.go`; `privacy.go` implements `module.PersonData`;
@@ -1279,12 +1280,12 @@ with the proposed answer:
     and digits only; titles and descriptions are catalogue keys (decision 8); every module's
     tests call `moduletest.Conformance`. `add-module` §1 adds "the Reaches level of each
     permission" to the spec checklist.
-12. **`plan/design/README.md`:** add row `4b` `module-hello.md`, "the reference module
+12. **`plan/design/README.md`:** (applied, verified 2026-10-17) add row `4b` `module-hello.md`, "the reference module
     (M0)", Not started; it depends on this spec, `db`, `signals` and `api`.
-13. **`plan/design/jobs.md` (row 14) and `notify.md` (row 11):** `Deps.Jobs` and
+13. **`plan/design/jobs.md` (row 14) and `notify.md` (row 11):** (pending: target not written) `Deps.Jobs` and
     `Deps.Notify` are scoped to the module (job and template names prefixed `<name>.`); jobs
     are registered in `Module.Start` and run only on the writing copy.
-14. **`plan/02-scope.md`, `plan/09-core-features.md`:** note that `after-reports` is
+14. **`plan/02-scope.md`, `plan/09-core-features.md`:** (applied, verified 2026-10-17) note that `after-reports` is
     `afterreports` in code, schema and URLs (confirmed by the owner, 2026-10-16; decision
     10); 09 §4's "a
     flag for whether they reach sensitive data" becomes "the highest sensitivity level they

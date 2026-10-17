@@ -336,7 +336,7 @@ holds an ID, a sensitivity or an address) and nothing from `core/`.
 
 | Key | Variable | Type | Default | Valid | Consumer |
 |---|---|---|---|---|---|
-| `instance.name` | `BMS_INSTANCE_NAME` | string | `main` | 1..64, `[a-z0-9]([a-z0-9-]*[a-z0-9])?` | audit, telemetry |
+| `instance.name` | `BMS_INSTANCE_NAME` | string | `main` | 1..64, `[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?` | audit, telemetry |
 | `db.url` | `BMS_DB_URL` (+`_FILE`) | secret URL | required | absolute URL, scheme `postgres` or `postgresql`, non-empty host, ≤ 4096 bytes, no NUL | db |
 | `db.max_conns` | `BMS_DB_MAX_CONNS` | int | `10` | 1..1000 | db |
 | `db.connect_timeout` | `BMS_DB_CONNECT_TIMEOUT` | duration | `30s` | 1s..10m | db |
@@ -846,7 +846,8 @@ None. The three questions in the first draft were answered by the owner on 2026-
    nor in a non-empty `TrustedProxies` (proposed: answer 421 with no body and log once per
    peer per hour, so a misrouted plaintext path is visible without serving on it; health
    checks from the orchestrator then go through the front end or come from loopback). TLS
-   in the binary is not planned (Open question 2, answered).
+   in the binary is not planned (Open question 2, answered). (superseded in part by api.md
+   decisions 9 and 26: 403 `misdirected`, HSTS without includeSubDomains, no CSRF cookie)
 6. **`plan/design/identity.md` (row 6):** take `Session.Key` as its signing material and
    derive purpose-specific keys from it (HKDF), so one generated value serves session
    tokens and, later, password-reset links; design key rotation

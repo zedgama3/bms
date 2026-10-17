@@ -1206,7 +1206,7 @@ answered by the owner on 2026-10-16 and are recorded in decisions 3, 9, 17, 18 a
 Status as of 2026-10-17: items 1, 2, 3, 8, 10, 11, 13, 14 and 15 are applied; item 9 is
 applied for `deploy/compose/.env.example` and Tempo's retention, and Prometheus's retention flag, and pending for
 Loki retention, the alert rules and `docs/operating.md`; item 12 is applied; item 6 is
-applied for `signals.md` and pending for `jobs.md`; items 4, 5 and 7 wait for their
+applied for `signals.md` and pending for `jobs.md`; item 4 is applied; items 5 and 7 wait for their
 target to be written and are carried by this list until then.
 
 1. **`plan/design/module-contract.md` (row 4)** (applied 2026-10-16): add `Tracer telemetry.Tracer` to `Deps`
@@ -1279,15 +1279,15 @@ target to be written and are carried by this list until then.
    `signals.md`, by its Proposed change 3, with the token names `signal:<name>` (Producer)
    and `deliver:<name>` (Consumer), the counters `bms.signals.published{signal,module}`
    and `bms.signals.delivered{signal,module,outcome}`, and `outcome` ∈ `ok`, `failed`,
-   `deferred`, `read_only`, `panicked`, `retried` being `jobs`' to count; pending for
-   `jobs.md`: target not written): wrap each publish in a
-   `SpanProducer` span `signal <name>` and each delivery in a `SpanConsumer` span
-   `signal <name>` with `Module(subscriber)` as a child of the publisher's ctx (after
-   commit, so the trace spans the request and its consequences); each job run in a
-   `SpanConsumer` span `job <name>`; `RecordError` on failure; counters
-   `bms.signals.delivered{signal,module,outcome}` and `bms.jobs.runs{job,outcome}`
-   (`outcome` = `ok`, `failed`, `retried`); payloads never on spans (IDs only, by their
-   own rule).
+   `deferred`, `read_only`, `panicked`; pending for `jobs.md`: target not written): wrap
+   each publish in a `SpanProducer` span `signal:<name>` and each delivery in a
+   `SpanConsumer` span `deliver:<name>` with `Module(subscriber)` as a child of the
+   publisher's ctx (after commit, so the trace spans the request and its consequences;
+   decision 19, signals.md decision 12); each job run in a `SpanConsumer` span (its name
+   is `jobs.md`'s to define as a token); `RecordError` on failure; counters
+   `bms.signals.delivered{signal,module,outcome}` (`outcome` = `ok`, `failed`, `deferred`,
+   `read_only`, `panicked`) and `bms.jobs.runs{job,outcome}` (the job outcomes are for
+   `jobs.md` to define); payloads never on spans (IDs only, by their own rule).
 7. **`plan/design/audit.md` (row 12)** (pending: target not written): record `telemetry.TraceIDFrom(ctx)` on every entry
    (09 §8), empty when none.
 8. **`.golangci.yml`** (applied 2026-10-16): add a depguard rule `otel-seam`: files `$all` except

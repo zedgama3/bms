@@ -636,7 +636,8 @@ None of its own. What this spec provides for `web-shell.md`:
 
 - **Error handling:** every error is `application/problem+json` with `code`, `ref` and
   `fields`; the shell translates `code` (keys `error.<code>`), shows `ref` with the
-  wording in telemetry.md "UI" for every 5xx and every 4xx but `invalid`, maps
+  wording in telemetry.md "UI" for every code except `invalid`, `unauthenticated`,
+  `read_only` and `network` (web-shell decision 9), maps
   `fields[].field` to form fields and translates each field's `code` with its `params`
   (keys `field.<code>`), showing `reason` as-is for a code it does not know (decision
   25). `401` on a signed-in route sends the shell to the

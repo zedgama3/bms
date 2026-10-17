@@ -7,7 +7,7 @@
   implementation follow-up (see "Proposed changes elsewhere") before `httpx` is built on it.
 - **Packages:** `internal/lib/clock`, `internal/lib/retry`, `internal/lib/validate`,
   `internal/lib/timeutil` (Go module `github.com/zedgama3/bms`; foundation libraries, not bms modules)
-- **Depends on specs:** `lib-errs.md` (Approved): `errs.E`, `errs.Is`, `errs.KindOf` and the
+- **Depends on specs:** `lib-errs.md` (Implemented): `errs.E`, `errs.Is`, `errs.KindOf` and the
   kinds Invalid, Unavailable, Timeout, Canceled, Internal. This spec also carries the two items
   lib-errs hands over: the retryable-kinds decision (`retry.Retryable`) and the typed field
   error (`validate.FieldError`).
@@ -412,7 +412,7 @@ Consumers per function:
 
 | Function | Needed by |
 |---|---|
-| `CheckBucket`, `CheckRange` | `model.TimeRange.Validate`; module stores and services validating a report bucket or range |
+| `CheckBucket`, `CheckRange` | module stores and services validating a report bucket or range |
 | `Truncate` | module services (period cut-offs, same bucket last week) |
 | `Align` | module stores so SQL predicates cover whole buckets |
 | `Buckets` | module reports (dense series with zero-filled gaps for charts) |

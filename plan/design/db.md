@@ -410,7 +410,7 @@ type Applied struct {
 // not exist yet) and the problem CheckSchema would report, if any. It never changes the
 // database. Fails with errs.Invalid for an invalid set (F41) and errs.Unavailable,
 // errs.Timeout or errs.Canceled when the database cannot be read (F44). Consumers: app's
-// `bms check`; api's GET /api/modules (versions per module, module-contract Node).
+// `bms check`; api's GET /api/admin/modules (versions per module, module-contract Node).
 func (m *Migrator) Status(ctx context.Context, sets []Set) ([]Status, error)
 
 // Status is one set's state.
@@ -491,7 +491,7 @@ func TempDB(t testing.TB) *db.Pool
 | `Version` | `Migrator`; `bms check`; a module's tests ("my migrations parse") | files at the root | the highest number |
 | `Migrator`, `NewMigrator` | `app` | an open pool | — |
 | `Migrate`, `Applied` | `app`'s `migrate` command | not read-only | every pending file applied and recorded, or nothing new |
-| `Status` | `app`'s `check`; `api`'s `GET /api/modules` | — | one row per set, no write |
+| `Status` | `app`'s `check`; `api`'s `GET /api/admin/modules` | — | one row per set, no write |
 | `CheckSchema` | `module.Build` (through `app`, as `SchemaChecker`); `app`'s `check` | — | nil iff the set is current and unchanged |
 | `dbtest.Fake`, `SetReadOnly`, `Calls` | `moduletest.Conformance` (`start_read_only`, `delete_read_only`, `export_unknown_person_is_empty`); modules' unit tests of `New` | — | no I/O |
 | `dbtest.TempDB` | `db`'s own integration tests; every `postgres/` package's integration tests | `BMS_TEST_DB_DSN` set; the role may `CREATE DATABASE` | an isolated database, dropped after |
@@ -537,7 +537,7 @@ is applied once.
 
 No column holds personal data. Retention: forever; the rows are the installation's
 history and are needed by every later `bms migrate` (D30 does not apply). The table is
-read by `CheckSchema` at every start and by `GET /api/modules` behind `core.modules.read`.
+read by `CheckSchema` at every start and by `GET /api/admin/modules` behind `core.modules.read`.
 
 Files: none. `db` reads nothing from disk (migrations are embedded `fs.FS` values) and
 writes nothing.
@@ -556,7 +556,7 @@ for its own operation and checks it in the service before calling `db` (09 groun
 The commands that use `Migrator` run on the host as the operator. The PostgreSQL role in
 `db.url` is the installation's one role; what it may do is the operator's grant (the
 `audit` spec restricts its own tables to insert and select by a grant in audit's
-migration). `GET /api/modules`, which shows `Status`, is behind `core.modules.read`
+migration). `GET /api/admin/modules`, which shows `Status`, is behind `core.modules.read`
 (module-contract "Permissions").
 
 ## Signals
@@ -1083,7 +1083,7 @@ target to be written and are carried by this list until then.
    F30 and "Concurrency and lifecycle" gained the late-holder rule): the error mapper checks `errors.Is(err,
    db.ErrReadOnly)` before the kind and answers 503 with code `read_only` and the message
    key for "this copy is read-only"; `/readyz` calls `Pool.Ping` and reports `ReadOnly()`
-   as `{"database": "ok", "mode": "read-write" | "read-only"}`; `GET /api/modules` adds
+   as `{"database": "ok", "mode": "read-write" | "read-only"}`; `GET /api/admin/modules` adds
    each module's `Status` (`Built`, `Applied`) from `Migrator.Status`; a store turns
    `*db.Error.Constraint` into a `validate.FieldError` itself (api does not know
    constraints).

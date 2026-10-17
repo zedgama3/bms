@@ -43,7 +43,7 @@
 
 **Expects of dependencies.** `lib-errs`: `errs.E`, `Is`, kinds `Invalid`, `Internal`. `lib-core`: `validate.Errors`, `validate.FieldError` (with the pending Code/Params amendment this spec does not rely on codes). `lib-secret`: `Redacted`, `Unset` markers.
 
-**Pending.** Proposed changes (1-8) to 07-abstractions, add-module skill, module-contract, db, identity/people, lib-core (item 7: `CheckRange` no longer listed as used by `model.TimeRange.Validate`), departments-events remain to be applied; api.md item 6 is applied.
+**Pending.** Proposed changes (1-8) to 07-abstractions, add-module skill, module-contract, db, identity/people, departments-events remain to be applied; api.md item 6 and lib-core item 7 are applied.
 
 ## Purpose
 
@@ -514,7 +514,7 @@ None. The two questions in the first draft were answered by the owner on 2026-10
    (Invalid → 400 with the field, through the existing `validate.FieldError` path); the
    OpenAPI document describes an ID as `string, format: uuid` (canonical form), a
    sensitivity as an enum of the four names, and a time range as `{start, end}`.
-7. **`plan/design/lib-core.md`, `timeutil` consumer table:** `CheckRange` is no longer
+7. **`plan/design/lib-core.md`, `timeutil` consumer table** (applied 2026-10-17): `CheckRange` is no longer
    listed as used by `model.TimeRange.Validate` (decision 10); module stores remain its
    consumers.
 8. **`plan/design/departments-events.md` (when written):** design the schedule items within
