@@ -26,7 +26,10 @@ trap cleanup EXIT
 port=$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
 export BMS_DATA_DIR="$data"
 export BMS_HTTP_ADDR="127.0.0.1:$port"
-if [[ "${BMS_E2E_MODE:-default}" == "hello-disabled" ]]; then
+# bms refuses unknown BMS_* variables, so the mode goes to Playwright only.
+mode=${BMS_E2E_MODE:-default}
+unset BMS_E2E_MODE
+if [[ "$mode" == "hello-disabled" ]]; then
   export BMS_MODULES_DISABLED=hello
 fi
 
@@ -48,7 +51,7 @@ if [[ "$ready" != 1 ]]; then
 fi
 
 tests=0
-BMS_E2E_URL="http://127.0.0.1:$port" pnpm -C web test:e2e || tests=$?
+BMS_E2E_MODE="$mode" BMS_E2E_URL="http://127.0.0.1:$port" pnpm -C web test:e2e || tests=$?
 
 kill -TERM "$pid"
 status=0

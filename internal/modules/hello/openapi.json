@@ -1,0 +1,150 @@
+{
+  "tags": [
+    {
+      "name": "hello",
+      "description": "The reference module."
+    }
+  ],
+  "paths": {
+    "/public-greeting": {
+      "get": {
+        "tags": [
+          "hello"
+        ],
+        "operationId": "helloPublicGreeting",
+        "summary": "The greeting word and the banners every visitor sees.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The greeting and banners.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HelloPublicGreeting"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/greeting": {
+      "get": {
+        "tags": [
+          "hello"
+        ],
+        "operationId": "helloGreeting",
+        "summary": "The greeting word and the actor's counts. Needs hello.greetings.read.",
+        "responses": {
+          "200": {
+            "description": "The greeting and counts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HelloGreeting"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/greetings": {
+      "post": {
+        "tags": [
+          "hello"
+        ],
+        "operationId": "helloGreet",
+        "summary": "Greet. Needs hello.greetings.write.",
+        "responses": {
+          "201": {
+            "description": "The greeting was saved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HelloGreeted"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "HelloBanner": {
+        "type": "object",
+        "required": [
+          "module",
+          "key"
+        ],
+        "properties": {
+          "module": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          }
+        }
+      },
+      "HelloPublicGreeting": {
+        "type": "object",
+        "required": [
+          "greeting",
+          "banners"
+        ],
+        "properties": {
+          "greeting": {
+            "type": "string"
+          },
+          "banners": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HelloBanner"
+            }
+          }
+        }
+      },
+      "HelloGreeting": {
+        "type": "object",
+        "required": [
+          "greeting",
+          "mine",
+          "seen"
+        ],
+        "properties": {
+          "greeting": {
+            "type": "string"
+          },
+          "mine": {
+            "type": "integer"
+          },
+          "seen": {
+            "type": "integer"
+          }
+        }
+      },
+      "HelloGreeted": {
+        "type": "object",
+        "required": [
+          "id",
+          "greeting",
+          "created_at"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "greeting": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    }
+  }
+}

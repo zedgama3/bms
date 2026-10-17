@@ -1,6 +1,7 @@
 # module-hello
 
-- **Status:** Approved (2026-10-17)
+- **Status:** Implemented (2026-10-17); Approved (2026-10-17)
+- **Amended 2026-10-17 (owner):** `SettingDecl.Check` replaces `Validate`; Conformance is called with a factory over the in-memory fake store and `moduletest.WithSeed(seed)` (module-contract Proposed change 15). Reviewer wording corrections: `Start` validates banner keys before subscribing; `hello.greeting` gains `updated_at`, a byte-length check and named constraints; `DeletePerson` runs in `db.Transact(Write)`; `handleGreeted` waits for the counter's acknowledgement; `Stop` is nil when already stopped; module tests use a bare `ServeMux` only and the api-shell and OpenAPI-versus-routes tests live in `internal/app`; handlers `httpx.Fail` on a non-Canceled write failure; `Greet` trims the source word.
 - **Package:** `internal/modules/hello` (with `internal/modules/hello/greeting`,
   `internal/modules/hello/postgres`) and `internal/contracts/greeter`
   **UI:** `web/src/modules/hello`
@@ -17,7 +18,7 @@
 is the smallest module that touches the whole contract: a manifest, one schema and
 migration, three routes with an OpenAPI fragment, two permissions, one setting, one signal
 published and subscribed, one capability, one extension point, `PersonData`, spans, one
-goroutine, one phone-first screen, and `moduletest.Conformance`. It is not useful to a
+goroutine, one phone-first screen, and `moduletest.Conformance` (with `WithSeed`). It is not useful to a
 burner and never will be; a regional turns it off with `BMS_MODULES_DISABLED=hello`.
 
 **Exported (`hello`):** `Manifest` (`Name: "hello"`); `New(ctx, deps) (module.Module, error)`;
@@ -53,15 +54,15 @@ migration `0002`). 10 the `greeter` capability has no consumer in M0; it exists 
 `Plan.Build` resolves a real provider and authors see the shape.
 
 **Errs kinds a caller handles.** `New`: `Invalid` (nil dependency). `Start`: `Invalid`
-(a banner key not under its contributor's prefix), `Conflict` (started twice; a second
-handler for the name), bus kinds. `Stop`: `Canceled`/`Timeout` (counter goroutine did not
-exit in time). `Greeting`/`Greet`: `Unauthenticated` (no actor), `Permission` (denied;
+(a banner key not under its contributor's prefix; checked before subscribing, so a failed
+`Start` leaves no handler), `Conflict` (started twice; a second handler for the name), bus kinds. `Stop`: `Canceled`/`Timeout` (counter goroutine did not
+exit in time; nil when already stopped, even with a done ctx). `Greeting`/`Greet`: `Unauthenticated` (no actor), `Permission` (denied;
 always in M0), `Unavailable` wrapping `db.ErrReadOnly` (`Greet` on a read-only copy), db
 kinds. `PublicGreeting`: `Internal` (`Links` misuse). Handler: `Invalid` (payload without
 `person`), `Canceled`/`Timeout`. `ExportPerson`/`DeletePerson`: `Invalid` (zero ID),
 `Unavailable` wrapping `db.ErrReadOnly` (delete), db kinds. No sentinels of its own.
 
-**Owns.** Schema `hello`, table `hello.greeting` (`person_id`, `greeting`, `created_at`:
+**Owns.** Schema `hello`, table `hello.greeting` (`person_id`, `greeting`, `created_at`, `updated_at`:
 all `internal`, kept until deleted). Permissions above. Setting `hello.greeting`. Signal
 `hello.greeted {person}`, published inside the `Transact` that inserts the row; subscribed
 by itself. Capability `greeter` (provided). Extension point `hello.banner` (defined,
@@ -228,7 +229,7 @@ var Manifest = module.Manifest{
 		{Name: PermissionGreetingsRead, Scope: authz.ScopeSite, Reaches: model.SensitivityInternal},
 		{Name: PermissionGreetingsWrite, Scope: authz.ScopeSite, Reaches: model.SensitivityInternal},
 	},
-	Settings:      []module.SettingDecl{{Key: SettingGreeting, Kind: module.SettingText, Default: DefaultGreeting, Validate: validateGreeting}},
+	Settings:      []module.SettingDecl{{Key: SettingGreeting, Kind: module.SettingText, Default: DefaultGreeting, Check: validateGreeting}},
 	Publishes:     []signals.Name{SignalGreeted},
 	Subscribes:    []signals.Name{SignalGreeted},
 	Provides:      []module.Capability{greeter.Name},
@@ -249,15 +250,17 @@ func New(ctx context.Context, deps module.Deps) (module.Module, error)
 and `module.Contributor`:
 
 ```go
-// Start subscribes the counter's handler to SignalGreeted, validates every banner
-// contribution (frozen values, no I/O) and starts the counter goroutine. It writes nothing
+// Start validates every banner contribution (frozen values, no I/O), then subscribes the
+// counter's handler to SignalGreeted and starts the counter goroutine. Validating first
+// means a failed Start leaves no handler, so a retried Start does not hit Conflict. It writes nothing
 // (module-contract decision 14). Fails with errs.Conflict if called twice, errs.Invalid
 // when a contribution's Key is not "module.<its module>.banner.<ident>" (naming the
 // module), or the bus's kind from Subscribe.
 func (m *Module) Start(ctx context.Context) error
 
 // Stop asks the counter goroutine to exit and waits for it, or for ctx. Nil when Start
-// was never called or Stop already ran. Fails with errs.Canceled or errs.Timeout from ctx.
+// was never called or Stop already ran (even when ctx is done). Otherwise it checks ctx
+// before waiting and fails with errs.Canceled or errs.Timeout from ctx.
 func (m *Module) Stop(ctx context.Context) error
 
 // Routes are relative to /api/hello (module-contract decision 13).
@@ -337,7 +340,9 @@ func (s *service) Greet(ctx context.Context) (greeting.Greeting, error)
 // handleGreeted is the subscriber for SignalGreeted. It reads PayloadPerson with
 // signals.Get (errs.Invalid if absent), hands {Signal.ID} to the counter and returns.
 // It touches no database, so it runs on a read-only copy. A Signal.ID already seen is
-// counted once (nil). Fails errs.Canceled/Timeout if ctx ends before the counter takes it.
+// counted once (nil). It waits for the counter goroutine's acknowledgement, so Seen() is
+// deterministic once it returns. Fails errs.Canceled/Timeout if ctx ends (or stop closes)
+// before the counter takes or acknowledges it.
 func (s *service) handleGreeted(ctx context.Context, sig signals.Signal) error
 ```
 
@@ -401,7 +406,8 @@ embedded with `go:embed` (postgres-sql skill).
 | `POST /greetings` | signed in | `hello.greetings.write` | 201 `HelloGreeted{id, greeting, created_at}` | none (decision 7) |
 
 Handlers call the service and `httpx.WriteJSON`; on error `httpx.Fail(w, r, err)` and
-return (api decision 2). No handler reads the body, parses a path ID, starts a goroutine or
+return (api decision 2). When `WriteJSON` itself fails for a reason other than `Canceled`,
+the handler calls `httpx.Fail` too. No handler reads the body, parses a path ID, starts a goroutine or
 changes state on `GET`. Every error status is api's mapping of the service's kind: 401
 `unauthenticated`, 403 `permission`, 503 `read_only` (sentinel), 503 `unavailable`, 504
 `timeout`, 500 `internal`. The fragment: paths `/public-greeting`, `/greeting`, `/greetings`;
@@ -442,10 +448,11 @@ Schema `hello`, created by `db`'s migrator; migration `postgres/migrations/0001_
 
 | Column | Type | Sensitivity | Why collected | Retention |
 |---|---|---|---|---|
-| `id` | `uuid` primary key | — | identify the row | with the row |
+| `id` | `uuid` primary key (constraint `greeting_pkey`) | — | identify the row | with the row |
 | `person_id` | `uuid` not null | `internal` (links a row to a person; shown only as the person's own count) | export, deletion and the signal payload need the owner | kept until `DeletePerson` (shipped default keep forever, Q-RETAIN); a retention setting arrives with `settings` and `jobs`, named `hello.retention.internal` by the core's convention |
-| `greeting` | `text` not null, check `length between 1 and 64` | `internal` (a copy of the setting's word at the time) | shows which word was current | with the row |
+| `greeting` | `text` not null, check `octet_length(greeting) BETWEEN 1 AND 64` (bytes, matching `greeting.MaxBytes`), constraint `greeting_text_length_chk` | `internal` (a copy of the setting's word at the time) | shows which word was current | with the row |
 | `created_at` | `timestamptz` not null | `internal` | ordering and export | with the row |
+| `updated_at` | `timestamptz` not null default now() | `internal` | every table has it (postgres-sql) | with the row |
 
 Index `greeting_person_created_idx (person_id, created_at)`. No foreign key: the core has no
 person table in M0; migration `0002` adds `references core.person(id) on delete cascade`
@@ -550,10 +557,12 @@ it, `Insert` then `Publish`; `Publish` failing rolls the insert back (signals de
 (db never retries; a `Conflict` on the fresh ID is a bug).
 
 **Counter and goroutine (decision 3).** `Start` launches one goroutine that owns `seen int`
-and the ring of recent `Signal.ID`s, fed by a buffered channel (64). `handleGreeted` selects
-on the channel, the goroutine's stop channel and `ctx.Done()`, so a handler never blocks
-past its 5 s deadline. `Seen()` reads under a mutex the goroutine updates. `Stop` closes
-the stop channel and waits on a `sync.WaitGroup` or `ctx`. A mutex alone would count; the
+and the ring of recent `Signal.ID`s, fed by a buffered channel (64). `handleGreeted` sends
+and then waits for the goroutine's acknowledgement, each bounded by the goroutine's stop
+channel and `ctx.Done()`, so a handler never blocks past its 5 s deadline and `Seen()` is
+deterministic after it returns. `Seen()` reads under a mutex the goroutine updates. `Stop` returns nil when already stopped
+(even with a done ctx); otherwise it checks `ctx`, closes the stop channel and waits on a
+`sync.WaitGroup` or `ctx`. A mutex alone would count; the
 goroutine is there so the reference shows the lifecycle of background work (module-contract
 asks for one). The counter resets at start; it is a process-local number, not data.
 
@@ -562,10 +571,12 @@ asks for one). The counter resets at start; it is a process-local number, not da
 `db.DB` and no state.
 
 **Idempotency.** `Greet` is not idempotent (each call saves a row; the client never retries
-mutations, web-shell decision 11). `DeletePerson` is idempotent (0 on the second call).
+mutations, web-shell decision 11). `DeletePerson` runs inside `db.Transact(Write)`, so a read-only copy refuses it even when
+the store is an in-memory fake; it is idempotent (0 on the second call). `Greet` trims the
+source word the same way the setting check does.
 `handleGreeted` is idempotent on `Signal.ID`.
 
-**Lifecycle.** `New` (no I/O) → `Start` (subscribe, validate banners, launch counter) →
+**Lifecycle.** `New` (no I/O) → `Start` (validate banners, subscribe, launch counter) →
 requests and deliveries → `Stop` (wait for the counter). `signals.Close` runs before
 `Set.Stop` (app decision 10), so no delivery reaches a stopped module. Deadlines come from
 the caller (`api`'s request deadline, `signals`' 5 s, `people`'s export deadline); every
@@ -641,10 +652,17 @@ only `hello` enabled. Table tests for F1–F26, F30, F31; `TestGreet_PublishesIn
 
 **Handlers:** `httptest` over `Routes()` mounted at `/api/hello` on a bare `ServeMux` with
 no `Failer`, so `httpx.Fail`'s fallback writes the status table: 200 and body shapes, 201,
-and F30.
+and F30. The module's own tests use only a bare `ServeMux`; tests that drive the real api
+shell and check the OpenAPI fragment against routes (`TestOpenAPI_MatchesRoutes`) live in
+`internal/app`, and no module test imports `internal/api`.
 
-**Conformance:** `moduletest.Conformance(t, Manifest, New, provision)` with a `provision`
-that builds the fakes above; every named subtest passes.
+**Conformance:** `moduletest.Conformance(t, Manifest, factory, provision,
+moduletest.WithSeed(seed))`, where `factory` builds the module over the in-memory fake
+store (the one the unit tests use; the production `New` cannot be seeded because
+`dbtest.Fake` holds no rows), `provision` builds the fakes above, and `seed` saves one
+greeting for `subject.Person` (the greeting row has no name, e-mail or phone field, so the
+other markers are unused here). `hello` requires and uses no capability, so no
+`WithCapability`. Every named subtest passes.
 
 **Integration** (`//go:build integration`, `dbtest.TempDB`, compose stack): migration
 `0001` applies on an empty database and `Status` reports version 1; `Insert`, `CountByPerson`,

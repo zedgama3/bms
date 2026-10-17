@@ -4,23 +4,6 @@
  */
 
 export interface paths {
-    "/api/modules": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** The compiled-in modules and whether each is enabled. */
-        get: operations["listModules"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/admin/modules": {
         parameters: {
             query?: never;
@@ -49,40 +32,6 @@ export interface paths {
         put?: never;
         /** Report errors the web shell caught. */
         post: operations["reportClientErrors"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/openapi.json": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** This document. */
-        get: operations["openapi"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/hello/public-greeting": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** The greeting word and the banners every visitor sees. */
-        get: operations["helloPublicGreeting"];
-        put?: never;
-        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -123,24 +72,123 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/hello/public-greeting": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The greeting word and the banners every visitor sees. */
+        get: operations["helloPublicGreeting"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/modules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The compiled-in modules and whether each is enabled. */
+        get: operations["listModules"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/openapi.json": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** This document. */
+        get: operations["openapi"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /** @description The body of every error response (RFC 9457, application/problem+json). */
-        Problem: {
-            status: number;
-            /** @description An errs.Kind name (invalid, unauthenticated, permission, not_found, conflict, unavailable, timeout, unsupported, internal) or a shell code (read_only, rate_limited, shutting_down, payload_too_large, unsupported_media_type, cross_origin, misdirected, method_not_allowed). */
-            code: string;
-            /** @description The error reference to quote to a maintainer. */
-            ref?: string;
-            fields?: components["schemas"]["Field"][];
+        AdminModulesResponse: {
+            graph: {
+                edges: {
+                    from?: string;
+                    /** @enum {string} */
+                    kind?: "requires" | "uses" | "contributes" | "subscribes";
+                    to?: string;
+                    via?: string;
+                }[];
+                modules: {
+                    contributes_to?: string[];
+                    defines?: string[];
+                    enabled?: boolean;
+                    has_schema?: boolean;
+                    name?: string;
+                    permissions?: string[];
+                    provides?: string[];
+                    publishes?: string[];
+                    requires?: string[];
+                    settings?: string[];
+                    subscribes?: string[];
+                    uses?: string[];
+                }[];
+                warnings: {
+                    message?: string;
+                    module?: string;
+                }[];
+            };
+            schema: {
+                applied?: number;
+                built?: number;
+                current?: boolean;
+                set?: string;
+            }[];
+            version: string;
+        };
+        ClientErrorBatch: {
+            reports: {
+                api?: {
+                    code?: string;
+                    method?: string;
+                    route?: string;
+                    status?: number;
+                };
+                app_version?: string;
+                count?: number;
+                error_ref?: string;
+                /** @enum {string} */
+                kind: "crash" | "rejection" | "screen" | "api";
+                message: string;
+                /** Format: date-time */
+                occurred_at: string;
+                screen?: string;
+                stack?: string;
+                trace_id?: string;
+            }[];
         };
         Field: {
-            /** @description The dotted path of the input. */
-            field: string;
             /** @description A machine-readable rule code: required, range, one_of, url, host_port, positive, malformed, ... */
             code?: string;
+            /** @description The dotted path of the input. */
+            field: string;
             /** @description The rule's parameters, never the input. */
             params?: {
                 [key: string]: string;
@@ -148,101 +196,53 @@ export interface components {
             /** @description The rule in English; shown only when the code has no translation. */
             reason: string;
         };
-        /**
-         * Format: uuid
-         * @description A record identifier in canonical UUID form.
-         */
-        ID: string;
-        /** @enum {string} */
-        Sensitivity: "public" | "internal" | "personal" | "sensitive";
-        /** @description The half-open interval [start, end). */
-        TimeRange: {
-            /** Format: date-time */
-            start: string;
-            /** Format: date-time */
-            end: string;
-        };
-        ModulesResponse: {
-            modules: {
-                name: string;
-                enabled: boolean;
-            }[];
-        };
-        AdminModulesResponse: {
-            version: string;
-            graph: {
-                modules: {
-                    name?: string;
-                    enabled?: boolean;
-                    has_schema?: boolean;
-                    permissions?: string[];
-                    settings?: string[];
-                    publishes?: string[];
-                    subscribes?: string[];
-                    provides?: string[];
-                    requires?: string[];
-                    uses?: string[];
-                    defines?: string[];
-                    contributes_to?: string[];
-                }[];
-                edges: {
-                    from?: string;
-                    to?: string;
-                    /** @enum {string} */
-                    kind?: "requires" | "uses" | "contributes" | "subscribes";
-                    via?: string;
-                }[];
-                warnings: {
-                    module?: string;
-                    message?: string;
-                }[];
-            };
-            schema: {
-                set?: string;
-                built?: number;
-                applied?: number;
-                current?: boolean;
-            }[];
-        };
-        ClientErrorBatch: {
-            reports: {
-                /** @enum {string} */
-                kind: "crash" | "rejection" | "screen" | "api";
-                message: string;
-                stack?: string;
-                screen?: string;
-                /** Format: date-time */
-                occurred_at: string;
-                count?: number;
-                app_version?: string;
-                error_ref?: string;
-                trace_id?: string;
-                api?: {
-                    method?: string;
-                    route?: string;
-                    status?: number;
-                    code?: string;
-                };
-            }[];
-        };
         HelloBanner: {
-            module: string;
             key: string;
+            module: string;
         };
-        HelloPublicGreeting: {
+        HelloGreeted: {
+            /** Format: date-time */
+            created_at: string;
             greeting: string;
-            banners: components["schemas"]["HelloBanner"][];
+            id: components["schemas"]["ID"];
         };
         HelloGreeting: {
             greeting: string;
             mine: number;
             seen: number;
         };
-        HelloGreeted: {
-            id: components["schemas"]["ID"];
+        HelloPublicGreeting: {
+            banners: components["schemas"]["HelloBanner"][];
             greeting: string;
+        };
+        /**
+         * Format: uuid
+         * @description A record identifier in canonical UUID form.
+         */
+        ID: string;
+        ModulesResponse: {
+            modules: {
+                enabled: boolean;
+                name: string;
+            }[];
+        };
+        /** @description The body of every error response (RFC 9457, application/problem+json). */
+        Problem: {
+            /** @description An errs.Kind name (invalid, unauthenticated, permission, not_found, conflict, unavailable, timeout, unsupported, internal) or a shell code (read_only, rate_limited, shutting_down, payload_too_large, unsupported_media_type, cross_origin, misdirected, method_not_allowed). */
+            code: string;
+            fields?: components["schemas"]["Field"][];
+            /** @description The error reference to quote to a maintainer. */
+            ref?: string;
+            status: number;
+        };
+        /** @enum {string} */
+        Sensitivity: "public" | "internal" | "personal" | "sensitive";
+        /** @description The half-open interval [start, end). */
+        TimeRange: {
             /** Format: date-time */
-            created_at: string;
+            end: string;
+            /** Format: date-time */
+            start: string;
         };
     };
     responses: never;
@@ -253,35 +253,6 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    listModules: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Names and enablement only. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ModulesResponse"];
-                };
-            };
-            /** @description An error. The body is a Problem. */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
-    };
     adminModules: {
         parameters: {
             query?: never;
@@ -378,71 +349,6 @@ export interface operations {
             };
         };
     };
-    openapi: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The OpenAPI 3.1 document. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": Record<string, never>;
-                };
-            };
-            /** @description Not modified. */
-            304: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description An error. The body is a Problem. */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
-    };
-    helloPublicGreeting: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The greeting and banners. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HelloPublicGreeting"];
-                };
-            };
-            /** @description An error. The body is a Problem. */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
-    };
     helloGreeting: {
         parameters: {
             query?: never;
@@ -489,6 +395,100 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HelloGreeted"];
                 };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    helloPublicGreeting: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The greeting and banners. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HelloPublicGreeting"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listModules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Names and enablement only. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModulesResponse"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    openapi: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The OpenAPI 3.1 document. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Not modified. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description An error. The body is a Problem. */
             default: {
