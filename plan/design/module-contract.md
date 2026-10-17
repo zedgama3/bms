@@ -3,8 +3,8 @@
 - **Status:** Approved (2026-10-16)
 - **Package:** `internal/core/module` (Go module `github.com/zedgama3/bms`), plus the test
   helper package `internal/core/module/moduletest`. **UI:** none of its own; the admin
-  "modules" screen is `web-shell.md`'s, fed by `GET /api/modules` (`api.md`), both drawing
-  on the `Graph` this spec provides.
+  "modules" screen is `web-shell.md`'s, fed by `GET /api/admin/modules` (`api.md`), both
+  drawing on the `Graph` this spec provides.
 - **Depends on specs:** `lib-errs.md` (Implemented): `errs.E`, `errs.Is`, kinds `Invalid`,
   `Conflict`, `NotFound`, `Internal`, `Canceled`, `Timeout`. `lib-core.md` (Implemented):
   `clock.Clock`, `validate.Errors`, `validate.FieldError`. `model.md` (Approved):
@@ -56,7 +56,7 @@ knowing it.
 | Concern | Owner |
 |---|---|
 | Applying migrations, recording schema versions, deciding whether a database is read-only | `db` (`db.md`). This spec calls `db` to check each enabled module's schema version before building it (D17) through the `SchemaChecker` interface and never touches the schema. |
-| Mounting routes, middleware, sessions, CSRF, the error mapper, the OpenAPI document | `api` (`api.md`). This spec hands it each module's route list and OpenAPI fragment. |
+| Mounting routes, middleware, sessions, cross-origin protection, the error mapper, the OpenAPI document | `api` (`api.md`). This spec hands it each module's route list and OpenAPI fragment. |
 | Deciding whether a person may do something; roles, grants, separation of duties | `authz` (`authz.md`). This spec hands it the declared permissions. |
 | Delivering signals, the catalogue of payloads, after-commit semantics | `signals` (`signals.md`). This spec validates names and tells `signals` which names each module declared. |
 | Storing, typing and editing settings; terminology; retention settings per module and level (D30) | `settings` (`settings.md`). This spec hands it the declared settings; `settings` adds the retention keys for every module itself. |
@@ -287,16 +287,25 @@ type Kept struct {
 }
 
 // RouteProvider is implemented by a module with an HTTP API. The api shell mounts every
-// route under /api/<name>/ with its middleware (session, CSRF, tracing) and the error
-// mapper; handlers decode, call the service, encode (add-module). Permission checks
-// happen in the service, never here.
+// route under /api/<name>/ with its pipeline (authentication per Access, cross-origin
+// protection for unsafe methods, the request span) and the error mapper; handlers use
+// httpx.ReadJSON, call the service, httpx.WriteJSON, and httpx.Fail on error
+// (add-module). Permission checks happen in the service, never here. A RouteProvider
+// must also implement APIDescriber: api requires the fragment (api.md decision 11; F34).
 type RouteProvider interface {
 	// Routes returns the module's routes. Cannot fail: handlers are built already. Build
 	// validates each route (F33) and keeps the list; api reads it from Set.Routes.
 	Routes() []Route
 }
 
-// Route is one HTTP route relative to /api/<name>.
+// Route is one HTTP route relative to /api/<name>. api mounts it as
+// "<Method> /api/<name><Pattern>" (api.md decision 3): a Pattern ending in "/" is mounted
+// exactly ("{$}" appended), so "/" answers only /api/<name>/; a module that wants a
+// subtree says "{path...}". The mounted pattern must fit telemetry's token grammar
+// ("[A-Za-z0-9/_][A-Za-z0-9._:/{}-]*"; Validate enforces the character set, so a module
+// learns in its own tests) and the whole span name "<Method> /api/<name><Pattern>" must
+// be at most 128 bytes (api F48). A GET or HEAD route never changes state: the
+// cross-origin check does not cover it and browsers prefetch it.
 type Route struct {
 	Method  string       // "GET", "POST", "PUT", "PATCH" or "DELETE"
 	Pattern string       // net/http ServeMux path syntax, starting with "/", e.g. "/shifts/{id}"
@@ -313,11 +322,16 @@ const (
 )
 
 // Validate fails with errs.Invalid if Method is not one of the five, Pattern does not
-// start with "/" or contains a space, Access is out of range, or Handler is nil.
+// start with "/" or contains a byte outside "[A-Za-z0-9._:/{}$-]" (so no space, "%", "+",
+// "," or ";"; "$" only for ServeMux's "{$}"), Access is out of range, or Handler is nil.
 func (r Route) Validate() error
 
-// APIDescriber is implemented by a RouteProvider that documents its routes. The api shell
-// merges the fragments into one OpenAPI document (api.md defines the fragment form).
+// APIDescriber is implemented by a RouteProvider that documents its routes; every
+// RouteProvider must implement it. The api shell
+// merges the fragments into one OpenAPI document (api.md decision 11 defines the fragment
+// form: one JSON object with paths relative to /api/<name>, components.schemas whose names
+// start with the module's name, and tags; "$ref"s point at the module's own schemas or
+// the base ones, never another module's).
 type APIDescriber interface {
 	// OpenAPI returns the module's fragment, embedded at build time. Cannot fail; Build
 	// rejects an empty result (F34).
@@ -460,7 +474,7 @@ type ModuleSettings struct {
 	Settings []SettingDecl
 }
 
-// Graph returns the whole registry as data for `GET /api/modules` and `bms check`:
+// Graph returns the whole registry as data for `GET /api/admin/modules` and `bms check`:
 // every compiled-in module, enabled or not, its declarations, the edges between them
 // and the warnings Resolve produced. Cannot fail.
 func (p *Plan) Graph() Graph
@@ -628,7 +642,7 @@ func Conformance(t *testing.T, m module.Manifest, f module.Factory, provision mo
 | `Resolve`, `Env`, `Plan.Order` | `app` (`serve`, `migrate`, `check`); `db` (migrations in order) | registered | checked order |
 | `Plan.Permissions` | `authz` through `app` | resolved | declared permissions |
 | `Plan.Settings` | `settings` through `app` | resolved | declared settings |
-| `Plan.Graph`, `Graph`, `Node`, `Edge`, `Warning` | `api` (`GET /api/modules`), `app` (`check`, logs warnings) | resolved | serializable |
+| `Plan.Graph`, `Graph`, `Node`, `Edge`, `Warning` | `api` (`GET /api/admin/modules`; enabled names only on the public `GET /api/modules`), `app` (`check`, logs warnings) | resolved | serializable |
 | `SchemaChecker` | `Build`; implemented by `db` | — | D17 check |
 | `Provision` | `app` | — | scoped `Deps` |
 | `Plan.Build`, `Set` and accessors | `app`; `api` (`Routes`); `people` (`PersonData`) | resolved; database reachable | every module verified |
@@ -745,7 +759,7 @@ specs expose on this spec's data:
 
 | Permission | Allows | Scoped by | Default roles | Declared by |
 |---|---|---|---|---|
-| `core.modules.read` | read the module graph and schema versions (`GET /api/modules`, 09 §7) | site | every site-admin starter role | `api.md` / `authz.md` (Proposed change 6) |
+| `core.modules.read` | read the module graph and schema versions (`GET /api/admin/modules`, 09 §7); the enabled names alone are public on `GET /api/modules` (api.md decision 27) | site | every site-admin starter role | `api.md` (`api.PermissionModulesRead`, declared where it is checked), registered with `authz` by `app` (api.md Proposed change 10) |
 | `people.data.export`, `people.data.delete` | run `PersonData` across modules for one person | site | account admin (09 §11) | `people.md` (Proposed change 8) |
 
 Every module's own routes name their permissions in the module's spec.
@@ -774,14 +788,15 @@ show and check every module's settings the same way.
 
 None of its own. What this spec provides for screens elsewhere:
 
-- **Admin "modules" screen** (`web-shell.md`, 09 §7): `GET /api/modules` (`api.md`) serves
-  `Plan.Graph()` plus, per module with a schema, the built-for and applied versions from
-  `db`. Visible with `core.modules.read`. Empty state: no modules compiled in (the graph has
-  only core nodes). Forbidden: 403 from the api; the shell hides the menu entry.
+- **Admin "modules" screen** (`web-shell.md`, 09 §7): `GET /api/admin/modules` (`api.md`)
+  serves `Plan.Graph()` plus, per module with a schema, the built-for and applied versions
+  from `db`. Visible with `core.modules.read`. Empty state: no modules compiled in (the
+  graph has only core nodes). Forbidden: 403 from the api; the shell hides the menu entry.
 - **Module screens** (D31): the web shell's build-time registry imports each module's
   folder; it shows a module's navigation and screens only if the module's name is enabled
-  in `GET /api/modules`. A disabled module's screens are not mounted, so turning a module
-  off hides its UI without a rebuild (add-module §3).
+  in the public `GET /api/modules` (names and enablement only; api.md decision 27). A
+  disabled module's screens are not mounted, so turning a module off hides its UI without
+  a rebuild (add-module §3).
 
 ## Behavior
 
@@ -881,6 +896,11 @@ None of its own. What this spec provides for screens elsewhere:
 `settings`, `telemetry`, `db`, `module`, `modules`), the shell packages (`api`, `app`,
 `config`, `web`, `admin`, `client`), and PostgreSQL's (`public`, `information`, anything
 starting with `pg`). The list is a constant in the package and a test pins it.
+`ModuleRoutes` is also the shape `app` uses for the core's route sets, with `Module` set to
+the core area name (`accounts`, `people`, ...), which is reserved here and so can never
+collide with a module; `api` additionally refuses a set named `core`, `modules` or `admin`
+(api.md F10), since those are its own route set's name and the first segments of its
+absolute routes.
 
 ### Resolve, step by step
 
@@ -908,7 +928,8 @@ starting with `pg`). The list is a constant in the package and a test pins it.
    `Links` to the module's view with providers built so far; call the factory (F27, F28).
 3. Verify: `Capabilities()` keys equal `Provides` and no value is nil (F29); `Contributions()`
    keys equal `ContributesTo` (F30); `Routes()` each validate and no two share method and
-   pattern (F33); `OpenAPI()` non-empty (F34); a module implementing `CapabilityProvider` or
+   pattern (F33); a `RouteProvider` implements `APIDescriber` and `OpenAPI()` is non-empty
+   (F34); a module implementing `CapabilityProvider` or
    `Contributor` with declarations empty is F29/F30 too.
 4. After all are built: for every contribution, the definer's `Accepts` (F31); freeze every
    `Links`.
@@ -976,8 +997,8 @@ Standard library (`context`, `encoding/json`, `errors`, `fmt`, `io/fs`, `log/slo
 | F30 | `Plan.Build` | the same for `ContributesTo` and `Contributor` | Invalid | fix the module | `TestBuild_ContributionsMismatchManifest_ReturnsInvalid` |
 | F31 | `Plan.Build` | a contribution fails the definer's `Accepts` | Invalid, naming contributor, definer and point | fix the contributor | `TestBuild_ContributionRejectedByDefiner_ReturnsInvalid` |
 | F32 | consumer `Factory` (obligation) | a capability value does not implement the contract interface | Invalid from the consumer, naming the capability | stop start-up | `TestBuild_ConsumerRejectsProviderType_FailsStartup` (with a fake consumer) |
-| F33 | `Plan.Build`, `Route.Validate` | a route with a bad method, pattern not starting with `/`, nil handler, out-of-range `Access`, or two routes with the same method and pattern | Invalid, naming module and route | fix the module | `TestBuild_InvalidOrDuplicateRoute_ReturnsInvalid` |
-| F34 | `Plan.Build` | `OpenAPI()` returns empty | Invalid | fix the module | `TestBuild_EmptyOpenAPI_ReturnsInvalid` |
+| F33 | `Plan.Build`, `Route.Validate` | a route with a bad method, pattern not starting with `/` or containing a byte outside `[A-Za-z0-9._:/{}$-]` (a space, `%`, `+`, `,`, `;`), nil handler, out-of-range `Access`, or two routes with the same method and pattern | Invalid, naming module and route | fix the module | `TestBuild_InvalidOrDuplicateRoute_ReturnsInvalid` (its table includes `/caf%C3%A9` and `/a+b`; `/x/{$}` and `/files/{path...}` pass) |
+| F34 | `Plan.Build` | a `RouteProvider` without a non-empty `OpenAPI()` (no `APIDescriber`, or an empty result) | Invalid | add the fragment | `TestBuild_EmptyOpenAPI_ReturnsInvalid`, `TestBuild_RouteProviderWithoutDescriber_ReturnsInvalid` |
 | F35 | `Plan.Build` | `ctx` done | Canceled / Timeout | stop start-up | `TestBuild_ContextCanceled_ReturnsCanceled` |
 | F36 | `Plan.Build` | `schema` or `provision` nil | Invalid | fix app | `TestBuild_NilSchemaOrProvision_ReturnsInvalid` |
 | F37 | `Set.Start` | a module's `Start` fails | its kind, wrapped with the module name; earlier modules stopped in reverse; their `Stop` errors joined | stop start-up | `TestSetStart_ModuleFails_StopsEarlierInReverse` |
@@ -1129,7 +1150,15 @@ with the proposed answer:
    give modules a scoped `Deps.Settings`; show titles and descriptions through the message
    keys of decision 8. Consider department-scoped settings later; this spec declares
    site-wide ones only.
-6. **`plan/design/api.md` (row 16):** mount `Set.Routes()` under `/api/<name>/` with the
+6. **`plan/design/api.md` (row 16)** (applied 2026-10-17, by api.md's Proposed change 3:
+   mounting as `<METHOD> /api/<name><pattern>` with trailing slashes exact; the fragment
+   form in its decision 11; `GET /api/modules` split into a public list of enabled names
+   and `GET /api/admin/modules` behind `core.modules.read` for the graph and versions (its
+   decision 27); `db.ErrReadOnly` → `503 read_only`; this spec amended: `RouteProvider`
+   must implement `APIDescriber` (F34), `Route.Validate` enforces the pattern character
+   set (F33), the `Route` doc notes exact trailing slashes, `{path...}`, the token grammar
+   and that `GET`/`HEAD` never change state, `ModuleRoutes` is also the core sets' shape,
+   and `core.modules.read` is declared by `api`): mount `Set.Routes()` under `/api/<name>/` with the
    session middleware applied per `Route.Access`; define the OpenAPI fragment form for
    `APIDescriber` and merge the fragments; serve `GET /api/modules` from `Plan.Graph()` plus
    `db`'s versions, behind `core.modules.read`; map `db`'s read-only kind to the

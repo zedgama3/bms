@@ -237,7 +237,12 @@ func (p *Pool) Ping(ctx context.Context) error
 // Close stops the read-only watcher, waits for it, and closes the pool, which waits for
 // acquired connections to be released. Idempotent: a second Close returns nil. Fails with
 // errs.Timeout (or errs.Canceled) if ctx ends before the watcher stopped or the pool
-// closed (F30). app calls it once at shutdown, after Set.Stop and the HTTP server.
+// closed (F30); it returns then, never later, even if a late caller still holds a
+// connection (a handler that outlived api.Shutdown's deadline, api.md "Concurrency and
+// lifecycle"): the pool keeps closing in the background, the held connection is closed
+// when released, and every call on the Pool after Close returned fails with
+// errs.Unavailable (F20), which is what the late caller sees. app calls it once at
+// shutdown, after Set.Stop and the HTTP server.
 func (p *Pool) Close(ctx context.Context) error
 
 // ---- Errors ----
@@ -789,7 +794,9 @@ the transitions without a database.
 
 `*Pool` is safe for concurrent use between `Open` and `Close`. A transaction (the ctx
 `Transact` hands to fn) is not: it is one connection, used from one goroutine. `Close` is
-idempotent and waits for the watcher and for released connections, within ctx. `Migrator`
+idempotent and waits for the watcher and for released connections, within ctx and never
+past it (a handler that ignored its ctx past `api.Shutdown` may still hold a connection;
+it sees `Unavailable` on its next call, F20). `Migrator`
 holds no state beyond its pool and may be shared; `Migrate` runs are serialised by the
 advisory lock across processes and by that same lock within one process. `dbtest.Fake` is
 safe for concurrent use. Nothing in `db` runs a goroutine other than the watcher, and the
@@ -841,7 +848,7 @@ under `**/internal/core/db/**`.
 | F27 | `AfterCommit` | `fn` nil | Invalid | fix the caller | `TestAfterCommit_NilFn_ReturnsInvalid` |
 | F28 | `Ping` | the server does not answer | Unavailable | `/readyz` 503 | `TestPing_Unreachable_ReturnsUnavailable` (unit, closed port) |
 | F29 | `Ping` | ctx ends | Canceled / Timeout | `/readyz` 503 | `TestPing_ContextCanceled_ReturnsCanceled` |
-| F30 | `Close` | ctx ends before the watcher stopped or connections were released | Timeout / Canceled; second `Close` returns nil | log and exit | `TestClose_ContextExpired_ReturnsTimeout`, `TestClose_Twice_IsNil` |
+| F30 | `Close` | ctx ends before the watcher stopped or connections were released (a late caller still holds one) | Timeout / Canceled, returned when ctx ends and not later; the pool keeps closing in the background; the holder's next call is Unavailable (F20); second `Close` returns nil | log and exit | `TestClose_ContextExpired_ReturnsTimeout` (a held connection; `Close` returns at the deadline; the holder's next `Exec` is `Unavailable`; releasing it afterwards does not panic), `TestClose_Twice_IsNil` |
 | F31 | `Wrap` | an unrecognised error | Internal | 500 | `TestWrap_UnknownError_ReturnsInternal` |
 | F32 | `Set.Validate` | bad `Name` or `Schema` grammar; `Schema` neither `core` nor `Name`; nil `Files` | Invalid, one `FieldError` each | fix app or the module | `TestSetValidate_Table` |
 | F33 | `Version` | a root entry is not `NNNN_name.sql` (a subdirectory, `README`, `1_init.sql`, `0001-init.sql`, upper case) | Invalid naming the entry | fix the module | `TestVersion_BadFileName_ReturnsInvalid` |
@@ -968,8 +975,8 @@ the owner on 2026-10-16 and are recorded as decisions 20, 10 and 7.
 
 ## Proposed changes elsewhere
 
-Status as of 2026-10-16: items 1, 2, 3, 6, 7, 8, 9, 12 and the `.env.example` half of 11
-are applied. Items 4, 5, 10, 13 and the `docs/operating.md` half of 11 wait for their
+Status as of 2026-10-17: items 1, 2, 3, 4, 6, 7, 8, 9, 12 and the `.env.example` half of
+11 are applied. Items 5, 10, 13 and the `docs/operating.md` half of 11 wait for their
 target to be written and are carried by this list until then.
 
 1. **`plan/07-abstractions.md`, `db` entry** (applied 2026-10-16): replace "Owns" with: the pool and its
@@ -996,7 +1003,12 @@ target to be written and are carried by this list until then.
    by `jobs`, never rolling back the publisher); outside a transaction the hook runs at
    once. If `signals` instead chooses an outbox table, it writes it through the same
    `Transact` and still needs no change here.
-4. **`plan/design/api.md` (row 16)** (pending: spec not written): the error mapper checks `errors.Is(err,
+4. **`plan/design/api.md` (row 16)** (applied 2026-10-17, by api.md's Proposed change 5:
+   `503 read_only` in its decision 16 and F36; `/readyz` as proposed, single-flighted and
+   cached for 1 s; `Built`, `Applied` and `current` per set on `GET /api/admin/modules`
+   through `api.SchemaStatus`, which `app` builds over `Migrator.Status`; stores turn
+   `*db.Error.Constraint` into a `validate.FieldError` themselves; this spec's `Close` doc,
+   F30 and "Concurrency and lifecycle" gained the late-holder rule): the error mapper checks `errors.Is(err,
    db.ErrReadOnly)` before the kind and answers 503 with code `read_only` and the message
    key for "this copy is read-only"; `/readyz` calls `Pool.Ping` and reports `ReadOnly()`
    as `{"database": "ok", "mode": "read-write" | "read-only"}`; `GET /api/modules` adds

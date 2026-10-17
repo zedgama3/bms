@@ -182,7 +182,10 @@ type HTTP struct {
 	// TrustedProxies lists the networks whose X-Forwarded-For and X-Forwarded-Proto are
 	// believed (D15: an optional front end). Empty, the default, trusts none. At most 64
 	// prefixes; a bare address means that one address. Non-empty, it is also what makes a
-	// non-loopback Addr acceptable: the plaintext hop ends at these proxies.
+	// non-loopback Addr acceptable: the plaintext hop ends at these proxies. A prefix of
+	// zero bits (0.0.0.0/0, ::/0) is refused (F30): it would trust every peer's headers
+	// and switch off the api's peer check. A front end on the same host is listed as
+	// 127.0.0.1/32 (or ::1/128); otherwise all its clients share the loopback address.
 	TrustedProxies []netip.Prefix
 	// AllowPlaintext permits a non-loopback Addr with no TrustedProxies: plain HTTP
 	// reachable from the network, for development only. Default false. The api shell logs
@@ -306,7 +309,7 @@ holds an ID, a sensitivity or an address) and nothing from `core/`.
 | `http.request_timeout` | `BMS_HTTP_REQUEST_TIMEOUT` | duration | `30s` | 1s..10m | api |
 | `http.shutdown_timeout` | `BMS_HTTP_SHUTDOWN_TIMEOUT` | duration | `15s` | 1s..5m | app |
 | `http.max_body_bytes` | `BMS_HTTP_MAX_BODY_BYTES` | int64 (bytes) | `1048576` | 1024..1073741824 | api |
-| `http.trusted_proxies` | `BMS_HTTP_TRUSTED_PROXIES` | CIDR list | empty | each a prefix or an address; ≤ 64 | api, identity (rate limit by address) |
+| `http.trusted_proxies` | `BMS_HTTP_TRUSTED_PROXIES` | CIDR list | empty | each a prefix or an address; ≤ 64; no prefix of zero bits (F30); a front end on the same host is listed as `127.0.0.1/32`, otherwise all its clients share the loopback address | api, identity (rate limit by address) |
 | `http.allow_plaintext` | `BMS_HTTP_ALLOW_PLAINTEXT` | bool | `false` | `true` or `false` | config (F28), api (start-up warning) |
 | `session.key` | `BMS_SESSION_KEY` (+`_FILE`), else the secrets file | secret, generated | none: `bms migrate` generates it | when set: 32..1024 bytes, no NUL; one source only (F7, F27); unset refused by the commands that need it (F22b, app) | identity |
 | `secrets.file` | `BMS_SECRETS_FILE` | path | `<data.dir>/secrets.json` | non-empty; if the file exists: regular, owner-only permissions, ≤ 64 KiB, a JSON object (F23–F25) | config, app |
@@ -511,9 +514,14 @@ notice when it creates that file.
     terminate authentication (D15: bms does). What this spec enforces: `http.addr` defaults
     to loopback; a non-loopback bind (an explicit interface, or `:port` meaning all) is
     refused unless `http.trusted_proxies` names the front end or `http.allow_plaintext` is
-    set for development (F28); forwarded headers are tied to `http.trusted_proxies` (api).
-    What `api.md` enforces: (b), (d), a warning log when `allow_plaintext` is on, and a
-    decision on direct requests from peers outside `trusted_proxies` (Proposed change 5).
+    set for development (F28); forwarded headers are tied to `http.trusted_proxies` (api);
+    no trusted prefix of zero bits (F30). What `api.md` enforces (its decisions 7, 8, 9,
+    24 and 26, 2026-10-17): (b); (d) with one exception, a development cookie
+    `bms_session_dev` without `Secure` only when `allow_plaintext` is on and the request
+    is plain `http`; HSTS as `max-age=31536000` without `includeSubDomains`; a warning
+    log when `allow_plaintext` is on; and a direct request from a peer outside
+    `trusted_proxies` answered `403` with code `misdirected` (not `421`), `/healthz` and
+    `/readyz` exempt (Proposed change 5, applied).
     What the deploy docs state: (a), (c), (e), with examples (Proposed change 11). A
     loopback bind is recognised by literal host: empty host is all interfaces (not
     loopback); `127.0.0.0/8`, `::1` and the literal `localhost` are loopback; no DNS lookup
@@ -564,7 +572,7 @@ logger; `cmd/bms` prints what `Load` returns.
 |---|---|
 | `Instance` | `Name` matches the grammar (F17). |
 | `DB` | `URL` set (F1); `validate.URL(env, url, "postgres", "postgresql")` (F15); ≤ 4096 bytes and no NUL (F15). `MaxConns`, `ConnectTimeout`, `QueryTimeout` in range (F14). |
-| `HTTP` | `validate.ListenAddr` on `Addr` (F18); the three durations and `MaxBodyBytes` in range (F14); `len(TrustedProxies) <= 64` (F20); each prefix valid (`Prefix.IsValid()`, F6 when built by hand); `Addr`'s host not loopback and `TrustedProxies` empty and `!AllowPlaintext` → F28 under `BMS_HTTP_ADDR`, reason "binds a non-loopback address with no trusted proxy: put a TLS front end in front and list it in BMS_HTTP_TRUSTED_PROXIES, bind 127.0.0.1, or set BMS_HTTP_ALLOW_PLAINTEXT=true for development". |
+| `HTTP` | `validate.ListenAddr` on `Addr` (F18); the three durations and `MaxBodyBytes` in range (F14); `len(TrustedProxies) <= 64` (F20); each prefix valid (`Prefix.IsValid()`, F6 when built by hand) and of at least one bit (`Prefix.Bits() > 0`, F30, under `BMS_HTTP_TRUSTED_PROXIES`, reason "trusts every peer: list the front end's addresses or networks"); `Addr`'s host not loopback and `TrustedProxies` empty and `!AllowPlaintext` → F28 under `BMS_HTTP_ADDR`, reason "binds a non-loopback address with no trusted proxy: put a TLS front end in front and list it in BMS_HTTP_TRUSTED_PROXIES, bind 127.0.0.1, or set BMS_HTTP_ALLOW_PLAINTEXT=true for development". |
 | `Session` | if `Key` is set: 32..1024 bytes and no NUL (F16). Unset passes (decision 7). |
 | `Secrets` | `File` non-empty after trimming and no NUL (F21, same rule as `data.dir`). |
 | `Log` | `Level` one of the four (F4; a hand-built `slog.Level(3)` is rejected); `Format` one of two (F4). |
@@ -641,6 +649,7 @@ change 1). `cmd/bms` and `internal/app` are the only packages allowed to import
 | F27 | `Load` | `session.key` set by the environment (`BMS_SESSION_KEY` or `_FILE`) and also present in the secrets file | Invalid under `BMS_SESSION_KEY`, reason names both sources | remove one | `TestLoad_SessionKeyInEnvAndSecretsFile_ReturnsInvalid` |
 | F28 | `Validate` | `http.addr` binds a non-loopback host (an interface address or all interfaces) with `http.trusted_proxies` empty and `http.allow_plaintext` false | Invalid under `BMS_HTTP_ADDR`, reason gives the three ways out | add a front end and trust it, bind loopback, or allow plaintext for development | `TestValidate_NonLoopbackBindWithoutProxy_ReturnsInvalid` |
 | F29 | `Load` | a bool key is not exactly `true` or `false` (`1`, `yes`, `True`) | Invalid | fix the value | `TestLoad_BadBool_ReturnsInvalid` |
+| F30 | `Load`, `Validate` | a trusted-proxy prefix of zero bits (`0.0.0.0/0`, `::/0`) | Invalid under `BMS_HTTP_TRUSTED_PROXIES`, reason "trusts every peer: list the front end's addresses or networks" (api.md decision 8, 2026-10-17; `api.Options.Validate` repeats the check for options built by hand) | list the front end's addresses or networks | `TestValidate_ZeroBitTrustedProxy_ReturnsInvalid` |
 
 A missing secrets file is not a failure of `Load` (decision 3): `TestLoad_SecretsFileAbsent_LeavesSessionKeyUnset`
 pins that `Load` succeeds and `Session.Key.IsSet()` is false.
@@ -783,7 +792,13 @@ None. The three questions in the first draft were answered by the owner on 2026-
    Proposed change 4); hold the connect retry schedule as a constant inside
    `ConnectTimeout`; decide whether pgx's `PG*` fallbacks are honoured and say so in the
    operator docs.
-5. **`plan/design/api.md` (row 16):** take `Addr`, `RequestTimeout`, `MaxBodyBytes`,
+5. **`plan/design/api.md` (row 16)** (applied 2026-10-17, by api.md's Proposed change 4:
+   (b) and (d) enforced as its decisions 7 and 8; the plaintext warning is its F35; the
+   direct-peer answer is `403` with code `misdirected`, not `421` (its decision 9 gives the
+   reason), with `/healthz` and `/readyz` exempt; "session and CSRF cookies" is "the
+   session cookie" (no CSRF cookie, its decision 6); HSTS is `max-age=31536000` alone (its
+   decision 26); the one `Secure`-less cookie is the development cookie of its decision 24;
+   this spec gained F30 and the same-host note): take `Addr`, `RequestTimeout`, `MaxBodyBytes`,
    `TrustedProxies` and `AllowPlaintext` as its options. Enforce decision 16's conditions
    (b) and (d): derive the client address and scheme from `X-Forwarded-For` and
    `X-Forwarded-Proto` only when the peer is in `TrustedProxies`, and from the connection

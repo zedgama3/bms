@@ -48,7 +48,18 @@ internal/modules/<name>/
     sql/           .sql files embedded with go:embed
     migrations/    forward-only, numbered: 0001_init.sql, ... applied by `bms migrate`; the
                    highest number is the module's schema version, checked at init (D17)
-  http.go          handlers: decode, call service, encode. No business logic.
+  http.go          handlers: httpx.ReadJSON, call the service, httpx.WriteJSON; on error
+                   httpx.Fail(w, r, err) and return (never write an error body yourself).
+                   Path IDs with model.ParseID. No business logic. GET and HEAD routes
+                   never change state: the cross-origin check does not cover them and
+                   browsers prefetch them. Handlers start no goroutines (panic recovery
+                   covers the request goroutine only; long work is a job).
+  openapi.json     the module's OpenAPI fragment, embedded, returned by OpenAPI(): paths
+                   relative to /api/<name> ("/x/{$}" is documented as "/x/", "{p...}" as
+                   "{p}"), schema names starting with the module's name, $refs pointing at
+                   its own schemas or the base ones (Problem, Field, ID, ...). A route
+                   pattern ending in "/" is mounted exactly; use {path...} for a subtree.
+                   api refuses to start if a route and the fragment disagree.
   signals.go       the payload key constants, the NewPayload(signals.Ref(...)) calls for
                    each published signal, and the handlers for each subscription
   privacy.go       implements module.PersonData: export and delete for one person

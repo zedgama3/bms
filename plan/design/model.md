@@ -472,7 +472,10 @@ None. The two questions in the first draft were answered by the owner on 2026-10
 5. **`plan/design/identity.md` (row 6) and `people.md` (row 8):** store the address as
    entered and index `Email.Canonical()` uniquely (D21); the login lookup is by canonical
    form.
-6. **`plan/design/api.md` (row 16):** path and query IDs are parsed with `model.ParseID`
+6. **`plan/design/api.md` (row 16)** (applied 2026-10-17: `model.ParseID` in handlers
+   through the `validate.FieldError` path; the OpenAPI base fragment documents `ID`,
+   `Sensitivity` and `TimeRange` as proposed, pinned by
+   `TestOpenAPI_IDSensitivityTimeRangeShapes`): path and query IDs are parsed with `model.ParseID`
    (Invalid → 400 with the field, through the existing `validate.FieldError` path); the
    OpenAPI document describes an ID as `string, format: uuid` (canonical form), a
    sensitivity as an enum of the four names, and a time range as `{start, end}`.

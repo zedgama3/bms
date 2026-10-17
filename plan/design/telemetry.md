@@ -282,9 +282,11 @@ func Duration(key string, d time.Duration) Attr
 
 // Token records a short identifier-like string: a route pattern, an HTTP method, a module
 // or signal name, an operation, an SQL keyword, a status word. Grammar:
-// "[A-Za-z0-9/][A-Za-z0-9._:/{}-]{0,127}" (no space, no "@", no "?"), so neither an
-// e-mail address nor a URL with a query string fits. A value that fails yields
-// "[invalid-token]" and a Violation (F17). Tokens are the only strings allowed on metrics.
+// "[A-Za-z0-9/_][A-Za-z0-9._:/{}-]{0,127}" (no space, no "@", no "?"), so neither an
+// e-mail address nor a URL with a query string fits; "_" is admitted as a first byte so
+// that the api's normalised method "_OTHER" is a token (decision 20). A value that fails
+// yields "[invalid-token]" and a Violation (F17). Tokens are the only strings allowed on
+// metrics.
 func Token(key, value string) Attr
 
 // Text records free text: an error message, a client's crash message. The value goes
@@ -824,6 +826,16 @@ None of its own. What this spec provides for screens elsewhere:
     concrete path, for the same reason as `http.route` and `screen`: a concrete path puts
     an ID in a name and makes a series per record. Signals are not HTTP and keep the token
     names `signal:<name>` and `deliver:<name>` (signals.md decision 12).
+20. **The token grammar admits `_` as a first byte, so `_OTHER` is a token** (owner,
+    2026-10-17; api.md Proposed change 6). The api normalises the request method to one
+    of the seven known methods or `_OTHER` before it becomes a span attribute or a
+    histogram label (api.md decision 10), and `_OTHER` is the spelling OpenTelemetry's HTTP
+    semantic conventions use; a private spelling (`OTHER`) would make every dashboard
+    built on the conventions miss it. The grammar becomes
+    `[A-Za-z0-9/_][A-Za-z0-9._:/{}-]{0,127}`: exactly the first byte changes, nothing
+    else is admitted. Span names are unaffected: the span for an unknown method is
+    `HTTP <route token>` (the method part `[A-Z]{3,10}` already admits `HTTP`), never
+    `_OTHER <route>`.
 
 ### What is read from the environment
 
@@ -1015,7 +1027,7 @@ under `internal/core/telemetry/**` (Proposed change 8).
 | F14 | `Tracer.Start` | name neither a token nor `<METHOD> <route pattern>` (`[A-Z]{3,10}`, one space, a token beginning with `/`; decision 19), or over 128 bytes: a lower-case method (`get /x`), two spaces, a space elsewhere (`signal hello.greeted`), a route without `/` (`GET x`) | none: span named `invalid-span-name`; `Violation{trace, invalid_span_name}` | fix the caller (the test fails) | `TestStart_BadName_UsesPlaceholderAndCountsViolation` (table of the rejected shapes), `TestStart_HTTPSpanName_Accepted` (`GET /api/people/{id}`, `POST /api/client-errors` pass unchanged) |
 | F15 | any `Attr` constructor | key on the denylist | none: value `[denied]`; `Violation{…, denied_key}` | fix the caller | `TestAttr_DeniedKey_RedactsAndCountsViolation` |
 | F16 | any `Attr` constructor | key fails the grammar | none: `telemetry.invalid_key=<key>`; `Violation{…, invalid_key}` | fix the caller | `TestAttr_InvalidKey_ReplacedAndCounted` |
-| F17 | `Token`, `Module` | value fails the token grammar (a space, `@`, `?`, over 128 bytes) | none: `[invalid-token]`; `Violation{…, invalid_token}` | fix the caller | `TestToken_InvalidValue_ReplacedAndCounted` |
+| F17 | `Token`, `Module` | value fails the token grammar (a space, `@`, `?`, a first byte other than `[A-Za-z0-9/_]` such as `.` or `-`, over 128 bytes) | none: `[invalid-token]`; `Violation{…, invalid_token}` | fix the caller | `TestToken_InvalidValue_ReplacedAndCounted` (its table also pins `_OTHER` accepted and `.x`, `-x` rejected; decision 20) |
 | F18 | `Text`, `RecordError` | value over `MaxTextBytes`, or containing an e-mail shape or a query string | none: scrubbed, cut with `…`; no violation (expected use) | — | `TestText_ScrubsAndTruncates` |
 | F19 | `Counter.Add`, `Histogram.Record`, gauge samples | a `Text` or `ID` attribute | none: that attribute dropped; `Violation{metric, text_on_metric/id_on_metric}` | fix the caller | `TestMetric_TextOrIDAttr_DroppedAndCounted` |
 | F20 | `Meter.Counter/Histogram/Gauge` | name not a token or over 128 bytes; unit not UCUM-shaped (contains a space); non-increasing buckets | Invalid | fix the caller | `TestMeter_BadNameUnitOrBuckets_ReturnsInvalid` |
@@ -1097,8 +1109,8 @@ asserts `!c.Contains(marker)`; invented people only):
 - Attributes and policy: `TestKeyGrammar_Table`; `TestDenylist_Pinned` (the list is
   stable) and `TestDenylist_Matching_Table` (`email`, `person.email`, `http_request_body`
   denied; `user_agent`, `db.name`, `set_name`, `module` allowed); `TestTokenGrammar_Table`
-  (routes with `{id}` and `{path...}`, methods, `module.name` accepted; e-mail, URL with
-  `?`, space rejected); `TestScrub_Table` (e-mails in prose and in `mailto:`; query strings
+  (routes with `{id}` and `{path...}`, methods, `_OTHER`, `module.name` accepted; e-mail,
+  URL with `?`, space, a leading `.` or `-` rejected); `TestScrub_Table` (e-mails in prose and in `mailto:`; query strings
   in `/path?x=1` and `https://h/p?x`; false positives left alone; idempotent);
   `TestID_ZeroIsIgnored`; F15–F18.
 - Meter: `TestCounterHistogramGauge_RoundTrip` (through the Observer);
@@ -1144,10 +1156,10 @@ answered by the owner on 2026-10-16 and are recorded in decisions 3, 9, 17, 18 a
 
 ## Proposed changes elsewhere
 
-Status as of 2026-10-16: items 1, 2, 8, 10, 11, 13, 14 and 15 are applied; item 9 is
+Status as of 2026-10-17: items 1, 2, 3, 8, 10, 11, 13, 14 and 15 are applied; item 9 is
 applied for `deploy/compose/.env.example` and Tempo's retention, and Prometheus's retention flag, and pending for
 Loki retention, the alert rules and `docs/operating.md`; item 12 is applied; item 6 is
-applied for `signals.md` and pending for `jobs.md`; items 3, 4, 5 and 7 wait for their
+applied for `signals.md` and pending for `jobs.md`; items 4, 5 and 7 wait for their
 target to be written and are carried by this list until then.
 
 1. **`plan/design/module-contract.md` (row 4)** (applied 2026-10-16): add `Tracer telemetry.Tracer` to `Deps`
@@ -1168,7 +1180,16 @@ target to be written and are carried by this list until then.
    `Stats{Acquired, Idle, Total, Max, Pending int; WaitDuration time.Duration}` and,
    when `Meter` is set, register the three gauges in the metrics table from it. `db` imports
    `core/telemetry` (allowed: `telemetry` is below `db` in the core graph).
-3. **`plan/design/api.md` (row 16)** (pending: target not written): the tracing middleware opens one `SpanServer` span per
+3. **`plan/design/api.md` (row 16)** (applied 2026-10-17, by api.md's Proposed change 6,
+   with these refinements: the span is opened per route after routing, so the name is
+   known at `Start`; the route token renders `{$}` as the trailing `/`; the method is
+   normalised to the seven known methods or `_OTHER` before it becomes a name, an
+   attribute or a label, and the span is named `HTTP <route token>` for `_OTHER` (this
+   spec's decision 20 admits `_OTHER`); unmatched requests use the route token
+   `/{unmatched}`; `/healthz` and `/readyz` get no span and no sample; every response
+   carries `X-Trace-Id`; the error log level is error for a 5xx, warn for a 4xx from a
+   signed-in actor and debug for an anonymous 4xx; the intake route is mounted as
+   specified): the tracing middleware opens one `SpanServer` span per
    request with `WithParentFrom(r.Header)`, names it `<METHOD> <route pattern>` once the
    route is known (the one non-token span-name form, decision 19), sets `http.request.method`, `http.route`, `http.response.status_code`
    and `person_id` (when a session exists), calls `RecordError` with the mapped error, and

@@ -11,7 +11,8 @@ disagree, the spec wins for that package. Report the conflict.
 ## Layers and imports
 
 ```
-internal/lib/<x>            shared helpers                imports: stdlib (and each other, acyclic)
+internal/lib/<x>            shared helpers (errs, clock,  imports: stdlib (and each other, acyclic)
+                            validate, secret, httpx, ...)
 internal/model              shared value types            imports: lib
 internal/config             process configuration         imports: lib
 internal/core/<c>           core contracts (module, db,   imports: model, lib, other core contracts (acyclic)
@@ -46,7 +47,10 @@ module's tests call `moduletest.Conformance`.
 
 ## Errors: `internal/lib/errs`
 
-Kinds, and their usual HTTP mapping (done only in `api`'s ErrorMapper):
+Kinds, and their HTTP mapping. The table is `lib/httpx.StatusOf`; the api shell's mapper is
+the only writer of an error response on a real request; handlers call
+`httpx.Fail(w, r, err)` and return, and never write an error body themselves
+(`plan/design/api.md`, decision 2):
 
 | Kind | Meaning | HTTP |
 |---|---|---|

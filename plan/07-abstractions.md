@@ -45,7 +45,9 @@ Rules (enforced by depguard and `make imports`):
 3. A **module** (`internal/modules/<name>/...`) depends on core contracts, shared
    `contracts`, `model` and `lib`. It **never imports another module**, the api shell, `app`
    or `config`.
-4. The **api shell** mounts the routes it's given. It never imports a module.
+4. The **api shell** mounts the routes it's given. It never imports a module. Handlers in
+   any layer reach the shell's error mapper through `lib/httpx.Fail`; `api` is never
+   imported.
 5. Only `app` imports modules and core implementations, and turns modules on from
    configuration through the registry.
 6. **Shared contracts (D19).** `internal/contracts/<name>/` holds interfaces and data types
@@ -75,7 +77,9 @@ Rules (enforced by depguard and `make imports`):
 ### lib: internal shared libraries
 - **Purpose:** small helpers every layer needs, so behavior is consistent.
 - **Owns:** `errs` (error kinds), `clock`, `retry`, `validate`, `timeutil`, `secret`
-  (ported from Sojourn, D11), `testkit` (test containers and fakes).
+  (ported from Sojourn, D11), `httpx` (the problem body, `StatusOf`, `Fail`, `ReadJSON`,
+  `WriteJSON`, the client-address and scheme ctx accessors; owned by `api.md`), `testkit`
+  (test containers and fakes).
 - **Doesn't do:** anything that knows about the domain.
 
 ### config: configuration loading
@@ -197,10 +201,24 @@ Rules (enforced by depguard and `make imports`):
 ## Delivery
 
 ### api shell
-- **Purpose:** expose the core's and modules' routes over HTTP.
-- **Owns:** router, middleware (session, CSRF, the request span and error reference, limits), the error mapper
-  (`errs` kind → HTTP status), the OpenAPI document assembled from module fragments.
-- **Doesn't do:** business logic.
+- **Purpose:** expose the core's and the modules' routes over HTTP with one request
+  pipeline.
+- **Owns:** the router (`net/http.ServeMux`, routes mounted under `/api/<name>/`, one
+  `/api/` fallback for JSON 404 and 405, no redirects under `/api/`); the middleware chain
+  (recovery, the peer check for a misrouted plaintext path, the client address and scheme
+  from trusted proxies, security headers, body cap, request deadline on the ctx and the
+  connection, draining; per route: the request span and duration histogram with the
+  method normalised, the error mapper, the cookie guard, cross-origin protection,
+  authentication through `identity`'s `Authenticator`); the problem body and the error
+  mapper (`errs` kind and the `db`/`intake` sentinels → status and code, `ref`, one log
+  line per error response); `/healthz`, `/readyz`, `GET /api/modules`,
+  `GET /api/admin/modules`, `POST /api/client-errors`, `GET /api/openapi.json` at
+  absolute paths; OpenAPI assembly from the sets' fragments with a start-up check that
+  routes and fragments agree; serving the built web shell.
+- **Doesn't do:** business logic, permission checks (the service's), sessions
+  (`identity`), permissions (`authz`), TLS (the front end), configuration loading
+  (`config`), the shutdown deadline and order (`app`).
+- **Spec:** [design/api.md](design/api.md).
 
 ### web shell
 - **Purpose:** the React app frame: login, navigation, layout, the API client, and the

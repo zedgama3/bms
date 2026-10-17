@@ -1,6 +1,6 @@
 # api: the HTTP shell
 
-- **Status:** Draft (2026-10-16)
+- **Status:** Approved (2026-10-17)
 - **Package:** `internal/api` (Go module `github.com/zedgama3/bms`), plus the foundation
   helper package `internal/lib/httpx` that this spec owns (decision 2): the wire form of an
   error, the kind-to-status table, and the three calls a handler makes (`ReadJSON`,
@@ -68,7 +68,7 @@ Expose the core's and the modules' routes over HTTP with one request pipeline.
 | Concern | Owner |
 |---|---|
 | Business logic of any kind; deciding what a request may do; checking a module's permission | the service behind each handler (`add-module`, 09 ground rules). The one permission this spec checks is `core.modules.read` on its own admin route. |
-| Who the person is: cookies written at login, the signed session token and its per-account counter, logout, the superuser's short sessions, rate-limiting failed logins by address | `identity` (`identity.md`), which implements `Authenticator` (decision 5) and uses `httpx.ClientAddrFrom` for the login rate limit (config.md Proposed change 6). The cookie attributes are this spec's rule (decision 7); `identity` writes the cookie. |
+| Who the person is: cookies written at login, the signed session token and its per-account counter, logout, the superuser's short sessions, rate-limiting failed logins by address | `identity` (`identity.md`), which implements `Authenticator` (decision 5) and uses `httpx.ClientAddrFrom` for the login rate limit (config.md Proposed change 6). The cookie attributes are this spec's rule (decisions 7 and 24); `identity` writes the cookie. |
 | Permissions, roles, grants, separation of duties | `authz` (`authz.md`), which implements `PermissionChecker`. |
 | Loading `http.*` from the environment; the bind rule F28 (a non-loopback `Addr` needs `TrustedProxies` or `AllowPlaintext`) | `config` (`config.md`, decision 16). This spec receives typed options from `app` and never imports `config` (layer rule 4, depguard rule `api`). |
 | The shutdown deadline and the shutdown order | `app` (`app.md`): `Shutdown(ctx)` is called with `http.shutdown_timeout`, first in the order HTTP → `signals.Close` → `Set.Stop` → `db.Close` → `telemetry.Close` (signals.md Proposed change 5). |
@@ -79,8 +79,8 @@ Expose the core's and the modules' routes over HTTP with one request pipeline.
 | The module graph, the schema versions | `module.Plan.Graph()` and `db.Migrator.Status`, which `app` hands to this spec as `Options.Graph` and `Options.Schema`. |
 | Catching errors in the browser, batching them, the `traceparent` header on calls, showing the reference, the read-only banner, translating `code` and field reasons, the TypeScript client generated from `/api/openapi.json` | `web-shell.md`. |
 | The web shell's build, its hashed file names, its `index.html` | `web-shell.md`; `app` embeds the result and passes it as `Options.UI`. |
-| Translating `validate.FieldError.Reason` | nobody yet (Open question 2). |
-| Deciding that a record the caller may not see is answered `404` rather than `403` | the service (privacy-data: "a list must not reveal that a hidden record exists"; Proposed change 2 asks the skill to say it for single records too). The mapper maps whatever kind the service chose. |
+| Translating a field error | `web-shell.md`, by `fields[].code` with `reason` as the fallback (decision 25); `validate` sets the code (lib-core.md). |
+| Deciding that a record the caller may not see is answered `404` rather than `403` | the service (privacy-data "Rules": a list must not reveal that a hidden record exists, and a single record the caller may not see is `NotFound`, never `Permission`; applied 2026-10-17 by Proposed change 2). The mapper maps whatever kind the service chose. |
 | A `Host` allowlist against DNS rebinding | nobody until the public URL setting exists (settings.md, D18); Proposed change 15 adds it then. Until then the front end's virtual host is the allowlist. |
 | Telling a later trusted-header identity provider (D15) that the peer is a trusted proxy | `identity`, when that provider is designed; this spec then adds a `httpx.TrustedPeerFrom(ctx)` accessor (Proposed change 9). The derivation already exists inside the pipeline. |
 | File uploads and downloads, range requests, streaming | `files.md` (Later). The body cap and `WriteTimeout` here are sized for JSON; `files` proposes what it needs. |
@@ -121,9 +121,11 @@ import (
 // ContentTypeProblem is the media type of every error response (RFC 9457).
 const ContentTypeProblem = "application/problem+json"
 
-// Problem is the body of every error response. It carries no prose: the web shell
-// translates code (D28), and a field's reason is the validate.FieldError text (Open
-// question 2). Nothing in it is personal data: reasons never echo input (lib-core).
+// Problem is the body of every error response. It carries no prose the client must
+// parse: the web shell translates code (D28) and a field's code (decision 25); a field's
+// reason is the validate.FieldError text, shown only when the shell knows no translation
+// for the code. Nothing in it is personal data: reasons never echo string input and
+// params carry the rule's parameters, never the input (lib-core).
 type Problem struct {
 	Status int     `json:"status"`           // the HTTP status, repeated for clients that lose it
 	Code   string  `json:"code"`             // an errs.Kind name, or one of the shell codes (Behavior: "Codes")
@@ -131,10 +133,12 @@ type Problem struct {
 	Fields []Field `json:"fields,omitempty"` // for code "invalid": one per validate.FieldError, in order
 }
 
-// Field is one validation problem, from validate.FieldError.
+// Field is one validation problem, from validate.FieldError (decision 25).
 type Field struct {
-	Field  string `json:"field"`  // the dotted path the service used: "email", "shift.start"
-	Reason string `json:"reason"` // the rule, never the value
+	Field  string            `json:"field"`            // the dotted path the service used: "email", "shift.start"
+	Code   string            `json:"code"`             // validate.FieldError.Code: "required", "range", "one_of", ...; "" when a check set none
+	Params map[string]string `json:"params,omitempty"` // validate.FieldError.Params: the rule's parameters ("min", "max", "options"), never the input
+	Reason string            `json:"reason"`           // the rule in English, never the value; the shell's fallback
 }
 
 // Shell codes that are not errs.Kind names. Codes are stable API strings pinned by a test.
@@ -173,7 +177,8 @@ func WithFailer(ctx context.Context, f Failer) context.Context
 // Fail answers r with the error response for err and returns; the handler returns right
 // after it. With a Failer in r.Context() (every request through the api shell) it
 // delegates to it. Without one (a handler under test), it writes a Problem with
-// StatusOf(errs.KindOf(err)), the kind's name as code, Fields from validate.Fields, no
+// StatusOf(errs.KindOf(err)), the kind's name as code, Fields from validate.Fields (each
+// {Field, Code, Params, Reason}, decision 25), no
 // ref, plus 413 for a *http.MaxBytesError and 415 for ErrUnsupportedMediaType, so a
 // module's unit test sees the same status the shell would send. A nil err is a caller bug
 // and is written as 500 internal. Call it before writing anything to w. Cannot fail.
@@ -187,8 +192,9 @@ func Fail(w http.ResponseWriter, r *http.Request, err error)
 // JSON, a wrong type, or trailing data fails with errs.Invalid wrapping a
 // validate.FieldError whose Field is "body" or the JSON path the decoder reports, cut at
 // the first segment that is not a struct field of dst's type (a map key or a slice
-// index), so a client-chosen key never reaches a span or a log; the Reason never echoes
-// the body (F2). An empty body is Invalid with field "body", reason "required" (F3).
+// index), so a client-chosen key never reaches a span or a log; its Code is "malformed"
+// (no Params) and the Reason never echoes the body (F2). An empty body is Invalid with
+// field "body", code "required" (F3). Both codes are in lib-core's code list.
 // Unknown fields are ignored (decision 13). A *http.MaxBytesError from the capped body is
 // returned unchanged so the mapper answers 413 (F4). A read that fails because the
 // connection's read deadline passed (the request deadline, decision 18: a net.Error
@@ -216,8 +222,8 @@ func ClientAddrFrom(ctx context.Context) (netip.Addr, bool)
 
 // SchemeFrom returns the effective scheme, "http" or "https", the shell derived (decision
 // 8), and false when ctx carries none. Consumers: identity (absolute links in e-mails are
-// settings' public URL, not this; identity uses it only to decide whether a cookie may
-// lack Secure under Open question 1). Cannot fail.
+// settings' public URL, not this; identity uses it only to decide whether to write the
+// development cookie without Secure, decision 24). Cannot fail.
 func SchemeFrom(ctx context.Context) (string, bool)
 
 // WithClientAddr and WithScheme set the two values. Consumers: the api shell; tests of a
@@ -413,7 +419,7 @@ func (s *Server) Shutdown(ctx context.Context) error
 | `httpx.Failer`, `WithFailer` | the shell (installs per route) | — | `Fail` reaches the mapper |
 | `httpx.Fail` | every handler in `identity`, `people`, `departments-events`, `authz`, `audit`, `settings`, every module (`http.go`), the `hello` module, the api's own handlers | called before any write | the response is written exactly once |
 | `httpx.ReadJSON`, `WriteJSON` | the same handlers | body capped by the shell | decoded or a field error; encoded or nothing |
-| `httpx.ClientAddrFrom`, `SchemeFrom` | `identity` (login rate limit; Open question 1), the intake handler | inside the shell | the derived values, never the raw header |
+| `httpx.ClientAddrFrom`, `SchemeFrom` | `identity` (login rate limit; the development cookie, decision 24), the intake handler | inside the shell | the derived values, never the raw header |
 | `httpx.WithClientAddr`, `WithScheme` | the shell; handler tests | — | — |
 | `Authenticator` | implemented by `identity`; called by the shell per routed request | — | the actor in ctx, or 401 |
 | `PermissionChecker`, `PermissionModulesRead` | implemented by `authz`; `app` registers the permission; the admin modules handler | an actor in ctx | allowed or `Permission` |
@@ -565,7 +571,7 @@ the package, pinned by tests, with the reason each is not a key:
 | `MaxHeaderBytes` | 64 KiB | `net/http`'s default would allow 1 MiB of headers |
 | readiness ping deadline; readiness cache | 2 s; 1 s | a probe must answer fast; `db.Ping` refreshes the read-only state in the same round trip; concurrent probes share one `Ping` and its result is reused for 1 s (decision 22) |
 | intake body cap | 64 KiB | telemetry Proposed change 3 |
-| HSTS | `max-age=31536000` (Open question 3 on `includeSubDomains`) | one year is the common value; the front end may send its own |
+| HSTS | `Strict-Transport-Security: max-age=31536000`, exactly; no `includeSubDomains`, no `preload` (decision 26) | one year is the common value; a regional that controls every subdomain adds `includeSubDomains` at the front end |
 | misdirected-request log rate; tracked prefixes | once per peer prefix per hour; at most 1,000 prefixes, then one aggregate line per minute | enough to notice, not enough to flood, and bounded memory under a scan |
 | untrusted-forwarded-header warning | once per process | a same-host front end that is not in `trusted_proxies` (decision 9) |
 | UI asset cache | `public, max-age=31536000, immutable` under `/assets/`; `no-cache` elsewhere | hashed names make it safe |
@@ -577,8 +583,10 @@ None of its own. What this spec provides for `web-shell.md`:
 
 - **Error handling:** every error is `application/problem+json` with `code`, `ref` and
   `fields`; the shell translates `code` (keys `error.<code>`), shows `ref` with the
-  wording in telemetry.md "UI" for every 5xx and every 4xx but `invalid`, and maps
-  `fields[].field` to form fields. `401` on a signed-in route sends the shell to the
+  wording in telemetry.md "UI" for every 5xx and every 4xx but `invalid`, maps
+  `fields[].field` to form fields and translates each field's `code` with its `params`
+  (keys `field.<code>`), showing `reason` as-is for a code it does not know (decision
+  25). `401` on a signed-in route sends the shell to the
   sign-in page; `403 cross_origin` is a shell bug (its calls are same-origin); `413` and
   `415` are shell bugs too.
 - **Read-only banner:** the `X-Read-Only: true` header on every response from a read-only
@@ -696,11 +704,10 @@ None of its own. What this spec provides for `web-shell.md`:
    carries a `Domain` (which would send it to every subdomain) makes the response
    `500 internal` (possible in all three cases: nothing has been sent yet) and logs the
    cookie's name (never its value): a developer finds out in the first test. Rewriting
-   the cookie silently was rejected (it hides the bug). The recommended name is
+   the cookie silently was rejected (it hides the bug). The session cookie's name is
    `__Host-<name>` (Proposed change 9): the browser then enforces `Secure`, no `Domain`
-   and `Path=/` on its side too, which is exactly this rule. Open question 1 asks whether
-   `Secure` may be dropped in the one case where it makes login impossible; a cookie
-   without `Secure` cannot carry the `__Host-` prefix, so that case needs a second name.
+   and `Path=/` on its side too, which is exactly this rule. The one exception, a
+   development cookie without `Secure` under a second, unprefixed name, is decision 24.
 8. **The client address and scheme come from `X-Forwarded-For` and `X-Forwarded-Proto`
    only when the peer is in `TrustedProxies`, by the rightmost-untrusted rule; otherwise
    from the connection.** Walking `X-Forwarded-For` from the right and skipping trusted
@@ -761,13 +768,13 @@ None of its own. What this spec provides for `web-shell.md`:
     for `_OTHER` the span name is `HTTP <route token>` (the same conventions: the method
     part is `HTTP` when the method is unknown), and the original method is never
     recorded (F49). `_OTHER` begins with an underscore, which telemetry's `Token`
-    grammar does not admit as a first byte today; Proposed change 6 asks telemetry to
-    admit it; if the owner declines, the value becomes `OTHER`. **The route token** is
+    grammar admits as a first byte for exactly this value (telemetry.md decision 20,
+    owner 2026-10-17, applied by Proposed change 6). **The route token** is
     the registered pattern with `{$}` rendered as the trailing `/` it stands for
     (`/api/alpha/{$}` → `/api/alpha/`), because `$` is not in the token grammar and the
     OpenAPI path for that route is `/api/alpha/` anyway (decision 11); `New` checks
     every mounted route's token and full span name against the grammar
-    (`[A-Za-z0-9/][A-Za-z0-9._:/{}-]{0,127}`, the whole name at most 128 bytes) and
+    (`[A-Za-z0-9/_][A-Za-z0-9._:/{}-]{0,127}`, the whole name at most 128 bytes) and
     refuses a route that fails (F48): `module.Route.Validate` only requires a leading
     `/` and no space, so a pattern with `%`, `+`, `,` or `;`, or a very long one, is
     possible and must be caught before it becomes `invalid-span-name` at runtime.
@@ -832,7 +839,7 @@ None of its own. What this spec provides for `web-shell.md`:
     no sign-in at all). Enabled names are not secret: the JavaScript bundle names every
     compiled-in module and their routes answer. The graph (permissions, settings keys,
     signals, warnings) and the schema state are an admin's view (09 §7). Two routes keep
-    each one simple; the owner is asked to confirm the public half (Open question 4).
+    each one simple. The public half is confirmed (owner, 2026-10-17; decision 27).
 16. **Writes are not refused by the shell on a read-only copy; the mapper names the
     refusal, and every response says the mode.** Not every unsafe-method request writes
     the database: sign-in, sign-out, error reports and searches must work on the on-site
@@ -847,7 +854,7 @@ None of its own. What this spec provides for `web-shell.md`:
     request that sees `Canceled` while draining was cut off by the server. When the client
     is gone there is nobody to answer; the span is not marked failed (telemetry
     `RecordError` on `Canceled`) and one debug line is written. lib-errs Open question 1
-    is answered (Proposed change 7).
+    is answered (Proposed change 7, applied 2026-10-17).
 18. **The request deadline is the ctx and the connection's read deadline; the server's
     `WriteTimeout` is a backstop.** `http.TimeoutHandler` was rejected: it buffers every
     response and answers `503` with its own body. Instead `RequestTimeout` becomes the
@@ -899,6 +906,51 @@ None of its own. What this spec provides for `web-shell.md`:
     `Shutdown` can only be a programming error. `Shutdown` before `Listen` marks the
     server closed and returns nil, so the same order works whether or not binding
     happened.
+24. **A cookie may lack `Secure` in exactly one case: `AllowPlaintext` is on and the
+    request's effective scheme is `http`; it then goes under the separate, unprefixed
+    development name `bms_session_dev`; the normal session cookie is `__Host-`-prefixed
+    and always `Secure`** (owner, 2026-10-17). config.md decision 16(d) says cookies are
+    `Secure` whatever the hop, which holds whenever TLS exists somewhere (the effective
+    scheme is then `https`) and for `http://localhost`, which browsers treat as a secure
+    context. The one case left is `http.allow_plaintext=true` with a direct plain-HTTP
+    request to a LAN address (a phone on the Wi-Fi during development): no TLS anywhere,
+    not a secure context, so a `Secure` cookie is never sent back and login is impossible.
+    A browser rejects a `__Host-` cookie without `Secure`, so the exception cannot reuse
+    the production name; a second name keeps the production cookie's rule intact. The
+    rule, enforced by the cookie guard (F29): a `Set-Cookie` named `bms_session_dev` may
+    omit `Secure` only when `Options.AllowPlaintext` is true and `httpx.SchemeFrom(ctx)`
+    is `http`; every other attribute still applies to it; a `bms_session_dev` cookie in
+    any other condition, or any other cookie without `Secure`, is the usual `500`.
+    `identity` writes it only under the same two conditions (reading
+    `httpx.SchemeFrom`), and never writes both cookies on one response. The start-up
+    warning for `AllowPlaintext` (F35) already says plaintext is for development. The
+    alternative, "no login over plaintext from a LAN address", was rejected because
+    testing on a phone is how a volunteer-facing screen gets checked.
+25. **Field errors carry a machine-readable code** (owner, 2026-10-17).
+    `validate.FieldError` gains `Code` and `Params` (lib-core.md, applied by Proposed
+    change 8), each check sets its code (`required`, `range`, `one_of`, `url`,
+    `host_port`, `positive`; `httpx.ReadJSON` sets `malformed` and `required`), the wire
+    form is `fields[].code` and `fields[].params`, and the web shell translates by code
+    (keys `field.<code>`, with `params` as the message's arguments), falling back to
+    `reason` for a code it does not know. `Reason` stays English because D28 wants every
+    string a person sees to be translation-ready and the reason text is not; a code with
+    parameters is what a translator can work from, and the fallback means an unknown code
+    still shows something true. `Params` are strings because the shell only interpolates
+    them; they carry the rule's parameters (bounds, options), never the input.
+26. **HSTS is `max-age=31536000` without `includeSubDomains`** (owner, 2026-10-17).
+    config.md Proposed change 5 suggested `includeSubDomains`. A regional may serve other
+    things on subdomains of the bms host (a wiki, a ticket page) that are not on HTTPS
+    yet, and `includeSubDomains` would break them for a year. The header is sent only
+    when the effective scheme is `https` (chain step 4). A regional that controls every
+    subdomain adds `includeSubDomains` (and `preload`) at its front end; the operator docs
+    say so (Proposed change 14).
+27. **`GET /api/modules` is public and lists enabled module names only; the graph and the
+    schema versions stay behind `core.modules.read` on `GET /api/admin/modules`** (owner,
+    2026-10-17, confirming decision 15). The alternative, requiring a session, means the
+    web shell cannot know which modules exist before sign-in and M0's "a hello module
+    shows up" needs a login that does not exist until M1. The public body is exactly
+    `{"modules":[{"name":..., "enabled":...}]}`: no permissions, settings, signals,
+    versions or warnings (`TestModules_PublicListsNamesAndEnabled` pins it).
 
 ### The middleware chain
 
@@ -955,7 +1007,9 @@ Then `ServeMux`. Per registered route (every mounted route, the shell's routes, 
 11. **Recovery (inner):** a panic in a handler is recorded on the span (`RecordError`) and
     mapped as in step 1 (F25).
 12. **Cookie guard:** `Set-Cookie` checked at `WriteHeader`, at the first `Write` without
-    one, and after the handler returns having written nothing (decision 7, F29).
+    one, and after the handler returns having written nothing (decision 7, F29); the
+    `bms_session_dev` exception of decision 24 is decided here from `Options.AllowPlaintext`
+    and the scheme in ctx.
 13. **Cross-origin protection** for `POST`, `PUT`, `PATCH`, `DELETE` (decision 6, F30).
 14. **Authentication:** `Authenticator.Authenticate`; the actor's `person_id` on the span;
     `AccessSignedIn` without a valid session → `401` (F31–F33); a nil ctx with a nil
@@ -999,7 +1053,8 @@ this derivation is logged; the warning in step 1 names no address.
    `errors.As(err, *http.MaxBytesError)` → `413`; kind `Canceled` → decision 17 (write
    nothing, or `503 shutting_down` with `Connection: close`); otherwise `StatusOf(kind)`
    with `Kind.String()` as code; `Unavailable` adds `Retry-After: 5`.
-3. `Fields` = `validate.Fields(err)` when code is `invalid`, each `{Field, Reason}`.
+3. `Fields` = `validate.Fields(err)` when code is `invalid`, each `{Field, Code, Params,
+   Reason}` (decision 25).
 4. `Ref` = `RefFrom(ctx)` when present.
 5. Write the problem with `ContentTypeProblem`; `span.RecordError(err)`; log one record
    at the level decision 4 gives (error for 5xx; warn for a 4xx with an actor; debug for
@@ -1138,7 +1193,7 @@ library (`bytes`, `context`, `encoding/json`, `errors`, `fmt`, `io`, `mime`, `ne
 | F26 | pipeline | an untrusted, non-loopback peer with `TrustedProxies` set and `AllowPlaintext` false, path not a health route | none: `403 misdirected`; warn once per prefix per hour with `peer_prefix` | fix `trusted_proxies` or the route to bms | `TestPipeline_UntrustedPeer_403AndLogsPrefixOnce`, `TestPipeline_UntrustedPeer_HealthRoutesServed` |
 | F27 | pipeline | a body over `MaxBodyBytes` | `413 payload_too_large` | shorten the request | `TestPipeline_BodyOverCap_413` |
 | F28 | pipeline | the handler outlives `RequestTimeout`; a body read stalls past it | its I/O fails with Timeout → `504 timeout`; the connection read deadline fails the stalled read → `504` through F5; `WriteTimeout` fails a late write (F8) | shorten the work; send the body | `TestMapper_Timeout_504` (a handler returning `errs.Timeout`; no clock), `TestPipeline_Order` (the ctx deadline is `now + RequestTimeout` and `SetReadDeadline` was called with the same instant, through a recording writer), `TestPipeline_SlowBody_ReadDeadlineEnds504` (the unexported `testRequestTimeout` hook set to 50 ms, a real `httptest.NewServer`, a client that writes half the body and blocks on a channel until the response arrives; bounded by the deadline, no `time.Sleep`) |
-| F29 | cookie guard | a response sets a cookie without `Secure`, `HttpOnly`, `SameSite=Lax` or `Path=/`, with a `Domain`, or one `http.ParseSetCookie` rejects; at `WriteHeader`, at an implicit header write, or after a handler that wrote nothing | `500 internal`; error log naming the cookie, never its value | fix the handler | `TestCookieGuard_Table` (each missing attribute, `Domain`, unparseable; each of the three moments; a `__Host-` cookie with every attribute passes) |
+| F29 | cookie guard | a response sets a cookie without `Secure`, `HttpOnly`, `SameSite=Lax` or `Path=/`, with a `Domain`, or one `http.ParseSetCookie` rejects; at `WriteHeader`, at an implicit header write, or after a handler that wrote nothing. The one allowed omission: no `Secure` on a cookie named `bms_session_dev` when `AllowPlaintext` is true and the scheme in ctx is `http` (decision 24) | `500 internal`; error log naming the cookie, never its value | fix the handler | `TestCookieGuard_Table` (each missing attribute, `Domain`, unparseable; each of the three moments; a `__Host-` cookie with every attribute passes), `TestCookieGuard_DevCookie_Table` (`bms_session_dev` without `Secure`: passes with `AllowPlaintext` and scheme `http`; `500` with `AllowPlaintext` and scheme `https`, with scheme `http` and no `AllowPlaintext`, and when it also lacks `HttpOnly`; a `__Host-` cookie without `Secure` is `500` under every condition) |
 | F30 | cross-origin protection | an unsafe-method request with `Sec-Fetch-Site` other than `same-origin`/`none`, or no such header and `Origin: null` or an `Origin` whose host differs from `Host` | `403 cross_origin`; log without the origin value | fix the caller (the shell is same-origin) | `TestCrossOrigin_Table` (`cross-site` and `same-site` rejected; `Origin: null` rejected; `same-origin`, `none`, no headers, `GET` accepted; no `Access-Control-*` header on any response) |
 | F31 | authentication | signed-in route, no session at all | `401 unauthenticated`; debug log | sign in | `TestAuth_SignedInRouteNoSession_401` |
 | F32 | authentication | signed-in route, `Authenticator` fails `Unauthenticated` (invalid, expired) | `401`; debug log (no actor, decision 4) | sign in again | `TestAuth_SignedInRouteBadSession_401` |
@@ -1215,7 +1270,8 @@ bodies, query strings, cookies and `User-Agent`, asserted absent with
   deadline at `now + RequestTimeout`, failer, span and actor in ctx; a recording writer
   saw `SetReadDeadline` with the same instant); `TestPipeline_SecurityHeaders_Table`
   (every response: `nosniff`, `Referrer-Policy`, `X-Frame-Options`,
-  `Permissions-Policy`, COOP, CORP; HSTS only with `https`; `no-store` on `/api/`; CSP on
+  `Permissions-Policy`, COOP, CORP; HSTS only with `https` and exactly
+  `max-age=31536000`, decision 26; `no-store` on `/api/`; CSP on
   every `text/html` response and on no JSON response; never an `Access-Control-*`
   header); `TestPipeline_XTraceIDMatchesSpan`; `TestPipeline_XReadOnlyHeader`;
   `TestPipeline_ClientAddr_Table`, one row per case of "Client address and scheme, step
@@ -1237,7 +1293,8 @@ bodies, query strings, cookies and `User-Agent`, asserted absent with
   method and `X-Forwarded-For`, an error response forced, `!c.Contains`); F25–F33, F35,
   F49, F50, F51, F53, F55–F57.
 - Mapper: `TestMapper_ErrorLogRecordFields` (the field set per status);
-  `TestMapper_FieldsFromValidateErrors` (three problems → three fields in order);
+  `TestMapper_FieldsFromValidateErrors` (three problems → three fields in order, each
+  with `field`, `code`, `params` and `reason`; `params` absent when the check set none);
   `TestMapper_UnavailableRetryAfter`; F34, F36–F40.
 - Shell routes: `TestHealthz_OK` (body is exactly `{"status":"ok"}`, no version);
   `TestReadyz_ReadWriteAndReadOnly`; `TestModules_PublicListsNamesAndEnabled` (disabled
@@ -1250,7 +1307,8 @@ bodies, query strings, cookies and `User-Agent`, asserted absent with
   `AdminModulesResponse`; `default` response added);
   `TestOpenAPI_EveryShellRouteDocumented` (the shell's own set passes F15);
   `TestOpenAPI_IDSensitivityTimeRangeShapes` (model.md Proposed change 6); F14–F17.
-- Cookie guard: `TestCookieGuard_Table` (F29); `TestCookieGuard_HostPrefixCookiePasses`.
+- Cookie guard: `TestCookieGuard_Table`, `TestCookieGuard_DevCookie_Table` (F29);
+  `TestCookieGuard_HostPrefixCookiePasses`.
 - UI: `TestUI_HashedAssetImmutable`; `TestUI_IndexForAppPathWithCSPAndNoCache`;
   `TestUI_IndexByNameCarriesCSP` (`/` and `/index.html`); `TestUI_PathTraversalIs404`;
   `TestUI_CustomCSP`; `TestUI_DefaultCSPHasObjectSrcNone`; F47.
@@ -1277,47 +1335,29 @@ that passes them.
 
 ## Open questions
 
-1. **May a cookie lack `Secure` when `AllowPlaintext` is on and the request's effective
-   scheme is `http`, and under what name?** config.md decision 16(d) says cookies are
-   `Secure` "whatever the hop", which is right whenever TLS exists somewhere (the
-   effective scheme is then `https`). It is also fine for local development on the
-   developer's own machine: browsers treat `http://localhost` as a secure context and
-   set and send `Secure` cookies there. The one case left is `http.allow_plaintext=true`
-   with a direct plain-HTTP request to a LAN address (a phone on the Wi-Fi during
-   development, `http://192.168.1.20:8080`): no TLS anywhere, not a secure context, a
-   `Secure` cookie is never sent back, so login is impossible. The case interacts with
-   decision 7's recommended `__Host-` prefix: a browser rejects a `__Host-` cookie that
-   lacks `Secure`, so the exception cannot reuse the production cookie name. Proposed:
-   yes, in exactly that case; `identity` reads `httpx.SchemeFrom` and, only when the
-   scheme is `http` and the shell was built with `AllowPlaintext`, writes a cookie under
-   a second, unprefixed name (`bms_session_dev`) without `Secure` and otherwise with
-   every attribute (the cookie guard allows the omission under the same two conditions
-   and for that name only); every other deployment is unchanged, and the start-up
-   warning already says plaintext is for development. If the owner would rather not
-   have two cookie names, the alternative is "no login over plaintext from a LAN
-   address; test on the phone through a TLS tunnel", and this spec loses nothing.
-2. **How are field-error reasons translated?** `validate.FieldError.Reason` is English
-   ("must be between 1 and 1000, got 0") and D28 wants every string translation-ready.
-   Proposed: add a machine-readable `Code` (`required`, `range`, `one_of`, `url`, ...)
-   and its parameters to `validate.FieldError` (this spec's Proposed change 8, to
-   lib-core.md), carry it as `fields[].code` and `fields[].params`, and let the web shell
-   translate by code, falling back to `reason` for a code it does not know. Until then
-   the body carries `field` and `reason` as specified here and the shell shows the
-   reason as-is.
-3. **HSTS: `includeSubDomains` or not?** config.md Proposed change 5 suggested
-   `max-age=31536000; includeSubDomains`. A regional may serve other things on
-   subdomains of the bms host (a wiki, a ticket page) that are not on HTTPS yet, and
-   `includeSubDomains` would break them for a year. Proposed: `max-age=31536000` alone,
-   with a note in the operator docs that the front end may add `includeSubDomains` (and
-   `preload`) when the regional controls every subdomain.
-4. **Is `GET /api/modules` (enabled module names only) acceptable as a public route?**
-   Proposed: yes (decision 15). The alternative, requiring a session, means the web shell
-   cannot know which modules exist before sign-in and M0's "a hello module shows up"
-   needs a login that does not exist until M1.
+None. The four questions in the Draft were answered by the owner on 2026-10-17 and are
+recorded as decisions:
+
+1. A cookie without `Secure`: only when `AllowPlaintext` is on and the request is plain
+   `http`, under the separate development name `bms_session_dev`; the session cookie is
+   `__Host-`-prefixed. → decision 24, F29, Proposed changes 4 and 9.
+2. Field-error translation: `validate.FieldError` gains `Code` and `Params`, the wire form
+   gains `fields[].code` and `fields[].params`, the web shell translates by code and falls
+   back to `reason`. → decision 25, `httpx.Field`, Proposed changes 8 and 12.
+3. HSTS: `max-age=31536000` without `includeSubDomains`. → decision 26, "Settings",
+   Proposed changes 4 and 14.
+4. `GET /api/modules` public with enabled names only; the graph and the schema versions
+   behind `core.modules.read` on `GET /api/admin/modules`. → decision 27 (and 15),
+   Proposed change 3.
 
 ## Proposed changes elsewhere
 
-1. **`plan/07-abstractions.md`, `api shell` entry:** replace with: "**Purpose:** expose
+Status as of 2026-10-17: items 1, 2, 3, 4, 5, 6, 7, 8, 13 and the `.env.example` half of
+14 are applied. Items 9, 10, 11, 12, 15, 16 and the `deploy/` front-end examples and
+`docs/operating.md` half of 14 wait for their target to be written and are carried by
+this list until then. Item 17 needs nothing.
+
+1. **`plan/07-abstractions.md`, `api shell` entry** (applied 2026-10-17): replace with: "**Purpose:** expose
    the core's and the modules' routes over HTTP with one request pipeline. **Owns:** the
    router (`net/http.ServeMux`, routes mounted under `/api/<name>/`, one `/api/` fallback
    for JSON 404 and 405, no redirects under `/api/`); the middleware chain (recovery, the
@@ -1337,7 +1377,8 @@ that passes them.
    `StatusOf`, `Fail`, `ReadJSON`, `WriteJSON`, the client-address and scheme ctx
    accessors; owned by `api.md`). Layer rule 4 may add: "Handlers in any layer reach the
    shell's error mapper through `lib/httpx.Fail`; `api` is never imported."
-2. **`.claude/skills/go-conventions/SKILL.md`, "Errors" table and "Layers":** the HTTP
+2. **`.claude/skills/go-conventions/SKILL.md`, "Errors" table and "Layers"** (applied
+   2026-10-17, all three skills): the HTTP
    column's note "done only in `api`'s ErrorMapper" becomes "the table is
    `lib/httpx.StatusOf`; the api shell's mapper is the only writer on a real request;
    handlers call `httpx.Fail(w, r, err)` and never write an error body themselves". Add
@@ -1355,35 +1396,37 @@ that passes them.
    answered `errs.NotFound`, never `errs.Permission`, so a `403` never confirms that an
    ID exists; `Permission` is for an action the caller may not take on a record they may
    see."
-3. **`plan/design/module-contract.md` (row 4):** its Proposed change 6 is answered here
+3. **`plan/design/module-contract.md` (row 4)** (applied 2026-10-17; (e) is carried by item
+   16 until `module-hello.md` exists): its Proposed change 6 is answered here
    (mounting, fragment form, `GET /api/modules` split into a public list and a
    permissioned admin route, the read-only mapping). Proposed amendments: (a) a
    `RouteProvider` must also implement `APIDescriber` (F34 becomes "a `RouteProvider`
    without a non-empty `OpenAPI()`"), since `api` requires the fragment (decision 11);
    (b) note beside `Route.Pattern` that a pattern ending in `/` is mounted exactly
    (`{$}` appended), that `{path...}` is the way to take a subtree, that the mounted
-   pattern must fit telemetry's token grammar (`[A-Za-z0-9/][A-Za-z0-9._:/{}-]*`, the
+   pattern must fit telemetry's token grammar (`[A-Za-z0-9/_][A-Za-z0-9._:/{}-]*`, the
    whole `<METHOD> /api/<name><pattern>` at most 128 bytes; `api` F48 enforces it, and
-   `Route.Validate` may enforce the character set itself so a module learns in its own
-   tests), and that a `GET` route never changes state; (c) note that `ModuleRoutes` is
+   `Route.Validate` enforces the character set itself so a module learns in its own
+   tests), and that a `GET` or `HEAD` route never changes state; (c) note that `ModuleRoutes` is
    also the shape `app` uses for the core's route sets, with `Module` set to the core
    area name and never `core`, `modules` or `admin`; (d) `core.modules.read` is declared
    by `api` (`api.PermissionModulesRead`) and registered by `app`; (e) the `hello`
    module's fragment documents `GET /greeting` and `GET /public-greeting` and its schema
    names start with `Hello`.
-4. **`plan/design/config.md` (row 3):** its Proposed change 5 is answered: (b) and (d)
+4. **`plan/design/config.md` (row 3)** (applied 2026-10-17): its Proposed change 5 is answered: (b) and (d)
    enforced as decisions 7 and 8; the plaintext warning F35; the direct-peer decision is
    `403` with code `misdirected` (not `421`: decision 9 gives the reason) with the health
    routes exempt. Refinements to record: "session and CSRF cookies" becomes "the session
-   cookie" (there is no CSRF cookie, decision 6); the HSTS value and the
-   `Secure`-under-plaintext case wait for Open questions 1 and 3. **New validation:**
+   cookie" (there is no CSRF cookie, decision 6); HSTS is `max-age=31536000` alone
+   (decision 26); the one `Secure`-less cookie is the development cookie of decision 24.
+   **New validation:**
    `http.trusted_proxies` refuses a prefix of zero bits (`0.0.0.0/0`, `::/0`) under
    `BMS_HTTP_TRUSTED_PROXIES` with the reason "trusts every peer: list the front end's
    addresses or networks" (a new F row and `TestValidate_ZeroBitTrustedProxy_ReturnsInvalid`);
    `api.Options.Validate` repeats the check (F9) for options built by hand. The
    catalogue row for `http.trusted_proxies` adds: "a front end on the same host is listed
    as `127.0.0.1/32`; otherwise all its clients share the loopback address."
-5. **`plan/design/db.md` (row 5):** its Proposed change 4 is answered: `read_only`
+5. **`plan/design/db.md` (row 5)** (applied 2026-10-17): its Proposed change 4 is answered: `read_only`
    mapping (decision 16, F36), `/readyz` shape as proposed, `GET /api/admin/modules`
    carries `Built`, `Applied` and `current` per set through `api.SchemaStatus` (which
    `app` builds over `Migrator.Status`), and stores turn `*db.Error.Constraint` into a
@@ -1392,7 +1435,8 @@ that passes them.
    called (a request that ignored its ctx past `api.Shutdown`'s deadline, "Concurrency
    and lifecycle"): give `Close` a ctx (or an internal bound) so it cannot block shutdown
    forever, and state what a late caller sees (`Unavailable`).
-6. **`plan/design/telemetry.md` (row 15b):** its Proposed change 3 is answered with these
+6. **`plan/design/telemetry.md` (row 15b)** (applied 2026-10-17; the grammar amendment (a)
+   is its decision 20, owner 2026-10-17): its Proposed change 3 is answered with these
    refinements: the span is opened per route after routing (its `Span` has no rename, so
    the name is known at `Start`; decision 10); the route token renders `{$}` as the
    trailing `/` (`GET /api/alpha/`), so no `$` reaches a span name; the request method
@@ -1401,25 +1445,30 @@ that passes them.
    per OpenTelemetry's HTTP semantic conventions); unmatched requests use the route
    token `/{unmatched}`; the health routes get no span and no sample; every response
    carries `X-Trace-Id` (its decision 2 allowed it). **Two grammar amendments:** (a)
-   `Token`'s first byte should admit `_` (`[A-Za-z0-9/_]`) so `_OTHER` is a valid token
-   value (if declined, `api` records `OTHER`); (b) the span-name form's method part
+   `Token`'s first byte admits `_` (`[A-Za-z0-9/_]`) so `_OTHER` is a valid token
+   value; (b) the span-name form's method part
    `[A-Z]{3,10}` already admits `HTTP`, so nothing else changes. The intake route is
    mounted as specified (F46). Its "UI" wording and Proposed change 4 stand.
-7. **`plan/design/lib-errs.md`, Open question 1:** answered as proposed (decision 17):
+7. **`plan/design/lib-errs.md`, Open question 1** (applied 2026-10-17): answered as proposed (decision 17):
    client gone → no response and a debug line; shutdown → `503 shutting_down` with
    `Connection: close`. Its Proposed change 1 is met by `httpx.Problem` and the mapper.
-8. **`plan/design/lib-core.md`, `validate`:** add consumer rows for `httpx` (`FieldError`,
-   `Fields` in `Fail`'s fallback and in `ReadJSON`); if Open question 2 is answered as
-   proposed, add `Code string` and `Params map[string]string` to `FieldError`, set by each
+8. **`plan/design/lib-core.md`, `validate`** (applied 2026-10-17; lib-core is Implemented,
+   so the spec records the change and an implementation follow-up is needed): add
+   consumer rows for `httpx` (`FieldError`,
+   `Fields` in `Fail`'s fallback and in `ReadJSON`); per decision 25, add `Code string`
+   and `Params map[string]string` to `FieldError`, set by each
    check (`NonEmpty` → `required`, `Range` → `range` with `min`/`max`, `OneOf` →
-   `one_of` with `options`, `URL` → `url`, `HostPort`/`ListenAddr` → `host_port`), and
+   `one_of` with `options`, `URL` → `url`, `HostPort`/`ListenAddr` → `host_port`,
+   `Positive` → `positive`), reserve `malformed` for decoders (`httpx.ReadJSON`), and
    let `Addf` take a code.
-9. **`plan/design/identity.md` (row 6):** implement `api.Authenticator` (no database write;
+9. **`plan/design/identity.md` (row 6)** (pending: target not written): implement `api.Authenticator` (no database write;
    `Unauthenticated` for a bad or expired session; `(ctx, zero, nil)` for none); define
    the principal's ctx accessor that services and `authz` use; never return a nil ctx
    with a nil error (F51); write the session cookie with `Secure`, `HttpOnly`,
-   `SameSite=Lax`, `Path=/`, no `Domain`, under a `__Host-` name (decision 7; Open
-   question 1 for the plaintext case, which needs a second, unprefixed name); when the
+   `SameSite=Lax`, `Path=/`, no `Domain`, under a `__Host-` name (decision 7); for the
+   plaintext case write `bms_session_dev` without `Secure` only when `httpx.SchemeFrom`
+   is `http` and the shell was built with `AllowPlaintext`, never both cookies on one
+   response (decision 24); when the
    trusted-header identity provider (D15) is designed, ask this spec for
    `httpx.TrustedPeerFrom(ctx) bool` (the pipeline already knows whether the peer is in
    `TrustedProxies`; the accessor is added then, with its consumer named); its login,
@@ -1429,13 +1478,13 @@ that passes them.
    wrapping its own sentinel that the mapper learns then (or `intake.ErrRateLimited`
    moved to a shared place); document that the session value is request-scoped
    (signals.md Proposed change 7).
-10. **`plan/design/authz.md` (row 7):** satisfy `api.PermissionChecker` with its
+10. **`plan/design/authz.md` (row 7)** (pending: target not written): satisfy `api.PermissionChecker` with its
     `Authorizer` (site-scoped `Allow`); receive `api.PermissionModulesRead` from `app`
     among the core's declarations (`PermissionDecl{Name: "core.modules.read", Scope:
     ScopeSite, Reaches: SensitivityInternal}`), granted to every site-admin starter role
     by default; refuse to treat a session value as the actor when
     `signals.InDelivery(ctx)` is true.
-11. **`plan/design/app.md` (row 18):** build `api.Options` from `config.HTTP` (all but
+11. **`plan/design/app.md` (row 18)** (pending: target not written): build `api.Options` from `config.HTTP` (all but
     `ShutdownTimeout`), `tel.Logger().With("component","api")`, `tel.Tracer("api")`,
     `tel.Meter("api")`, `clock.Real()`, the build version, `Set.Routes()` plus one
     `module.ModuleRoutes` per core package with routes (`accounts`, `people`, ... as their
@@ -1454,9 +1503,10 @@ that passes them.
     `api.PermissionModulesRead` with `authz`; `bms check` prints the OpenAPI operation
     count; the `hello` integration test asserts a request's `deliver:hello.greeted` span
     is a descendant of its request span.
-12. **`plan/design/web-shell.md` (row 17):** mirror `httpx.Problem` and the codes in
+12. **`plan/design/web-shell.md` (row 17)** (pending: target not written): mirror `httpx.Problem` and the codes in
     TypeScript; translate `code` through keys `error.<code>` and, for `invalid`, map
-    `fields[].field` to inputs (reason shown as-is until Open question 2); show `ref` per
+    `fields[].field` to inputs and translate `fields[].code` with `fields[].params`
+    (keys `field.<code>`), showing `reason` for an unknown code (decision 25); show `ref` per
     telemetry.md "UI"; on `401` go to sign-in; show the read-only banner when a response
     carries `X-Read-Only: true` and clear it when one does not; read `GET /api/modules`
     for the enabled set and `GET /api/admin/modules` for the admin screen; generate the
@@ -1468,11 +1518,13 @@ that passes them.
     here if the build needs one; send `traceparent` on every call (telemetry Proposed
     change 4); treat `403 misdirected` like `403 cross_origin` (a deployment problem, not
     a user error); read `version` from `GET /api/admin/modules` for the admin screen.
-13. **`plan/09-core-features.md` §1 "Done when":** add "`GET /api/openapi.json` describes
+13. **`plan/09-core-features.md` §1 "Done when"** (applied 2026-10-17): add "`GET /api/openapi.json` describes
     every mounted route; the server refuses to start when a route and its module's
     fragment disagree" and "an error response is `application/problem+json` with `code`
     and `ref`".
-14. **`deploy/` front-end examples and `docs/operating.md` (when written):** the front end
+14. **`deploy/compose/.env.example` (applied 2026-10-17: the same-host note and the
+    zero-bit refusal), the `deploy/` front-end examples and `docs/operating.md` (pending:
+    not written):** the front end
     must preserve the `Host` header (decision 6: Caddy does by default; nginx needs
     `proxy_set_header Host $host`), set `X-Forwarded-For` and `X-Forwarded-Proto` and
     strip incoming ones (config.md Proposed change 11), and health checks come from
@@ -1482,8 +1534,10 @@ that passes them.
     shares the loopback address and HSTS is never sent (decision 9); document the `403
     misdirected` log line as "a request reached bms without passing the front end" and
     the "untrusted loopback peer sent X-Forwarded-For" warning as "the front end on this
-    host is not in trusted_proxies".
-15. **`plan/design/settings.md` (row 15):** when the public URL exists (D18), `app` passes
+    host is not in trusted_proxies"; note that bms sends HSTS as `max-age=31536000` only
+    and that a regional controlling every subdomain adds `includeSubDomains` (and
+    `preload`) at the front end (decision 26).
+15. **`plan/design/settings.md` (row 15)** (pending: target not written): when the public URL exists (D18), `app` passes
     its origin to `api` as a trusted origin for cross-origin protection, so a front end
     that rewrites `Host` still works; until then the `Host`-preserving rule in 14 holds.
     This adds `Options.TrustedOrigins []string` to this spec at that time, and with it a
@@ -1491,12 +1545,14 @@ that passes them.
     the bind address): a request whose `Host` is not listed is answered `404` with no
     body, which closes DNS rebinding against the API; until the setting exists the front
     end's virtual host is the allowlist and `AllowPlaintext` deployments have none.
-16. **`plan/design/module-hello.md` (row 4b):** ship `openapi.json` next to `module.go`
+16. **`plan/design/module-hello.md` (row 4b)** (pending: target not written; carries
+    item 3(e): the fragment documents `GET /greeting` and `GET /public-greeting` and its
+    schema names start with `Hello`): ship `openapi.json` next to `module.go`
     (embedded), use `httpx.ReadJSON`/`WriteJSON`/`Fail`, read the actor through
     `identity`'s accessor (M1) and return `errs.Permission` from its service until then
     for `GET /greeting`; its tests assert `404 not_found` from `httpx.Fail`'s fallback and
     the full problem body through `app`'s integration test.
-17. **`.golangci.yml`:** no new rule needed: `foundation-lib` already confines `httpx` to
+17. **`.golangci.yml`** (nothing to apply): no new rule needed: `foundation-lib` already confines `httpx` to
     the standard library and `lib`, and the `api` rule already denies modules, `app` and
     `config`. If the owner wants a strict allowlist for `internal/api` (stdlib, `lib`,
     `model`, `core`), add it as `list-mode: strict` on the `api` rule.

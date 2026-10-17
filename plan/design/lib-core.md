@@ -1,6 +1,10 @@
 # lib-core: clock, retry, validate, timeutil
 
 - **Status:** Implemented (ported from Sojourn, D11, 2026-10-16)
+- **Amendment pending implementation (2026-10-17, api.md decision 25):** `validate.FieldError`
+  gained `Code` and `Params`, each check sets its code, the `Code*` constants were added
+  and `Errors.Addf` takes a code. The ported code does not have this yet; it is an
+  implementation follow-up (see "Proposed changes elsewhere") before `httpx` is built on it.
 - **Packages:** `internal/lib/clock`, `internal/lib/retry`, `internal/lib/validate`,
   `internal/lib/timeutil` (Go module `github.com/zedgama3/bms`; foundation libraries, not bms modules)
 - **Depends on specs:** `lib-errs.md` (Approved): `errs.E`, `errs.Is`, `errs.KindOf` and the
@@ -241,12 +245,17 @@ package validate
 
 // FieldError is one problem with one input field. Every check in this package returns
 // errs.E("validate.<Check>", errs.Invalid, &FieldError{...}), so callers branch with
-// errs.Is and the api ErrorMapper extracts fields with errors.As or Fields. Reason is
-// safe to show to a user: it never echoes string input (which may be a secret or a database URL);
-// it may echo numbers and durations.
+// errs.Is and the api's mapper (through lib/httpx) extracts fields with errors.As or
+// Fields. Reason is safe to show to a user: it never echoes string input (which may be a
+// secret or a database URL); it may echo numbers and durations. Code and Params exist so
+// the web shell can translate the problem (api.md decision 25, owner 2026-10-17): Code is
+// a stable identifier from the list below, Params the rule's parameters as strings,
+// never the input.
 type FieldError struct {
-    Field  string // the caller's full dotted path: "db.url", "smtp.host"
-    Reason string // what is wrong: "must be positive, got -1s"
+    Field  string            // the caller's full dotted path: "db.url", "smtp.host"
+    Code   string            // "required", "range", "positive", "one_of", "url", "host_port", "malformed"; "" when a caller set none
+    Params map[string]string // the rule's parameters: Range {"min","max"}, OneOf {"options": comma-joined}; nil otherwise
+    Reason string            // what is wrong, in English: "must be positive, got -1s"
 }
 
 // Error returns "<Field>: <Reason>". Cannot fail.
@@ -258,30 +267,46 @@ func (e *FieldError) Error() string
 func Fields(err error) []*FieldError
 
 // Each check returns nil or errs.Invalid wrapping a FieldError. field is the caller's full
-// dotted path; this package never prefixes.
+// dotted path; this package never prefixes. Each check sets the Code named in its comment.
 
-// NonEmpty fails if strings.TrimSpace(value) == "".
+// The codes this package sets, and the one it reserves. A code is a stable API string
+// (the web shell translates it under the key field.<code>); a test pins the list.
+const (
+    CodeRequired  = "required"  // NonEmpty
+    CodeRange     = "range"     // Range; Params min, max (formatted as the check echoes them)
+    CodePositive  = "positive"  // Positive
+    CodeOneOf     = "one_of"    // OneOf; Params options (comma-joined, in the caller's order)
+    CodeURL       = "url"       // URL; Params schemes (comma-joined) when schemes were given
+    CodeHostPort  = "host_port" // HostPort, ListenAddr
+    CodeMalformed = "malformed" // reserved for decoders: httpx.ReadJSON on a body that is not the expected JSON
+)
+
+// NonEmpty fails if strings.TrimSpace(value) == "". Code "required".
 func NonEmpty(field, value string) error
 
 // Range fails if v < lo or v > hi (inclusive bounds). Works for ints, floats, durations.
+// Code "range", Params {"min": lo, "max": hi} formatted with %v.
 func Range[T cmp.Ordered](field string, v, lo, hi T) error
 
-// Positive fails if d <= 0.
+// Positive fails if d <= 0. Code "positive".
 func Positive(field string, d time.Duration) error
 
 // OneOf fails if value is not exactly one of allowed. Fails with errs.Internal if allowed
-// is empty (a caller bug, not bad input).
+// is empty (a caller bug, not bad input). Code "one_of", Params {"options": allowed
+// joined with ", "}.
 func OneOf(field, value string, allowed ...string) error
 
 // URL fails if value does not parse as an absolute URL with a non-empty host, or if
-// schemes is non-empty and the scheme (case-insensitive) is not in it.
+// schemes is non-empty and the scheme (case-insensitive) is not in it. Code "url";
+// Params {"schemes": joined with ", "} when schemes were given.
 func URL(field, value string, schemes ...string) error
 
 // HostPort fails unless value is "host:port" or "[v6]:port" with a non-empty host and a
-// numeric port in 1..65535.
+// numeric port in 1..65535. Code "host_port".
 func HostPort(field, value string) error
 
-// ListenAddr is HostPort with an empty host allowed (":8080" means all interfaces).
+// ListenAddr is HostPort with an empty host allowed (":8080" means all interfaces). Code
+// "host_port".
 func ListenAddr(field, value string) error
 
 // Errors accumulates problems. The zero value is ready to use. Not safe for concurrent use.
@@ -293,9 +318,11 @@ type Errors struct {
 // Add records err; a nil err is ignored. Cannot fail.
 func (e *Errors) Add(err error)
 
-// Addf records errs.Invalid wrapping &FieldError{Field: field, Reason: fmt.Sprintf(format,
-// args...)}. Cannot fail.
-func (e *Errors) Addf(field, format string, args ...any)
+// Addf records errs.Invalid wrapping &FieldError{Field: field, Code: code, Reason:
+// fmt.Sprintf(format, args...)} with no Params. code is one of the constants above or a
+// caller's own stable string (a module's "overlap", say); "" is allowed and means the
+// web shell shows the reason. Cannot fail.
+func (e *Errors) Addf(field, code, format string, args ...any)
 
 // Err returns nil if nothing was added, otherwise
 // errs.E(Op, errs.Invalid, errors.Join(problems...)). Cannot fail.
@@ -307,9 +334,11 @@ config.md, Proposed change 10);
 `model` types' `Validate()` methods (`NonEmpty`, `OneOf`, `Range`, `Errors`); module services
 validating requests (`NonEmpty`, `Range`, `Errors`); `notify` settings (`HostPort` for the SMTP
 server); `identity` (`URL` for the OIDC issuer);
-`retry.Policy.Validate` (`Positive`, `Range`, `Errors`); `api` ErrorMapper (`FieldError`,
-`Fields`: builds the 400 body's per-field list without parsing messages, as lib-errs
-requires); `cmd/bms`/`app` start-up (prints `Fields(err)` one per line when config is invalid).
+`retry.Policy.Validate` (`Positive`, `Range`, `Errors`); `httpx` (`FieldError`, `Fields`:
+`Fail`'s fallback and the api's mapper build the 400 body's per-field list `{field, code,
+params, reason}` without parsing messages, as lib-errs requires; `ReadJSON` builds a
+`FieldError` with code `malformed` or `required` for a bad or empty body; api.md); `cmd/bms`/`app`
+start-up (prints `Fields(err)` one per line when config is invalid).
 
 ### timeutil
 
@@ -429,8 +458,14 @@ Consumers per function:
 
 ### validate
 
-- Every problem is a `*FieldError` inside `errs.Invalid`. Tests and the API read `Field`
-  and `Reason` through `errors.As`/`Fields`; nothing parses `Error()` text.
+- Every problem is a `*FieldError` inside `errs.Invalid`. Tests and the API read `Field`,
+  `Code`, `Params` and `Reason` through `errors.As`/`Fields`; nothing parses `Error()`
+  text. `Error()` stays `<Field>: <Reason>`; the code is not in it.
+- `Code` is set by every check in this package (the constant list above) and by `Addf`'s
+  caller; `Params` hold only the rule's parameters (bounds, options, schemes) as strings,
+  never the value being checked, so they are as safe to show as `Reason`. A caller that
+  builds a `FieldError` by hand may leave `Code` empty; the web shell then shows `Reason`
+  (api.md decision 25).
 - `Reason` never echoes string input: `NonEmpty`, `OneOf`, `URL`, `HostPort` and
   `ListenAddr` describe the rule ("must be one of: local, oidc") without the value.
   Numbers and durations are echoed: `max_connections: must be between 1 and 1000, got 0`.
@@ -536,9 +571,12 @@ only ordering, never exact durations).
   plus F9–F18.
 - `validate`: one table test per check with valid and invalid rows; each invalid row asserts
   `errs.Is(err, errs.Invalid)` and extracts the `*FieldError` with `errors.As` to check
-  `Field`; plus F19–F27, `TestErrorsErr_Empty_ReturnsNil`,
+  `Field`, `Code` and `Params`; plus F19–F27, `TestErrorsErr_Empty_ReturnsNil`,
   `TestFields_JoinedAndWrapped_ReturnsAllInOrder`, `TestFields_NilOrUnmatched_ReturnsEmpty`,
-  `TestReason_StringChecks_DoNotEchoValue`.
+  `TestReason_StringChecks_DoNotEchoValue`, `TestChecks_SetCodeAndParams_Table` (one row
+  per check: the code, the params, and that no param equals the checked string value),
+  `TestCodes_Pinned` (the `Code*` constants are stable API strings),
+  `TestAddf_SetsCodeNoParams`.
 - `timeutil`: tables with explicit UTC and non-UTC inputs. `TestTruncate_AlignsToMidnightUTC`,
   `TestTruncate_NonUTCInputReturnsUTC`, `TestTruncate_BeforeEpochFloors`,
   `TestAlign_EndOnBoundaryUnchanged`, `TestBuckets_CoversHalfOpenRange`,
@@ -560,3 +598,10 @@ None. The one dependency that was uncertain while drafting (whether `lib-errs` e
   should state N and whether `MaxAttempts` is 0.
 - Report-producing module specs that bucket by time should use `timeutil.CheckBucket` and
   `timeutil.BucketFor`.
+- **Implementation follow-up (2026-10-17, from api.md Proposed change 8, decision 25):**
+  add `Code` and `Params` to `validate.FieldError`, the `Code*` constants, the code and
+  params each check sets, and the `code` parameter of `Errors.Addf` (its only callers today
+  are inside `lib`); tests `TestChecks_SetCodeAndParams_Table` (one row per check: the
+  code, the params, and that no param equals the checked value) and `TestCodes_Pinned`
+  (the constants are stable API strings). `config`, `model` and `telemetry` are not yet
+  implemented, so nothing else changes.

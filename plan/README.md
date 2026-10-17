@@ -25,7 +25,7 @@ copy and can fork it. Features are modules.
 ## Status
 
 - **Phase:** 0, foundations
-- **Last updated:** 2026-10-16
+- **Last updated:** 2026-10-17
 - **Done 2026-10-16:**
   - Repo scaffolded: plan, agents, skills, lint rules, dev compose. Methodology carried over
     from Sojourn (D7).
@@ -73,8 +73,13 @@ copy and can fork it. Features are modules.
      09-core-features.md).
      Done 2026-10-16: `signals` is Approved (design/README.md row 10, order 6 in
      09-core-features.md).
-     Next: `api` (design/README.md row 16, order 7 in 09-core-features.md), then the
+     Done 2026-10-17: `api` is Approved (design/README.md row 16, order 7 in
+     09-core-features.md), with the owner's answers to its four open questions (api.md
+     decisions 24–27).
+     Next: `web-shell` (design/README.md row 17, order 8 in 09-core-features.md), then the
      rest of the spec order in [09-core-features.md](09-core-features.md).
+     Pending implementation: the `lib-core` `validate` amendment (FieldError `Code` and
+     `Params`), which must land before `httpx`; tracked in [05-roadmap.md](05-roadmap.md).
   3. CI on GitHub (`make check`), once the owner pushes the branch.
 
 ## Conventions

@@ -18,6 +18,9 @@ Design comes before code. Specs are tracked in [design/README.md](design/README.
       `identity`, `authz`, `people`, `departments-events`, `signals`, `notify`, `audit`, `files`, `jobs`, `api`,
       `web-shell`, `app` (architect writes, owner approves)
 - [ ] Implement the core with the build loop
+- [ ] Implement the `lib-core` `validate` amendment: `validate.FieldError` gains `Code` and
+      `Params`, each check sets its code, the `Code*` constants are added (lib-core.md,
+      api.md decision 25). Must land before `httpx`.
 - [ ] A "hello" module that exercises every part of the module contract, as the reference for
       module authors
 - [ ] CI on GitHub Actions running `make check` (repository: `github.com/zedgama3/bms`)

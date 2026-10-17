@@ -12,7 +12,7 @@ The order follows dependencies: foundation first, then the core, then modules.
 | # | Spec | Abstraction | Status |
 |---|---|---|---|
 | 1 | `lib-errs.md` | error kinds and wrapping (port from Sojourn, D11) | Implemented (ported, D11) |
-| 1b | `lib-core.md` | clock, retry, validate, timeutil (port from Sojourn, D11) | Implemented (ported, D11) |
+| 1b | `lib-core.md` | clock, retry, validate, timeutil (port from Sojourn, D11) | Implemented (ported, D11); amendment pending (FieldError codes, api.md decision 25) |
 | 1c | `lib-secret.md` | a string that can't be printed (port from Sojourn, D11) | Implemented (ported, D11) |
 | 2 | `model.md` | shared value types | Approved |
 | 3 | `config.md` | config loading and validation | Approved |
@@ -30,7 +30,7 @@ The order follows dependencies: foundation first, then the core, then modules.
 | 14 | `jobs.md` | scheduled and deferred work | Not started |
 | 15 | `settings.md` | runtime settings and terminology | Not started |
 | 15b | `telemetry.md` | logs, traces, metrics, client error intake (D20) | Approved |
-| 16 | `api.md` | router, middleware, error mapper, OpenAPI assembly | Draft (2026-10-16) |
+| 16 | `api.md` | router, middleware, error mapper, OpenAPI assembly | Approved (2026-10-17) |
 | 17 | `web-shell.md` | UI frame, API client, module screen registry | Not started |
 | 18 | `app.md` | composition root and lifecycle | Not started |
 | 19 | `module-volunteers.md` | volunteers module | Not started |

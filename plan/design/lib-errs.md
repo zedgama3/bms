@@ -252,14 +252,20 @@ Lint: the package must pass `errorlint`, `errcheck`, `wrapcheck` and `depguard`
 
 ## Open questions
 
-1. **HTTP treatment of `Canceled`.** Proposed for `api.md`: when the request context is the
-   thing canceled, log at debug and write no response (the client is gone); when a server
-   shutdown cancels work for a still-connected client, respond 503 with `Connection: close`.
-   Not a 504 and not a 500. Owner to confirm when `api.md` is written.
+None. The one question of the first draft was answered when `api.md` was approved:
+
+1. **HTTP treatment of `Canceled`.** Answered as proposed (api.md decision 17, owner
+   2026-10-17): when the request context is the thing canceled, the api logs at debug and
+   writes no response (the client is gone); when a server shutdown cancels work for a
+   still-connected client, it answers `503` with code `shutting_down` and
+   `Connection: close`. Not a 504 and not a 500.
 
 ## Proposed changes elsewhere
 
-1. **`plan/design/api.md` (row 16, when written):** ErrorMapper owns the client-visible
+1. **`plan/design/api.md` (row 16)** (applied 2026-10-17: the kind-to-status table is
+   `lib/httpx.StatusOf`, the body is `httpx.Problem` with `Kind.String()` as `code`, and
+   the api's mapper never emits `err.Error()`; validation detail travels as
+   `validate.Fields(err)`): ErrorMapper owns the client-visible
    message. It maps `KindOf(err)` to status, uses `Kind.String()` as the body's `code`, never
    emits `err.Error()` to a client, and surfaces validation detail only through
    `lib/validate` typed field errors found with `errors.As`.

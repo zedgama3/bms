@@ -27,7 +27,10 @@ When in doubt, pick the higher level.
 - **Collect only what the feature needs.** The spec says why each `personal` or `sensitive`
   field is needed.
 - **Access goes through the authorizer.** Lists, searches, exports and counts are filtered
-  too. A list must not reveal that a hidden record exists.
+  too. A list must not reveal that a hidden record exists, and a single record the caller
+  may not see is answered `errs.NotFound`, never `errs.Permission`, so a `403` never
+  confirms that an ID exists; `Permission` is for an action the caller may not take on a
+  record they may see.
 - **Audit.** Every read of a `personal` field by someone other than the person, and every
   read of a `sensitive` field, writes an audit record (who, what record, when, why if the
   workflow asks).
