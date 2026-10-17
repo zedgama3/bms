@@ -76,7 +76,10 @@ copy and can fork it. Features are modules.
      Done 2026-10-17: `api` is Approved (design/README.md row 16, order 7 in
      09-core-features.md), with the owner's answers to its four open questions (api.md
      decisions 24–27).
-     Next: `web-shell` (design/README.md row 17, order 8 in 09-core-features.md), then the
+     Done 2026-10-17: `web-shell` is Approved (design/README.md row 17, order 8 in
+     09-core-features.md), with the owner's answers recorded in the spec (decisions 2, 7, 15,
+     17, 18, 21, 22).
+     Next: `app` (design/README.md row 18, order 9 in 09-core-features.md), then the
      rest of the spec order in [09-core-features.md](09-core-features.md).
      Pending implementation: the `lib-core` `validate` amendment (FieldError `Code` and
      `Params`), which must land before `httpx`; tracked in [05-roadmap.md](05-roadmap.md).

@@ -22,6 +22,7 @@ internal/modules/<m>/...    feature modules               imports: core contract
 internal/api                HTTP shell                    imports: core contracts, model, lib
 internal/app                composition root              imports: anything
 cmd/bms                     main                          imports: app, config
+web                         the built web shell (embed)   imports: stdlib, lib/errs; imported by app only
 ```
 
 - A module **never** imports another module, `api`, `app` or `config`. Modules cooperate

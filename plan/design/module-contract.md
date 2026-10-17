@@ -857,7 +857,9 @@ None of its own. What this spec provides for screens elsewhere:
    the flag; the web shell's build-time registry (D31) is the source of truth for screens,
    and it shows a module only when both registries have it (UI section). The two cannot
    disagree silently: a Go module without a web folder simply has no screens; a web folder
-   without an enabled Go module is not shown.
+   without an enabled Go module is not shown. The web registry also lists the core areas
+   (`kind: "core"`), which are always enabled because they are not modules (web-shell.md
+   decision 3, 2026-10-17).
 10. **Module names are letters and digits only.** One name is the Go package, the
     PostgreSQL schema (unquoted), the URL segment, the permission prefix, the web folder and
     the message-key segment; hyphens and underscores are legal in some of those and not
@@ -1163,7 +1165,7 @@ with the proposed answer:
    `APIDescriber` and merge the fragments; serve `GET /api/modules` from `Plan.Graph()` plus
    `db`'s versions, behind `core.modules.read`; map `db`'s read-only kind to the
    "this copy is read-only" response.
-7. **`plan/design/web-shell.md` (row 17):** each module's folder ships
+7. **`plan/design/web-shell.md` (row 17)** (applied 2026-10-17: each set ships `web/src/modules/<name>/messages/<lang>.json`, flat JSON with ICU messages, `en` required; the manifest-derived keys are checked by a Go test in `internal/app`, `TestMessageCatalogues_EnglishCoversManifests`, skipped when `web/` is absent; screens mount only when `GET /api/modules` lists the module; the admin "modules" screen renders the graph as tables with the warnings; the web registry lists core areas too, `kind: "core"`, always enabled): each module's folder ships
    `messages/<lang>.json` with the keys of decision 8; a build-time check (or a test) that
    `en` has every key implied by the module's declarations (the build can read the Go
    manifest through a generated JSON, or the check runs in Go against the catalogue files);

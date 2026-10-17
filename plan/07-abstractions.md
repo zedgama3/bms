@@ -60,6 +60,11 @@ Rules (enforced by depguard and `make imports`):
    every core package, `api`, `app` and every module may import it. Spans and metrics go
    through its `Tracer` and `Meter` interfaces with typed attributes, never through
    OpenTelemetry globals.
+10. **Web shell.** The Go package `web` (`web/embed.go`) holds the built shell; it imports
+    the standard library and `lib/errs` only, and only `app` imports it (depguard `web`).
+    In `web/src/`, a module's or core area's folder never imports another's, `core/*` or
+    `shell/*`; enforced by ESLint and `scripts/check-web-module-imports.sh` under
+    `make imports`.
 
 ---
 
@@ -221,9 +226,22 @@ Rules (enforced by depguard and `make imports`):
 - **Spec:** [design/api.md](design/api.md).
 
 ### web shell
-- **Purpose:** the React app frame: login, navigation, layout, the API client, and the
-  build-time registry that imports each module's own folder under `web/` (D31). Catches
-  errors and reports them (D20). Every string is translation-ready (D28).
+- **Purpose:** host every module's screens in one browser application.
+- **Owns:** the frame (navigation from the enabled modules, sign-in state, the read-only
+  and superuser banners, the language menu), the typed API client generated from
+  `/api/openapi.json` (`traceparent`, one `ApiError`, `X-Read-Only`, `401` → sign-in), the
+  build-time screen registry (one folder per module under `web/src/modules/`, one per core
+  area under `web/src/core/`, mounted under `/<name>/`, modules shown only when enabled;
+  D31), translation (FormatJS/ICU catalogues per set, keys typed, terminology as
+  arguments; D28), error display (codes and field codes translated, the reference shown,
+  the server's English `reason` only as the last-resort fallback inside a translated
+  wrapper), the reporter (`POST /api/client-errors`; D20), the accessibility rules and the
+  phone-first rules (a phone is the primary device; a hard requirement), the pinned
+  OSI-only toolchain, and the Go package `web` that embeds `dist/` for `app`.
+- **Doesn't do:** any module's or core area's screens (their specs), authorization (the
+  server), serving and the CSP (`api`), settings and branding values (`settings`), offline
+  caching (Q-OFFLINE).
+- **Spec:** [design/web-shell.md](design/web-shell.md).
 
 ### app: composition root
 - **Purpose:** build everything from configuration, start it and stop it cleanly. Provides

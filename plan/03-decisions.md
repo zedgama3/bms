@@ -358,6 +358,7 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
 - Some regionals may default to a language other than English, so the default language is a
   per-regional setting.
 - Every string is translation-ready from day one.
+- Clarified (owner, 2026-10-17): when no translation exists for a server field-error code, the shell shows the server's English `reason` inside a translated wrapper message and reports the untranslated code; English is accepted as the last-resort fallback only inside such a wrapper (web-shell.md decision 2).
 
 ## D29. Importing data from other systems is a later feature
 

@@ -49,6 +49,8 @@ before a design depends on it.
 - **At the event, the internet may be gone.** The work most often needed offline is incident
   management, volunteer management, and looking up a participant's personal and emergency
   information (owner, 2026-10-16).
+- **Many people only have a phone** (owner, 2026-10-17). Every screen and flow must work
+  on a small phone screen; being usable on a phone is a hard requirement, not a nicety.
 - After the event, departments write after-burn reports and carry lessons into the next one.
 
 ## Departments, positions and leadership

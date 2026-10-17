@@ -34,7 +34,10 @@ These apply everywhere, so the specs don't repeat them.
   own permission set, departments run themselves, and a regional can forbid combinations
   (for example, "board members never see incident reports"). Only the break-glass superuser
   sees everything.
-- **Mobile first.** Every screen works on a phone at the event. WCAG 2.1 AA.
+- **Phones are a hard requirement** (owner, 2026-10-17). Many people only have a phone, so
+  every screen and every flow must be usable on a small phone screen at the event:
+  phone-first layouts, touch targets, nothing that needs a wide screen or a mouse. The
+  end-to-end smoke run executes at a phone viewport as well as a desktop one. WCAG 2.2 AA.
 - **Ready for translation.** Every string goes through the translation layer, from day one.
   English at launch, Spanish soon, then possibly others; the default language is a setting per
   regional (D28). Terminology (what the regional calls an "event", a "department") is a
@@ -107,7 +110,9 @@ it depends on getting this right.
   a route and its module's fragment disagree.
 - A collector that is down or absent never fails start-up, a request or shutdown; stdout
   logs carry the trace ID without any collector.
-- The web shell renders its frame, sign-in page and a "this copy is read-only" banner.
+- The web shell renders its frame, sign-in page and a "this copy is read-only" banner, and
+  its screens pass the end-to-end smoke run at a phone viewport as well as a desktop one
+  (`web-shell.md` decisions 21 and 22).
 - A `hello` module exercises every part of the module contract and is the reference for
   module authors.
 
@@ -301,7 +306,9 @@ training and certificates come with qualifications (Q-QUAL), not as profile fiel
 **Done when:** each screen is built from the features above (no admin-only back doors), and
 each action is permission-checked and audited like any other.
 
-**Specs:** part of `web-shell` (frame) and each feature's own spec (its screens).
+**Specs:** part of `web-shell` (the frame and the admin "modules" screen) and each feature's
+own spec (its screens, built as that core area's `ScreenSet` under `web/src/core/<area>/`;
+`web-shell.md` decision 3).
 
 ## 8. Audit log (MVP, from M1)
 

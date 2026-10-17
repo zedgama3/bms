@@ -1503,7 +1503,7 @@ this list until then. Item 17 needs nothing.
     `api.PermissionModulesRead` with `authz`; `bms check` prints the OpenAPI operation
     count; the `hello` integration test asserts a request's `deliver:hello.greeted` span
     is a descendant of its request span.
-12. **`plan/design/web-shell.md` (row 17)** (pending: target not written): mirror `httpx.Problem` and the codes in
+12. **`plan/design/web-shell.md` (row 17)** (applied 2026-10-17; decision 25's `reason` fallback stands, shown inside the shell's translated `field.unknown` wrapper with the untranslated code reported; the reference is additionally hidden for `unauthenticated`, `read_only` and the client's `network` code, web-shell.md decision 9; no CSP change requested; note that the shell calls `GET /api/modules` and `GET /api/accounts/session` in parallel at boot, so neither may depend on the other): mirror `httpx.Problem` and the codes in
     TypeScript; translate `code` through keys `error.<code>` and, for `invalid`, map
     `fields[].field` to inputs and translate `fields[].code` with `fields[].params`
     (keys `field.<code>`), showing `reason` for an unknown code (decision 25); show `ref` per

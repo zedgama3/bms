@@ -692,7 +692,9 @@ None of its own. What this spec provides for screens elsewhere:
   `XXXX-XXXX`. Proposed wording, translation-ready: "Something went wrong. If you ask for
   help, quote the reference `1A2B-3C4D`." with a copy button. The reference is shown for
   every 5xx and for 4xx responses other than validation errors (a validation error shows
-  its fields instead).
+  its fields instead). Refined by `web-shell.md` decision 9 (2026-10-17): also not shown
+  for `unauthenticated` (the person lands on sign-in), `read_only` (an expected state with
+  its own banner) and the client's own `network` code (no server answered).
 - **The maintainer's path** (`docs/operating.md`, Proposed change 9): in Grafana, Explore
   → Loki: `{service_name="bms"} | json | error_ref="1A2B-3C4D"` → the record carries
   `trace_id` → the derived field opens the trace in Tempo → Tempo's "logs for this trace"
@@ -1205,7 +1207,7 @@ target to be written and are carried by this list until then.
    and `User-Agent`; answer 202 with no body, 400 with field errors for `Invalid`, 415 for a
    content type other than `application/json`, and 429 with `Retry-After: 60` and code
    `rate_limited` when `errors.Is(err, intake.ErrRateLimited)`, checked before the kind.
-4. **`plan/design/web-shell.md` (row 17)** (pending: target not written): the API client sends a fresh W3C `traceparent`
+4. **`plan/design/web-shell.md` (row 17)** (applied 2026-10-17 by web-shell.md decisions 6, 9, 13 and 14 and "The reporter, step by step", with these refinements: reported `api` failures are `network`, `malformed_response`, `internal`, `cross_origin`, `misdirected`, `method_not_allowed`, `payload_too_large`, `unsupported_media_type` and an untranslated code; at most 100 distinct pending reports, oldest dropped; the 10 s timer runs only while something is pending; `keepalive` `fetch` is the `sendBeacon` fallback; a network failure backs off 10 s doubling to 5 min; `screen` is the router's pattern with `:p` → `{p}`; the reference is hidden for `unauthenticated`, `read_only` and `network` too): the API client sends a fresh W3C `traceparent`
    per call (random trace ID and parent ID, flags `01`) and keeps it with the call's result;
    it catches uncaught errors, unhandled rejections, error boundaries and failed calls,
    deduplicates by `(kind, message, screen)` with a `count`, batches at most 20 reports

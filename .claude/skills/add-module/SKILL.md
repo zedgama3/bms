@@ -65,7 +65,12 @@ internal/modules/<name>/
   privacy.go       implements module.PersonData: export and delete for one person
   <name>_test.go   black-box tests (test-author); calls moduletest.Conformance
 web/src/modules/<name>/
-  index.ts         registers routes, navigation and screens with the web shell
+  index.ts         exports `ui: ScreenSet` (name, kind "module", routes relative to
+                   /<name>/, nav entries, message catalogues); one import line is added to
+                   web/src/modules/index.ts (D31; web-shell.md)
+  messages/en.json the keys module-contract decision 8 derives from the manifest
+                   (module.<name>.title, .description, .permission.<rest>.title, ...) plus
+                   the module's own under module.<name>.*; other languages optional
   screens/, components/
 ```
 
@@ -80,6 +85,14 @@ web/src/modules/<name>/
     when the capability is missing.
   - to **react** when something happens, subscribe to a **signal** (domain event, D24).
   - Declare all of it in the manifest.
+  - In the browser the same rule: a module's screens call only `/api/<name>/` and the
+    core's routes, and import only `@/api`, `@/i18n`, `@/ui`, `@/registry/types` and
+    themselves; another module's data comes through a contract the owning module renders.
+    ESLint and `scripts/check-web-module-imports.sh` (`make imports`) enforce it.
+- **Every screen works on a phone first** (web-shell.md decision 21; owner, 2026-10-17):
+  many participants only have a phone, so a flow that needs a wide screen or a mouse is a
+  defect. Screens use the shell's `ErrorState` and `ErrorSummary`, `useT` with typed keys
+  and `{term_*}` for terminology, and no `style` prop (CSP).
 - **Signals:** publish inside the `Transact` that makes the change (delivery happens after
   commit, so a rolled-back change publishes nothing); subscribe in `Start`, once per name;
   handlers are quick and run as the system, long work is a job. Tests use

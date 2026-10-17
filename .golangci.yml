@@ -112,6 +112,8 @@ linters:
               desc: "only main imports app"
             - pkg: github.com/zedgama3/bms/internal/config
               desc: "the core receives typed options from app, not the app config"
+            - pkg: github.com/zedgama3/bms/web
+              desc: "only app imports the web embed (web-shell.md)"
         modules:
           # A module depends on core contracts, model and lib. Never another module
           # (make imports), app, the api shell or the app config.
@@ -124,6 +126,8 @@ linters:
               desc: "modules contribute routes through the module contract, not by importing the api shell"
             - pkg: github.com/zedgama3/bms/internal/config
               desc: "modules receive typed options from app, not the app config"
+            - pkg: github.com/zedgama3/bms/web
+              desc: "only app imports the web embed (web-shell.md)"
         storage-seam:
           # D8: only postgres/ packages and core db touch the driver. Everything else talks
           # to a storage interface, so PostgreSQL can be replaced later.
@@ -158,3 +162,16 @@ linters:
               desc: "only main imports app"
             - pkg: github.com/zedgama3/bms/internal/config
               desc: "the api shell receives typed options from app, not the app config"
+            - pkg: github.com/zedgama3/bms/web
+              desc: "only app imports the web embed (web-shell.md)"
+        web:
+          # web-shell.md: the embed package hands app the built shell. Standard library and
+          # lib/errs only; only app imports it (the deny entries above). The repository has
+          # one package named web, at the top level.
+          files:
+            - "**/web/**"
+          list-mode: strict
+          allow:
+            - "$gostd"
+            - github.com/zedgama3/bms/internal/lib/errs
+            - github.com/zedgama3/bms/web

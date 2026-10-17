@@ -40,7 +40,10 @@ are letters and digits only; confirmed by the owner, 2026-10-16; see
 [design/module-contract.md](design/module-contract.md), decision 10).
 
 Later, in the core: **trust between regionals** (D18, Q-TRUST), so that records such as
-volunteer credit can be recognized across a group of regionals.
+volunteer credit can be recognized across a group of regionals. Also later: **browser-language
+detection** (behind a `language.detect_browser` setting, default off; web-shell.md decision 7),
+so the browser's language list can choose the language; until then the regional's default
+applies (owner, 2026-10-17).
 
 Possible later modules (not committed; listed so the core doesn't rule them out): placement
 and mapping, art grants and budgets, early arrival and work access passes, gate and
