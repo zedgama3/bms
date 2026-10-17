@@ -32,7 +32,7 @@ The order follows dependencies: foundation first, then the core, then modules.
 | 15b | `telemetry.md` | logs, traces, metrics, client error intake (D20) | Approved |
 | 16 | `api.md` | router, middleware, error mapper, OpenAPI assembly | Approved (2026-10-17) |
 | 17 | `web-shell.md` | UI frame, API client, module screen registry | Approved (2026-10-17) |
-| 18 | `app.md` | composition root and lifecycle | Not started |
+| 18 | `app.md` | composition root and lifecycle | Draft (2026-10-17) |
 | 19 | `module-volunteers.md` | volunteers module | Not started |
 | 20 | `module-registrations.md` | registrations module | Not started |
 | 21 | `module-incidents.md` | incidents module | Not started |
