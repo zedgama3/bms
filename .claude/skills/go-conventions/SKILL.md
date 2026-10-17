@@ -53,7 +53,9 @@ succeeds on a read-only copy. `New` needs no database read, because `bms openapi
 `bms check` build every module against a `DB` that refuses every statement (app.md decision
 7). Every module ships `web/src/modules/<name>/messages/en.json`, screens or not. The manifest carries no human-readable text: titles and
 descriptions are catalogue keys derived from the names (module-contract decision 8). Every
-module's tests call `moduletest.Conformance`.
+module's tests call `moduletest.Conformance` with `WithSeed` (or `WithoutPersonData` when
+the spec's Data section lists nothing about a person) and `WithCapability` for each
+capability the module requires or uses.
 
 ## Errors: `internal/lib/errs`
 

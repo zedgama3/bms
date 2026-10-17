@@ -76,6 +76,8 @@ internal/modules/<name>/
                    each published signal, and the handlers for each subscription
   privacy.go       implements module.PersonData: export and delete for one person
   <name>_test.go   black-box tests (test-author); calls moduletest.Conformance
+                   with WithSeed (or WithoutPersonData) and WithCapability
+                   for each required or used capability
 web/src/modules/<name>/
   index.ts         exports `ui: ScreenSet` (name, kind "module", routes relative to
                    /<name>/, nav entries, message catalogues); one import line is added to
@@ -130,6 +132,8 @@ The template to copy is the `hello` reference module (`plan/design/module-hello.
 - [ ] Spec Approved, then Implemented through the build loop
 - [ ] Migrations apply cleanly on an empty database and on one with the previous release
 - [ ] Every permission rule and failure mode has a test; `moduletest.Conformance` passes
+      (with `WithSeed`, or `WithoutPersonData` when the spec's Data section lists nothing about
+      a person, and `WithCapability` for each capability required or used)
 - [ ] Export and delete for one person are tested
 - [ ] `make check` passes, including `make imports`
 - [ ] UI reviewed by `web-reviewer`

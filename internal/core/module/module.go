@@ -1,0 +1,134 @@
+package module
+
+import (
+	"context"
+	"encoding/json"
+	"log/slog"
+
+	"github.com/zedgama3/bms/internal/core/db"
+	"github.com/zedgama3/bms/internal/core/signals"
+	"github.com/zedgama3/bms/internal/core/telemetry"
+	"github.com/zedgama3/bms/internal/lib/clock"
+	"github.com/zedgama3/bms/internal/model"
+)
+
+// Factory builds a module from its dependencies. It validates the fields of deps it uses
+// (go-conventions: constructors validate), builds its services, and needs no database
+// read and never writes: `bms openapi` and `bms check` build every module against a DB
+// that refuses every statement (app.md decision 7), so a read at construction fails the
+// build step. A module builds on a read-only copy. ctx carries app's 30 s Build deadline.
+type Factory func(ctx context.Context, deps Deps) (Module, error)
+
+// Module is what every module gives the core at runtime. The optional interfaces below
+// add routes, an API description, capability implementations and contributions; Build
+// checks that a module implements exactly what its manifest declares (F29 to F31, F33, F34).
+type Module interface {
+	PersonData
+
+	// Start begins the module's background work: it registers signal handlers and jobs
+	// through Deps and launches goroutines that exit when Stop is called. It subscribes at
+	// most once per declared signal name and never publishes (a signal describes a write;
+	// signals.md). It returns once that is set up, without blocking, and must succeed on a
+	// read-only database (it performs no writes). It fails with the kind of whatever it
+	// tried; Set.Start then stops the modules already started.
+	Start(ctx context.Context) error
+
+	// Stop ends the work Start began and waits for it, within ctx. It is called once,
+	// after Start returned nil, and must be safe to call when Start was never called.
+	// Fails with errs.Timeout or errs.Canceled when ctx ends first (F47), joined with any
+	// goroutine's error.
+	Stop(ctx context.Context) error
+}
+
+// PersonData is how a module answers "export everything about person X" and "delete
+// everything about person X" (privacy-data). Every module implements it, including one
+// that holds no personal data (it returns an empty Export and a zero Deletion), so the
+// obligation is visible in code and tested by moduletest. The caller is the core
+// (people.md) with an actor who has already been authorized for people.data.export or
+// people.data.delete and whose action people audits; a module does not re-check that
+// permission, and these methods are never reachable through a module's own routes.
+type PersonData interface {
+	// ExportPerson returns every record this module holds about person, at every
+	// sensitivity level, as one JSON object the module's spec documents (field names are
+	// stable, so a person can read their own data). An empty Data means nothing is held.
+	// Fails with errs.Invalid for a zero person and with the store's kind otherwise.
+	ExportPerson(ctx context.Context, person model.PersonID) (Export, error)
+
+	// DeletePerson deletes or irreversibly anonymizes every record this module holds
+	// about person, including attachments, and reports what it did. Records the module's
+	// spec says must be kept (a legal or safety reason) are counted under Kept with their
+	// kind. It is idempotent: a person with no records yields a zero Deletion and nil.
+	// Fails with errs.Invalid for a zero person; on a read-only copy, with
+	// errs.Unavailable wrapping db.ErrReadOnly, the kind db returns for a write (db.md).
+	DeletePerson(ctx context.Context, person model.PersonID) (Deletion, error)
+}
+
+// Export is one module's share of a person's data export.
+type Export struct {
+	Data json.RawMessage // a JSON object, or empty when the module holds nothing
+}
+
+// Deletion reports what DeletePerson did.
+type Deletion struct {
+	Deleted    int    // records removed
+	Anonymized int    // records kept with personal fields irreversibly replaced
+	Kept       []Kept // records kept as they are, by the module's spec
+}
+
+// Kept is one kind of record a module keeps on deletion; the reason is documented in the
+// module's spec and shown through the message key module.<name>.kept.<kind>.
+type Kept struct {
+	Kind  string // one ident
+	Count int
+}
+
+// APIDescriber is implemented by a RouteProvider that documents its routes; every
+// RouteProvider must implement it. The api shell merges the fragments into one OpenAPI
+// document (api.md decision 11 defines the fragment form: one JSON object with paths
+// relative to /api/<name>, components.schemas whose names start with the module's name,
+// and tags; "$ref"s point at the module's own schemas or the base ones, never another
+// module's).
+type APIDescriber interface {
+	// OpenAPI returns the module's fragment, embedded at build time. Cannot fail; Build
+	// rejects an empty result (F34).
+	OpenAPI() []byte
+}
+
+// CapabilityProvider is implemented by a module whose manifest lists Provides.
+type CapabilityProvider interface {
+	// Capabilities returns one implementation per capability in Manifest.Provides, keyed
+	// by name; each value implements that contract's interface. Cannot fail; Build checks
+	// the keys against the manifest (F29) and consumers assert the type (decision 5).
+	Capabilities() map[Capability]any
+}
+
+// Contributor is implemented by a module whose manifest lists ContributesTo.
+type Contributor interface {
+	// Contributions returns one value per point in Manifest.ContributesTo. Cannot fail;
+	// Build checks the keys (F30) and asks the definer's Accepts (F31).
+	Contributions() map[ExtensionPoint]any
+}
+
+// Deps is what the core gives a module. app builds one per module (Provision), scoped to
+// it where that matters: the logger carries module=<name>; Signals, Settings and Jobs
+// accept only what the manifest declared; Links sees only the module's own declarations.
+// Fields typed by later specs are added when those specs are Approved; adding a field is
+// not a breaking change for modules. A module validates the fields it uses.
+type Deps struct {
+	Logger *slog.Logger     // scoped (module=<name>); never nil (Build checks)
+	Tracer telemetry.Tracer // scope module.<name>; never nil (Build checks)
+	Clock  clock.Clock      // never nil (Build checks)
+	Links  *Links           // set by Build, never by Provision
+
+	DB      db.DB       // the module's schema is its own responsibility; db reports read-only
+	Signals signals.Bus // Provision sets disp.Scope(m.Name, m.Publishes, m.Subscribes)
+
+	// Added by later specs, named here so modules know where to look:
+	// Settings settings.Reader   settings.md
+	// Authz    authz.Authorizer  authz.md
+	// People   people.Directory  people.md
+	// Audit    audit.Recorder    audit.md
+	// Jobs     jobs.Registrar    jobs.md
+	// Notify   notify.Notifier   notify.md
+	// Files    files.Store       files.md
+}

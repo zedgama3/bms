@@ -1,6 +1,7 @@
 # module: the module contract and registry
 
-- **Status:** Approved (2026-10-16)
+- **Status:** Implemented (2026-10-17); Approved (2026-10-16)
+- **Amended 2026-10-17 (owner):** `moduletest.Conformance` takes options (`WithCapability`, `WithSeed`/`WithoutPersonData`) and gains five rules; `Set.Start` rolls back under `StartRollbackTimeout`; `SettingDecl.Check` replaces `Validate`; `module.IsCoreArea` exported; wording fixes (Graph edges, Resolve kind, Build step 3).
 - **Package:** `internal/core/module` (Go module `github.com/zedgama3/bms`), plus the test
   helper package `internal/core/module/moduletest`. **UI:** none of its own; the admin
   "modules" screen is `web-shell.md`'s, fed by `GET /api/admin/modules` (`api.md`), both
@@ -32,84 +33,84 @@
 ## Summary
 
 Purpose: describe each compiled-in module to the core (Manifest) so `app` can resolve, build,
-start and stop it without knowing it. `module` is the top of the core graph: it imports core
-contracts; no core package imports it. Owns no tables, settings or signals.
+start and stop it without knowing it. Top of the core graph (no core package imports it);
+owns no tables, settings or signals.
 
 Exported names (package `module`):
 - `Capability` (one ident; Go interface in `contracts/<name>`), `ExtensionPoint`
   (`<definer>.<ident>`, `.Definer()`), `ExtensionPointDecl{Name, Accepts func(any) bool}`;
-  each has `Validate() error`. Idents are `[a-z][a-z0-9]*(-[a-z0-9]+)*`, at most 64 bytes.
+  each has `Validate() error`; idents `[a-z][a-z0-9]*(-[a-z0-9]+)*`, at most 64 bytes.
 - `SettingKind` (`SettingBool|Int|Duration|Text|Enum`, zero invalid), `SettingDecl{Key, Kind,
-  Default, Options, Validate func(string) error}`.
+  Default, Options, Check func(string) error `json:"-"`}`.
 - `Manifest{Name, Migrations fs.FS, Permissions []authz.PermissionDecl, Settings, Publishes,
   Subscribes []signals.Name, Provides/Requires/Uses []Capability, Defines
   []ExtensionPointDecl, ContributesTo []ExtensionPoint}`; `Validate()` joins every problem.
 - `Factory func(ctx, Deps) (Module, error)`; `Module` = `PersonData` + `Start(ctx) error` +
-  `Stop(ctx) error`. Optional: `RouteProvider.Routes() []Route`, `APIDescriber.OpenAPI()
-  []byte` (mandatory for a RouteProvider), `CapabilityProvider.Capabilities()
-  map[Capability]any`, `Contributor.Contributions() map[ExtensionPoint]any`.
-- `PersonData{ExportPerson(ctx, PersonID) (Export, error); DeletePerson(ctx, PersonID)
-  (Deletion, error)}`; `Export{Data json.RawMessage}`, `Deletion{Deleted, Anonymized int,
-  Kept []Kept}`, `Kept{Kind string, Count int}`.
+  `Stop(ctx) error`. Optional: `RouteProvider.Routes() []Route`, `APIDescriber.OpenAPI() []byte`
+  (mandatory for a RouteProvider), `CapabilityProvider.Capabilities() map[Capability]any`,
+  `Contributor.Contributions() map[ExtensionPoint]any`. `PersonData{ExportPerson(ctx,
+  PersonID) (Export, error); DeletePerson(ctx, PersonID) (Deletion, error)}`; `Export{Data
+  json.RawMessage}`, `Deletion{Deleted, Anonymized int, Kept []Kept}`, `Kept{Kind, Count}`.
 - `Route{Method, Pattern, Access, Handler}` (relative to `/api/<name>`; `Validate`),
-  `Access` (`AccessSignedIn` zero default, `AccessPublic`).
-- `Deps{Logger, Tracer telemetry.Tracer, Clock, Links *Links, DB db.DB, Signals signals.Bus}`;
-  later fields Settings, Authz, People, Audit, Jobs, Notify, Files (M2 to Later).
+  `Access` (`AccessSignedIn` zero default, `AccessPublic`). `Deps{Logger, Tracer
+  telemetry.Tracer, Clock, Links *Links, DB db.DB, Signals signals.Bus}`; later fields
+  Settings, Authz, People, Audit, Jobs, Notify, Files (M2 to Later).
 - `Set.Contributors(point) ([]Contribution, error)` for core definers (`Invalid` unless point is in `Env.CoreExtensionPoints`); `Factory` needs no database read (`openapi`/`check` build against `db.None()`); `Build`/`Start` run under 30 s, `Stop` shares `http.shutdown_timeout`; decision 9: every module ships `messages/en.json`.
-- `Links.Capability(name) (any, error)`, `Links.Contributors(point) ([]Contribution, error)`,
-  `Contribution{Module, Value}`. Frozen after `Build`; safe for concurrent use.
-- `Registry`: `NewRegistry`, `Default`, package `Register(Manifest, Factory)` (called in
-  `init`; records problems, never panics), `Add`, `Manifests`, `Resolve(Env) (*Plan, error)`.
-  `Env{Enabled []string, CoreSignals, CoreExtensionPoints}` with `Validate`.
+- `Links.Capability(name) (any, error)`, `Links.Contributors(point) ([]Contribution, error)`, `Contribution{Module, Value}`; frozen after `Build`, safe for concurrent use.
+- `Registry`: `NewRegistry`, `Default`, package `Register(Manifest, Factory)` (in `init`),
+  `Add`, `Manifests`, `Resolve(Env) (*Plan, error)`; `Env{Enabled, CoreSignals, CoreExtensionPoints}`.
 - `Plan`: `Order()`, `Permissions()`, `Settings() []ModuleSettings`, `Graph() Graph`,
   `Build(ctx, SchemaChecker, Provision) (*Set, error)`. `Graph{Modules []Node, Edges []Edge,
   Warnings []Warning}`; `EdgeKind` (`EdgeRequires|Uses|Contributes|Subscribes`).
-- `SchemaChecker.CheckSchema(ctx, module, fs.FS) error` (`*db.Migrator` satisfies it
-  structurally); `Provision func(ctx, Manifest) (Deps, error)` (sets all but `Links`).
+  `SchemaChecker.CheckSchema(ctx, module, fs.FS) error` (`*db.Migrator` satisfies it);
+  `Provision func(ctx, Manifest) (Deps, error)` (sets all but `Links`).
 - `Set`: `Modules() []Built`, `Routes() []ModuleRoutes` (also the shape of core route sets),
   `PersonData() []ModulePersonData`, `Start(ctx)`, `Stop(ctx)` (reverse order, continues).
 - Leaf types placed elsewhere, defined here: `authz.Permission` (`<module>.<ident>(.<ident>)*`,
-  `.Module()`), `authz.Scope` (`ScopeSite`, `ScopeDepartment`), `authz.PermissionDecl{Name,
-  Scope, Reaches model.Sensitivity}`; `signals.Name` (now owned by signals.md).
-- `moduletest.Conformance(t, manifest, factory, provision)`: named subtests including
-  `manifest_valid`, `implements_declared`, `start_read_only`, `subscribes_every_declared_name`,
-  `stop_honors_context`, `export_zero_id`, `delete_read_only`, `no_personal_data_in_logs`.
+  `.Module()`), `authz.Scope` (`ScopeSite|ScopeDepartment`), `authz.PermissionDecl{Name, Scope,
+  Reaches model.Sensitivity}`; `signals.Name` (now signals.md's).
+- `moduletest.Conformance(t, manifest, factory, provision, opts ...Option)`: named subtests
+  (`manifest_valid`, `start_read_only`, `delete_read_only`, `no_personal_data_in_logs`, ...).
+  Options (owner-approved 2026-10-17): `WithCapability(name, impl)` (mandatory per `Requires`);
+  exactly one of `WithSeed(Seed)` / `WithoutPersonData()`; `Seed func(ctx, Module, Subject)
+  error`; `Subject{Person, LegalName, Email, Phone, Note}` (markers; the unknown-person ID is
+  unexported and distinct); rules `rejects_wrong_capability_type`, `used_capability_absent_
+  builds_and_starts`, `seeded_person_exports_data`, `seeded_person_delete_counts_and_is_
+  idempotent`; the leak rule also asserts no `[email]`; `module.StartRollbackTimeout` (10 s).
+- `module.IsCoreArea(name) bool` (the core areas reserved by `Manifest.Validate`; app.md F28 uses it).
 
 Key decisions: 1 static Manifest plus separate Factory; 2 `Register` records problems, no
-panic; 3 module is top of core graph, name types live in authz/signals; 4 capabilities resolve
-at construction (providers built first, cycle is an error), extension points per request; 5
-types checked at start-up by the side that knows the interface (`any` plus `Accepts`); 6
-dangling subscription/contribution to a disabled module is a Warning, to an unknown name an
-error; 7 all compiled-in modules enabled unless `modules.disabled` names them; 8 no English
-text in manifests, titles are message keys `module.<name>.*`; 9 no "has UI" flag; 10 module
-names `[a-z][a-z0-9]{1,31}` letters and digits only (`afterreports`), reserved list pinned by a
-test; 11 `PersonData` mandatory on every module; 12 schema check once in `Build`, all errors
-collected (D17); 13 routes are a list with `Access`, default signed-in; 14 `Start` never
-writes (works on a read-only copy); 15 contract calls take batches, providers check
-permissions for the actor in ctx, payloads carry IDs only.
+panic; 3 top of core graph, name types in authz/signals; 4 capabilities resolve at
+construction (providers first, cycle is an error), extension points per request; 5 types
+checked at start-up by the side that knows the interface (`any` plus `Accepts`); 6 dangling
+subscription/contribution to a disabled module is a Warning, to an unknown name an error;
+7 all compiled-in modules enabled unless `modules.disabled` names them; 8 no English text in
+manifests, titles are keys `module.<name>.*`; 9 no "has UI" flag; 10 names
+`[a-z][a-z0-9]{1,31}` (`afterreports`), reserved list pinned; 11 `PersonData` mandatory;
+12 schema check once in `Build`, all errors collected (D17); 13 routes are a list with
+`Access`, default signed-in; 14 `Start` never writes; 15 contract calls take batches,
+providers check permissions, payloads carry IDs only; 16–21 (amendment approved 2026-10-17): seed via
+`Seed`, unscrubbable markers plus `[email]`, seed-or-none mandatory, capability fakes by
+option, `Set.Start` rollback under `StartRollbackTimeout`, `IsCoreArea` exported.
 
 Errs kinds callers handle: `Invalid` (manifest/route/graph problems, undeclared Links use,
-zero PersonID), `Conflict` (duplicate name, two providers, `Start` twice, schema mismatch from
-the checker), `NotFound` (`Links.Capability` for an absent `Uses` capability: hide the
-feature), `Internal` (nil module, `Links` misuse before freeze), `Unavailable` wrapping
+zero PersonID), `Conflict` (duplicate name, two providers, `Start` twice, schema mismatch),
+`NotFound` (`Links.Capability` for an absent `Uses` capability: hide the feature),
+`Internal` (nil module, `Links` misuse before freeze), `Unavailable` wrapping
 `db.ErrReadOnly` (`DeletePerson` on a read-only copy), `Timeout`/`Canceled`. No sentinels.
 
-Owns: permission `core.modules.read` (declared by `api`; reads the graph at
-`GET /api/admin/modules`; the public `GET /api/modules` lists enabled names only);
-`people.data.export`/`people.data.delete` are `people`'s. No signals. No settings: proposed
-config key `modules.disabled` (config.md). Route prefix `/api/<name>/`; message-key
-convention in decision 8; web catalogues are web-shell's.
-
+Owns: permission `core.modules.read` (declared by `api`; graph at `GET /api/admin/modules`;
+public `GET /api/modules` lists enabled names only); `people.data.export`/`.delete` are
+`people`'s. No signals, no settings; config key `modules.disabled` (config.md). Route prefix
+`/api/<name>/`; message-key convention in decision 8; web catalogues are web-shell's.
 Expects of dependencies: lib-errs (kinds, `errs.E`/`Is`); lib-core (`clock.Clock`,
 `validate.Errors`/`FieldError`); model (`PersonID`, `Sensitivity.Validate`); db (`db.DB`,
-`db.ErrReadOnly`, `*db.Migrator` as checker with `CheckSchema` kinds Conflict/Unavailable/
-Timeout/Invalid, `dbtest.Fake`); telemetry (`Tracer`, `telemetrytest`); signals (`Bus`,
-`Name`, `signalstest.NewFake` handed to factories). Expected of consumers: `app` supplies
-`Env`, `Provision`, the checker and the order of Build, Start, Stop; `api` mounts `Set.Routes`;
-`authz`/`settings` take `Plan.Permissions`/`Plan.Settings`; `people` runs `Set.PersonData`.
-
-Pending proposed changes (only 3, 6, 7, 9 are marked applied; the rest carry no status): 1
-07-abstractions, 2 authz, 4 db, 5 settings, 8 people, 10 config, 11 skills, 12-14.
+`db.ErrReadOnly`, `*db.Migrator` as `SchemaChecker`, `dbtest.Fake`); telemetry (`Tracer`,
+`telemetrytest`, `Scrub`'s `[email]` token); signals (`Bus`, `Name`, `signalstest.NewFake`).
+Of consumers: `app` supplies `Env`, `Provision`, the checker and the order Build, Start, Stop;
+`api` mounts `Set.Routes`; `authz`/`settings` take `Plan.Permissions`/`Plan.Settings`; `people` runs `Set.PersonData`.
+Proposed changes: 1, 3, 4, 6, 7, 9–12, 14 applied; 2, 5, 8, 13 pending (targets unwritten);
+15–17 (hello, skills; none for telemetry or app) applied 2026-10-17.
 
 ## Purpose
 
@@ -161,7 +162,7 @@ knowing it.
 | `Registry` and `Plan` | Hold the compiled-in modules; resolve the enabled set into a checked graph and a build order. | `Register` at `init`; `Resolve(env)` is pure over the registry. |
 | `Links` | Let a built module reach the capabilities it declared and the contributions to the points it defines, and nothing else. | Per-module view, frozen after `Build`. Safe for concurrent use. |
 | `Set` | The built, enabled modules: routes, person-data handlers, start and stop in order. | Built once per process by `app`. |
-| `moduletest` | Prove a module keeps the contract. | `Conformance(t, manifest, factory, provision)`. |
+| `moduletest` | Prove a module keeps the contract. | `Conformance(t, manifest, factory, provision, opts ...Option)`. |
 
 ## Interface
 
@@ -234,18 +235,19 @@ func (k SettingKind) String() string
 type SettingDecl struct {
 	Key     string      // one ident
 	Kind    SettingKind // how Default and every value are parsed
-	Default string      // text form; must parse as Kind and pass Validate
+	Default string      // text form; must parse as Kind and pass Check
 	Options []string    // SettingEnum only: the allowed values, each one ident, at least two
-	// Validate is an optional extra rule on the parsed text ("must be between 1 and 24");
+	// Check is an optional extra rule on the parsed text ("must be between 1 and 24");
 	// nil means the kind's parse is the whole rule. It must be pure and safe for
-	// concurrent use.
-	Validate func(value string) error
+	// concurrent use. It is not called Validate because Go forbids a field and a method
+	// of one name on a type that has Validate() error; it is not serialized (json:"-").
+	Check func(value string) error `json:"-"`
 }
 
 // Validate fails with errs.Invalid, joining one validate.FieldError per problem: Key not
 // an ident; Kind invalid; Options given for a kind other than enum, or fewer than two or
 // not idents or duplicated for enum; Default not parsable as Kind; Default rejected by
-// Validate.
+// Check.
 func (d SettingDecl) Validate() error
 
 // ---- Manifest ----
@@ -559,8 +561,9 @@ type ModuleSettings struct {
 }
 
 // Graph returns the whole registry as data for `GET /api/admin/modules` and `bms check`:
-// every compiled-in module, enabled or not, its declarations, the edges between them
-// and the warnings Resolve produced. Cannot fail.
+// every compiled-in module, enabled or not, its declarations, the edges between enabled
+// modules (and from an enabled module to a core area) and the warnings Resolve produced. An
+// enabled module's dangling edge to a disabled module is a Warning, not an Edge. Cannot fail.
 func (p *Plan) Graph() Graph
 
 // Graph is the admin view of the module graph (09 §7). It is serializable; it carries no
@@ -577,7 +580,7 @@ type Node struct {
 	Enabled       bool
 	HasSchema     bool // Migrations != nil; db adds the versions (api.md)
 	Permissions   []authz.PermissionDecl
-	Settings      []SettingDecl // Validate funcs are not serialized
+	Settings      []SettingDecl // Check funcs are not serialized
 	Publishes     []signals.Name
 	Subscribes    []signals.Name
 	Provides      []Capability
@@ -685,10 +688,17 @@ type ModulePersonData struct {
 func (s *Set) Contributors(point ExtensionPoint) ([]Contribution, error)
 
 // Start calls each module's Start in build order. If one fails, the modules already
-// started are stopped in reverse order with ctx, and the error is returned wrapped with
-// the failing module's name, joined with any Stop errors (F37). Fails with errs.Conflict
+// started are stopped in reverse order under StartRollbackTimeout (a fresh deadline on
+// context.WithoutCancel(ctx), decision 20), and the error is returned wrapped with the
+// failing module's name, joined with any Stop errors (F37). Fails with errs.Conflict
 // if Start already succeeded (F38).
 func (s *Set) Start(ctx context.Context) error
+
+// StartRollbackTimeout bounds the rollback Stop calls when Start fails (decision 20).
+const StartRollbackTimeout = 10 * time.Second
+
+// IsCoreArea reports whether name is a core area (decision 21).
+func IsCoreArea(name string) bool
 
 // Stop calls each started module's Stop in reverse build order, continuing past
 // failures, and returns them joined (F39). A Set that was never started, or already
@@ -701,14 +711,74 @@ func (s *Set) Stop(ctx context.Context) error
 // calls Conformance; the hello module is the reference.
 package moduletest
 
-// Conformance runs the contract checks against one module (see Test plan,
-// "Conformance"). provision supplies the module's dependencies as fakes (db, signals and
-// later fields): db is dbtest.NewFake() and signals is
-// signalstest.NewFake(m.Name, m.Publishes, m.Subscribes), so an undeclared publish or
-// subscribe fails the test; Conformance supplies Logger and Tracer (both from
-// telemetrytest.New(t), so any policy violation fails the test), Clock and Links. It
-// fails t on the first broken rule with the rule's name.
-func Conformance(t *testing.T, m module.Manifest, f module.Factory, provision module.Provision)
+// Conformance runs the contract checks against one module. provision supplies the
+// module's dependencies as fakes, as app's Provision does (db is a dbtest.Fake, signals a
+// signalstest.Fake scoped to the manifest, and the later fields); it is called once per
+// rule, so each rule gets fresh fakes; nil is allowed. Conformance replaces Logger and
+// Tracer with telemetrytest.New(t)'s (any policy violation fails the rule), fills a nil
+// Clock, DB or Signals with a fake, and sets Links through Plan.Build.
+//
+// opts supply what the rules cannot learn from the manifest: the value behind each
+// capability the module requires or uses (WithCapability), and how to put a known
+// person's records into the module (WithSeed) or the statement that it holds none
+// (WithoutPersonData). Exactly one of WithSeed and WithoutPersonData is required, and
+// WithCapability is required for every name in m.Requires. Conformance fails t before the
+// first rule when the options disagree with the manifest (F48–F52), naming the option and
+// the capability; otherwise it runs the rules as named subtests and stops at the first
+// that fails, so the failing subtest's name is the broken rule.
+func Conformance(t *testing.T, m module.Manifest, f module.Factory, provision module.Provision, opts ...Option)
+
+// Option configures Conformance. Only the With* functions make one; the zero Option is
+// invalid and fails Conformance before the first rule (F52).
+type Option struct{ apply func(*options) error }
+
+// WithCapability makes the stub provider for capability name return impl from
+// Capabilities(), so the module's Factory can assert it to the contract interface
+// (decision 5, F32). name must be in m.Requires or m.Uses (F49), impl non-nil (F50), each
+// name given once (F51). It is mandatory for every name in m.Requires (F48). For a name
+// in m.Uses it is optional: given, the rules run with the capability present; not given,
+// the capability is absent and Links.Capability returns errs.NotFound (F41), which the
+// module must survive. The rule used_capability_absent_builds_and_starts runs the absent
+// path regardless.
+func WithCapability(name module.Capability, impl any) Option
+
+// WithSeed registers how a rule puts records about a known person into the module. The
+// rules that need data (seeded_person_exports_data,
+// seeded_person_delete_counts_and_is_idempotent, no_personal_data_in_logs) call seed
+// once each, on a fresh module, after Plan.Build and before Start.
+func WithSeed(seed Seed) Option
+
+// WithoutPersonData states that the module holds nothing about any person (its
+// ExportPerson is always empty and its DeletePerson always zero). The seeded rules then
+// pass trivially and no_personal_data_in_logs runs without a seed. A module whose spec
+// lists any table or field about a person must not use it; the reviewer checks this
+// against the spec's Data section.
+func WithoutPersonData() Option
+
+// Seed writes records about subject into the module built as mod, putting each of
+// subject's marker values into every field of the matching kind the records have (a
+// legal-name field gets LegalName, an e-mail field Email, a phone field Phone, a free-text
+// field such as a note, an address or a narrative gets Note), so a record that reaches a
+// log or span is caught. It touches no other person. An error fails the rule.
+//
+// Conformance cannot reach a module's store, and the production Factory over Deps.DB
+// cannot be seeded because dbtest.Fake holds no rows. So the factory passed to Conformance
+// builds the module over the test's in-memory fake store (the one the module's unit tests
+// already use), and Seed writes to that store (shared with the factory closure, or reached
+// by asserting mod to the module's concrete type).
+type Seed func(ctx context.Context, mod module.Module, subject Subject) error
+
+// Subject is the known person the seeded rules act on. The values are fixed, invented and
+// reach a module only through Seed; moduletest exports no person ID or marker constant,
+// and the ID the unknown-person rules use is unexported and differs from Person, so a
+// seeded fake cannot also be asked to be empty.
+type Subject struct {
+	Person    model.PersonID // never zero; never the unknown-person ID
+	LegalName string         // "Marker Quillfeather": a name has no shape telemetry can scrub, so it is found verbatim
+	Email     string         // "marker.quillfeather@example.invalid": a leak shows as "[email]" after Scrub, or as a Violation under a denied key
+	Phone     string         // "+15550100773": digits only, found verbatim
+	Note      string         // "conformance-marker-note-0773": free text (an address, a narrative), found verbatim
+}
 ```
 
 ### Who needs each member
@@ -984,13 +1054,53 @@ None of its own. What this spec provides for screens elsewhere:
     checks for the actor in `ctx`, so nothing leaks through a contract; and payloads carry
     IDs, never personal data, unless the contract's spec says so and names the level.
 
+16. **The module seeds itself through `Seed`; `Conformance` never reaches into a store.**
+    The contract knows nothing about any module's storage, and `dbtest.Fake` holds no rows,
+    so there is no generic way to put a row in front of a module. The one value every
+    module shares is the built `Module`, so that is what `Seed` receives, with the markers.
+    The unknown-person ID stays unexported and distinct from `Subject.Person`, so the two
+    families of rules cannot be satisfied by one fake record. Exporting `Person()` and the
+    marker constants (as the first implementation did) is withdrawn.
+17. **Markers that scrubbing cannot hide, and the scrub token as evidence; no telemetry
+    change.** `Scrub` is a production safety net, not a detector: making it report every
+    e-mail it rewrites would count a `Violation` (and bump `policy_violations`) on
+    legitimate production traffic, or need a test-only mode in telemetry. A name, a phone
+    and a free-text note have no shape `Scrub` recognises and are found verbatim; an e-mail
+    leaks as `[email]`, which telemetry.md already specifies as `Scrub`'s substitution, so
+    asserting its absence costs nothing and proves the e-mail path too.
+18. **Exactly one of `WithSeed` and `WithoutPersonData` is mandatory.** `Conformance` cannot
+    tell a module that holds nothing about people from one whose author forgot to seed, and
+    a silent pass is the failure mode this amendment exists to remove. A skipped subtest
+    is visible only under `-v`; an explicit claim is visible in the test file and in review.
+    The cost is one option in the rare module without person data.
+19. **Capability fakes come through options; required ones are mandatory, used ones
+    optional, and both the wrong-type and the absent paths are proven.** Putting the fake in
+    the option, not in `provision`, keeps `Provision`'s shape (it sets `Deps`, and `Links`
+    is `Build`'s); keeps `Conformance` free of `internal/contracts` (the module's test
+    imports the contract and hands over a value, `Conformance` carries `any` like `Links`);
+    and lets the rules swap the value for `struct{}{}` to prove F32 for every module rather
+    than only for the fake consumer in `module`'s own tests.
+20. **`Set.Start` rolls back under a fresh deadline.** The `Set.Start` doc says the modules
+    already started are stopped in reverse order under `context.WithoutCancel(ctx)` with a
+    fresh deadline of `StartRollbackTimeout = 10 * time.Second`, an exported constant of
+    `module`: the one timeout this package owns, because it is the one call whose budget the
+    caller cannot derive (the caller's budget is for starting, and the failure may have spent
+    it; with a done `ctx` every rollback `Stop` would return `Timeout` at once, F47, and the
+    started goroutines would never be waited on; `Set.Stop` on a set whose `Start` failed
+    returns nil, so `app` cannot repair this afterwards). `app` needs no change: its F11 and
+    `startTimeout` stand.
+21. **`module.IsCoreArea(name string) bool` is exported** so `app`'s part-name check (app.md
+    F28) uses the same list as `Manifest.Validate`'s reserved core areas.
+
 ### Reserved module names
 
 `Manifest.Validate` rejects: the core areas (`core`, `people`, `accounts`, `access`,
 `identity`, `authz`, `departments`, `events`, `signals`, `notify`, `audit`, `files`, `jobs`,
 `settings`, `telemetry`, `db`, `module`, `modules`), the shell packages (`api`, `app`,
 `config`, `web`, `admin`, `client`), and PostgreSQL's (`public`, `information`, anything
-starting with `pg`). The list is a constant in the package and a test pins it.
+starting with `pg`). The list is a constant in the package and a test pins it. `func IsCoreArea(name string) bool`
+reports whether `name` is one of the core areas in the first group (decision 21); it cannot
+fail and is pure.
 `ModuleRoutes` is also the shape `app` uses for the core's route sets, with `Module` set to
 the core area name (`accounts`, `people`, ...), which is reserved here and so can never
 collide with a module; `api` additionally refuses a set named `core`, `modules` or `admin`
@@ -1013,7 +1123,8 @@ absolute routes.
    of one point cannot happen (names are prefixed by definer; F9).
 7. Produce `Plan` with the order, the graph (every registered module, enabled or not) and
    the warnings. All problems are joined into one error with `validate.Errors`, op
-   `module.Registry.Resolve`.
+   `module.Registry.Resolve`; its kind is `Conflict` only when every problem is a
+   `Conflict` (F18 alone), otherwise `Invalid`.
 
 ### Build, step by step
 
@@ -1024,8 +1135,8 @@ absolute routes.
 3. Verify: `Capabilities()` keys equal `Provides` and no value is nil (F29); `Contributions()`
    keys equal `ContributesTo` (F30); `Routes()` each validate and no two share method and
    pattern (F33); a `RouteProvider` implements `APIDescriber` and `OpenAPI()` is non-empty
-   (F34); a module implementing `CapabilityProvider` or
-   `Contributor` with declarations empty is F29/F30 too.
+   (F34). Implementing `CapabilityProvider` or `Contributor` and returning an empty map is
+   allowed; only a non-empty map with an empty declaration is F29/F30.
 4. After all are built: for every contribution, the definer's `Accepts` (F31); freeze every
    `Links`.
 5. Return `Set`. `ctx` done at any step → `Canceled` or `Timeout` (F35).
@@ -1043,8 +1154,8 @@ under 30 s; `Set.Stop` shares `http.shutdown_timeout` with the other closers). `
 ### I/O
 
 None in this package: the only I/O is what `SchemaChecker`, `Provision`, factories, `Start`
-and `Stop` do, through the `ctx` they receive. No timeouts are added here; callers derive
-them.
+and `Stop` do, through the `ctx` they receive. No timeouts are added here except `StartRollbackTimeout`;
+callers derive the rest.
 
 ### Imports
 
@@ -1065,7 +1176,7 @@ Standard library (`context`, `encoding/json`, `errors`, `fmt`, `io/fs`, `log/slo
 | F3 | `Manifest.Validate` | a permission's `Reaches` fails `model.Sensitivity.Validate` (model.md Proposed change 3) | Invalid, `permissions[i].reaches` | fix the module | `TestManifestValidate_PermissionReachesUnset_ReturnsInvalid` |
 | F4 | `Manifest.Validate` | a permission's `Scope` is zero or out of range | Invalid, `permissions[i].scope` | fix the module | `TestManifestValidate_PermissionScopeInvalid_ReturnsInvalid` |
 | F5 | `Manifest.Validate` | duplicate permission, setting key, signal, capability or point within the manifest | Invalid, the second's field | fix the module | `TestManifestValidate_Duplicates_ReturnInvalid` |
-| F6 | `Manifest.Validate`, `SettingDecl.Validate` | setting: key not an ident; kind invalid; options wrong for the kind; default fails the kind's parse or `Validate` | Invalid, `settings[i].<field>` | fix the module | `TestSettingDeclValidate_Table` |
+| F6 | `Manifest.Validate`, `SettingDecl.Validate` | setting: key not an ident; kind invalid; options wrong for the kind; default fails the kind's parse or `Check` | Invalid, `settings[i].<field>` | fix the module | `TestSettingDeclValidate_Table` |
 | F7 | `Manifest.Validate` | a published signal fails `signals.Name.Validate` or its publisher is not `Name`; a subscribed signal fails `Validate` | Invalid, `publishes[i]` / `subscribes[i]` | fix the module | `TestManifestValidate_SignalNames_ReturnInvalid` |
 | F8 | `Manifest.Validate` | a capability fails `Validate`; a name in both `Requires` and `Uses`; a name in `Provides` and in `Requires` or `Uses` | Invalid, `requires[i]` etc. | fix the module | `TestManifestValidate_CapabilityConflicts_ReturnInvalid` |
 | F9 | `Manifest.Validate` | a defined point's definer is not `Name`, or its `Accepts` is nil; a `ContributesTo` fails `Validate` | Invalid, `defines[i]` / `contributesTo[i]` | fix the module | `TestManifestValidate_ExtensionPoints_ReturnInvalid` |
@@ -1077,11 +1188,11 @@ Standard library (`context`, `encoding/json`, `errors`, `fmt`, `io/fs`, `log/slo
 | F15 | `Registry.Resolve` | a name in `Enabled` is not registered | Invalid, naming it and the registered names | fix config | `TestResolve_UnknownEnabledName_ReturnsInvalid` |
 | F16 | `Registry.Resolve`, `Env.Validate` | `Enabled` repeats a name, or is empty-string; a core signal or point is invalid | Invalid | fix config / app | `TestResolve_EnvInvalid_ReturnsInvalid` |
 | F17 | `Registry.Resolve` | a required capability has no enabled provider | Invalid, naming the capability, the requirer and any disabled provider | enable the provider or disable the requirer | `TestResolve_RequiredCapabilityMissing_ReturnsInvalid` |
-| F18 | `Registry.Resolve` | two enabled modules provide one capability | Conflict, naming both | disable one | `TestResolve_TwoProviders_ReturnsConflict` |
+| F18 | `Registry.Resolve` | two enabled modules provide one capability | Conflict, naming both (the error is `Conflict` only when every collected problem is a Conflict; any mix is Invalid, F22) | disable one | `TestResolve_TwoProviders_ReturnsConflict` |
 | F19 | `Registry.Resolve` | a cycle in `Requires`/`Uses` among enabled modules | Invalid, naming the cycle | redesign (send to architect) | `TestResolve_CapabilityCycle_ReturnsInvalid` |
 | F20 | `Registry.Resolve` | a subscribed signal that neither the core nor any registered module publishes | Invalid | fix the name | `TestResolve_SubscribeUnknownSignal_ReturnsInvalid` |
 | F21 | `Registry.Resolve` | a contribution to a point neither the core nor any registered module defines | Invalid | fix the name | `TestResolve_ContributeUnknownPoint_ReturnsInvalid` |
-| F22 | `Registry.Resolve` | several of F15–F21 at once | one error joining all | fix them all | `TestResolve_ReportsAllProblems` |
+| F22 | `Registry.Resolve` | several of F15–F21 at once | Invalid joining all (also when F18 is mixed with other problems) | fix them all | `TestResolve_ReportsAllProblems` |
 | F23 | `Registry.Resolve` | publisher or definer registered but disabled; used capability with no provider | none: `Warning` in the plan | `app` logs at warn | `TestResolve_DisabledOtherSide_Warns` |
 | F24 | `Plan.Build` | `provision` fails | its kind, wrapped with the module name | stop start-up | `TestBuild_ProvisionFails_WrapsWithModule` |
 | F25 | `Plan.Build` | `Deps.Logger`, `Deps.Tracer` or `Deps.Clock` nil after `provision` | Invalid | fix app | `TestBuild_DepsMissingLoggerTracerOrClock_ReturnsInvalid` |
@@ -1096,7 +1207,7 @@ Standard library (`context`, `encoding/json`, `errors`, `fmt`, `io/fs`, `log/slo
 | F34 | `Plan.Build` | a `RouteProvider` without a non-empty `OpenAPI()` (no `APIDescriber`, or an empty result) | Invalid | add the fragment | `TestBuild_EmptyOpenAPI_ReturnsInvalid`, `TestBuild_RouteProviderWithoutDescriber_ReturnsInvalid` |
 | F35 | `Plan.Build` | `ctx` done | Canceled / Timeout | stop start-up | `TestBuild_ContextCanceled_ReturnsCanceled` |
 | F36 | `Plan.Build` | `schema` or `provision` nil | Invalid | fix app | `TestBuild_NilSchemaOrProvision_ReturnsInvalid` |
-| F37 | `Set.Start` | a module's `Start` fails | its kind, wrapped with the module name; earlier modules stopped in reverse; their `Stop` errors joined | stop start-up | `TestSetStart_ModuleFails_StopsEarlierInReverse` |
+| F37 | `Set.Start` | a module's `Start` fails | its kind, wrapped with the module name; earlier modules stopped in reverse under `StartRollbackTimeout` via `context.WithoutCancel(ctx)`; their `Stop` errors joined | stop start-up | `TestSetStart_ModuleFails_StopsEarlierInReverse`, `TestSetStart_ModuleFailsOnExpiredCtx_RollbackStillWaits` (the first module's recording `Stop` sees an undone ctx and completes; the second's `Start` fails with the caller's ctx already done) |
 | F38 | `Set.Start` | already started | Conflict | fix app | `TestSetStart_Twice_ReturnsConflict` |
 | F39 | `Set.Stop` | one or more modules' `Stop` fail | joined, all modules still stopped; `Timeout` if `ctx` ends | log and exit | `TestSetStop_ContinuesPastFailuresAndJoins` |
 | F40 | `Links.Capability` | name not in the owner's `Requires` or `Uses` | Invalid | fix the module (declare it) | `TestLinksCapability_Undeclared_ReturnsInvalid` |
@@ -1108,6 +1219,16 @@ Standard library (`context`, `encoding/json`, `errors`, `fmt`, `io/fs`, `log/slo
 | F45 | `PersonData.DeletePerson` (obligation) | database read-only | Unavailable wrapping `db.ErrReadOnly` (the kind `db` returns for a write) | "this copy is read-only" | `moduletest`: `Conformance/delete_read_only` |
 | F46 | `Module.Start` (obligation) | database read-only | none: `Start` succeeds | — | `moduletest`: `Conformance/start_read_only` |
 | F47 | `Module.Stop` (obligation) | `ctx` already done | Timeout or Canceled within the deadline, never a hang | log | `moduletest`: `Conformance/stop_honors_context` |
+| F48 | `Conformance` | a name in `Requires` has no `WithCapability` | `t.Fatal` naming the module and the capability | add `WithCapability(name, fake)` | `TestConformance_RequiredCapabilityWithoutFake_FailsEarly` |
+| F49 | `Conformance` | `WithCapability` names a capability not in `Requires` or `Uses` | `t.Fatal` naming it | fix the test (or declare it) | `TestConformance_UndeclaredCapabilityOption_FailsEarly` |
+| F50 | `Conformance` | `WithCapability` with a nil `impl` | `t.Fatal` naming the capability | pass a fake | `TestConformance_NilCapabilityImpl_FailsEarly` |
+| F51 | `Conformance` | the same capability given twice | `t.Fatal` naming it | remove one | `TestConformance_DuplicateCapabilityOption_FailsEarly` |
+| F52 | `Conformance` | neither or both of `WithSeed` and `WithoutPersonData`; a `WithSeed(nil)`; a zero `Option` | `t.Fatal` saying which | choose one | `TestConformance_SeedOrWithoutPersonDataRequired_FailsEarly` (table: neither, both, nil seed, zero option) |
+| F53 | `Conformance/rejects_wrong_capability_type` (obligation on the consumer, F32) | `Build` succeeds, or fails with a kind other than Invalid or without naming the capability, when the stub returns `struct{}{}` | the rule fails | assert the type in the Factory with `errs.Invalid` naming the capability | mutant `acceptsAnyCapabilityType` in `TestConformance_BrokenModule_FailsTheNamedRule` |
+| F54 | `Conformance/used_capability_absent_builds_and_starts` (obligation, D19) | `Build` or `Start` fails without a provider for a `Uses` name | the rule fails | treat `NotFound` from `Links.Capability` as "hide the feature" | mutant `needsUsedCapability` |
+| F55 | `Conformance/seeded_person_exports_data` (obligation) | export of the seeded person is empty or not an object | the rule fails | wire the factory to the fake store the seed writes to; make `ExportPerson` cover every table | mutant `seedIgnored` |
+| F56 | `Conformance/seeded_person_delete_counts_and_is_idempotent` (obligation) | zero `Deletion` after a seed; a `Kept` with empty `Kind` or `Count < 1`; data still exported after a delete with no `Kept`; a second delete not zero | the rule fails | make `DeletePerson` cover every table and report counts | mutants `deleteKeepsSeeded`, `deleteReportsZero`, `deleteNotIdempotent` |
+| F57 | `Conformance/no_personal_data_in_logs` (obligation, privacy-data) | a marker, or `[email]`, in any captured message, attribute, span name or stdout; or any `Violation` at cleanup | the rule fails | log IDs, never fields | mutants `logsSeededName`, `logsSeededEmailUnderBenignKey` (caught as `[email]`), `logsSeededEmailUnderDeniedKey` (caught as a `Violation`), `logsSeededNote`, `spansSeededPhone` |
 
 Members that cannot fail, and why: `Definer`, `Publisher`, `Permission.Module` (string
 split); the `String` methods (name or `Kind(<n>)`); `NewRegistry`, `Default` (allocation);
@@ -1138,8 +1259,8 @@ in the test files (no mocking frameworks, D14). Invented module names (`alpha`, 
   `-race`); F11–F14.
 - Resolve: `TestResolve_OrderIsTopologicalAndStable` (providers first, ties by name, same
   order across runs); `TestResolve_DisabledModuleAppearsInGraphNotOrder`;
-  `TestResolve_EdgesAndKinds` (one edge per requires/uses/contributes/subscribes, core
-  edges named by area); `TestResolve_CoreSignalsAndPointsSatisfyChecks`; F15–F23.
+  `TestResolve_EdgesAndKinds` (one edge per requires/uses/contributes/subscribes between enabled modules, core
+  edges named by area; an edge to a disabled module is a Warning, not an Edge); `TestResolve_CoreSignalsAndPointsSatisfyChecks`; F15–F23.
 - Build: `TestBuild_CallsSchemaThenProvisionThenFactoryInOrder` (a recording fake);
   `TestBuild_SkipsSchemaCheckWhenNoMigrations`; `TestBuild_LinksCapabilityWorksInFactory`
   (consumer gets the provider's value); `TestBuild_LinksContributorsWorksAfterBuild` (and
@@ -1151,30 +1272,14 @@ in the test files (no mocking frameworks, D14). Invented module names (`alpha`, 
   `TestSetRoutesAndPersonData_InBuildOrder`; F37–F39.
 - Links: F40–F43, plus `TestLinks_SafeForConcurrentUse` (under `-race`).
 - Graph: `TestGraph_IsJSONSerializable` (`encoding/json` round trip; `Settings` without
-  `Validate`, `Defines` as names only).
+  `Check`, `Defines` as names only).
 - Lint: passes depguard rules `core` and `storage-seam` (no driver import), `errcheck`,
   `errorlint`, `wrapcheck`, `sloglint`.
 
-**Conformance** (`moduletest.Conformance`, run by every module and by the `hello` module as
-the reference; each rule is a named subtest): `manifest_valid` (`Validate` passes);
-`registers_under_its_name` (a fresh registry `Add` then `Resolve` with only this module
-enabled and its required capabilities faked succeeds); `implements_declared`
-(`Build` passes F29–F34 against the manifest); `start_read_only` (F46, with
-`dbtest.NewFake()` after `SetReadOnly(true)`, which fails every write with
-`errs.Unavailable` wrapping `db.ErrReadOnly`, and with `signalstest.NewFake(m.Name,
-m.Publishes, m.Subscribes)` as `Deps.Signals`, so `Start` also proves it subscribes only
-to declared names); `subscribes_every_declared_name` (after `Start`, `Fake.Handlers()`
-equals the manifest's `Subscribes`; signals.md Proposed change 1); `stop_honors_context` (F47);
-`stop_without_start_is_nil`; `export_zero_id`, `delete_zero_id` (F44);
-`export_unknown_person_is_empty` and `delete_unknown_person_is_zero_and_idempotent` (with
-a plain `dbtest.NewFake()`, which holds no rows); `delete_read_only` (F45, with the
-read-only fake); `export_is_json_object` (`Data` empty or
-parses as an object); `routes_under_prefix` (patterns start with `/`; no absolute `/api/`);
-`no_personal_data_in_logs` (`Logger` and `Tracer` come from `telemetrytest.New(t)`; the
-test runs `Start`, one export and one delete of an invented person, asserts
-`!c.Contains(marker)` for the fake e-mail and legal name the test's fake store holds, so
-log records and spans are both checked, and `telemetrytest` fails the test on any policy
-`Violation` at cleanup). Integration of a real module end to end (routes
+**Conformance** (`moduletest.Conformance`, run by every module and by the `hello` module as the reference; each rule is a named subtest, run in order; it stops at the first failure). F48-F52 are precondition failures before the first rule. Rules, in order:
+`manifest_valid`, `registers_under_its_name` (a fresh registry `Add` then `Resolve` with only this module enabled and its required capabilities faked succeeds), `implements_declared` (`Build` passes F29-F34 against the manifest, with the option's `impl` behind each capability), `rejects_wrong_capability_type` (for each name in `Requires` and `Uses` in turn the stub returns `struct{}{}` for that name and the configured value for the rest; `Plan.Build` must fail with `errs.Invalid` naming the capability: F32 proven per module; trivial without either), `used_capability_absent_builds_and_starts` (no provider for any `Uses` name; `Build`, `Start`, `Stop` succeed; trivial without `Uses`), `start_read_only` (F46, with `dbtest.NewFake()` after `SetReadOnly(true)` and `signalstest.NewFake(m.Name, m.Publishes, m.Subscribes)`, so `Start` also proves it subscribes only to declared names), `subscribes_every_declared_name` (after `Start`, `Fake.Handlers()` equals `Subscribes`), `stop_honors_context` (F47), `stop_without_start_is_nil`, `export_zero_id`, `delete_zero_id` (F44), `export_unknown_person_is_empty` and `delete_unknown_person_is_zero_and_idempotent` (plain `dbtest.NewFake()`, unexported unknown ID differing from `Subject.Person`), `delete_read_only` (F45), `export_is_json_object`, `seeded_person_exports_data` (with `WithSeed`: `Seed`, then `ExportPerson(Subject.Person)` is a JSON object with at least one non-empty value, so the leak rule is not vacuous), `seeded_person_delete_counts_and_is_idempotent` (with `WithSeed`: `Seed`, then `DeletePerson` returns `Deleted + Anonymized + ΣKept.Count ≥ 1`, every `Kept` has a non-empty `Kind` and `Count ≥ 1`; a second `ExportPerson` is empty unless `Kept` was non-empty; a second `DeletePerson` is a zero `Deletion`), `routes_under_prefix` (patterns start with `/`; no absolute `/api/`), and `no_personal_data_in_logs` (`Logger` and `Tracer` from `telemetrytest.New(t)`; `Build`, `Seed` if given, `Start`, `ExportPerson` and `DeletePerson` of `Subject.Person`, `Stop`; then `!Contains` for `LegalName`, `Phone`, `Note` and `Email`, and `!Contains("[email]")`, the token telemetry.md's `Scrub` substitutes for e-mail-shaped text; the capture fails the test at cleanup on any `Violation`, which covers a denied key such as `email` or `legal_name`). `WithoutPersonData` makes the seeded rules pass trivially and the leak rule run without a seed.
+
+`moduletest`'s own tests keep the child-process pattern (`TestConformanceHelper` with a mutant name in the environment) and add: `TestConformance_RequiredCapabilityFaked_Passes` (a module that `Requires` `alphacap` and asserts it, with `WithCapability("alphacap", fakeAlphaCap{})`); `TestConformance_UsedCapabilityPresentAndAbsent_Passes`; `TestConformance_RunsEveryNamedRule`; the F48-F57 tests; `TestConformance_SeedRunsPerRuleOnFreshModule` (a counting seed sees a different module value each time, three times); `TestConformance_WellBehavedModule_Passes` (with `WithSeed` over an in-memory fake that stores all five `Subject` fields and exports them); `TestIsCoreArea_Table`; `TestSetStart_*` as in F37. The `hello` module calls `Conformance(t, Manifest, factory, provision, moduletest.WithSeed(seed))`, where `factory` builds the module over its in-memory fake store and `seed` saves one greeting for `subject.Person`; the production `New` cannot be seeded because `dbtest.Fake` holds no rows. Integration of a real module end to end (routes
 mounted, migrations applied, signals delivered) is `app.md`'s and the `hello` module's
 integration test, behind the `integration` tag.
 
@@ -1305,3 +1410,12 @@ with the proposed answer:
     10); 09 §4's "a
     flag for whether they reach sensitive data" becomes "the highest sensitivity level they
     reach" (model.md Proposed change 3).
+15. **`plan/design/module-hello.md`, Test plan "Conformance":** (applied 2026-10-17) call `Conformance` with a
+    factory over the in-memory fake store and `moduletest.WithSeed(seed)`; the seed saves
+    one greeting for `subject.Person`; note that the production `New` cannot be seeded.
+16. **`.claude/skills/go-conventions/SKILL.md` and `.claude/skills/add-module/SKILL.md`:** (applied 2026-10-17)
+    "every module's tests call `moduletest.Conformance` with `WithSeed` (or
+    `WithoutPersonData` when the spec's Data section lists nothing about a person) and
+    `WithCapability` for each capability the module requires or uses".
+17. **`plan/design/telemetry.md`, `plan/design/app.md`:** none; decision 17 relies on `Scrub`'s
+    documented `[email]` substitution as it stands, and decision 20 needs no app.md change.
