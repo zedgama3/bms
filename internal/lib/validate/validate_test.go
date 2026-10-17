@@ -279,10 +279,10 @@ func TestErrorsErr_ManyProblems_JoinsAllAsInvalid(t *testing.T) {
 	var e validate.Errors
 	e.Add(validate.NonEmpty("a", ""))
 	e.Add(nil)
-	e.Addf("b", "must be %d or more, got %d", 3, 1)
+	e.Addf("b", "", "must be %d or more, got %d", 3, 1)
 	e.Add(validate.Positive("c", -time.Second))
 	for i := 0; i < 9; i++ {
-		e.Addf(fmt.Sprintf("f%d", i), "bad %d", i)
+		e.Addf(fmt.Sprintf("f%d", i), "", "bad %d", i)
 	}
 	err := e.Err()
 	if !errs.Is(err, errs.Invalid) {
@@ -302,20 +302,20 @@ func TestErrorsErr_ManyProblems_JoinsAllAsInvalid(t *testing.T) {
 
 func TestErrorsAddf_RecordsInvalidFieldError(t *testing.T) {
 	var e validate.Errors
-	e.Addf("x.y", "bad")
+	e.Addf("x.y", "", "bad")
 	err := e.Err()
 	checkInvalid(t, err, true, "x.y")
 }
 
 func TestErrorsErr_OpDefaultAndCustom(t *testing.T) {
 	var e validate.Errors
-	e.Addf("a", "bad")
+	e.Addf("a", "", "bad")
 	var ee *errs.Error
 	if !errors.As(e.Err(), &ee) || ee.Op != "validate" {
 		t.Errorf("default Op = %+v, want validate", ee)
 	}
 	e2 := validate.Errors{Op: "config.Validate"}
-	e2.Addf("a", "bad")
+	e2.Addf("a", "", "bad")
 	ee = nil
 	if !errors.As(e2.Err(), &ee) || ee.Op != "config.Validate" {
 		t.Errorf("custom Op = %+v", ee)
@@ -326,7 +326,7 @@ func TestErrorsErr_KeepsInnerKindsAndIdentity(t *testing.T) {
 	problem := errs.E("x", errs.Unavailable, errors.New("down"))
 	var e validate.Errors
 	e.Add(problem)
-	e.Addf("a", "bad")
+	e.Addf("a", "", "bad")
 	err := e.Err()
 	if !errs.Is(err, errs.Invalid) {
 		t.Errorf("outer kind = %v, want Invalid", errs.KindOf(err))
@@ -377,4 +377,140 @@ func fieldNames(fs []*validate.FieldError) []string {
 		out[i] = f.Field
 	}
 	return out
+}
+
+// fieldOf extracts the single *FieldError from err, failing the test if it is not Invalid.
+func fieldOf(t *testing.T, err error) *validate.FieldError {
+	t.Helper()
+	if !errs.Is(err, errs.Invalid) {
+		t.Fatalf("err = %v, want Invalid", err)
+	}
+	var fe *validate.FieldError
+	if !errors.As(err, &fe) {
+		t.Fatalf("no *FieldError in %v", err)
+	}
+	return fe
+}
+
+// Covers the pending lib-core amendment: each check sets Code and Params.
+func TestChecks_SetCodeAndParams_Table(t *testing.T) {
+	const secret = "s3cret-value"
+	tests := []struct {
+		name       string
+		err        error
+		checked    string // string input that must not appear in any param value
+		wantCode   string
+		wantParams map[string]string // nil means Params must be empty
+	}{
+		{"NonEmpty", validate.NonEmpty("f", "  "), "  ", "required", nil},
+		{"Range ints", validate.Range("f", 0, 1, 1000), "", "range", map[string]string{"min": "1", "max": "1000"}},
+		{"Range floats", validate.Range("f", 0.5, 1.0, 2.5), "", "range", map[string]string{"min": "1", "max": "2.5"}},
+		{"Range durations", validate.Range("f", time.Second, 2*time.Second, time.Minute), "", "range", map[string]string{"min": "2s", "max": "1m0s"}},
+		{"Positive", validate.Positive("f", -time.Second), "", "positive", nil},
+		{"OneOf", validate.OneOf("f", secret, "local", "oidc"), secret, "one_of", map[string]string{"options": "local, oidc"}},
+		{"OneOf single option", validate.OneOf("f", secret, "only"), secret, "one_of", map[string]string{"options": "only"}},
+		{"URL with schemes", validate.URL("f", secret, "http", "https"), secret, "url", map[string]string{"schemes": "http, https"}},
+		{"URL scheme not allowed", validate.URL("f", "ftp://example.test/x", "https"), "ftp://example.test/x", "url", map[string]string{"schemes": "https"}},
+		{"URL no schemes given", validate.URL("f", secret), secret, "url", nil},
+		{"HostPort", validate.HostPort("f", secret), secret, "host_port", nil},
+		{"ListenAddr", validate.ListenAddr("f", secret), secret, "host_port", nil},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fe := fieldOf(t, tc.err)
+			if fe.Code != tc.wantCode {
+				t.Errorf("Code = %q, want %q", fe.Code, tc.wantCode)
+			}
+			if len(tc.wantParams) == 0 {
+				if len(fe.Params) != 0 {
+					t.Errorf("Params = %v, want none", fe.Params)
+				}
+			} else if len(fe.Params) != len(tc.wantParams) {
+				t.Errorf("Params = %v, want %v", fe.Params, tc.wantParams)
+			}
+			for k, want := range tc.wantParams {
+				if got := fe.Params[k]; got != want {
+					t.Errorf("Params[%q] = %q, want %q", k, got, want)
+				}
+			}
+			for k, v := range fe.Params {
+				if tc.checked != "" && v == tc.checked {
+					t.Errorf("Params[%q] equals the checked value", k)
+				}
+			}
+			if strings.Contains(fe.Error(), fe.Code) && fe.Code != "" && strings.HasPrefix(fe.Error(), fe.Code) {
+				t.Errorf("Error() = %q should not lead with the code", fe.Error())
+			}
+		})
+	}
+}
+
+// Valid inputs return nil, so no code is involved.
+func TestChecks_ValidInputs_ReturnNil(t *testing.T) {
+	errsList := []error{
+		validate.NonEmpty("f", "x"),
+		validate.Range("f", 5, 1, 10),
+		validate.Positive("f", time.Second),
+		validate.OneOf("f", "a", "a", "b"),
+		validate.URL("f", "https://example.test", "https"),
+		validate.HostPort("f", "example.test:80"),
+		validate.ListenAddr("f", ":8080"),
+	}
+	for i, err := range errsList {
+		if err != nil {
+			t.Errorf("check %d: err = %v, want nil", i, err)
+		}
+	}
+}
+
+func TestCodes_Pinned(t *testing.T) {
+	tests := []struct{ name, got, want string }{
+		{"CodeRequired", validate.CodeRequired, "required"},
+		{"CodeRange", validate.CodeRange, "range"},
+		{"CodePositive", validate.CodePositive, "positive"},
+		{"CodeOneOf", validate.CodeOneOf, "one_of"},
+		{"CodeURL", validate.CodeURL, "url"},
+		{"CodeHostPort", validate.CodeHostPort, "host_port"},
+		{"CodeMalformed", validate.CodeMalformed, "malformed"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.got != tc.want {
+				t.Errorf("%s = %q, want %q", tc.name, tc.got, tc.want)
+			}
+		})
+	}
+}
+
+func TestAddf_SetsCodeNoParams(t *testing.T) {
+	tests := []struct {
+		name, code string
+	}{
+		{"builtin code", validate.CodeRange},
+		{"caller's own code", "overlap"},
+		{"empty code", ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var e validate.Errors
+			e.Addf("shift.window", tc.code, "must not overlap %d other", 2)
+			err := e.Err()
+			fe := fieldOf(t, err)
+			if fe.Field != "shift.window" {
+				t.Errorf("Field = %q", fe.Field)
+			}
+			if fe.Code != tc.code {
+				t.Errorf("Code = %q, want %q", fe.Code, tc.code)
+			}
+			if len(fe.Params) != 0 {
+				t.Errorf("Params = %v, want none", fe.Params)
+			}
+			if fe.Reason != "must not overlap 2 other" {
+				t.Errorf("Reason = %q", fe.Reason)
+			}
+			if got := fe.Error(); got != "shift.window: must not overlap 2 other" {
+				t.Errorf("Error() = %q, want code absent", got)
+			}
+		})
+	}
 }

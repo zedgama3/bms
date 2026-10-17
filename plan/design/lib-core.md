@@ -1,10 +1,9 @@
 # lib-core: clock, retry, validate, timeutil
 
 - **Status:** Implemented (ported from Sojourn, D11, 2026-10-16)
-- **Amendment pending implementation (2026-10-17, api.md decision 25):** `validate.FieldError`
+- **Amendment implemented (2026-10-17, api.md decision 25):** `validate.FieldError`
   gained `Code` and `Params`, each check sets its code, the `Code*` constants were added
-  and `Errors.Addf` takes a code. The ported code does not have this yet; it is an
-  implementation follow-up (see "Proposed changes elsewhere") before `httpx` is built on it.
+  and `Errors.Addf` takes a code. `retry.Policy.Validate` uses `range`.
 - **Packages:** `internal/lib/clock`, `internal/lib/retry`, `internal/lib/validate`,
   `internal/lib/timeutil` (Go module `github.com/zedgama3/bms`; foundation libraries, not bms modules)
 - **Depends on specs:** `lib-errs.md` (Implemented): `errs.E`, `errs.Is`, `errs.KindOf` and the
@@ -43,7 +42,7 @@
 
 **Expects of dependencies.** `lib-errs`: `E`, `Is`, `KindOf`, kinds `Invalid`, `Unavailable`, `Timeout`, `Canceled`, `Internal`.
 
-**Pending amendment (2026-10-17, api.md decision 25).** The spec text already defines `FieldError.Code` and `Params`, the `Code*` constants, per-check codes and params, and the `code` argument of `Errors.Addf`, but the ported code does not have them yet. Implementation follow-up, tests `TestChecks_SetCodeAndParams_Table`, `TestCodes_Pinned`, `TestAddf_SetsCodeNoParams`; must land before `httpx` is built on it. Consumers (`config`, `model`, `telemetry`) are not yet implemented, so nothing else changes.
+**Amendment (2026-10-17, api.md decision 25), implemented 2026-10-17.** The spec text defines `FieldError.Code` and `Params`, the `Code*` constants, per-check codes and params, and the `code` argument of `Errors.Addf`; tests `TestChecks_SetCodeAndParams_Table`, `TestCodes_Pinned`, `TestAddf_SetsCodeNoParams`. Consumers (`config`, `model`, `telemetry`) are not yet implemented, so nothing else changes.
 
 ## Purpose
 
@@ -629,7 +628,7 @@ None. The one dependency that was uncertain while drafting (whether `lib-errs` e
   should state N and whether `MaxAttempts` is 0.
 - Report-producing module specs that bucket by time should use `timeutil.CheckBucket` and
   `timeutil.BucketFor`.
-- **Implementation follow-up (2026-10-17, from api.md Proposed change 8, decision 25):**
+- **Implementation follow-up (2026-10-17, from api.md Proposed change 8, decision 25), done 2026-10-17:**
   add `Code` and `Params` to `validate.FieldError`, the `Code*` constants, the code and
   params each check sets, and the `code` parameter of `Errors.Addf` (its only callers today
   are inside `lib`); tests `TestChecks_SetCodeAndParams_Table` (one row per check: the

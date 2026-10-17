@@ -48,13 +48,13 @@ func (p Policy) Validate() error {
 	v := validate.Errors{Op: "retry.Policy.Validate"}
 	v.Add(validate.Positive("initial", p.Initial))
 	if p.Max < p.Initial {
-		v.Addf("max", "must be >= initial (%s), got %s", p.Initial, p.Max)
+		v.Addf("max", validate.CodeRange, "must be >= initial (%s), got %s", p.Initial, p.Max)
 	}
 	if !(p.Multiplier >= 1) { // also rejects NaN
-		v.Addf("multiplier", "must be >= 1, got %v", p.Multiplier)
+		v.Addf("multiplier", validate.CodeRange, "must be >= 1, got %v", p.Multiplier)
 	}
 	if p.MaxAttempts < 0 {
-		v.Addf("max_attempts", "must be >= 0, got %d", p.MaxAttempts)
+		v.Addf("max_attempts", validate.CodeRange, "must be >= 0, got %d", p.MaxAttempts)
 	}
 	return v.Err() //nolint:wrapcheck // validate.Errors.Err already wraps with errs.E
 }

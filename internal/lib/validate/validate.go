@@ -23,11 +23,27 @@ import (
 // errs.E("validate.<Check>", errs.Invalid, &FieldError{...}), so callers branch with
 // errs.Is and the api ErrorMapper extracts fields with errors.As or Fields. Reason is
 // safe to show to a user: it never echoes string input (which may be a secret or a database URL);
-// it may echo numbers and durations.
+// it may echo numbers and durations. Code and Params exist so the web shell can translate
+// the problem (api.md decision 25): Code is a stable identifier (the Code* constants or a
+// caller's own), Params the rule's parameters as strings, never the input.
 type FieldError struct {
-	Field  string // the caller's full dotted path: "db.url", "smtp.host"
-	Reason string // what is wrong: "must be positive, got -1s"
+	Field  string            // the caller's full dotted path: "db.url", "smtp.host"
+	Code   string            // a Code* constant or a caller's own; "" when a caller set none
+	Params map[string]string // the rule's parameters (Range min/max, OneOf options, URL schemes); nil otherwise
+	Reason string            // what is wrong, in English: "must be positive, got -1s"
 }
+
+// The codes this package sets, and the one it reserves. A code is a stable API string
+// (the web shell translates it under the key field.<code>).
+const (
+	CodeRequired  = "required"  // NonEmpty
+	CodeRange     = "range"     // Range; Params min, max
+	CodePositive  = "positive"  // Positive
+	CodeOneOf     = "one_of"    // OneOf; Params options
+	CodeURL       = "url"       // URL; Params schemes when schemes were given
+	CodeHostPort  = "host_port" // HostPort, ListenAddr
+	CodeMalformed = "malformed" // reserved for decoders: a body that is not the expected JSON
+)
 
 // Error returns "<Field>: <Reason>". Cannot fail.
 func (e *FieldError) Error() string {
@@ -66,41 +82,46 @@ func collect(err error, out *[]*FieldError) {
 	}
 }
 
-func invalid(op, field, format string, args ...any) error {
-	return errs.E(op, errs.Invalid, &FieldError{Field: field, Reason: fmt.Sprintf(format, args...)})
+func invalid(op, field, code string, params map[string]string, format string, args ...any) error {
+	return errs.E(op, errs.Invalid, &FieldError{
+		Field: field, Code: code, Params: params, Reason: fmt.Sprintf(format, args...),
+	})
 }
 
-// NonEmpty fails if strings.TrimSpace(value) == "".
+// NonEmpty fails if strings.TrimSpace(value) == "". Code "required".
 func NonEmpty(field, value string) error {
 	if strings.TrimSpace(value) == "" {
-		return invalid("validate.NonEmpty", field, "must not be empty")
+		return invalid("validate.NonEmpty", field, CodeRequired, nil, "must not be empty")
 	}
 	return nil
 }
 
 // Range fails if v < lo or v > hi (inclusive bounds). Works for ints, floats, durations.
+// Code "range", Params {"min": lo, "max": hi} formatted with %v.
 func Range[T cmp.Ordered](field string, v, lo, hi T) error {
 	// Written so a NaN float fails too.
 	if v >= lo && v <= hi {
 		return nil
 	}
+	params := map[string]string{"min": fmt.Sprintf("%v", lo), "max": fmt.Sprintf("%v", hi)}
 	// Never echo string input: it may be a secret. Numbers and durations are safe.
 	if reflect.ValueOf(v).Kind() == reflect.String {
-		return invalid("validate.Range", field, "must be between %v and %v", lo, hi)
+		return invalid("validate.Range", field, CodeRange, params, "must be between %v and %v", lo, hi)
 	}
-	return invalid("validate.Range", field, "must be between %v and %v, got %v", lo, hi, v)
+	return invalid("validate.Range", field, CodeRange, params, "must be between %v and %v, got %v", lo, hi, v)
 }
 
-// Positive fails if d <= 0.
+// Positive fails if d <= 0. Code "positive".
 func Positive(field string, d time.Duration) error {
 	if d <= 0 {
-		return invalid("validate.Positive", field, "must be positive, got %s", d)
+		return invalid("validate.Positive", field, CodePositive, nil, "must be positive, got %s", d)
 	}
 	return nil
 }
 
 // OneOf fails if value is not exactly one of allowed. Fails with errs.Internal if allowed
-// is empty (a caller bug, not bad input).
+// is empty (a caller bug, not bad input). Code "one_of", Params {"options": allowed
+// joined with ", "}.
 func OneOf(field, value string, allowed ...string) error {
 	if len(allowed) == 0 {
 		return errs.E("validate.OneOf", errs.Internal,
@@ -111,19 +132,26 @@ func OneOf(field, value string, allowed ...string) error {
 			return nil
 		}
 	}
-	return invalid("validate.OneOf", field, "must be one of: %s", strings.Join(allowed, ", "))
+	options := strings.Join(allowed, ", ")
+	return invalid("validate.OneOf", field, CodeOneOf, map[string]string{"options": options},
+		"must be one of: %s", options)
 }
 
 // URL fails if value does not parse as an absolute URL with a non-empty host, or if
-// schemes is non-empty and the scheme (case-insensitive) is not in it.
+// schemes is non-empty and the scheme (case-insensitive) is not in it. Code "url";
+// Params {"schemes": joined with ", "} when schemes were given.
 func URL(field, value string, schemes ...string) error {
 	const op = "validate.URL"
+	var params map[string]string
+	if len(schemes) > 0 {
+		params = map[string]string{"schemes": strings.Join(schemes, ", ")}
+	}
 	u, err := url.Parse(value)
 	if err != nil { // the error text echoes the input, so it is dropped
-		return invalid(op, field, "must be a valid URL")
+		return invalid(op, field, CodeURL, params, "must be a valid URL")
 	}
 	if u.Scheme == "" || u.Hostname() == "" {
-		return invalid(op, field, "must be an absolute URL with a scheme and host")
+		return invalid(op, field, CodeURL, params, "must be an absolute URL with a scheme and host")
 	}
 	if len(schemes) > 0 {
 		for _, s := range schemes {
@@ -131,18 +159,19 @@ func URL(field, value string, schemes ...string) error {
 				return nil
 			}
 		}
-		return invalid(op, field, "URL scheme must be one of: %s", strings.Join(schemes, ", "))
+		return invalid(op, field, CodeURL, params, "URL scheme must be one of: %s", params["schemes"])
 	}
 	return nil
 }
 
 // HostPort fails unless value is "host:port" or "[v6]:port" with a non-empty host and a
-// numeric port in 1..65535.
+// numeric port in 1..65535. Code "host_port".
 func HostPort(field, value string) error {
 	return hostPort("validate.HostPort", field, value, false)
 }
 
-// ListenAddr is HostPort with an empty host allowed (":8080" means all interfaces).
+// ListenAddr is HostPort with an empty host allowed (":8080" means all interfaces). Code
+// "host_port".
 func ListenAddr(field, value string) error {
 	return hostPort("validate.ListenAddr", field, value, true)
 }
@@ -150,14 +179,14 @@ func ListenAddr(field, value string) error {
 func hostPort(op, field, value string, allowEmptyHost bool) error {
 	host, port, err := net.SplitHostPort(value)
 	if err != nil { // the error text echoes the input, so it is dropped
-		return invalid(op, field, "must be host:port")
+		return invalid(op, field, CodeHostPort, nil, "must be host:port")
 	}
 	if host == "" && !allowEmptyHost {
-		return invalid(op, field, "host must not be empty")
+		return invalid(op, field, CodeHostPort, nil, "host must not be empty")
 	}
 	n, err := strconv.Atoi(port)
 	if err != nil || n < 1 || n > 65535 || port[0] == '+' || port[0] == '-' {
-		return invalid(op, field, "port must be a number between 1 and 65535")
+		return invalid(op, field, CodeHostPort, nil, "port must be a number between 1 and 65535")
 	}
 	return nil
 }
@@ -175,12 +204,14 @@ func (e *Errors) Add(err error) {
 	}
 }
 
-// Addf records errs.Invalid wrapping &FieldError{Field: field, Reason: fmt.Sprintf(format,
-// args...)}. The problem carries no op of its own (Err adds the accumulator's op once), so
-// messages read "<Op>: <field>: <reason>". Cannot fail.
-func (e *Errors) Addf(field, format string, args ...any) {
+// Addf records errs.Invalid wrapping &FieldError{Field: field, Code: code, Reason:
+// fmt.Sprintf(format, args...)} with no Params. code is a Code* constant or a caller's own
+// stable string; "" means the web shell shows the reason. The problem carries no op of its
+// own (Err adds the accumulator's op once), so messages read "<Op>: <field>: <reason>".
+// Cannot fail.
+func (e *Errors) Addf(field, code, format string, args ...any) {
 	e.problems = append(e.problems, errs.E("", errs.Invalid,
-		&FieldError{Field: field, Reason: fmt.Sprintf(format, args...)}))
+		&FieldError{Field: field, Code: code, Reason: fmt.Sprintf(format, args...)}))
 }
 
 // Err returns nil if nothing was added, otherwise
