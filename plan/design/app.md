@@ -833,7 +833,7 @@ decision 20). The listing below is what the Makefile becomes (Proposed change 12
 | `bin` | `web-build`, then `go build -ldflags "-X github.com/zedgama3/bms/internal/app.version=$(VERSION)" -o bin/bms ./cmd/bms` (the release binary, UI inside) | Go, Node |
 | `run` | `set -a; . deploy/compose/.env; set +a; go run ./cmd/bms serve` (development; config.md decision 1) | `.env`, `make up` |
 | `migrate` | the same with `migrate` | same |
-| `test-e2e` | `bin`, then `scripts/e2e.sh`: load `.env`, `bin/bms migrate`, start `bin/bms serve` on a free port, wait for `/readyz`, `pnpm -C web test:e2e` with `BMS_E2E_BASE_URL`, stop the server with `SIGTERM`, fail if its status is not 0 | `make up`, Node, Playwright browsers |
+| `test-e2e` | `bin`, then `scripts/e2e.sh` once per mode (default, `BMS_E2E_MODE=hello-disabled` with `BMS_MODULES_DISABLED=hello`, and `BMS_E2E_MODE=readonly`). Each run loads `.env`, runs `bin/bms migrate`, starts `bin/bms serve` on a free port, waits for `/readyz`, runs `pnpm -C web test:e2e` with `BMS_E2E_URL` and `BMS_E2E_MODE`, stops the server with `SIGTERM`, and fails if its status is not 0. Readonly mode creates a throw-away database through `docker compose exec postgres psql`, migrates it, freezes it with `ALTER DATABASE … SET default_transaction_read_only = on`, and drops it on exit. An unknown mode exits 2 | `make up`, Node, Playwright browsers |
 | `check` | `fmt vet build test lint imports web-check openapi-check` | Go, Node |
 | `check-go` | `fmt vet build test lint imports` (the Go-only subset, for a machine without Node) | Go |
 | `up`, `observe`, `down`, `ps` | as today | Docker |

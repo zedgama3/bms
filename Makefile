@@ -56,8 +56,10 @@ run:              ## development: serve with the compose .env
 migrate:          ## development: apply migrations with the compose .env
 	$(DEVENV) $(GO) run ./cmd/bms migrate
 
-test-e2e: bin     ## Playwright against bin/bms serve (needs `make up`, Node, Playwright browsers)
+test-e2e: bin     ## Playwright against bin/bms serve in each mode (needs `make up`, Node, Playwright browsers)
 	./scripts/e2e.sh
+	BMS_E2E_MODE=hello-disabled ./scripts/e2e.sh
+	BMS_E2E_MODE=readonly ./scripts/e2e.sh
 
 check: fmt vet build test lint imports web-check openapi-check   ## everything; needs Node (use check-go without it)
 
