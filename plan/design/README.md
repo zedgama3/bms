@@ -18,7 +18,7 @@ The order follows dependencies: foundation first, then the core, then modules.
 | 3 | `config.md` | config loading and validation | Approved |
 | 4 | `module-contract.md` | the Module interface and registry | Approved |
 | 4b | `module-hello.md` | the reference module (M0) | Not started |
-| 5 | `db.md` | pool, transactions, per-schema migrations, error mapping | Not started |
+| 5 | `db.md` | pool, transactions, per-schema migrations, error mapping | Draft |
 | 6 | `identity.md` | login providers and sessions | Not started |
 | 7 | `authz.md` | roles, grants, permissions, Authorizer | Not started |
 | 8 | `people.md` | profiles, contacts, consent, export and deletion | Not started |
