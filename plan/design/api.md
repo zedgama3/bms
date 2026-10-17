@@ -1,6 +1,7 @@
 # api: the HTTP shell
 
-- **Status:** Approved (2026-10-17)
+- **Status:** Implemented (2026-10-17); Approved (2026-10-17)
+- **Amended 2026-10-17 (owner):** decisions 19 and 24 reworded, decisions 28 to 30 added (mapper span error carries only op and kind below 500; cookie guard refuses `bms_session_dev` unless `AllowPlaintext`; port 0 in tests, CSP on every UI-handler response, status 499 for a gone client; accepted implementation deviations).
 - **Package:** `internal/api` (Go module `github.com/zedgama3/bms`), plus the foundation
   helper package `internal/lib/httpx` that this spec owns (decision 2): the wire form of an
   error, the kind-to-status table, and the three calls a handler makes (`ReadJSON`,
@@ -70,14 +71,17 @@
 - D16 writes are not refused by the shell; `db.ErrReadOnly` maps to `503 read_only`; `X-Read-Only: true` on every response from a read-only copy.
 - D17 `Canceled`: client gone writes nothing; while draining `503 shutting_down` + `Connection: close`.
 - D18 request deadline = ctx deadline + connection read deadline; `WriteTimeout = RequestTimeout + 15s` is a backstop.
-- D19 every response carries `X-Trace-Id`.
+- D19 every response to a routed request (the `/api/` chain) carries `X-Trace-Id`; not UI files, `/healthz`, `/readyz`, the misdirected 403 or pre-routing errors.
 - D20 shell routes are absolute paths (`/healthz`, `/readyz`, `/api/modules`, `/api/admin/modules`, `/api/client-errors`, `/api/openapi.json`); set names `core`, `modules`, `admin` refused.
 - D21 `/healthz` carries no version.
 - D22 `/readyz` single-flights and caches `Ping` for 1 s (ping deadline 2 s).
 - D23 `Serve` after `Shutdown` is nil; `Listen` after `Shutdown` is `Conflict`.
-- D24 only cookie without `Secure`: `bms_session_dev`, when `AllowPlaintext` and scheme `http` (owner 2026-10-17).
+- D24 only cookie without `Secure`: `bms_session_dev`, when `AllowPlaintext` and scheme `http`; the guard refuses that name whenever `AllowPlaintext` is false (owner 2026-10-17).
 - D25 field errors carry `code` and `params`; shell translates by code, falls back to `reason` (owner 2026-10-17).
 - D26 HSTS `max-age=31536000` only when scheme https, no `includeSubDomains` (owner 2026-10-17).
+- D28 for status < 500 the mapper records on the span an error carrying only `op` and kind; 5xx keeps the scrubbed message (owner 2026-10-17).
+- D29 `Options.Validate` accepts port 0 (tests; config still refuses it). Every UI-handler response carries the CSP (404/405 bodies and assets included); `/api/` JSON carries none. Client gone and `ErrAbortHandler` record status 499 on span and histogram (owner 2026-10-17).
+- D30 accepted deviations: F10/F11/F14 are checked in `Options.Validate`; the request deadline uses `time.Now`, not the injected clock; the base context comes from `context.Background()` in `New`; a field's `UnmarshalJSON`/`UnmarshalText` failure is reported on `body.<path>` with code `malformed` and no echoed input; `Shutdown` closes a listener `Serve` never took.
 
 **Errors callers handle:** `Options.Validate`/`New`: `Invalid` (fields `http.addr`, `http.request_timeout`, `http.max_body_bytes`, `http.trusted_proxies`, `api.*`), `Conflict` (pattern or schema-name clash), `Invalid` for route/fragment mismatch or bad route token; `Listen`: `Unavailable` (in use), `Invalid`, `Conflict`; `Serve`: `Internal` (no Listen), `Unavailable`; `Shutdown`: `Timeout`/`Canceled` (late handlers may still run). `ReadJSON`: `Invalid` (wrapping `ErrUnsupportedMediaType` for 415; field `body` or JSON path), `*http.MaxBytesError` returned unchanged (413), `Timeout`, `Canceled`, `Internal` (bad dst). `WriteJSON`: `Internal` (unencodable), `Canceled` (write failed). Mapper checks sentinels before kind: `db.ErrReadOnly`, `intake.ErrRateLimited` (429, `Retry-After: 60`), `httpx.ErrUnsupportedMediaType`, `*http.MaxBytesError`. `Unavailable` adds `Retry-After: 5`.
 
@@ -410,7 +414,7 @@ type Options struct {
 // them.
 const DefaultCSP = "default-src 'self'; img-src 'self' data:; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
 
-// Validate fails with errs.Invalid joining one validate.FieldError per problem, fields
+// Port 0 is accepted for tests (decision 29); config still refuses it. Validate fails with errs.Invalid joining one validate.FieldError per problem, fields
 // "http.addr", "http.request_timeout", "http.max_body_bytes", "http.trusted_proxies"
 // (an invalid prefix, or one of zero bits), "api.logger", "api.tracer", "api.meter",
 // "api.clock", "api.version", "api.database", "api.intake", "api.schema",
@@ -908,7 +912,8 @@ None of its own. What this spec provides for `web-shell.md`:
     request that sees `Canceled` while draining was cut off by the server. When the client
     is gone there is nobody to answer; the span is not marked failed (telemetry
     `RecordError` on `Canceled`) and one debug line is written. lib-errs Open question 1
-    is answered (Proposed change 7, applied 2026-10-17).
+    is answered (Proposed change 7, applied 2026-10-17). A client that is gone, and
+    `http.ErrAbortHandler`, record status 499 on the span and the histogram (decision 29).
 18. **The request deadline is the ctx and the connection's read deadline; the server's
     `WriteTimeout` is a backstop.** `http.TimeoutHandler` was rejected: it buffers every
     response and answers `503` with its own body. Instead `RequestTimeout` becomes the
@@ -929,7 +934,7 @@ None of its own. What this spec provides for `web-shell.md`:
     15 s covers two such handlers. When even that passes, the commit and the deliveries
     stand, the response write fails, `WriteJSON` returns `Canceled` (F8) and the client
     sees a closed connection; it must re-read, not retry the write.
-19. **Every response carries `X-Trace-Id`.** telemetry decision 2 allowed it; it makes a
+19. **Every response to a routed request carries `X-Trace-Id`** (reworded 2026-10-17: the `/api/` chain, from step 9; not UI files, `/healthz`, `/readyz`, the misdirected 403 or errors before routing). telemetry decision 2 allowed it; it makes a
     `curl` session traceable without reading a body, and the ID is not a secret.
 20. **The shell's own routes are mounted at absolute paths and are exempt from the
     `/api/<name>/` rule.** `/api/modules`, `/api/admin/modules`, `/api/client-errors` and
@@ -974,7 +979,9 @@ None of its own. What this spec provides for `web-shell.md`:
     rule, enforced by the cookie guard (F29): a `Set-Cookie` named `bms_session_dev` may
     omit `Secure` only when `Options.AllowPlaintext` is true and `httpx.SchemeFrom(ctx)`
     is `http`; every other attribute still applies to it; a `bms_session_dev` cookie in
-    any other condition, or any other cookie without `Secure`, is the usual `500`.
+    any other condition, or any other cookie without `Secure`, is the usual `500`. A
+    `bms_session_dev` cookie is refused whenever `AllowPlaintext` is false, `Secure` or not:
+    production uses only the `__Host-` name (owner, 2026-10-17).
     `identity` writes it only under the same two conditions (reading
     `httpx.SchemeFrom`), and never writes both cookies on one response. The start-up
     warning for `AllowPlaintext` (F35) already says plaintext is for development. The
@@ -1005,6 +1012,21 @@ None of its own. What this spec provides for `web-shell.md`:
     shows up" needs a login that does not exist until M1. The public body is exactly
     `{"modules":[{"name":..., "enabled":...}]}`: no permissions, settings, signals,
     versions or warnings (`TestModules_PublicListsNamesAndEnabled` pins it).
+28. **For status below 500 the mapper records on the span an error carrying only `op` and
+    the kind, never the message; a 5xx keeps the scrubbed message** (owner, 2026-10-17).
+    Privacy over the earlier mapper step 5 wording: a 4xx message may hold what the person
+    typed.
+29. **Edges settled by the owner, 2026-10-17.** `Options.Validate` accepts port 0 so tests
+    bind `:0` (config still refuses it for a real run). Every response written by the UI
+    handler carries the CSP, including its 404 and 405 problem bodies and its assets; the
+    `/api/` JSON carries none. A client that went away, and `http.ErrAbortHandler`, record
+    status 499 on the span and the histogram.
+30. **Accepted implementation deviations** (reviewed, 2026-10-17): the checks F10, F11
+    and F14 run in `Options.Validate` (so `New` fails the same way); the request deadline
+    is computed with the wall clock (`time.Now`), not the injected `Clock`; `New` makes
+    the base context from `context.Background()`; a field's `UnmarshalJSON` or
+    `UnmarshalText` failure is reported on `body.<path>` with code `malformed` and no
+    echoed input; `Shutdown` closes a listener that `Serve` never took.
 
 ### The middleware chain
 
@@ -1110,7 +1132,8 @@ this derivation is logged; the warning in step 1 names no address.
 3. `Fields` = `validate.Fields(err)` when code is `invalid`, each `{Field, Code, Params,
    Reason}` (decision 25).
 4. `Ref` = `RefFrom(ctx)` when present.
-5. Write the problem with `ContentTypeProblem`; `span.RecordError(err)`; log one record
+5. Write the problem with `ContentTypeProblem`; record the error on the span (status
+   < 500: an error carrying only `op` and kind; 5xx: the scrubbed message, decision 28); log one record
    at the level decision 4 gives (error for 5xx; warn for a 4xx with an actor; debug for
    a 4xx without one) with `error_ref`, `trace_id`, `error.kind`, `op` (the outermost
    `errs.Error.Op`), `http.route`, `http.request.method`, `status`, `person_id`, and
@@ -1247,7 +1270,7 @@ library (`bytes`, `context`, `encoding/json`, `errors`, `fmt`, `io`, `mime`, `ne
 | F26 | pipeline | an untrusted, non-loopback peer with `TrustedProxies` set and `AllowPlaintext` false, path not a health route | none: `403 misdirected`; warn once per prefix per hour with `peer_prefix` | fix `trusted_proxies` or the route to bms | `TestPipeline_UntrustedPeer_403AndLogsPrefixOnce`, `TestPipeline_UntrustedPeer_HealthRoutesServed` |
 | F27 | pipeline | a body over `MaxBodyBytes` | `413 payload_too_large` | shorten the request | `TestPipeline_BodyOverCap_413` |
 | F28 | pipeline | the handler outlives `RequestTimeout`; a body read stalls past it | its I/O fails with Timeout → `504 timeout`; the connection read deadline fails the stalled read → `504` through F5; `WriteTimeout` fails a late write (F8) | shorten the work; send the body | `TestMapper_Timeout_504` (a handler returning `errs.Timeout`; no clock), `TestPipeline_Order` (the ctx deadline is `now + RequestTimeout` and `SetReadDeadline` was called with the same instant, through a recording writer), `TestPipeline_SlowBody_ReadDeadlineEnds504` (the unexported `testRequestTimeout` hook set to 50 ms, a real `httptest.NewServer`, a client that writes half the body and blocks on a channel until the response arrives; bounded by the deadline, no `time.Sleep`) |
-| F29 | cookie guard | a response sets a cookie without `Secure`, `HttpOnly`, `SameSite=Lax` or `Path=/`, with a `Domain`, or one `http.ParseSetCookie` rejects; at `WriteHeader`, at an implicit header write, or after a handler that wrote nothing. The one allowed omission: no `Secure` on a cookie named `bms_session_dev` when `AllowPlaintext` is true and the scheme in ctx is `http` (decision 24) | `500 internal`; error log naming the cookie, never its value | fix the handler | `TestCookieGuard_Table` (each missing attribute, `Domain`, unparseable; each of the three moments; a `__Host-` cookie with every attribute passes), `TestCookieGuard_DevCookie_Table` (`bms_session_dev` without `Secure`: passes with `AllowPlaintext` and scheme `http`; `500` with `AllowPlaintext` and scheme `https`, with scheme `http` and no `AllowPlaintext`, and when it also lacks `HttpOnly`; a `__Host-` cookie without `Secure` is `500` under every condition) |
+| F29 | cookie guard | a response sets a cookie without `Secure`, `HttpOnly`, `SameSite=Lax` or `Path=/`, with a `Domain`, or one `http.ParseSetCookie` rejects; at `WriteHeader`, at an implicit header write, or after a handler that wrote nothing. The one allowed omission: no `Secure` on a cookie named `bms_session_dev` when `AllowPlaintext` is true and the scheme in ctx is `http` (decision 24) | `500 internal`; error log naming the cookie, never its value | fix the handler | `TestCookieGuard_Table` (each missing attribute, `Domain`, unparseable; each of the three moments; a `__Host-` cookie with every attribute passes), `TestCookieGuard_DevCookie_Table` (`bms_session_dev` without `Secure`: passes with `AllowPlaintext` and scheme `http`; `500` with `AllowPlaintext` and scheme `https`, with scheme `http` and no `AllowPlaintext`, with every attribute present but no `AllowPlaintext` (decision 24), and when it also lacks `HttpOnly`; a `__Host-` cookie without `Secure` is `500` under every condition) |
 | F30 | cross-origin protection | an unsafe-method request with `Sec-Fetch-Site` other than `same-origin`/`none`, or no such header and `Origin: null` or an `Origin` whose host differs from `Host` | `403 cross_origin`; log without the origin value | fix the caller (the shell is same-origin) | `TestCrossOrigin_Table` (`cross-site` and `same-site` rejected; `Origin: null` rejected; `same-origin`, `none`, no headers, `GET` accepted; no `Access-Control-*` header on any response) |
 | F31 | authentication | signed-in route, no session at all | `401 unauthenticated`; debug log | sign in | `TestAuth_SignedInRouteNoSession_401` |
 | F32 | authentication | signed-in route, `Authenticator` fails `Unauthenticated` (invalid, expired) | `401`; debug log (no actor, decision 4) | sign in again | `TestAuth_SignedInRouteBadSession_401` |
