@@ -1,6 +1,7 @@
 # signals: in-process domain events
 
-- **Status:** Approved (2026-10-16)
+- **Status:** Implemented (2026-10-17); Approved (2026-10-16)
+- Amended 2026-10-17 (owner): records accepted, reviewer-approved implementation deviations: published counted after commit, Close waits again, Deferrer gets a fresh deadline, span attrs, `!repeated` key, Fake stamps `clock.Real()`, late deliveries dropped, Redeliver after Close (see Summary, "Accepted deviations").
 - **Package:** `internal/core/signals` (Go module `github.com/zedgama3/bms`), plus the test
   helper package `internal/core/signals/signalstest`. **UI:** none of its own; the admin
   "modules" screen (`web-shell.md`) shows each module's published and subscribed names from
@@ -44,12 +45,12 @@ Exported names (package `signals`):
 - `Bus{Publish(ctx, Name, Payload) error; Subscribe(Name, Handler) error}` (= `Deps.Signals`).
 - `Options{Logger, Tracer, Meter, Clock, HandlerTimeout 100ms..1m, Deferrer}` (+`Validate`);
   `New(Options) (*Dispatcher, error)`; `Dispatcher.Scope(owner, publishes, subscribes) (Bus,
-  error)`, `Redeliver(ctx, Delivery) error`, `Close(ctx) error` (idempotent).
+  error)`, `Redeliver(ctx, Delivery) error`, `Close(ctx) error` (a repeated call waits again).
 - `MaxDepth = 8`; `InDelivery(ctx) bool`; `Delivery{Signal, Subscriber, Attempt}`;
   `Deferrer.Defer(ctx, Delivery) error` (nil in M0; `jobs` implements it from M4).
 - `signalstest`: `Fake` (`NewFake(owner, publishes, subscribes)`, `Published()`, `Deliver(ctx,
   Signal)`, `Handlers()`); same scoping as `Scope`; records publishes only after commit and
-  never delivers on its own.
+  never delivers on its own (stamps `At` with `clock.Real()`).
 
 Key decisions: 1 publish inside the transaction, deliver after commit from `db.AfterCommit`;
 2 no outbox, delivery in memory, at-most-once (owner, 2026-10-16); 3 a failed delivery is
@@ -93,6 +94,8 @@ failure); telemetry (`Tracer` Producer/Consumer spans, `Meter` counters,
 `Deps.Signals`, `Start`; the graph check of unknown or disabled publishers is `Resolve`'s).
 `app` order at shutdown: HTTP drained, runnables (jobs, M4), `signals.Close`, `Set.Stop`, `db.Close`,
 `telemetry.Close`.
+
+Accepted deviations (2026-10-17, reviewer-approved): `bms.signals.published` is counted in the after-commit hook (rollback counts nothing); `Close` while deliveries run waits again and returns Timeout/Canceled, nil only once nothing is in flight (F32); the `Deferrer` gets the handler's trace and in-delivery marker but a fresh `HandlerTimeout` deadline (up to 2x per subscriber); consumer spans carry `Int` depth, producer spans `Int` subscribers; `NewPayload` records a repeated key under reserved key `!repeated`, which `Validate` reports as F4 on `payload`; `signalstest.Fake` stamps `At` with `clock.Real()`; a delivery arriving after `Close` is dropped with one warn and not counted; `Redeliver` after `Close` is `Unavailable`.
 
 Pending proposed changes (targets not written): 6 jobs.md (implement `Deferrer`, call `Redeliver`), 7 authz/identity (ignore
 the session when `InDelivery`), 8 people/departments-events (declare their signals). Items 1, 2, 3, 4, 5, 9, 10, 11 are applied.
@@ -358,7 +361,8 @@ func (d *Dispatcher) Redeliver(ctx context.Context, dl Delivery) error
 // Close refuses further Publish, Subscribe and Scope calls and waits for deliveries in
 // flight to finish, within ctx. It fails with errs.Timeout or errs.Canceled when ctx ends
 // first (F32); the deliveries then finish on their own goroutines and their results are
-// still counted. Idempotent: a second Close returns nil.
+// still counted. A repeated Close waits again: it returns Timeout or Canceled while deliveries
+// are still in flight and nil only once nothing is.
 // Consumer: app, after the HTTP server drained and before Set.Stop.
 func (d *Dispatcher) Close(ctx context.Context) error
 
@@ -379,8 +383,9 @@ func (d Delivery) Validate() error
 // Deferrer takes a delivery whose handler failed with errs.Unavailable or errs.Timeout
 // (and not db.ErrReadOnly) so it can be retried later. jobs implements it (jobs.md,
 // Proposed change 6): it stores the Delivery on the writing copy and calls Redeliver with
-// backoff. Defer is called from the delivering goroutine with the handler's ctx (deadline,
-// no request cancellation); it must be quick and must not deliver anything itself. A
+// backoff. Defer is called from the delivering goroutine with the handler's trace and
+// in-delivery marker but a fresh HandlerTimeout deadline (decision 5; one subscriber can
+// take up to 2x HandlerTimeout), no request cancellation; it must be quick and must not deliver anything itself. A
 // Defer error is logged beside the handler's error and the delivery is final (F23).
 type Deferrer interface {
 	Defer(ctx context.Context, d Delivery) error
@@ -410,7 +415,7 @@ import (
 // validates as the real bus does, registers a db.AfterCommit hook and records the Signal
 // when the hook runs, so a test that rolls back a dbtest.Fake transaction sees nothing
 // published and a test that commits sees the signal with a non-zero ID and At. Publish
-// never delivers. Subscribe stores one handler per name. Safe for concurrent use.
+// never delivers; At is stamped with clock.Real(). Subscribe stores one handler per name. Safe for concurrent use.
 type Fake struct{ /* unexported */ }
 
 // NewFake fails as Scope does (F9, F10) for a bad owner or lists; a module's test passes
@@ -631,10 +636,11 @@ delivery in the trace of the request that caused it (D20), by `signal` and `sign
    (the payload map is copied, so a publisher that mutates its map afterwards changes
    nothing).
 3. Open a `SpanProducer` span `signal:<name>` with `Token("signal", name)`,
-   `Module(owner)`, `ID("signal_id", id)`; end it after step 4 registers the hook (the span
-   measures publishing, not delivery; the deliveries are its children because the hook's
-   ctx carries the request span, not this one: the hook runs with `Transact`'s ctx). Count
-   `bms.signals.published{signal, module}`.
+   `Module(owner)`, `ID("signal_id", id)`, `Int("subscribers", n)`; end it after step 4 registers
+   the hook (the span measures publishing, not delivery; the deliveries are its children
+   because the hook's ctx carries the request span, not this one: the hook runs with
+   `Transact`'s ctx). Count `bms.signals.published{signal, module}` inside the after-commit
+   hook, not at publish time, so a rolled-back transaction counts nothing.
 4. `db.AfterCommit(ctx, func(ctx context.Context) { d.deliver(ctx, owner, sig) })`. Inside
    a transaction the hook runs after commit; outside, `db` runs it at once (db.md
    `AfterCommit`), so `deliver` runs before `Publish` returns. `AfterCommit` fails only for
@@ -650,7 +656,7 @@ delivery in the trace of the request that caused it (D20), by `signal` and `sign
    in-delivery marker set.
 3. For each `(subscriber, handler)` in order: `hctx, cancel := context.WithTimeout(base,
    HandlerTimeout)`; open a `SpanConsumer` span `deliver:<name>` with `Token("signal",
-   name)`, `Module(subscriber)`, `ID("signal_id", sig.ID)`, `Int("attempt", 1)`; run the
+   name)`, `Module(subscriber)`, `ID("signal_id", sig.ID)`, `Int("attempt", 1)`, `Int("depth", n)`; run the
    handler under `recover`; `cancel()`; classify the outcome (table below); `RecordError`
    on the span for any non-`ok` outcome; `SetAttrs(Token("outcome", ...),
    Duration("duration_ms", clk.Since(start)))`; end the span; count
@@ -691,7 +697,7 @@ either the old or the new list, never a torn one. `inflight` is a `sync.WaitGrou
 `Close` waits on within its ctx. The dispatcher starts no goroutine: every delivery runs on
 the goroutine that committed (a request's, or a job runner's for `Redeliver`). After
 `Close`: `Publish` → `Unavailable`, `Subscribe` and `Scope` → `Internal`, `Redeliver` →
-`Unavailable`, `Close` → nil. `app`'s order at shutdown: HTTP server drained → runnables (jobs, M4) stopped → `signals.
+`Unavailable`, `Close` waits again and is nil once nothing is in flight. A delivery that arrives after `Close` is dropped with one warn (no payload) and not counted. `app`'s order at shutdown: HTTP server drained → runnables (jobs, M4) stopped → `signals.
 Close` → `Set.Stop` → `db.Close` → `telemetry.Close` (Proposed change 5), so no handler
 runs against a stopped module or a closed pool.
 
@@ -710,12 +716,13 @@ flips the state (db.md decision 8).
 Scope `signals`. Spans: `signal:<name>` (Producer) per publish; `deliver:<name>`
 (Consumer) per delivery and per redelivery, a child of the span in the publisher's ctx
 (the api's request span), with `signal`, `module`, `signal_id`, `attempt`, `outcome`,
-`duration_ms`, `error.kind` and `error.op` through `RecordError`. Counters (created in
+`duration_ms`, `error.kind` and `error.op` through `RecordError`. Consumer spans carry
+`Int` `depth`; producer spans carry `Int` `subscribers`. Counters (created in
 `New`, `WithUnit("{signal}")` and `WithUnit("{delivery}")`):
 
 | Instrument | Attributes |
 |---|---|
-| `bms.signals.published` | `signal` (token), `module` (publisher) |
+| `bms.signals.published` | `signal` (token), `module` (publisher); counted in the after-commit hook |
 | `bms.signals.delivered` | `signal`, `module` (subscriber), `outcome` ∈ `ok`, `failed`, `deferred`, `read_only`, `panicked` |
 
 No ID and no text on a metric (telemetry F19); the payload is on nothing.
@@ -738,7 +745,7 @@ graph stays acyclic: `telemetry ← db ← signals ← module`. `signalstest` ad
 | F1 | `Name.Validate` | not `<ident>.<ident>` (one segment, three segments, upper case, `_`, a 65-byte segment) | Invalid | fix the manifest | `TestNameValidate_Table` |
 | F2 | `Payload.Validate` (via `Publish`) | a key is not an ident | Invalid, field `payload.<key>` | fix the publisher | `TestPayloadValidate_BadKey_ReturnsInvalid` |
 | F3 | `Payload.Validate` | a zero ID | Invalid, field `payload.<key>` | fix the publisher (an optional ref is left out, not zero) | `TestPayloadValidate_ZeroID_ReturnsInvalid` |
-| F4 | `Payload.Validate` | more than `MaxRefs` entries, or `NewPayload` given a repeated key | Invalid, field `payload` | fix the publisher | `TestPayloadValidate_TooManyOrRepeated_ReturnsInvalid` |
+| F4 | `Payload.Validate` | more than `MaxRefs` entries, or `NewPayload` given a repeated key (recorded under the reserved non-ident key `!repeated`, which `Validate` reports on field `payload`) | Invalid, field `payload` | fix the publisher | `TestPayloadValidate_TooManyOrRepeated_ReturnsInvalid` |
 | F5 | `Get` | key absent, or its ID zero | Invalid naming the key | return it from the handler (logged against the publisher's name) | `TestGet_MissingKey_ReturnsInvalid` |
 | F6 | `Signal.Validate` | zero ID, bad name, zero `At`, bad payload (each reported) | Invalid, one `FieldError` each | fix the caller (`jobs`, a test) | `TestSignalValidate_Table` |
 | F7 | `Options.Validate`, `New` | `Logger`, `Tracer`, `Meter` or `Clock` nil; `HandlerTimeout` outside 100 ms..1 m; several at once | Invalid, one `FieldError` each | fix app | `TestNew_BadOptions_ReportsEach` |
@@ -766,7 +773,7 @@ graph stays acyclic: `telemetry ← db ← signals ← module`. `signalstest` ad
 | F29 | `Redeliver` | no handler for `(Subscriber, Name)` (module disabled or renamed since) | NotFound | `jobs` drops the delivery with a log line | `TestRedeliver_UnknownSubscriber_ReturnsNotFound` |
 | F30 | `Redeliver` | the handler fails or panics | the handler's error unchanged (a panic as Internal); counted with `attempt`; never deferred | `jobs` decides by kind | `TestRedeliver_HandlerFails_ReturnsErrorUnchanged` |
 | F31 | `Redeliver` | after `Close`; `ctx` done | Unavailable; Canceled / Timeout | stop | `TestRedeliver_AfterCloseOrCtxDone_ReturnsKind` |
-| F32 | `Close` | deliveries in flight do not finish within `ctx` | Timeout / Canceled; they finish on their own; second `Close` nil | log and exit | `TestClose_InFlight_ReturnsTimeout`, `TestClose_Twice_IsNil` |
+| F32 | `Close` | deliveries in flight do not finish within `ctx` | Timeout / Canceled; they finish on their own; a repeated `Close` waits again, nil only once nothing is in flight | log and exit | `TestClose_InFlight_ReturnsTimeout`, `TestClose_Twice_IsNil` |
 | F33 | `signalstest.Fake.Deliver` | `s` invalid; no handler for the name; the handler panics | Invalid; NotFound; Internal wrapping the panic value | fix the test or the module | `TestFakeDeliver_Table` |
 
 Behaviours that are not failures but are proven: a transaction that rolls back after
