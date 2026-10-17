@@ -1,0 +1,1087 @@
+# web-shell: the browser application
+
+- **Status:** Draft (2026-10-17)
+- **Package:** `web/` (pnpm workspace; `web/src/...`), plus the Go package `web`
+  (`web/embed.go`, Go module `github.com/zedgama3/bms/web`) that embeds the built files for
+  `app`. **UI:** this spec is the UI frame; module and core-area screens plug into it.
+- **Depends on specs:** `api.md` (Approved): the problem body (`code`, `ref`, `fields[]`
+  with `field`, `code`, `params`, `reason`), the codes table, `X-Read-Only`, `X-Trace-Id`,
+  `GET /api/modules`, `GET /api/admin/modules`, `POST /api/client-errors`,
+  `GET /api/openapi.json`, cookies and cross-origin protection (decisions 6, 7, 24), the
+  CSP (`DefaultCSP`, decision 12), `Options.UI`, `Options.Version`. `telemetry.md`
+  (Approved): `intake.Batch`, `Report`, `APICall`, the kinds, the limits, `Ref`
+  (`XXXX-XXXX`), `WithParentFrom` (the `traceparent` form), the token grammar.
+  `module-contract.md` (Approved): the module name grammar and reserved names, decision 8
+  (message keys derived from names), decision 9 (the web registry is the source of truth
+  for screens), the admin graph. `config.md` (Approved): `modules.disabled` (why a module
+  may be compiled in and not enabled), `http.allow_plaintext` (development on a phone).
+  `model.md` (Approved): the wire forms mirrored in TypeScript (UUID string, the four
+  sensitivity names, `{start, end}`; event times rendered in the event's zone).
+  `lib-errs.md`, `lib-core.md` (Implemented): the kind names that are `code`s; the
+  `FieldError` codes `required`, `range`, `positive`, `one_of`, `url`, `host_port`,
+  `malformed`. `db.md` (Approved): what read-only means. `signals.md` (Approved): the
+  admin screen shows `publishes` and `subscribes`.
+  **Used by:** `app.md` (row 18: `web.FS()`, `web.Version()`, `Options.UI`, the `bms
+  openapi` command this spec asks for), `module-hello.md` (row 4b: the reference
+  `web/src/modules/hello/`), every module spec with screens (`module-volunteers.md`, ...),
+  `identity.md`, `authz.md`, `settings.md`, `people.md` (the endpoints the frame reads,
+  listed under "Proposed changes elsewhere"), `frontend-implementer` and `web-reviewer`
+  (the rules they work by), `docs/operating.md` (browsers, building the UI).
+
+## Purpose
+
+Host every module's screens in one browser application.
+
+## Responsibilities
+
+- **The frame:** layout, landmarks, navigation built from the enabled modules and the
+  person's sign-in state, the sign-in and home screens, the "this copy is read-only" and
+  superuser banners, the language menu, the not-found and crashed-screen states.
+- **The API client:** one typed way to call `/api/...`, generated from `/api/openapi.json`
+  at build time, which sends `traceparent`, turns every problem body into one error type,
+  watches `X-Read-Only`, and sends a person to sign-in on `401`.
+- **The screen registry (D31):** a build-time list that imports one folder per module and
+  one per core area, mounts each under `/<name>/`, and shows a module only when
+  `GET /api/modules` says it is enabled.
+- **Translation (D28):** every string a person sees comes from a message catalogue by key,
+  in the regional's default language or the person's choice, with the regional's
+  terminology substituted; the catalogues for modules follow module-contract decision 8.
+- **Showing errors to people:** `code` and `fields[].code` translated, the reference shown
+  where a maintainer can use it, nothing English leaking from the server.
+- **Error reporting (D20):** catch crashes, unhandled rejections, crashed screens and the
+  API failures that are the shell's or the deployment's, and send them in batches to
+  `POST /api/client-errors` within telemetry's limits.
+- **Accessibility and mobile:** WCAG 2.2 AA, mobile-first, usable on a slow connection, as
+  rules the lint, the tests and the review enforce.
+- **Keeping nothing personal in the browser** beyond the page's memory.
+- **Tooling:** the pinned, OSI-licensed toolchain, the checks `make check` runs for `web/`,
+  and the Go embed package `app` serves.
+
+## Not responsible for
+
+| Concern | Owner |
+|---|---|
+| Any module's screens, their fields and flows | the module's spec (`module-<name>.md`, "UI"), built in `web/src/modules/<name>/` by the rules here |
+| The core areas' screens (accounts, profile, people, departments, events, roles, settings, audit) | each area's spec (`identity.md`, `people.md`, ...), built in `web/src/core/<area>/` with the same registry shape (decision 3) |
+| Sessions, the cookie, sign-in and sign-out routes, password rules | `identity.md`. The shell renders the sign-in screen and calls its routes (Proposed change 5) |
+| Deciding what a person may do | the server, on every call (09 ground rules). The shell hides what `session.permissions` says the person lacks (09 §4) and never relies on it |
+| Serving the files, the CSP and other headers, caching, `index.html` for app paths | `api.md` decision 12. This spec builds what it serves and keeps to its CSP (decision 10) |
+| The error body, the codes, the status table | `api.md`; mirrored here in TypeScript, never redefined |
+| Validating, limiting, scrubbing and logging client reports | `telemetry.md` (`intake`). The shell sends what `intake` accepts and nothing it would scrub |
+| The regional's name, logo, colours, default language, available languages, terminology | `settings.md` (row 15). Until it exists the shell ships defaults (decision 7, Proposed change 7) |
+| A person's saved language | `people.md` (row 8), as a profile field (Proposed change 13). Until then: the browser's one stored key (decision 7) |
+| Offline use, a service worker, cached data on the device | Q-OFFLINE (D27). Nothing here caches API data on disk (decision 11) |
+| Configurable forms | D32: forms are code, fixed per module |
+| Charts and reporting screens | a later extension point (D19) and the `dataviz` guidance when one exists |
+| Native apps | out of scope (02-scope) |
+| Build and release packaging of the binary with the UI inside it | `app.md` and `docs/operating.md` (Proposed changes 4 and 15) |
+
+## Sub-abstractions
+
+| Name | Purpose (one line) | Notes |
+|---|---|---|
+| Frame (`web/src/shell/`) | Put the person, the navigation, the banners and the current screen on one page. | Layout, `SkipLink`, `Nav`, `ReadOnlyBanner`, `SuperuserBanner`, `LanguageMenu`, `RouteAnnouncer`, `ErrorBoundary`; the shell's own screens: home, sign-in, admin modules, not found, crashed, cannot-reach-server. |
+| API client (`web/src/api/`) | Call the server with types from its own document and one error shape. | `schema.d.ts` (generated), `client.ts`, `errors.ts` (`ApiError`, codes), `traceparent.ts`, `query.ts` (TanStack Query defaults). |
+| Registry (`web/src/registry/`, `web/src/modules/index.ts`, `web/src/core/index.ts`) | Turn the compiled-in screen sets into routes and navigation for the enabled ones. | `ScreenSet`, `NavEntry`, `validateRegistry`, `enabledSets`. |
+| Translation (`web/src/i18n/`) | Give every string a key, a language and the regional's terms. | FormatJS (ICU MessageFormat), `useT`, `useFormat`, `keys.d.ts` (generated), `lang.ts` (the one storage key), `terms.ts`. |
+| Error display (`web/src/ui/errors/`) | Show a failed call to a person in their language, with the reference when it helps. | `ErrorState` (screens), `ErrorSummary` (forms), `useFieldErrors`, `messageFor(error)`. |
+| Reporter (`web/src/shell/report.ts`) | Collect what broke in the browser and deliver it to intake within its limits. | Installed first in `main.tsx`; the only code besides the client that talks to the network. |
+| Session and read-only stores (`web/src/shell/session.ts`, `readonly.ts`) | Hold who is signed in and whether this copy is read-only, for the frame and the client. | Plain stores read with `useSyncExternalStore`; memory only. |
+| UI kit (`web/src/ui/`) | The few accessible building blocks every screen uses. | `Button`, `Field` (label, hint, error), `Dialog` (native `<dialog>`), `Banner`, `EmptyState`, `Loading`, `Table`, `Toast`. No third-party component library (decision 12). |
+| Embed (`web/embed.go`) | Hand `app` the built files and their version. | `FS()`, `Version()`; stdlib and `lib/errs` only. |
+| Tooling (`web/package.json`, `web/scripts/`, Makefile targets) | Build, check and generate, with pinned OSI-licensed dependencies only. | `pnpm check`; `make web-check`, `web-build`, `openapi-check`; the license allowlist; the bundle budget. |
+
+## Interface
+
+The shell's public surface is what a module's `web/src/modules/<name>/` may import:
+`@/registry/types`, `@/api`, `@/i18n`, `@/ui`. Everything under `@/shell` is private to the
+frame (decision 4). TypeScript signatures below; the one Go package is at the end.
+
+```ts
+// web/src/registry/types.ts — what a module or core area exports from its index.ts.
+
+import type { RouteObject } from "react-router";
+import type { MessageKey } from "@/i18n";
+
+/** One module's or core area's screens. Exported as `ui` from web/src/modules/<name>/index.ts
+ *  (or web/src/core/<area>/index.ts) and listed in the matching index.ts (D31). */
+export interface ScreenSet {
+  /** The module's name exactly as in its Go manifest ([a-z][a-z0-9]{1,31}), or the core
+   *  area's name. Routes mount under `/<name>/`; a shell-reserved name is refused (F19). */
+  readonly name: string;
+  /** Core areas are always enabled; modules only when GET /api/modules lists them. */
+  readonly kind: "module" | "core";
+  /** Routes relative to `/<name>`. `path` is relative (no leading `/`, F20). Elements are
+   *  lazy (`React.lazy`) so a module's code loads when first visited. A route's `handle`
+   *  carries `{ title: MessageKey; access?: "public" | "signed-in" }` (default signed-in). */
+  readonly routes: readonly RouteObject[];
+  /** Entries for the frame's navigation. */
+  readonly nav: readonly NavEntry[];
+  /** Message catalogues by language tag, loaded on demand. `en` is required (F21). */
+  readonly messages: Readonly<Record<string, () => Promise<Messages>>>;
+}
+
+export interface NavEntry {
+  /** The label's message key (typed; a missing key is a compile error). */
+  readonly label: MessageKey;
+  /** Path relative to `/<name>`. */
+  readonly to: string;
+  /** `main`: the primary navigation. `admin`: the "Administration" group. */
+  readonly area: "main" | "admin";
+  /** Who sees it before the server decides: `public` (always), `signed-in` (default), or
+   *  the permissions of which the person needs any one (from session.permissions, M2;
+   *  before M2 a permission requirement shows the entry to every signed-in person and the
+   *  screen shows its forbidden state). */
+  readonly access?: "public" | "signed-in" | readonly string[];
+}
+
+export type Messages = Readonly<Record<string, string>>;
+```
+
+```ts
+// web/src/api/index.ts — the client every screen uses. No `fetch` anywhere else (decision 5).
+
+import type { paths } from "./schema"; // generated from /api/openapi.json by openapi-typescript
+
+/** Typed by the OpenAPI paths: api.GET("/api/hello/greeting"), api.POST(path, { body }).
+ *  Resolves with the parsed body (undefined for 204); rejects with ApiError, never with
+ *  anything else (F1–F11). Consumers: every screen, through TanStack Query hooks. */
+export const api: Client<paths>;
+
+/** Options accepted on every call. */
+export interface CallOptions {
+  /** The caller's cancellation; the client adds its own 35 s timeout (decision 6). */
+  signal?: AbortSignal;
+  /** Path and query parameters, typed from the document. */
+  params?: { path?: Record<string, string>; query?: Record<string, string | number | boolean> };
+}
+
+/** Every failed call. `code` is the problem body's code, or one of the two client codes. */
+export class ApiError extends Error {
+  readonly status: number;            // HTTP status; 0 when no response arrived
+  readonly code: ProblemCode | ClientCode;
+  readonly ref?: string;              // telemetry.Ref "XXXX-XXXX", when the body had one
+  readonly fields: readonly Field[];  // for code "invalid"; else empty
+  readonly method: Method;
+  readonly route: string;             // the route pattern called, e.g. "/api/people/{id}" (never the URL)
+  readonly module: string;            // "hello" from "/api/hello/..."; "core" for the shell's routes
+  readonly traceId: string;           // the traceparent trace ID the call carried
+  readonly retryAfter?: number;       // seconds, from Retry-After
+  /** Set once the reporter has queued this error, so a rethrow is not reported twice. */
+  reported: boolean;
+}
+
+/** api.md "Codes", mirrored exactly; a test pins the list against web/openapi.json. */
+export type ProblemCode =
+  | "invalid" | "unauthenticated" | "permission" | "cross_origin" | "misdirected"
+  | "not_found" | "method_not_allowed" | "conflict" | "payload_too_large"
+  | "unsupported_media_type" | "rate_limited" | "internal" | "unsupported"
+  | "unavailable" | "read_only" | "shutting_down" | "timeout";
+/** Codes only the client produces. */
+export type ClientCode =
+  | "network"             // fetch rejected: offline, DNS, reset, or the client's 35 s timeout
+  | "malformed_response"; // a non-2xx without a problem body, or a 2xx whose JSON does not parse
+
+/** httpx.Problem and httpx.Field, mirrored. */
+export interface Problem { status: number; code: string; ref?: string; fields?: Field[] }
+export interface Field { field: string; code: string; params?: Record<string, string>; reason: string }
+export type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+
+/** Wire forms from model.md, mirrored here (model.md "UI"). */
+export type ID = string; // canonical UUID
+export type Sensitivity = "public" | "internal" | "personal" | "sensitive";
+export interface TimeRange { start: string; end: string } // RFC 3339 instants
+
+/** Hooks the frame installs once (decision 6). Consumers: the frame; tests install fakes. */
+export function configureClient(hooks: {
+  onUnauthenticated(returnTo: string): void;   // the frame clears the session and navigates to sign-in
+  onReadOnly(readOnly: boolean): void;          // from X-Read-Only on every response
+  onFailure(error: ApiError): void;             // the reporter decides whether it is reportable
+}): void;
+```
+
+```ts
+// web/src/i18n/index.ts
+
+/** Every key in web/src/shell/messages/en.json and every set's messages/en.json, as a
+ *  union type generated by `pnpm generate:messages` (decision 8). */
+export type MessageKey = keyof GeneratedKeys;
+
+/** Returns the message for key in the active language, with values interpolated and the
+ *  regional's terms available as {term_event}, {term_department}, ... (decision 7).
+ *  Falls back to `en`, then to the key itself (F23, F24). Never throws. Consumers: every
+ *  component; `messageFor` in error display. */
+export function useT(): (key: MessageKey, values?: Record<string, string | number | Date | boolean>) => string;
+
+/** Locale-aware formatting through Intl, in the active language. `date` and `time` take an
+ *  IANA zone (an event's) and show the zone when it differs from the browser's. */
+export function useFormat(): {
+  date(instant: string | Date, zone?: string): string;
+  time(instant: string | Date, zone?: string): string;
+  dateTime(instant: string | Date, zone?: string): string;
+  number(n: number): string;
+  relative(instant: string | Date): string;
+  list(items: string[]): string;
+};
+
+/** The active language and the ones offered (the shell's catalogue languages, restricted
+ *  later by settings). `set` persists the choice (decision 7) and re-renders. */
+export function useLanguage(): { current: string; offered: readonly string[]; set(tag: string): void };
+```
+
+```ts
+// web/src/ui/errors/index.ts
+
+/** The translated sentence for an error, by code: `error.<code>` (and `error.unknown` for
+ *  a code the catalogue lacks). Consumers: ErrorState, ErrorSummary, toasts. */
+export function messageFor(t: ReturnType<typeof useT>, error: ApiError): string;
+
+/** A screen's error state: the sentence, the reference line and copy button when
+ *  `showsRef(error)` (decision 9), a retry button when `onRetry` is given. */
+export function ErrorState(props: { error: ApiError; onRetry?: () => void }): JSX.Element;
+
+/** A form's error summary: `role="alert"`, receives focus when it appears, lists each field
+ *  error as a link to its input (by the input's `name` equal to `fields[].field`), then the
+ *  non-field message; shows the reference when `showsRef(error)`. */
+export function ErrorSummary(props: { error: ApiError | null; formRef: React.RefObject<HTMLFormElement> }): JSX.Element | null;
+
+/** Per-input messages: `fields[].code` translated through `module.<module>.field.<code>`,
+ *  then `field.<code>`, then `field.unknown`, with `params` as values; the server's
+ *  `reason` is never rendered (decision 2). */
+export function useFieldErrors(error: ApiError | null): Readonly<Record<string, string>>;
+
+/** True for every code except `invalid`, `unauthenticated`, `read_only` and the client
+ *  code `network` (decision 9). */
+export function showsRef(error: ApiError): boolean;
+```
+
+```ts
+// web/src/shell/report.ts — the reporter (D20, telemetry.md Proposed change 4).
+
+/** Installs the window listeners and the flush timer. Called once, first thing in
+ *  main.tsx, before React renders (decision 13). Idempotent. */
+export function installReporter(opts: { appVersion: string; now?: () => Date; send?: Sender }): Reporter;
+
+export interface Reporter {
+  /** From the client's onFailure hook: queues an `api` report when reportable(error). */
+  apiFailure(error: ApiError): void;
+  /** From an ErrorBoundary: queues a `screen` report with the matched route pattern. */
+  screenCrash(error: unknown, screen: string): void;
+  /** Sends what is pending now (pagehide, tests). Never throws. */
+  flush(reason: "timer" | "pagehide" | "manual"): void;
+  /** Which failures are the shell's or the deployment's business (decision 14). */
+  reportable(error: ApiError): boolean;
+}
+```
+
+```go
+// Package web embeds the built web shell for app (api.Options.UI). It imports the
+// standard library and lib/errs only; only app imports it (layer rules, Proposed change 8).
+package web
+
+import "io/fs"
+
+// FS returns the built shell rooted at dist/ (index.html at the root, hashed files under
+// assets/), for api.Options.UI. It fails with errs.NotFound when dist/ holds no index.html
+// (a checkout where `pnpm build` has not run): app then starts without a UI, logs one
+// warning, and non-API paths answer 404 (api decision 12). Cannot fail otherwise.
+// Consumer: app (`serve`).
+func FS() (fs.FS, error)
+
+// Version returns the bundle's version, written by the build to dist/version.txt (the
+// same string Vite injects as __BMS_VERSION__ and the shell sends as app_version). It
+// fails with errs.NotFound when the file is missing and errs.Invalid when its content is
+// not a telemetry token of at most 64 bytes (F31). Consumer: app, which warns once at
+// start when it differs from the binary's version (Proposed change 4).
+func Version() (string, error)
+```
+
+### Who needs each member
+
+| Member | Consumer(s) | Pre-condition | Post-condition |
+|---|---|---|---|
+| `ScreenSet`, `NavEntry`, `Messages` | every module and core area (`index.ts`); the registry; `module-hello` | — | one shape for screens, mirrored on the Go manifest |
+| `api`, `CallOptions` | every screen (through TanStack Query), the frame (`/api/modules`, session, admin modules) | the generated schema matches the server (Proposed change 4) | typed calls; `ApiError` on failure |
+| `ApiError`, `ProblemCode`, `ClientCode`, `Problem`, `Field` | error display; the reporter; tests | — | one error shape |
+| `ID`, `Sensitivity`, `TimeRange` | module and core screens | — | model.md's wire forms in one place |
+| `configureClient` | the frame (once); tests | — | the three hooks installed |
+| `useT`, `MessageKey`, `useFormat`, `useLanguage` | every component; the frame's language menu | a catalogue loaded | translated text; formatted values |
+| `messageFor`, `ErrorState`, `ErrorSummary`, `useFieldErrors`, `showsRef` | every screen with a query or a form | — | errors shown the same way everywhere |
+| `installReporter`, `Reporter` | `main.tsx`; the client's `onFailure`; `ErrorBoundary`; tests | — | reports reach intake within its limits |
+| `web.FS`, `web.Version` | `app` | `pnpm build` ran | the files `api` serves; the version to compare |
+
+## Types
+
+Defined here: `ScreenSet`, `NavEntry`, `Messages`, `ApiError`, `ProblemCode`, `ClientCode`,
+`Problem`, `Field`, `Method`, `ID`, `Sensitivity`, `TimeRange`, `MessageKey`, `Reporter`,
+plus the internal `Session` and `ReadOnlyState`:
+
+```ts
+// web/src/shell/session.ts (private to the frame; screens read it through useSession())
+export type Session =
+  | { signedIn: false }
+  | { signedIn: true; personId: ID; playaName: string; superuser: boolean; permissions: readonly string[] };
+// Filled from GET /api/accounts/session (identity.md, Proposed change 5; permissions from
+// authz.md, Proposed change 6). In M0 the route does not exist and the shell is signed out (F28).
+
+export type ReadOnlyState = { readOnly: boolean; since?: Date };
+```
+
+Wire types a module needs come from `schema.d.ts` (`components["schemas"]["VolunteersShift"]`),
+never hand-written: a hand-written type drifts from the server; the generated one fails
+`openapi-check` when it drifts (decision 5).
+
+## Data
+
+No tables. What the browser holds, where, at what sensitivity (privacy-data), and for how
+long. The rule: **personal data lives in the page's memory only and leaves with it.**
+
+| What | Where | Level | Why | Lifetime |
+|---|---|---|---|---|
+| `Session` (person ID, playa name, superuser flag, permission names) | memory (the session store) | internal | the frame's header and navigation; route gating before the server's own check | until sign-out, a `401`, or the tab closes |
+| Query cache: whatever the current screens fetched (up to `sensitive`, e.g. an incident) | memory (TanStack Query, no persister) | the record's own level | screens render from it; back navigation does not refetch | `gcTime` 5 minutes after the last screen using it unmounts; cleared entirely on sign-out and on `401` (decision 11) |
+| Pending error reports (`message`, `stack`, route patterns, `app_version`, counts) | memory (the reporter's queue, at most 100) | internal; patterns and messages, never values | D20 | until sent (≤ 10 s) or the page is hidden |
+| Language tag | `localStorage["bms.lang"]`: the one key the shell writes (decision 7) | not personal (a BCP 47 tag) | a person's choice must survive sign-out and reload | until changed |
+| The session cookie | the browser's cookie jar, `HttpOnly`: unreadable by this code | — | `identity.md` | identity's |
+| URLs (history) | the browser | — | module screens put IDs in paths and filters in query strings, never names, e-mail addresses or free text (privacy-data: "never in URLs"); a module spec that needs a text search uses `POST` or keeps the query in memory | the browser's |
+
+Never written by the shell: `sessionStorage`, `indexedDB`, the Cache API, a service worker,
+cookies, `document.title` with personal data (titles are screen names: "Shift details",
+never the person's name), `console` output in production builds, any third-party request
+(no analytics, no CDN, no web fonts; decision 15). Form inputs holding `personal` or
+`sensitive` text carry `autocomplete="off"` (sign-in's username and password keep the
+browser's password-manager autocomplete, which is the person's own choice). No draft of a
+form is kept across navigation unless a module spec says so and where.
+
+## Permissions
+
+The shell decides nothing; the server checks every call (09 ground rules). What it reads
+from the session to show or hide:
+
+| Operation | Permission | Scoped by | Default roles | Notes |
+|---|---|---|---|---|
+| `GET /api/modules` at boot | none (public, api decision 27) | — | anyone | names and enablement only |
+| `GET /api/accounts/session` at boot and after sign-in/out | none (public; `{signed_in:false}` is a `200`) | — | anyone | Proposed change 5 |
+| `GET /api/admin/modules` (admin "modules" screen) | `core.modules.read` (api) | site | every site-admin starter role | the entry shows when `session.permissions` has it (M2+); the screen's forbidden state handles a `403` |
+| `POST /api/client-errors` | none (public, telemetry decision 9) | — | anyone | the reporter, within the limits |
+| Showing a `NavEntry` or mounting a route | `access` on the entry or route: `public`, `signed-in`, or any of the named permissions | — | — | a hidden entry is a convenience; the module's service still decides |
+| Any module call | the module's own | — | — | the shell passes the cookie and nothing else |
+
+Superuser (D23): the shell shows the banner when `session.superuser` is true; it grants
+nothing and hides nothing for it.
+
+## Signals
+
+None. The shell is a client; it learns of changes by calling again.
+
+## Settings
+
+None of its own in M0. Everything a regional would do differently is data the shell reads,
+with the defaults below until `settings.md` provides the endpoint (Proposed change 7):
+
+| Value | Source when `settings` exists | Default now | Used for |
+|---|---|---|---|
+| Regional name | `GET /api/settings/public` | `BMS` | the header, `document.title` suffix, the home greeting |
+| Logo | same (a same-origin URL) | none (the name as text) | the header |
+| Colours | `GET /theme.css` (same-origin stylesheet, decision 10) | the shipped palette | the whole frame; settings validates contrast (Proposed change 7) |
+| Default language | `GET /api/settings/public` | `en` | the language before a person chooses (decision 7) |
+| Offered languages | same | every language the shell's catalogue has | the language menu |
+| Terminology (`event`, `department`, `theme camp`, `participant`, ...) per language | same | the catalogue's `term.*` entries | `{term_*}` arguments in every message (decision 7) |
+
+Constants inside the shell, pinned by tests, with the reason each is not a setting:
+
+| Constant | Value | Why not configurable |
+|---|---|---|
+| client call timeout | 35 s | `http.request_timeout` defaults to 30 s; the client gives up just after the server would (decision 6) |
+| query `staleTime` / `gcTime` | 30 s / 5 min | freshness is per screen; the cap bounds what memory holds (decision 11) |
+| GET retries | 2, at 1 s then 3 s, or `Retry-After` when longer | enough for a flap, not enough to hide an outage |
+| reporter flush interval; pending cap; dedup counter cap | 10 s; 100; 1000 | telemetry Proposed change 4 and `intake.MaxCount` |
+| reporter backoff after a network failure | 10 s doubling to 5 min | telemetry: never flood |
+| loading indicator delay | 300 ms | a spinner that flashes is worse than none |
+| bundle budget | shell entry ≤ 200 KB gzip JS and ≤ 30 KB CSS; each lazy chunk ≤ 100 KB | "usable on a slow connection" (principle 4) |
+| minimum touch target | 44 × 44 CSS px | the project's rule (web-reviewer), above WCAG 2.2's 24 px |
+| smallest supported width | 320 CSS px | the project's rule |
+
+## UI
+
+The shell's own screens. Every screen has a title (`document.title = "<title> · <regional
+name>"`), an `h1`, and handles loading, empty, error, forbidden and success where each
+applies. Wording is the `en` catalogue's; it is given here so the translator and the
+reviewer see the same text.
+
+| Route | Who | Content | States |
+|---|---|---|---|
+| frame (every page) | everyone | skip link ("Skip to content") → `<header>` (logo or name, `<nav aria-label="Main">` from enabled sets' `main` entries, the language menu, the person's playa name with a "Sign out" button or a "Sign in" link) → banners → `<main id="content" tabIndex={-1}>` → `<footer>` (regional name, the bundle version as `<small>`). On a phone the navigation is a disclosure button ("Menu", `aria-expanded`) that opens a full-height panel; on wide screens a horizontal bar. | read-only banner (`role="status"`): "This copy is read-only. You can look things up, but nothing can be saved right now."; superuser banner (`role="status"`): "You are signed in as the break-glass superuser. Every action is recorded."; session-check banner (F29) |
+| `/` home | everyone | signed out: "Welcome to {regional}" with a sign-in button and the public nav entries as cards; signed in: "Hi, {playa_name}" and a card per `main` entry the person may see | empty (no enabled sets with entries): "Nothing is turned on yet. An administrator can enable modules." |
+| `/sign-in` | signed out | the form `identity.md` defines (e-mail address, password), `autocomplete` on both, errors through `ErrorSummary`; `returnTo` (a same-origin path, validated: begins with `/`, not `//`) followed after success | M0: "Sign-in isn't available in this build yet." (F28); `401` → "That e-mail address or password isn't right." (never which); `429` → `error.rate_limited`; read-only: sign-in still works (09 ground rules) |
+| `/admin/modules` | signed in with `core.modules.read` | version; a table per module: title (`module.<name>.title`), enabled, schema (built, applied, "up to date" or "needs `bms migrate`"), permissions, settings keys, publishes, subscribes, provides, requires, uses, defines, contributes to; warnings as a list (the server's English `message`, operator text by module-contract decision 8, marked `lang="en"`); edges as a table "from → to (kind, via)". No drawn graph in M0: a table is accessible and enough (decision 16) | loading; forbidden (`403`): "You don't have access to this screen." with ref; error with ref and retry; empty: "No modules are compiled into this build." |
+| `*` not found | everyone | "There's nothing at this address." with a link home; also what a disabled module's path shows (decision 3) | — |
+| crashed screen (an `errorElement`) | everyone | "Something went wrong on this screen." with "Try again" (re-renders the route) and "Go home"; if the cause is an `ApiError` with a ref, the reference line | — |
+| cannot reach the server (boot, F27) | everyone | "Can't reach the server. Check your connection and try again." with retry; or, for a server error, "Something went wrong." with the reference line and retry | — |
+| reference line (telemetry.md "UI") | — | "If you ask for help, quote the reference **1A2B-3C4D**." with a "Copy reference" button (`navigator.clipboard`; falls back to a selectable `<code>`) | — |
+
+Error messages by code (`error.<code>` in `web/src/shell/messages/en.json`):
+
+| code | English |
+|---|---|
+| `invalid` | "Some of the information isn't right. Check the fields below." |
+| `unauthenticated` | "Your session ended. Sign in again." (shown as a toast on the sign-in page after the redirect) |
+| `permission` | "You don't have permission to do that." |
+| `not_found` | "We couldn't find that. It may have been removed, or you may not have access to it." |
+| `conflict` | "That change clashes with another one. Reload and try again." |
+| `rate_limited` | "Too many attempts. Wait {seconds, plural, one {# second} other {# seconds}} and try again." |
+| `read_only` | "This copy is read-only right now, so that can't be saved." |
+| `unavailable`, `timeout`, `shutting_down` | "The server isn't available right now. Try again in a moment." |
+| `unsupported` | "That feature isn't turned on here." |
+| `internal`, `payload_too_large`, `unsupported_media_type`, `method_not_allowed`, `cross_origin`, `misdirected`, `malformed_response`, unknown | "Something went wrong." |
+| `network` | "Can't reach the server. Check your connection and try again." |
+
+Field messages (`field.<code>`): `required` "Required."; `range` "Must be between {min} and
+{max}."; `positive` "Must be more than zero."; `one_of` "Must be one of: {options}."; `url`
+"Must be a web address."; `host_port` "Must be a host and port, like host:5432.";
+`malformed` "This isn't in the expected form."; `unknown` "This value isn't valid." A module
+adds its own under `module.<name>.field.<code>` (for example `module.volunteers.field.overlap`).
+
+## Behavior
+
+### Decisions settled here, with reasons
+
+1. **Modules mount under `/<name>/` in the browser, as under `/api/<name>/` on the
+   server.** Two modules can then never claim the same path, a disabled module's whole
+   subtree disappears at once, the reporter's `screen` pattern names the module, and a
+   person reading a URL knows which module they are in. The shell keeps `/`, `/sign-in`,
+   `/admin/...`, `/account/...` and the asset paths (`/assets/`, `/api/`, `/healthz`,
+   `/readyz`) as reserved names (F19). A module's admin screens also live under its own
+   prefix (`/volunteers/positions`), grouped in the "Administration" navigation by
+   `NavEntry.area`; `/admin/` holds only the shell's screens.
+2. **The server's `reason` is never shown; an untranslated field code shows `field.unknown`
+   and is reported.** api.md decision 25 made `reason` the fallback for a code the shell
+   does not know, which lets an English sentence into a Spanish form: exactly what D28
+   forbids. The code list is small and pinned (`lib-core`), modules add theirs to their
+   own catalogue, and the generated key types make a missing shell key a compile error; so
+   an unknown code at runtime is a defect, and a defect should reach the maintainer (as a
+   client report with the code in its message) rather than the participant (as English).
+   `reason` stays in the body for `curl`, logs and non-browser clients. In a development
+   build the client logs `reason` to the console. Proposed change 1 asks api.md and
+   lib-core.md to record the change; Open question 1 asks the owner, who made decision 25.
+3. **Core areas register through the same `ScreenSet` as modules, in `web/src/core/`,
+   always enabled.** The alternative, writing the accounts, people and settings screens
+   into the frame, would make the frame the largest package and give core specs no place of
+   their own. With one shape, `identity.md`'s sign-in screen is `core/accounts`, people's
+   screens are `core/people`, and the frame stays the thing that hosts them. `kind: "core"`
+   skips the `GET /api/modules` check because a core area is not a module (api decision 15
+   lists modules only).
+4. **Module isolation is enforced by lint and by a script, not by convention.** D9 in the
+   browser: `web/src/modules/<a>/**` may import `@/api`, `@/i18n`, `@/ui`,
+   `@/registry/types` and itself; never `@/modules/<b>`, `@/core/*` or `@/shell/*`. The
+   same for `web/src/core/<a>/**`. The frame imports `@/modules/index.ts` and
+   `@/core/index.ts` (the lists) and no folder directly. A string literal `"/api/<b>/"`
+   inside `modules/<a>` is refused too: calling another module's API is importing it by
+   another name; what a module needs from another goes through a core contract or an
+   extension point whose screens the owning module renders (D19). ESLint
+   (`no-restricted-imports` with per-folder overrides) catches it in the editor;
+   `scripts/check-web-module-imports.sh` (grep, no Node needed) runs under `make imports`
+   so the Go and web rules fail the same target.
+5. **The client is generated from the server's document and committed.** `openapi-typescript`
+   (MIT) turns `web/openapi.json` into `schema.d.ts` (types only, no runtime); `openapi-fetch`
+   (MIT, ~6 KB, no dependencies) gives typed `GET`/`POST` over `fetch`, and the shell's
+   `client.ts` wraps it with middleware for `traceparent`, timeouts, `X-Read-Only`, problem
+   parsing and the hooks. Both files are committed: a reviewer sees an API change as a
+   diff, the web build needs no Go toolchain, and `make openapi-check` (regenerate from
+   `bms openapi`, Proposed change 4, and `git diff --exit-code`) proves they match the
+   binary. A hand-written typed client was rejected (the path-typing is the hard part and
+   is exactly what the library does); a heavier generator with runtime validation was
+   rejected (the server validates; the browser would validate twice and ship a schema
+   runtime). `fetch` is allowed only in `web/src/api/**` and the reporter (lint).
+6. **Every call: a fresh `traceparent`, same-origin credentials, a 35 s timeout, one
+   `ApiError` shape, three hooks.** `traceparent` is `00-<32 hex>-<16 hex>-01` from
+   `crypto.getRandomValues`, kept on the `ApiError` as `traceId` so a report's `trace_id`
+   leads to the server's spans (telemetry decision 6; the server ignores the flags).
+   `credentials: "same-origin"` because the cookie is `SameSite=Lax` and the API has one
+   origin (api decision 6); no `Authorization` header exists. The client's own
+   `AbortController` fires at 35 s and is combined with the caller's signal by hand (no
+   `AbortSignal.any`, decision 17). The response's `X-Read-Only` goes to `onReadOnly` on
+   every response, present or not, so the banner appears on the next call and clears on
+   the first response after the copy is writable again (api decision 16). A `401` on any
+   route but the session endpoint calls `onUnauthenticated(returnTo)`: the frame clears the
+   session and the query cache and navigates to `/sign-in?returnTo=<path>`; the error is
+   still thrown so the screen's state settles. Every failure calls `onFailure`, and the
+   reporter decides (decision 14). No automatic retry lives in the client: TanStack Query
+   retries `GET`s (decision 11) and never mutations.
+7. **Language: the regional's default, then the person's explicit choice; the browser's
+   language list is not consulted.** D28 makes the default language a per-regional setting,
+   which a per-browser guess would silently override; a regional that serves a Spanish-
+   speaking community chooses Spanish for everyone, and anyone else switches once. The
+   choice is kept in `localStorage["bms.lang"]` (a language tag is not personal data and
+   must survive sign-out and the sign-in page), mirrored to the profile when `people`
+   exists (Proposed change 13). `<html lang>` follows it. Offered languages are those the
+   shell's catalogue has (`en` in M0; `es` next, D28). **Terminology** (what a regional
+   calls an event or a department) reaches every message as arguments `{term_event}`,
+   `{term_department}`, ... merged into the values of every `t()` call, from the catalogue's
+   `term.*` entries until `settings` supplies them per language (Proposed change 7).
+   FormatJS (`react-intl`, BSD-3) with ICU MessageFormat was chosen over a lighter library
+   because ICU is what translators and translation tools already speak (plurals, selects,
+   dates through `Intl`), and the 30 KB it costs fits the budget; Lingui was the runner-up.
+8. **Message keys are typed; `en` is the reference; a module's manifest-derived keys are
+   checked by a Go test.** `pnpm generate:messages` reads every `messages/en.json` and
+   writes `web/src/i18n/keys.d.ts`, so `t("shell.nope")` fails `tsc` and no screen can
+   ship with a missing English string. Other languages may be incomplete: a key missing in
+   `es` falls back to `en` (F23) and `pnpm check` prints the missing keys per language as a
+   warning, not a failure, so a translation can land in parts. The keys module-contract
+   decision 8 derives from a manifest (`module.<name>.title`, `.permission.<rest>.title`,
+   ...) are the one set the TypeScript side cannot know; `internal/app` imports every
+   module, so a Go test there (`TestMessageCatalogues_EnglishCoversManifests`) walks every
+   registered manifest and checks `web/src/modules/<name>/messages/en.json` (Proposed
+   changes 3 and 4). The catalogue files are flat JSON objects (`{"key": "ICU message"}`),
+   one per language per set: the format every translation tool imports.
+9. **The reference is shown for every error but `invalid`, `unauthenticated`, `read_only`
+   and `network`.** telemetry.md "UI" says every 5xx and every 4xx but validation. Three
+   refinements: `read_only` is an expected state with its own banner and message, and
+   "quote this reference" would send a volunteer to ask for help about a copy that is
+   behaving correctly; `unauthenticated` ends in the sign-in page, where a reference
+   helps nobody; `network` has no reference because no server answered. Everything else,
+   including `not_found` and `permission`, shows it: those are where a person asks "why
+   can't I see this?" and a maintainer wants the trace. Proposed change 2 records it.
+10. **The shell lives inside `api.DefaultCSP` and asks for no relaxation.** `default-src
+    'self'` with no `'unsafe-inline'` means no inline `<script>` (Vite's production output
+    has none), no `<style>` elements and **no `style=` attributes** (a CSP without
+    `'unsafe-inline'` in `style-src` blocks those too). So: Tailwind classes only, the
+    `style` prop and `dangerouslySetInnerHTML` are lint errors, and a regional's colours
+    arrive as a same-origin stylesheet `GET /theme.css` that `settings` serves (Proposed
+    change 7) rather than as inline custom properties. If a later screen needs a computed
+    inline style (a chart), its spec proposes `style-src-attr 'unsafe-inline'` to api.md
+    then, with the reason. `img-src 'self' data:` covers the logo (same origin) and
+    inline SVG icons. COOP and CORP `same-origin` mean no cross-origin embeds or popups,
+    which the shell has no use for.
+11. **TanStack Query holds every server read, in memory only, cleared on sign-out.** Every
+    screen has loading, empty, error and success states; one library gives them one shape
+    (`isPending`, `error`, `data`), retries `GET`s on `network`, `unavailable`, `timeout`
+    and `shutting_down` (twice, honouring `Retry-After`), refetches on window focus (a
+    phone that comes back from a pocket shows fresh shifts) and never persists. No
+    `persistQueryClient`, no `IndexedDB`: a cached incident on a shared device is a leak
+    (privacy-data: "never in the browser's storage"). `queryClient.clear()` runs on
+    sign-out and on `401`. Offline caching, when Q-OFFLINE is designed, is a separate spec
+    with its own privacy answer.
+12. **No component library; a small UI kit over native elements and Tailwind.** Accessible
+    primitives are few here (button, field, dialog, banner, table, toast), native
+    `<dialog>` gives focus trapping and return for free, and a library brings its own
+    styling system, bundle weight and upgrade churn. Tailwind v4 (MIT) because utility
+    classes keep styles in the component and need no `<style>` tag (decision 10). Icons
+    from Lucide (ISC), tree-shaken, always `aria-hidden` with a text label beside or a
+    visually hidden one.
+13. **The reporter is installed before React and never throws.** A crash during boot is the
+    kind a maintainer never hears about. `installReporter` runs first in `main.tsx`, adds
+    `error` and `unhandledrejection` listeners, and every path inside it is wrapped so a
+    bug in the reporter cannot take the page down or recurse. An `ApiError` the client
+    already reported carries `reported = true`, so the same failure thrown up to a boundary
+    or a rejection handler is not counted twice.
+14. **Only failures that are the shell's or the deployment's are reported as `api`.** The
+    server already logs every error response with its reference (api decision 4), so a
+    browser report of a `404` or a `403 permission` would duplicate a log line and spend
+    the intake budget (30 per address per minute). Reported: `network` (no server log
+    exists), `malformed_response` (a proxy page or a contract mismatch), `internal` (the
+    maintainer wants the screen, version and browser), and the deployment or shell bugs
+    `cross_origin`, `misdirected`, `method_not_allowed`, `payload_too_large`,
+    `unsupported_media_type`. Not reported: `invalid`, `unauthenticated`, `permission`,
+    `not_found`, `conflict`, `rate_limited`, `unsupported`, `unavailable`, `timeout`,
+    `read_only`, `shutting_down`. Plus the one special case of decision 2 (an untranslated
+    field code, reported as `api` with the code in the message). `/api/client-errors`'s
+    own failures are never reported (telemetry Proposed change 4).
+15. **No third-party request, ever.** No analytics, no CDN, no web fonts (a system font
+    stack), no map tiles, no error-tracking SaaS: D20 routes browser errors through bms,
+    privacy-data forbids analytics, and principle 6 forbids a dependency a regional cannot
+    self-host. `connect-src 'self'` in the CSP makes this a runtime guarantee, and
+    `TestBundle_NoExternalURLs` greps the built assets for `https://` origins other than
+    documentation links.
+16. **The admin "modules" screen is tables, not a drawn graph.** A diagram needs an
+    accessible equivalent anyway, and the edges list is that equivalent; M0 ships the
+    tables and a module author reads provides/uses as rows. A drawing can come later as an
+    enhancement that keeps the tables.
+17. **Browser support is Baseline "widely available" at the time of the build, and nothing
+    newer.** Phones at an event are not new; Vite's `baseline-widely-available` target
+    (features shipped in every major engine for at least 30 months) is a rule a reviewer
+    can check with one lookup and avoids both a legacy-browser plugin (inline scripts,
+    CSP) and APIs only one browser has. `AbortSignal.any`, for example, is replaced by ten
+    lines. `docs/operating.md` states it as "browsers from the last two and a half years"
+    (Proposed change 15). Open question 4 confirms it with the owner.
+18. **Dark mode follows `prefers-color-scheme` from M0.** Screens are read at night on the
+    playa at full brightness; a dark palette is one Tailwind variant and a second set of
+    tokens, cheap now and expensive to retrofit. No toggle in M0 (the OS setting is the
+    toggle); both palettes meet AA contrast. Open question 3 confirms it.
+19. **Logical properties, not left/right.** Spanish is left-to-right, but a right-to-left
+    language later would otherwise mean touching every margin. Tailwind's `ms-`/`me-`/
+    `ps-`/`pe-`/`start`/`end` utilities are used; `ml-`/`mr-`/`pl-`/`pr-`/`left-`/`right-`
+    are a lint warning (a custom ESLint rule over class strings), so the habit forms now.
+20. **The bundle version is the binary's version.** `make web-build` runs `pnpm build` with
+    `BMS_VERSION` set to the same string `-ldflags -X` gives the binary (`git describe`,
+    or `dev`); Vite injects it as `__BMS_VERSION__`, the reporter sends it as `app_version`,
+    the footer shows it, the build writes `dist/version.txt`, and `app` warns once when
+    `web.Version()` and the binary's version differ (a stale `dist/` in a developer's tree).
+
+### Boot, step by step (`main.tsx`, `app.tsx`)
+
+1. `installReporter({ appVersion: __BMS_VERSION__ })` (decision 13). Read the language
+   (`lang.ts`: the stored tag if offered, else `en` until settings exists; F25, F26). Set
+   `<html lang>`.
+2. `validateRegistry([...coreSets, ...moduleSets])` (F19–F21). In a production build a
+   failure renders the crashed-screen state with the message; it cannot reach production
+   because `registry.test.ts` imports the real lists.
+3. `configureClient({ onUnauthenticated, onReadOnly, onFailure: reporter.apiFailure })`.
+4. Render `<App/>`: the `QueryClientProvider`, the `IntlProvider` (shell catalogue for the
+   language, loaded; sets' catalogues load when their routes mount), the stores' providers,
+   the router.
+5. `App` issues, in parallel, `GET /api/modules` and `GET /api/accounts/session` (and
+   later `GET /api/settings/public`). Until both settle: the frame's chrome with a
+   `Loading` region (text after 300 ms, `aria-live="polite"`), no navigation yet. If
+   `/api/modules` fails: the cannot-reach-server state with retry (F27). If the session
+   call fails: F28/F29.
+6. `enabledSets = sets.filter(s => s.kind === "core" || enabled.has(s.name))`. Build the
+   router: the shell's routes, then for each enabled set a parent route `/<name>` with the
+   set's children, each wrapped in an `ErrorBoundary` (the set's `errorElement`) and a
+   gate that redirects to `/sign-in?returnTo=` when `handle.access` is not `public` and
+   the session is signed out; then `*` not found.
+7. On every route change: `document.title`, focus to `<h1>` (or `#content`), the
+   `RouteAnnouncer` live region reads the title, the reporter's current `screen` pattern is
+   updated (`:id` → `{id}`).
+8. After sign-in or sign-out: refetch `/api/modules` and the session; `queryClient.clear()`
+   on sign-out; navigate to `returnTo` or `/`.
+
+### A call, step by step (`client.ts`)
+
+1. Build the URL from the typed path and `params` (path values URL-encoded; query from
+   `params.query` only, never from free text the caller formats). Derive `route` (the
+   pattern) and `module` (the second path segment, or `core`).
+2. Headers: `traceparent`, `Accept: application/json, application/problem+json`,
+   `Content-Type: application/json` when there is a body. Serialize the body with
+   `JSON.stringify`. `credentials: "same-origin"`.
+3. Start the 35 s timer; abort on it or the caller's signal.
+4. `fetch`. A rejection → `ApiError{status: 0, code: "network"}` (F1, F2); the caller's own
+   abort rethrows a `DOMException` `AbortError` unchanged (not an error, not reported).
+5. `onReadOnly(response.headers.get("X-Read-Only") === "true")`.
+6. `2xx`: `204` → `undefined`; else parse JSON; a parse failure → `malformed_response` (F5).
+7. Otherwise: if `Content-Type` is `application/problem+json` parse `Problem` → `ApiError`
+   with `status`, `code`, `ref`, `fields`, `retryAfter` from `Retry-After` (F3); else
+   `malformed_response` with the status (F4). `401` and `route !== "/api/accounts/session"`
+   → `onUnauthenticated(location.pathname + location.search)` (F6). `onFailure(error)`.
+   In a development build, `console.debug` the problem including `reason` (decision 2).
+   Throw.
+
+### Showing an error, step by step
+
+- **A screen's query fails:** render `<ErrorState error onRetry>` inside the screen's layout
+  (the frame stays; the person can navigate away). `messageFor` picks `error.<code>`;
+  `showsRef` adds the reference line (decision 9). `not_found` on a record route is this
+  same state with the `not_found` sentence.
+- **A form's mutation fails:** `ErrorSummary` renders above the form with `role="alert"`
+  and `tabIndex={-1}`, receives focus, and lists one link per field error (`href="#<input
+  id>"`), then the non-field message. Each input whose `name` equals `fields[].field` gets
+  `aria-invalid="true"` and `aria-describedby` pointing at its message from
+  `useFieldErrors` (lookup `module.<module>.field.<code>` → `field.<code>` →
+  `field.unknown`, `params` as values; an empty `code` is treated as unknown). A field with
+  no matching input appears in the summary only. `read_only` shows `error.read_only` in
+  the summary and the banner is already up. `unauthenticated` is handled by the redirect
+  before the summary renders.
+- **A crash:** the route's `ErrorBoundary` renders the crashed-screen state and calls
+  `reporter.screenCrash(error, screen)`.
+- **Toasts** (`role="status"`, auto-dismiss after 8 s, never the only place an error is
+  shown): "Your session ended" after a `401` redirect; "Saved" after a mutation when the
+  screen navigates away.
+
+### The reporter, step by step (`report.ts`)
+
+1. **Sources.** `window` `error` → kind `crash` (`event.message`, `event.error?.stack`);
+   `unhandledrejection` → kind `rejection` (skip an `ApiError` with `reported`; else
+   `String(reason)` and `reason.stack`); `screenCrash` → kind `screen`; `apiFailure` →
+   kind `api` when `reportable(error)` (decision 14), then `error.reported = true`.
+2. **Shape.** `message` and `stack` with every `?query` stripped and cut at 512 and 4096
+   bytes (the server cuts again); `screen` = the current matched route pattern with
+   `:param` rewritten `{param}` (or omitted before the router mounted); `occurred_at` =
+   now (ISO); `app_version`; for `api`: `api: { method, route, status, code }`,
+   `error_ref`, `trace_id`. Never the URL, a query string, a body, a form value or a header.
+   A test pins that every `screen` and `route` the shell can produce matches telemetry's
+   token grammar (F17).
+3. **Dedup and queue.** Key `(kind, message, screen)`; a repeat increments `count` (cap
+   1000). At most 100 distinct pending; the oldest is dropped beyond that (F16). The first
+   queued report starts a 10 s timer; there is no timer while nothing is pending.
+4. **Flush.** At most 20 reports per batch, oldest first. `timer`/`manual`:
+   `fetch("/api/client-errors", { method: "POST", keepalive: true, body })` through
+   `fetch` directly (not the client: the client's `onFailure` would loop); `pagehide` and
+   `visibilitychange` → `hidden`: `navigator.sendBeacon(url, new Blob([body],
+   { type: "application/json" }))`, falling back to the keepalive `fetch` when it returns
+   `false`. `202` → remove the sent reports. `429` → keep them, pause for `Retry-After`
+   (default 60 s) (F13). `400` → drop that batch (a shell bug; `console.warn` in development)
+   (F14). Network failure → keep, back off 10 s doubling to 5 min (F15). Nothing about the
+   intake call is ever reported (decision 14) and every exception inside is caught (F18).
+
+### The registry, step by step (`registry.ts`)
+
+1. Names: each `name` matches `[a-z][a-z0-9]{1,31}`, is unique across core and module
+   sets, and is not reserved (`api`, `assets`, `admin`, `account`, `sign-in`, `healthz`,
+   `readyz`, `modules`, `core`) (F19).
+2. Routes: every `path` is relative and contains no `..` segment; `handle.title` is present
+   on every leaf (F20).
+3. Catalogues: `messages.en` exists (F21); other languages are whatever the set ships.
+4. Navigation: `to` is relative; `access` well-formed. (A missing `label` key is a type
+   error, F22.)
+5. The checked list is frozen and handed to `App`.
+
+Adding a module's UI (add-module §2): create `web/src/modules/<name>/index.ts` exporting
+`ui: ScreenSet`, `messages/en.json`, `screens/`; add one line to
+`web/src/modules/index.ts`. The `hello` module is the reference (Proposed change 10).
+
+### Accessibility and mobile rules (WCAG 2.2 AA)
+
+These are requirements on every screen built in `web/`, checked by `eslint-plugin-jsx-a11y`,
+by `axe-core` in component tests and in the Playwright smoke run, and by `web-reviewer`:
+
+- Landmarks: one `<header>`, one `<nav aria-label>` per navigation, one `<main>`, one
+  `<footer>`; a skip link first in the DOM; one `<h1>` per screen; headings in order.
+- Every input has a `<label>` (the `Field` component makes anything else hard); hints and
+  errors are tied by `aria-describedby`; required fields say so in text, not colour; error
+  text names the problem (never "invalid").
+- Keyboard: everything reachable in DOM order; focus visible (a 2 px outline with 3:1
+  contrast against both palettes; WCAG 2.4.13); focus never obscured by the sticky header
+  (`scroll-padding-top`; 2.4.11); dialogs are `<dialog>` with `showModal()` (trap, `Esc`,
+  return focus); menus are disclosure buttons, not hover.
+- Pointer: targets at least 44 × 44 CSS px; no drag-only interaction (2.5.7); no
+  hover-only content.
+- Motion and colour: `prefers-reduced-motion` disables transitions; colour is never the
+  only signal (icon or text beside it); text contrast 4.5:1 and UI contrast 3:1 in both
+  palettes, checked by a test over the token values.
+- Layout: works at 320 px wide with no horizontal scroll (1.4.10); text resizes to 200%;
+  tables collapse to stacked rows on narrow screens with headers repeated as labels.
+- Announcements: route changes and form outcomes reach a live region; loading states are
+  `aria-busy` on the region and text after 300 ms.
+- Authentication (3.3.8): the sign-in form allows paste and password managers; no
+  cognitive test.
+- Language: `<html lang>` follows the active language; a fragment in another language
+  (the admin warnings) carries `lang`.
+- Slow connections: module code and catalogues load lazily; the bundle budget is enforced
+  by `scripts/check-bundle-size.mjs` against `dist/.vite/manifest.json`; images are
+  avoided or sized; no blocking web fonts.
+
+### Build and tooling
+
+| Concern | Choice (license) | Pinned how |
+|---|---|---|
+| Runtime | Node.js LTS (MIT); pnpm (MIT) | `web/.nvmrc`, `packageManager` in `package.json`; `pnpm-lock.yaml` committed; `save-exact=true` in `.npmrc` |
+| Build | Vite (MIT); `@vitejs/plugin-react` (MIT); `@tailwindcss/vite` (MIT) | exact versions |
+| UI | React 19 (MIT); react-router 7 in data mode (MIT); TanStack Query (MIT); FormatJS `react-intl` (BSD-3); Lucide (ISC) | exact versions |
+| API | `openapi-typescript` (MIT, dev); `openapi-fetch` (MIT) | exact versions |
+| Lint and format | ESLint (MIT) with `typescript-eslint` (MIT), `eslint-plugin-react-hooks` (MIT), `eslint-plugin-jsx-a11y` (MIT); Prettier (MIT) | exact versions |
+| Tests | Vitest (MIT), jsdom (MIT), Testing Library (MIT), `axe-core` and `vitest-axe` (MPL-2.0, OSI-approved), Playwright and `@axe-core/playwright` (Apache-2.0, MPL-2.0) | exact versions |
+| OpenAPI lint | Spectral CLI (Apache-2.0) with the `spectral:oas` ruleset | exact version |
+| Licenses | `web/scripts/check-licenses.mjs` over `pnpm licenses list --json`: every package's license must be in the allowlist (MIT, ISC, BSD-2/3, Apache-2.0, MPL-2.0, 0BSD, Unlicense, CC0-1.0, BlueOak-1.0.0); anything else fails `pnpm check` | the allowlist is in the script |
+
+`pnpm check` runs, in order: `generate:messages` (and fails if `keys.d.ts` changed and is
+not committed), `lint`, `typecheck` (`tsc --noEmit`, strict), `test` (Vitest with
+coverage), `openapi:lint` (Spectral over `web/openapi.json`), `licenses`, `build`,
+`bundle-size`. The Makefile gains `web-check` (`pnpm -C web check`), `web-build`
+(`BMS_VERSION=... pnpm -C web build`, then `dist/version.txt`), `openapi-check` (`go run
+./cmd/bms openapi > web/openapi.json && pnpm -C web generate:api && git diff --exit-code
+web/openapi.json web/src/api/schema.d.ts`), `test-e2e` (Playwright against `bms serve` on
+the compose database; needs `make up`), and `check` adds `web-check` and `openapi-check`
+(Proposed change 4). Development: `pnpm dev` runs Vite on `:5173` with `/api`, `/healthz`
+and `/readyz` proxied to `:8080` (the browser sees one origin, so cookies and cross-origin
+protection behave as in production; `localhost` is a secure context, so the `__Host-`
+cookie works; a phone on the LAN uses `http.allow_plaintext` and the development cookie,
+api decision 24). Vite's dev server has its own relaxed CSP; the production build is what
+`api` serves and tests.
+
+Output: `dist/index.html`, `dist/assets/<name>-<hash>.{js,css,svg}`, `dist/version.txt`,
+`dist/.vite/manifest.json`; `base: "/"`; no inline scripts; no `public/` files besides
+`favicon.svg` and `robots.txt` (`Disallow: /`: a regional's site is not for indexing). The
+Go package `web` embeds `all:dist` and `FS()` returns `fs.Sub(dist)`; `web/dist/.gitkeep` is
+committed so the embed compiles in a checkout without a build (Proposed change 9).
+
+### Concurrency and lifecycle
+
+Single-threaded; no web worker, no service worker (decision 11). The stores are plain
+objects with `subscribe` read through `useSyncExternalStore`. The reporter owns one timer
+at a time and the `pagehide`/`visibilitychange` listeners; it is installed once and never
+uninstalled. TanStack Query's garbage collection bounds memory. Sign-out and `401` reset
+every store and the cache; a full reload is not needed but `location.replace` is used after
+sign-out so no screen keeps a reference to old data. Two tabs are two independent pages;
+the cookie is shared by the browser and a `401` in one tab does not inform the other until
+its next call.
+
+### Imports and boundaries
+
+`web/src/shell/**` → anything under `@/` plus `@/modules/index.ts` and `@/core/index.ts`
+(never a set's folder). `web/src/modules/<a>/**` and `web/src/core/<a>/**` → `@/api`,
+`@/i18n`, `@/ui`, `@/registry/types`, themselves. `web/src/api/**` → `@/i18n` (nothing
+else of ours). `web/src/i18n/**`, `web/src/ui/**`, `web/src/registry/**` → `@/i18n`, `@/ui`
+(acyclic). `fetch`, `XMLHttpRequest`, `sendBeacon`, `WebSocket`, `EventSource`: `@/api/**`
+and `shell/report.ts` only. `localStorage`: `i18n/lang.ts` only; `sessionStorage`,
+`indexedDB`, `caches`, `document.cookie`: nowhere. The Go package `web`: standard library
+and `internal/lib/errs`; imported by `internal/app` only (depguard, Proposed change 8).
+
+## Failure modes
+
+"Kind" is the `ApiError.code` a screen sees, the shell's own error class, or (for the Go
+package) the `errs` kind. Tests are Vitest files and names unless marked Go or e2e.
+
+| # | Method | Condition | Kind | Caller is expected to | Test |
+|---|---|---|---|---|---|
+| F1 | `api.*` | `fetch` rejects: offline, DNS, reset | `ApiError{status 0, code network}`; reported | `ErrorState` with retry; queries retry twice | `client.test.ts` "network failure becomes ApiError network and is reported" |
+| F2 | `api.*` | no response within 35 s | `network` (message `timeout`); reported | same | "client timeout aborts at 35 s with fake timers" |
+| F3 | `api.*` | non-2xx with `application/problem+json` | `ApiError` from the body: `status`, `code`, `ref`, `fields`, `retryAfter` | show per code | "problem body maps every field", "codes table is pinned against web/openapi.json" |
+| F4 | `api.*` | non-2xx without a problem body (HTML from a proxy, empty) | `malformed_response` with the status; reported | generic error with ref if any | "non-problem error body is malformed_response and reported" |
+| F5 | `api.*` | 2xx whose JSON does not parse | `malformed_response`; reported | generic error | "unparsable success body" |
+| F6 | `api.*` | `401` on any route but the session endpoint | `unauthenticated`; `onUnauthenticated(returnTo)` called; not reported | the frame redirects; the screen settles | "401 clears session and navigates to sign-in with returnTo", "401 on the session endpoint does not redirect" |
+| F7 | `api.*` | `403 cross_origin`, `403 misdirected`, `405`, `413`, `415` | that code; reported | generic error with ref | "deployment and shell bugs are reported" (table) |
+| F8 | `api.*` | `429` | `rate_limited`, `retryAfter`; not reported | `error.rate_limited` with the seconds | "429 carries retryAfter" |
+| F9 | `api.*` | `503 read_only` | `read_only`; `onReadOnly(true)` already from the header; not reported | `error.read_only` in the summary; banner up | "read_only sets the store and is not reported" |
+| F10 | `api.*` | `500 internal` | `internal`; reported with `error_ref` and `trace_id` | `ErrorState` with ref | "internal is reported with ref and trace id" |
+| F11 | `useFieldErrors` | `fields[].code` unknown or empty | message `field.unknown`; one `api` report "untranslated field code <code>"; `reason` never rendered | fix the catalogue | `errors.test.ts` "unknown field code shows field.unknown, never reason, and reports once" |
+| F12 | `api.*` | any response's `X-Read-Only` | not a failure: `onReadOnly(true/false)` per response | banner follows | "X-Read-Only toggles the store both ways" |
+| F13 | reporter `flush` | intake answers `429` | reports kept; paused for `Retry-After` (60 s default) | — | `report.test.ts` "429 pauses for Retry-After and keeps pending" |
+| F14 | reporter `flush` | intake answers `400` | that batch dropped; dev `console.warn` | fix the shell | "400 drops the batch" |
+| F15 | reporter `flush` | intake unreachable | kept; backoff 10 s doubling to 5 min; never itself reported | — | "network failure backs off and never recurses" |
+| F16 | reporter | more than 100 distinct pending | oldest dropped | — | "pending cap drops the oldest" |
+| F17 | reporter | a `screen` or `api.route` that is not a token | cannot happen: patterns come from the router and the client, `:p` rewritten `{p}`; pinned | — | "every producible pattern matches the token grammar" |
+| F18 | reporter | an exception inside any handler | swallowed; the page continues | — | "a throwing sender never propagates" |
+| F19 | `validateRegistry` | a duplicate, invalid or reserved `name` | `RegistryError` naming the set; the crashed-screen state in production, a failing test in CI | fix the set | `registry.test.ts` "duplicate, invalid and reserved names are refused", "the real lists validate" |
+| F20 | `validateRegistry` | an absolute route `path`, a `..` segment, or a leaf without `handle.title` | `RegistryError` | fix the set | "absolute or untitled routes are refused" |
+| F21 | `validateRegistry` | a set without `messages.en` | `RegistryError` | add `en.json` | "a set without en is refused" |
+| F22 | `NavEntry.label`, `t()` | a key not in any `en.json` | a `tsc` error (generated key types); cannot reach runtime | fix the key | `generate-messages.test.ts` "keys.d.ts lists every en key and nothing else" |
+| F23 | `t()` | key missing in the active language | the `en` text; one dev warning per key | translate it | `i18n.test.ts` "missing es key falls back to en" |
+| F24 | `t()` | key missing in `en` too (a catalogue edited by hand without regenerating) | the key literal, never English prose from elsewhere | regenerate | "missing en key returns the key" |
+| F25 | `lang.ts` | `localStorage` throws (private mode, quota) | ignored; the choice lives in memory for the page | — | `lang.test.ts` "storage errors are ignored" |
+| F26 | `lang.ts` | stored tag not offered | ignored; the default language | — | "unknown stored tag is ignored" |
+| F27 | boot | `GET /api/modules` fails | the cannot-reach-server state (`network`) or the error state with ref; retry refetches | retry | `app.test.tsx` "modules failure shows retry state" |
+| F28 | boot | `GET /api/accounts/session` answers `404 not_found` (M0: no identity) | signed out; sign-in page says sign-in is unavailable; not reported | — | "session 404 means signed out (M0)" |
+| F29 | boot | the session call fails otherwise (`network`, 5xx) | signed out for the frame, a banner "Couldn't check whether you're signed in." with retry; not a crash | retry | "session failure shows banner and keeps the frame" |
+| F30 | `web.FS` (Go) | `dist/index.html` missing | `errs.NotFound` | app: warn, `UI: nil` | Go `TestFS_WithoutBuild_ReturnsNotFound` (a `testing/fstest` dir), `TestFS_WithBuild_ServesIndexAndAssets` |
+| F31 | `web.Version` (Go) | `version.txt` missing; not a token or > 64 bytes | `errs.NotFound`; `errs.Invalid` | app: warn | Go `TestVersion_Table` |
+| F32 | route change | focus and announcement | not a failure mode: `h1` focused, title set, live region updated | — | `frame.test.tsx` "route change moves focus and announces" |
+| F33 | `ErrorSummary` | a mutation fails with fields | summary focused, `role=alert`, links per field, `aria-invalid` and `aria-describedby` on inputs; unknown field paths in the summary only | — | `errors.test.tsx` "summary focuses and wires inputs" |
+| F34 | `/sign-in` | `returnTo` not a same-origin path (`//evil`, `https://...`) | ignored; `/` after sign-in | — | `signin.test.tsx` "open redirect refused" |
+| F35 | gate | a signed-in route visited while signed out | redirect to `/sign-in?returnTo=` without a call | sign in | "gate redirects before calling" |
+| F36 | build | a chunk over budget; a dependency with a license outside the allowlist; an external origin in `dist/` | `pnpm check` fails | fix it | `check-bundle-size` and `check-licenses` have fixture tests; `TestBundle_NoExternalURLs` |
+| F37 | `make imports` | `modules/<a>` imports `modules/<b>`, `core/*` or `shell/*`, or names `"/api/<b>/"` | the script fails naming the file | use a contract or extension point | `scripts/check-web-module-imports.sh` fixture run in CI; ESLint rule tests |
+
+Members that cannot fail, and why: `messageFor`, `showsRef` (table lookups with a default);
+`useT` (never throws: fallback chain); `Reporter.flush` (every path caught); `configureClient`
+(stores functions); `web.FS` when `index.html` exists (an embedded FS). Each has a
+success-path test.
+
+## Lock-in check
+
+No hosted service and nothing proprietary: every dependency is OSI-licensed (the allowlist
+is enforced in `pnpm check`), self-hosted from the binary, and replaceable at a seam:
+
+| Wrapped | Seam | Alternative that proves it |
+|---|---|---|
+| `openapi-fetch` + `openapi-typescript` | `web/src/api/client.ts`; screens see `api` and `ApiError` only | a hand-written `fetch` wrapper over the same `schema.d.ts`, or any OpenAPI 3.1 generator |
+| FormatJS / ICU | `useT`, `useFormat`; catalogues are flat JSON | Lingui or i18next read the same JSON after a one-time syntax conversion |
+| TanStack Query | screens' hooks only | React's own `use` with a tiny cache; SWR |
+| react-router | `ScreenSet.routes` is `RouteObject[]` | TanStack Router with an adapter in the registry |
+| Tailwind | class strings | plain CSS modules (the tokens are CSS variables) |
+| OpenTelemetry on the server | the shell emits W3C `traceparent` only, no RUM SDK | any backend that reads W3C trace context |
+| Browser APIs | standard only (`fetch`, `sendBeacon`, `<dialog>`, `Intl`, `crypto.getRandomValues`) | every current engine |
+
+## Test plan
+
+**Unit and component** (Vitest, jsdom, Testing Library, `vi.useFakeTimers()` for every
+timing, a fake `fetch` installed per test, `vitest-axe` on every rendered state; no network,
+no real timers, no `localStorage` unless the test is about it; invented people and markers
+`ZQ9MARKER7` / `zq9@marker.example` asserted absent from every report body and URL):
+
+- Client: F1–F10, F12; `traceparent` format and freshness per call; `credentials`; the
+  caller's abort is not an `ApiError`; `module` and `route` derivation (`/api/hello/greeting`
+  → `hello`; `/api/modules` → `core`); `params.path` encoding; never a query string built
+  from a free string.
+- Error display: F11, F33; `messageFor` for every code in the table; `showsRef` table
+  (decision 9); field lookup order `module.<m>.field.<code>` → `field.<code>` → `field.unknown`;
+  `params` interpolation (`range` with `min`/`max`); the reference line and copy button;
+  `reason` absent from the DOM in every case.
+- Reporter: F13–F18; dedup key and `count`; batch ≤ 20; 10 s timer only while pending;
+  `pagehide` uses `sendBeacon` with an `application/json` Blob and falls back; reportable
+  table (decision 14); an `ApiError` with `reported` is skipped by the rejection handler;
+  query strings stripped from stacks; `occurred_at` within a second of the fake clock;
+  `app_version` present; the intake call never passes through the client.
+- Registry: F19–F21; the real `coreSets` and `moduleSets` validate; a disabled module's
+  routes are not mounted and its nav is absent (`/hello` → not found when `hello` is
+  disabled); core sets ignore enablement; `access` filtering of nav by session.
+- i18n: F23–F26; `{term_event}` substitution; plural and date formatting in `en` and a
+  second catalogue; `<html lang>` follows the language; `keys.d.ts` generation (F22).
+- Frame: F27–F29, F32, F34, F35; the read-only banner appears after a response with the
+  header and clears after one without; the superuser banner; the home screen's three
+  states; `document.title`; the admin modules screen's five states from a fixture matching
+  api.md's `AdminModulesResponse` (lower-case keys), including a `warnings` fragment with
+  `lang="en"`; the mobile menu's `aria-expanded` and focus; sign-out clears the query cache.
+- Accessibility: every shell screen and UI-kit component rendered in each state has no
+  `axe` violations; token contrast test (4.5:1 text, 3:1 UI, both palettes); logical
+  property lint fixture.
+- Tooling: `check-bundle-size`, `check-licenses`, `check-web-module-imports.sh` and the
+  message-key generator each have fixtures (pass and fail).
+
+**Go** (`web` package, no infrastructure): F30, F31; `TestFS_ServesHashedAssetsAndIndex`
+over a `fstest.MapFS` and over the real `dist/` when present (skipped otherwise).
+
+**End-to-end smoke** (Playwright, `make test-e2e`, behind `make up`, against `bms serve`
+with the `hello` module and the production build; `@axe-core/playwright` at 320 px and
+1280 px on each shell screen): the frame renders with skip link and landmarks; the `hello`
+entry appears and its screen calls `GET /api/hello/public-greeting`; with
+`BMS_MODULES_DISABLED=hello` the entry is gone and `/hello` is not found; with the database
+set `default_transaction_read_only = on` the banner appears after the first call and the
+server's `X-Read-Only` is `true`; a forced `GET /api/hello/greeting` without a session lands
+on `/sign-in?returnTo=/hello` (M0: F28 state); the CSP header is present on `/` and no
+console CSP violation is logged during the run.
+
+**Lint:** ESLint (boundaries, `jsx-a11y`, `react-hooks`, `no-console` except the reporter,
+no `style` prop, no `dangerouslySetInnerHTML`, no `fetch` outside `@/api` and the reporter,
+no storage APIs outside `lang.ts`, logical properties), `tsc --strict`, Prettier, Spectral
+over `web/openapi.json`.
+
+**Conformance:** `module-hello`'s `web/src/modules/hello/` is the reference set and must
+pass `registry.test.ts`, the boundary script and the Go catalogue test; every later module
+UI is checked by the same three.
+
+## Open questions
+
+1. **Never show the server's `reason`?** Decision 2 reverses the fallback the owner chose in
+   api.md decision 25 (2026-10-17): the shell shows `field.unknown` ("This value isn't
+   valid.") and reports the untranslated code, and never renders the English `reason`.
+   **Proposed answer:** yes. D28 is a product principle; an unknown code is a defect that
+   belongs in a maintainer's log, not in a participant's form. `reason` stays in the body
+   for `curl` and logs. If the owner prefers something visible, the alternative is to show
+   `reason` only in development builds (already done in the console).
+2. **Language before a person chooses: the regional's default only, or the browser's
+   language when the regional offers it?** Decision 7 picks the regional's default.
+   **Proposed answer:** the regional's default, with the language menu always visible; a
+   regional that wants browser detection can get a `language.detect_browser` setting later
+   without a code change.
+3. **Dark mode from M0, following the OS setting, with no in-app toggle?** Decision 18.
+   **Proposed answer:** yes; a toggle (and saving it) can come with the profile.
+4. **Supported browsers: Baseline "widely available" (roughly the last two and a half
+   years of every major engine)?** Decision 17. **Proposed answer:** yes; older phones get
+   a plain "please update your browser" page from a tiny inline-free check in `index.html`
+   (a `<noscript>`-style notice shown when the module script fails to execute), not a
+   legacy build.
+5. **System fonts only?** Decision 15 rules out web fonts for privacy and slow connections;
+   a regional's brand font would then not apply. **Proposed answer:** system fonts in the
+   MVP; a self-hosted font file per regional is a `settings` feature later (served from
+   the same origin, so the CSP still holds).
+6. **An end-to-end smoke test in M0?** It needs Playwright's browser download in CI.
+   **Proposed answer:** yes, the five scenarios above and nothing more; M0's "done when"
+   lists UI behaviours (frame, sign-in page, read-only banner) that no unit test can prove
+   against the real binary.
+
+## Proposed changes elsewhere
+
+1. **`plan/design/api.md` (row 16), decision 25, "UI", "Not responsible for" and Proposed
+   change 12; `plan/design/lib-core.md` (row 1b), the `FieldError` comment and "Behavior":**
+   the web shell translates `fields[].code` with `params` and, for a code it does not know
+   (or an empty code), shows a generic translated message (`field.unknown`) and reports
+   the code; it **never renders `reason`**. `reason` is for non-browser clients, logs and
+   `curl`. Replace "falling back to `reason` for a code it does not know" and "the web
+   shell then shows `Reason`" accordingly (pending Open question 1). Proposed change 12's
+   other items are met: codes mirrored (`ProblemCode`), `error.<code>` keys, `ref` per
+   decision 9 here, `401` → sign-in, the banner from `X-Read-Only` both ways,
+   `GET /api/modules` and `GET /api/admin/modules` read as specified, the client generated
+   at build time and the document linted with Spectral, hashed assets under `assets/`, no
+   inline scripts, no plugins, **no CSP change requested** (decision 10), `traceparent` on
+   every call, `403 misdirected` treated like `cross_origin`, `version` from the admin
+   route. One addition: the api's own routes `GET /api/modules` and `GET /api/accounts/session`
+   are called at boot in parallel, so neither may depend on the other.
+2. **`plan/design/telemetry.md` (row 15b), "UI" and Proposed change 4:** the reference is
+   shown for every code except `invalid`, `unauthenticated`, `read_only` and the client's
+   `network` (decision 9); Proposed change 4 is answered with these refinements: which API
+   failures are reported (decision 14: `network`, `malformed_response`, `internal`,
+   `cross_origin`, `misdirected`, `method_not_allowed`, `payload_too_large`,
+   `unsupported_media_type`, plus an untranslated field code), a pending cap of 100 with
+   oldest-first drop, `keepalive` `fetch` as the `sendBeacon` fallback, the 10 s timer only
+   while something is pending, backoff 10 s to 5 min on a network failure, `screen` derived
+   from the router's pattern with `:p` → `{p}`. Nothing is written to browser storage by
+   the reporter (the one storage key is the language, decision 7).
+3. **`plan/design/module-contract.md` (row 4), Proposed change 7 and "UI":** answered: each
+   set ships `web/src/modules/<name>/messages/<lang>.json` (flat JSON, ICU messages) with
+   `en` required; the manifest-derived keys are checked by a Go test in `internal/app`
+   (`TestMessageCatalogues_EnglishCoversManifests`), which imports every module and reads the
+   files relative to the repository root (skipped when `web/` is absent); screens mount
+   only when `GET /api/modules` lists the module as enabled; the admin "modules" screen
+   renders the graph as tables with the warnings (decision 16). Add to decision 9: the web
+   registry lists core areas too (`kind: "core"`), always enabled.
+4. **`plan/design/app.md` (row 18):** (a) a `bms openapi` command that prints the assembled
+   document (`api.New` with the compiled-in modules' route sets, a stub `Database` and
+   `SchemaStatus`, `UI: nil`; no network or database I/O) for `make openapi-check`;
+   (b) `serve` calls `web.FS()`, passes it as `api.Options.UI`, and on `errs.NotFound`
+   passes `nil` and logs one warning "serving without a UI"; (c) `serve` compares
+   `web.Version()` with the binary's version and warns once when they differ; (d) `app`'s
+   tests host `TestMessageCatalogues_EnglishCoversManifests` (item 3); (e) the Makefile
+   targets `web-check`, `web-build`, `openapi-check`, `test-e2e`, with `check` extended
+   by `web-check` and `openapi-check`, and `build` depending on `web-build` for a release
+   binary; (f) `app` is the only importer of the `web` package.
+5. **`plan/design/identity.md` (row 6):** the frame needs `GET /api/accounts/session`
+   (`AccessPublic`, `200` always: `{"signed_in": false}` or `{"signed_in": true,
+   "person_id", "playa_name", "superuser", "permissions": []}`; `no-store`), `POST
+   /api/accounts/sign-in` (`{email, password}` → `204` + cookie; `401 unauthenticated`
+   without saying which was wrong; `429 rate_limited`), `POST /api/accounts/sign-out`
+   (`204`; works on a read-only copy). The sign-in screen lives in `web/src/core/accounts/`
+   as a `ScreenSet` named `accounts`; `/sign-in` is a shell alias to it. The shell never
+   reads the cookie. `401` handling is decision 6 here.
+6. **`plan/design/authz.md` (row 7):** fill `permissions` in the session response (09 §4:
+   "once per page load") with the names the person holds site-wide plus, for
+   department-scoped grants, `"<permission>@<department-id>"`, so a `NavEntry.access`
+   can name a permission and a department screen can test its own; the server still
+   decides every call.
+7. **`plan/design/settings.md` (row 15):** `GET /api/settings/public` (`AccessPublic`,
+   `no-cache`): regional name, logo URL (same origin), default language, offered languages,
+   terminology per language as `{"term_event": "...", ...}`; `GET /theme.css` (same
+   origin, `text/css`, the regional's colours as CSS custom properties), validated for
+   AA contrast against the shipped palette when saved; later a self-hosted font (Open
+   question 5) and `language.detect_browser` (Open question 2).
+8. **`plan/07-abstractions.md`, `web shell` entry and layer rules:** replace the entry with:
+   "**Purpose:** host every module's screens in one browser application. **Owns:** the
+   frame (navigation from the enabled modules, sign-in state, the read-only and superuser
+   banners, the language menu), the typed API client generated from `/api/openapi.json`
+   (`traceparent`, one `ApiError`, `X-Read-Only`, `401` → sign-in), the build-time screen
+   registry (one folder per module under `web/src/modules/`, one per core area under
+   `web/src/core/`, mounted under `/<name>/`, modules shown only when enabled; D31),
+   translation (FormatJS/ICU catalogues per set, keys typed, terminology as arguments;
+   D28), error display (codes and field codes translated, the reference shown, never the
+   server's `reason`), the reporter (`POST /api/client-errors`; D20), the accessibility
+   and mobile rules, the pinned OSI-only toolchain, and the Go package `web` that embeds
+   `dist/` for `app`. **Doesn't do:** any module's or core area's screens (their specs),
+   authorization (the server), serving and the CSP (`api`), settings and branding values
+   (`settings`), offline caching (Q-OFFLINE). **Spec:** `design/web-shell.md`." Add a
+   layer line: "`web` (`web/embed.go`): the built shell; imports stdlib and `lib/errs`;
+   imported by `app` only." Add to the rules: "In `web/src/`, a module's or core area's
+   folder never imports another's, `core/*` or `shell/*`; enforced by ESLint and
+   `scripts/check-web-module-imports.sh` under `make imports`."
+9. **`.gitignore`:** `web/dist/` becomes `web/dist/*` plus `!web/dist/.gitkeep`, so the Go
+   embed compiles in a fresh checkout (F30 then reports no build).
+10. **`plan/design/module-hello.md` (row 4b):** ship `web/src/modules/hello/` (`index.ts`
+    exporting `ui: ScreenSet` named `hello`, `messages/en.json` with `module.hello.title`,
+    `.description`, the permission and signal titles module-contract decision 8 implies,
+    and `screens/Greeting.tsx` calling `GET /api/hello/public-greeting` and, signed in,
+    `GET /api/hello/greeting`, with every state), as the reference for module authors; it
+    is the set the e2e smoke test exercises.
+11. **`.claude/agents/frontend-implementer.md` and `web-reviewer.md`:** stack line adds
+    TanStack Query, FormatJS (`react-intl`), `openapi-fetch`, Testing Library, `axe-core`,
+    Playwright; rules add: screens under `web/src/modules/<name>/` or `web/src/core/<area>/`
+    exporting `ui: ScreenSet`, routes relative to `/<name>/`; strings through `useT` with
+    typed keys and `{term_*}` for terminology; no `style` prop (CSP); `ErrorState` and
+    `ErrorSummary` for every failure; `name` attributes equal to the API's field paths;
+    `pnpm check` is the verification command. `web-reviewer` adds: the server's `reason`
+    never in the DOM; no `fetch` outside `@/api`; logical properties.
+12. **`.claude/skills/add-module/SKILL.md` §2 and §3:** the `web/src/modules/<name>/` block
+    becomes `index.ts` (exports `ui: ScreenSet`; one import line in
+    `web/src/modules/index.ts`), `messages/en.json` (the keys of module-contract decision 8
+    plus the module's own, `module.<name>.*`), `screens/`, `components/`; §3 adds "a
+    module's screens call only `/api/<name>/` and the core's routes; another module's data
+    comes through a contract the owning module renders".
+13. **`plan/design/people.md` (row 8):** a profile field `language` (`internal`, optional, a
+    BCP 47 tag from the offered list) that the shell reads from the session response and
+    writes when a signed-in person changes the language; the browser key mirrors it.
+14. **`plan/09-core-features.md`, "Ground rules":** "WCAG 2.1 AA" → "WCAG 2.2 AA" (principle
+    4 already says 2.2). §7 "Admin screens": the admin "modules" screen is the shell's;
+    the others are each core area's `ScreenSet`.
+15. **`docs/operating.md` (when written) and `README.md`:** supported browsers (decision 17);
+    building the UI (`make web-build`, Node LTS and pnpm); that the binary serves the UI
+    and no Node is needed at runtime; that a build without `dist/` serves the API only.
+16. **`.golangci.yml`:** a depguard rule for `web/**` (standard library and `internal/lib/errs`
+    only) and `web` added to the deny list of every rule but `app`'s.
+17. **`.claude/skills/go-conventions/SKILL.md`, "Layers":** add the `web` line from item 8.
