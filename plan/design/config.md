@@ -1,6 +1,7 @@
 # config: process configuration
 
 - **Status:** Implemented (2026-10-17); Approved 2026-10-16
+- Amended 2026-10-17 (owner): a `*_FILE` or secrets-file read error reports only the reason class (not found, permission denied, is a directory, unreadable), never the path (F8, F23); ctx is checked before and after each file read, it cannot interrupt a blocking open or read.
 - **Package:** `internal/config` (Go module `github.com/zedgama3/bms`; foundation-level, not
   a bms module). **UI:** none.
 - **Depends on specs:** `lib-errs.md` (Implemented): `errs.E`, `errs.Is`, kinds `Invalid`,
@@ -42,7 +43,7 @@
 15. `log.format` offers `text` as well as JSON (owner, 2026-10-16).
 16. TLS is offloaded to a front end under stated conditions; bind rule F28 (non-loopback bind needs `trusted_proxies` or `allow_plaintext`), F30 (no zero-bit trusted prefix); loopback recognised by literal host, no DNS.
 
-**What callers handle.** `Load` returns the zero `Config` and one `errs.Invalid` joining every problem (catalogue order, unknown variables last), each a `validate.FieldError` named by env variable, never echoing a value (read with `validate.Fields`). Other kinds: `Internal` for an `environ` entry without `=` (F12); `Canceled`/`Timeout` if ctx ends during file reads (F13). A missing secrets file is not an error: `Session.Key` stays unset. Failure modes F1-F30; obligations on `app`: F22 (unknown disabled module, `Invalid` under `BMS_MODULES_DISABLED`, derive `module.Env.Enabled`) and F22b (commands that sign sessions refuse an unset key, naming the secrets file). Secrets-file problems (F23-F27) are `Invalid` under `BMS_SECRETS_FILE`/`BMS_SESSION_KEY`: not a regular file, group/other bits set (Unix), malformed JSON, bad key length, key in both env and file.
+**What callers handle.** `Load` returns the zero `Config` and one `errs.Invalid` joining every problem (catalogue order, unknown variables last), each a `validate.FieldError` named by env variable, never echoing a value (read with `validate.Fields`). Other kinds: `Internal` for an `environ` entry without `=` (F12); `Canceled`/`Timeout` if ctx is done before or after a file read (F13; ctx is checked around each read, it cannot interrupt a blocking open or read such as a FIFO with no writer). A `*_FILE` or secrets-file read error names only a reason class (not found, permission denied, is a directory, unreadable), never the path. A missing secrets file is not an error: `Session.Key` stays unset. Failure modes F1-F30; obligations on `app`: F22 (unknown disabled module, `Invalid` under `BMS_MODULES_DISABLED`, derive `module.Env.Enabled`) and F22b (commands that sign sessions refuse an unset key, naming the secrets file). Secrets-file problems (F23-F27) are `Invalid` under `BMS_SECRETS_FILE`/`BMS_SESSION_KEY`: not a regular file, group/other bits set (Unix), malformed JSON, bad key length, key in both env and file.
 
 **Config vs settings rule.** Configuration is what reaches the database or listens, credentials and security boundaries, per-process values, and what fixes what may run before `migrate`. Everything else is a runtime setting (`settings`). Reloading is not supported.
 
@@ -293,7 +294,7 @@ func Default() Config
 // (F1–F29). Each problem is a validate.FieldError whose Field is the environment variable
 // to fix (BMS_SECRETS_FILE for the secrets file) and whose Reason never contains a value.
 // A missing secrets file is not a problem here: Session.Key is left unset for the command
-// to judge. ctx bounds the file reads. Safe for concurrent use.
+// to judge. ctx is checked before and after each file read (it cannot interrupt a blocking open or read). Safe for concurrent use.
 // Consumers: cmd/bms (once per process); app's tests with a hand-made environ.
 func Load(ctx context.Context, environ []string) (Config, error)
 
@@ -598,7 +599,7 @@ notice when it creates that file.
    the `Config` and nil.
 
 Steps 4 and 5 hold the package's only I/O: reading regular files the operator named (or
-the default secrets path), bounded by the cap and by `ctx`. `Load` never writes, never
+the default secrets path), bounded by the cap; `ctx` is checked before and after each read (it cannot interrupt a blocking open or read, such as a FIFO with no writer). `Load` never writes, never
 follows a path into a directory listing or a network. No log output: `config` has no
 logger; `cmd/bms` prints what `Load` returns.
 
@@ -662,12 +663,12 @@ change 1). `cmd/bms` and `internal/app` are the only packages allowed to import
 | F5 | `Load`, `Validate` | a list has an empty item (`a,,b`, `a,`), a duplicate, or more than 64 items | Invalid | fix the value | `TestLoad_BadList_ReturnsInvalid` |
 | F6 | `Load`, `Validate` | a trusted-proxy entry is neither a prefix nor an address, or a hand-built `netip.Prefix` is invalid | Invalid | fix the value | `TestLoad_BadCIDR_ReturnsInvalid` |
 | F7 | `Load` | both `BMS_X` and `BMS_X_FILE` are non-empty for a secret key | Invalid, `Field` = `BMS_X_FILE`, reason names both variables | remove one | `TestLoad_SecretAndFileBothSet_ReturnsInvalid` |
-| F8 | `Load` | `BMS_X_FILE` cannot be opened or read (missing, a directory, permission denied) | Invalid wrapping the OS error (the path is the operator's, not a secret; the content is never read into the message) | fix the path or permissions | `TestLoad_SecretFileUnreadable_ReturnsInvalid` |
+| F8 | `Load` | `BMS_X_FILE` cannot be opened or read (missing, a directory, permission denied) | Invalid, reason class only: not found, permission denied, is a directory, or unreadable; never the path (an operator may paste a secret as the path) and never the content or the raw OS error text | fix the path or permissions | `TestLoad_SecretFileUnreadable_ReturnsInvalid` |
 | F9 | `Load` | `BMS_X_FILE` is longer than `MaxSecretFileBytes` | Invalid, reason gives the cap | point at the right file | `TestLoad_SecretFileTooLarge_ReturnsInvalid` |
 | F10 | `Load` | `BMS_X_FILE` is empty after trimming trailing CR/LF | treated as unset: F1 if required | set it | `TestLoad_SecretFileEmpty_IsUnset` |
 | F11 | `Load` | a variable whose upper-cased name starts with `BMS_` (not `BMS_TEST_`) is not a known key or `_FILE` of a secret key | Invalid, one `FieldError` per unknown name, reason "unknown configuration variable" | fix the name | `TestLoad_UnknownVariable_ReturnsInvalid` |
 | F12 | `Load` | an `environ` entry has no `=` | Internal | fix the caller (`os.Environ` never does this) | `TestLoad_MalformedEnviron_ReturnsInternal` |
-| F13 | `Load` | `ctx` done before or during a file read | Canceled / Timeout | stop | `TestLoad_ContextCanceled_ReturnsCanceled` |
+| F13 | `Load` | `ctx` done before or after a file read (checked around each read) | Canceled / Timeout | stop | `TestLoad_ContextCanceled_ReturnsCanceled` |
 | F14 | `Validate` | a number or duration out of range: `db.max_conns`, `db.connect_timeout`, `db.query_timeout`, `http.request_timeout`, `http.shutdown_timeout`, `http.max_body_bytes` | Invalid, reason gives the bounds and the value | fix the value | `TestValidate_RangesTable` |
 | F15 | `Validate` | `db.url` is not an absolute `postgres`/`postgresql` URL with a host, exceeds 4096 bytes, or contains NUL | Invalid; reason never contains the URL | fix the value | `TestValidate_DBURL_ReturnsInvalidWithoutEcho` |
 | F16 | `Validate` | `session.key` shorter than 32 or longer than 1024 bytes, or contains NUL | Invalid; reason never contains the key | generate a proper key | `TestValidate_SessionKey_ReturnsInvalidWithoutEcho` |
@@ -678,7 +679,7 @@ change 1). `cmd/bms` and `internal/app` are the only packages allowed to import
 | F21 | `Validate` | `data.dir` empty after trimming, or contains NUL | Invalid | set a path | `TestValidate_DataDir_ReturnsInvalid` |
 | F22 | `app` (obligation, not this package) | a `modules.disabled` entry is not a registered module | Invalid under `BMS_MODULES_DISABLED`, listing the compiled-in names | fix the name | `app.md`: `TestEnabledModules_UnknownDisabledName_ReturnsInvalid` |
 | F22b | `app` (obligation, not this package) | `Session.Key` unset for a command that signs or verifies sessions (`serve`, `create-superuser`, ...) | Invalid under `BMS_SESSION_KEY`, reason "no session key: run `bms migrate` on a new installation, or restore `<secrets.file>` from your backup" | run migrate or restore the file | `app.md`: `TestCommand_SessionKeyMissing_ReturnsInvalidNamingSecretsFile` |
-| F23 | `Load` | the secrets file exists but is not a regular file, or cannot be opened or read | Invalid under `BMS_SECRETS_FILE`, wrapping the OS error (path only, never content) | fix the file or its permissions | `TestLoad_SecretsFileUnreadable_ReturnsInvalid` |
+| F23 | `Load` | the secrets file exists but is not a regular file, or cannot be opened or read | Invalid under `BMS_SECRETS_FILE`, with the reason class only (not found, permission denied, is a directory, unreadable), never the path or content | fix the file or its permissions | `TestLoad_SecretsFileUnreadable_ReturnsInvalid` |
 | F24 | `Load` | the secrets file is readable by group or others (`mode & 0o077 != 0`; Unix only) | Invalid under `BMS_SECRETS_FILE`, reason "must be readable by its owner only (chmod 0600)" | `chmod 0600` | `TestLoad_SecretsFilePermissionsTooOpen_ReturnsInvalid` |
 | F25 | `Load` | the secrets file is not a JSON object, or a known field is not a string | Invalid under `BMS_SECRETS_FILE`; reason states the rule, never the content | restore the file from backup | `TestLoad_SecretsFileMalformed_ReturnsInvalidWithoutEcho` |
 | F26 | `Load` | the secrets file's `session_key` fails F16 (short, long, NUL) | Invalid under `BMS_SESSION_KEY`; never echoed | restore the file from backup | `TestLoad_SecretsFileShortKey_ReturnsInvalid` |

@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"syscall"
 
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/lib/secret"
@@ -173,7 +174,7 @@ func (l *loader) readFile(ctx context.Context, path, field string) (data []byte,
 		if errors.Is(rerr, errTooLarge) {
 			l.fail(field, codeTooLarge, "file must be at most %d bytes", MaxSecretFileBytes)
 		} else {
-			l.fail(field, codeUnreadable, "cannot read the file: %v", rerr)
+			l.fail(field, codeUnreadable, "cannot read the file: %s", reasonClass(rerr))
 		}
 		return nil, true, nil
 	}
@@ -185,12 +186,27 @@ func (l *loader) readFile(ctx context.Context, path, field string) (data []byte,
 
 var errTooLarge = errors.New("file too large")
 
-// readCapped reads the file at path through an io.LimitReader. The path is the
-// operator's, so the OS error that names it is safe to show; the content never is.
+// reasonClass names why a file could not be read, as a class only. The OS error text is
+// dropped: it names the path, and an operator may have pasted a secret as the path.
+func reasonClass(err error) string {
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return "not found"
+	case errors.Is(err, fs.ErrPermission):
+		return "permission denied"
+	case errors.Is(err, syscall.EISDIR):
+		return "is a directory"
+	default:
+		return "unreadable"
+	}
+}
+
+// readCapped reads the file at path through an io.LimitReader. It returns the raw error;
+// callers report only reasonClass of it, never the path or the OS text.
 func readCapped(path string) (data []byte, err error) {
 	f, err := os.Open(path) //nolint:gosec // G304: the path is the operator's to name
 	if err != nil {
-		return nil, err //nolint:wrapcheck // *fs.PathError already says "open <path>"
+		return nil, err //nolint:wrapcheck // callers report only reasonClass(err)
 	}
 	defer func() {
 		if cerr := f.Close(); cerr != nil {
@@ -224,19 +240,19 @@ func (l *loader) readSecrets(ctx context.Context, path, field string) (data []by
 		return nil, false, nil
 	}
 	if oerr != nil {
-		l.fail(field, codeUnreadable, "cannot read the secrets file: %v", oerr)
+		l.fail(field, codeUnreadable, "cannot read the secrets file: %s", reasonClass(oerr))
 		return nil, true, nil
 	}
 	defer func() {
 		if cerr := f.Close(); cerr != nil && err == nil && !problem {
-			l.fail(field, codeUnreadable, "cannot close the secrets file: %v", cerr)
+			l.fail(field, codeUnreadable, "cannot close the secrets file: %s", reasonClass(cerr))
 			problem = true
 		}
 	}()
 	info, serr := f.Stat()
 	switch {
 	case serr != nil:
-		l.fail(field, codeUnreadable, "cannot read the secrets file: %v", serr)
+		l.fail(field, codeUnreadable, "cannot read the secrets file: %s", reasonClass(serr))
 		return nil, true, nil
 	case !info.Mode().IsRegular():
 		l.fail(field, codeUnreadable, "must be a regular file")
@@ -254,7 +270,7 @@ func (l *loader) readSecrets(ctx context.Context, path, field string) (data []by
 		l.fail(field, codeTooLarge, "file must be at most %d bytes", MaxSecretFileBytes)
 		return nil, true, nil
 	case rerr != nil:
-		l.fail(field, codeUnreadable, "cannot read the file: %v", rerr)
+		l.fail(field, codeUnreadable, "cannot read the file: %s", reasonClass(rerr))
 		return nil, true, nil
 	}
 	return data, false, nil

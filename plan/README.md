@@ -83,6 +83,8 @@ copy and can fork it. Features are modules.
      09-core-features.md), with the owner's answers to its four open questions.
      Done 2026-10-17: `module-hello` is Approved (design/README.md row 4b); every M0 spec is
      now Approved.
+     Done 2026-10-17: M0 implementation round — owner approved 21 spec corrections and the
+     module-contract moduletest amendment (2026-10-17).
      Next: implement M0 with the build loop, or draft `audit` (order 10) and the rest of the
      spec order in [09-core-features.md](09-core-features.md) first; the owner chooses.
      Pending implementation: the `lib-core` `validate` amendment (FieldError `Code` and

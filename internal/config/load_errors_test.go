@@ -292,3 +292,53 @@ func TestLoad_CallerEnvironNotModified(t *testing.T) {
 	}
 	_ = os.Getenv // keep os imported for platform-specific helpers
 }
+
+func TestLoad_SecretFileReadError_ReasonNeverContainsPath(t *testing.T) {
+	// The "path" is a pasted secret: neither it nor any directory part may be echoed.
+	pasted := "postgres://bms:" + marker + "@db.example/bms"
+	base := t.TempDir()
+
+	mkdirs := func(rel string) string {
+		p := filepath.Join(base, rel)
+		if err := os.MkdirAll(p, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	denied := mkdirs("locked")
+	deniedFile := writeFile(t, denied, marker, dbURL, 0o600)
+	if err := os.Chmod(denied, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chmod(denied, 0o700); err != nil { //nolint:gosec // a directory needs the execute bit to be removed
+			t.Logf("chmod: %v", err)
+		}
+	})
+
+	cases := map[string]string{
+		"not found (relative pasted value)": pasted,
+		"not found (absolute)":              filepath.Join(base, marker, "nope"),
+		"directory":                         mkdirs(marker + "dir"),
+	}
+	if os.Geteuid() != 0 {
+		cases["permission denied"] = deniedFile
+	}
+	for name, p := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := load(t, "BMS_DB_URL_FILE="+p)
+			if !errs.Is(err, errs.Invalid) {
+				t.Fatalf("want Invalid, got %v", err)
+			}
+			noLeak(t, err, marker)
+			noLeak(t, err, base)
+			noLeak(t, err, "db.example")
+			if f := findField(err, "BMS_DB_URL_FILE"); f != nil && strings.Contains(f.Reason, "open: open") {
+				t.Errorf("doubled text in reason: %q", f.Reason)
+			}
+			if strings.Contains(err.Error(), "open: open") {
+				t.Errorf("doubled text in error: %q", err.Error())
+			}
+		})
+	}
+}

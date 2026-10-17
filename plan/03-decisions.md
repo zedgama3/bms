@@ -396,3 +396,21 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
 - **Status:** Accepted (2026-10-16). Answers Q-TICKET and Q-PAY.
 - Ticketing (including integration with ticketing vendors) is not in scope at this time.
 - Payments (camp dues, fees, grants) are not in scope at this time.
+
+## D34. Debug logging and personal data
+
+- **Status:** Accepted (2026-10-17). Owner's rule, stated verbatim: "The app shouldn't log
+  emails themselves. The test structure may store emails. Debug logging may store private
+  information if needed, but the app should make it clear it's running with debug logging if
+  that's the case."
+- **M0 consequences:** scrubbing and redaction stay on at every log level for now; nothing is
+  relaxed yet.
+- When the log level is debug:
+  - `bms serve` logs a startup warning, right after "bms starting", with the attribute
+    `log.level=debug`.
+  - Other commands print the same warning to stderr when they start.
+  - `bms check` shows a line in its config section: "log level: debug (logs may contain
+    personal data)".
+  - `/readyz` and the UI are unchanged in M0.
+- Any future relaxation of scrubbing at debug level needs its own spec change.
+- Affects [design/telemetry.md](design/telemetry.md) and [design/app.md](design/app.md).
