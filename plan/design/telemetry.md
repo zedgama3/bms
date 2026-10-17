@@ -30,6 +30,51 @@
   `moduletest` and every test that must prove no personal data leaks
   (`telemetrytest.Capture`), the `hello` reference module.
 
+## Summary
+
+**Purpose:** build the process logger, tracer and meter (OpenTelemetry SDK behind project-owned interfaces), enforce the privacy policy on everything emitted, define the error reference, and accept browser error reports. Pure core package at the bottom of the core graph; the only package that may import `go.opentelemetry.io`.
+
+**Exported (`internal/core/telemetry`):**
+- `Options{Level slog.Level; Format (FormatJSON|FormatText); Instance; Version; Stdout io.Writer; Clock; Environ func(string)(string,bool); Observer}`; `Options.Validate()`; `New(ctx, Options) (*Telemetry, error)` never dials the collector.
+- `(*Telemetry)`: `Logger() *slog.Logger` (instance attr; trace_id/span_id from ctx on `*Context` calls), `Tracer(scope) (Tracer, error)`, `Meter(scope) (Meter, error)`, `Exporting() bool`, `Close(ctx) error` (idempotent; stdout handler keeps working after).
+- `Tracer.Start(ctx, name, ...StartOption) (ctx, Span)` never fails; `Span{SetAttrs(...Attr), RecordError(err), End()}`; `SpanKind` (`SpanInternal|Server|Client|Producer|Consumer`); `WithKind`, `WithAttrs`, `WithParentFrom(http.Header)` (W3C traceparent; IDs only, sampled flag and tracestate ignored; malformed means root).
+- `Attr` constructors: `Int, Int64, Float, Bool, Duration (ms), Token, Text (scrubbed, cap 512), ID[T ~[16]byte], Kind(errs.Kind), Module`; `Attr.Key()`; `Scrub(string)`; consts `MaxTextBytes=512`, `MaxLogValueBytes=2048`.
+- `Meter{Counter, Histogram, Gauge(name, observe func(ctx) []Sample, ...)}`; `Counter.Add(ctx,n,...Attr)`, `Histogram.Record`; `Sample`; `WithUnit`, `WithDescription`, `WithBuckets`.
+- `Ref` (`XXXX-XXXX`), `Ref.Validate()`, `RefFrom(ctx) (Ref, bool)`, `TraceIDFrom(ctx) (string, bool)` (32 lower-case hex).
+- `Observer`, `LogRecord`, `SpanData`, `Measurement`, `Violation{Signal, Rule, Key}` (test/observation hooks).
+- `intake`: `New(Options{Logger, Meter, Clock})`; `(*Intake).Accept(ctx, Submission{From netip.Addr, Person model.PersonID, UserAgent, Batch}) error` (service, no HTTP); `Batch{Reports}`, `Report{Kind, Message, Stack, Screen, OccurredAt, Count, AppVersion, ErrorRef, TraceID, API *APICall}`, `APICall{Method, Route, Status, Code}`, `Kind` (`crash|rejection|screen|api`); `Validate()` on Report and Batch; consts `MaxReports=20, MaxMessageBytes=512, MaxStackBytes=4096, MaxUserAgentBytes=200, MaxCount=1000, PerAddressPerMinute=30, GlobalPerMinute=600, MaxTrackedAddresses=10000, RetryAfter=1m, OccurredWithin=24h`; `ErrRateLimited`.
+- `telemetrytest`: `New(t) *Capture` (fails t on any Violation at cleanup); `Telemetry/Logger/Tracer/Meter`, `Records/Spans/Measurements/Violations`, `Contains(needle)`, `Stdout()`.
+
+**Key decisions:**
+- D1 project-owned interfaces; depguard `otel-seam` keeps the SDK inside this package (the reason is the privacy policy).
+- D2 the trace ID is the request ID; no second ID.
+- D3 error reference = first 4 bytes of trace ID, `XXXX-XXXX` upper hex (owner 2026-10-16).
+- D4 SDK providers always on; only exporters depend on `OTEL_*`; stdout logs carry trace IDs with no collector.
+- D5 OTLP/HTTP protobuf only; any other protocol fails `New`.
+- D6 server decides sampling; default `always_on`; `always_off`, `traceidratio` supported; `parentbased_*` refused.
+- D7 one log handler applies policy before fan-out to stdout and OTLP.
+- D8 typed attributes; `Text` scrubs and caps; metrics accept tokens, bools, ints, kinds only.
+- D9 `POST /api/client-errors` is public, rate limited per address and globally; address never logged.
+- D10 `intake` is a service; `ErrRateLimited` carries the 429 case.
+- D11 report text truncated, shape violations rejected with field errors.
+- D12 a down collector costs a counter and one warning a minute; `New` never dials.
+- D13 violations are corrected, counted, and fatal only in `telemetrytest`.
+- D14 attribute durations in ms, histogram unit seconds.
+- D15 resource = service.name `bms`, service.version, service.instance.id (= instance.name) plus `OTEL_RESOURCE_ATTRIBUTES`.
+- D16 stdout handler never closed.
+- D17 client reports include User-Agent (cap 200).
+- D18 example deployment retention: logs and traces 30 days, metrics 1 year; export/deletion do not reach telemetry.
+- D19 span name is a token or `<METHOD> <route pattern>` (`[A-Z]{3,10}`, one space, token starting `/`).
+- D20 token grammar `[A-Za-z0-9/_][A-Za-z0-9._:/{}-]{0,127}` so `_OTHER` is a token; unknown-method span is `HTTP <route>`.
+
+**Errors callers handle:** `New`/`Validate`: `Invalid` with field names (`log.level`, `log.format`, `instance.name`, `telemetry.version`, `telemetry.stdout`, `telemetry.clock`, or the offending `OTEL_*` variable), `Canceled`/`Timeout`. `Tracer`/`Meter`: `Invalid` (bad scope), `Internal` (after Close). `Meter.*`: `Invalid` (name, unit, nil observe), `Conflict` (name reused with another kind or unit). `Close`: `Timeout`/`Canceled`. `Ref.Validate`: `Invalid`. `intake.Accept`: `Invalid` (field errors `reports[i].<field>`), `Unavailable` wrapping `ErrRateLimited` (check `errors.Is` before kind; api maps to 429, `Retry-After: 60`), `Canceled`/`Timeout`. Span/Attr/log methods never fail: bad input becomes a marker (`[denied]`, `[invalid-token]`, `invalid-span-name`) plus a Violation. `RefFrom`/`TraceIDFrom` return ok=false without a span (omit the field).
+
+**Owns (config, routes, metrics):** reads `OTEL_SDK_DISABLED`, `OTEL_EXPORTER_OTLP_ENDPOINT` (+ `_TRACES/_METRICS/_LOGS_ENDPOINT`), `OTEL_EXPORTER_OTLP_PROTOCOL` (+ variants), `OTEL_TRACES_SAMPLER(_ARG)`, `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES`; the SDK reads the rest (headers never logged). No settings, no permissions, no tables, no signals. Route `POST /api/client-errors` (`AccessPublic`) is mounted by api over `intake.Accept`. Key denylist and `Scrub` rules are package constants. Instruments: `bms.telemetry.{export_failures,dropped,policy_violations,log_write_failures}`, `bms.client_errors.{accepted,rejected}`; also defines the M0 table for `http.server.request.duration`, `db.client.connection.*`, `bms.signals.*`, `bms.jobs.runs`. Imports only lib (errs, validate, clock) and the OTel SDK; not model (except `intake`), config, db or pgx.
+
+**Expects of dependencies:** lib-errs (`E`, `KindOf`, `Error.Op`, kinds); lib-core (`clock.Clock`, `validate.*`); lib-secret (`Secret` and `Email` redact via `LogValue`); model (`PersonID`, `ID.String`); config (`app` copies `config.Log`/`Instance.Name` into `Options`; client address derived per config decision 16, by api); module-contract (`Deps.Logger`, `Deps.Tracer`, `Route.Access`); db (`Options.Tracer/Meter`, pgx `QueryTracer`, pool gauges).
+
+**Pending proposed changes:** item 5 (`app.md` wiring) and item 7 (`audit.md` `TraceIDFrom`) wait on their target; item 6 pending for `jobs.md`; item 9 pending for Loki retention, alert rules and `docs/operating.md`; all others applied.
+
 ## Purpose
 
 Let a maintainer find what happened in any one request from the reference the person saw.

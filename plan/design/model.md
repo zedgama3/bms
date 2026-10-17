@@ -10,6 +10,41 @@
   **Used by:** every package above the foundation. Named consumers per type and method are
   listed in "Interface". Nothing in `lib` imports `model` (layer rule 1).
 
+## Summary
+
+**Purpose.** One vocabulary of identifiers and small values so records from the core and from different modules line up without the packages knowing each other. Package `internal/model` (foundation; no I/O; imports only stdlib, `lib/errs`, `lib/validate`, `lib/secret`; enforced by depguard `foundation-model`; nothing in `lib` imports it). No tables, permissions, signals, settings, routes or UI.
+
+**Exported names.**
+- `type Entity interface{ ~struct{} }`; `type ID[E Entity] [16]byte` (UUID, RFC 9562; zero value means "no record").
+- Aliases `PersonID`, `AccountID`, `DepartmentID`, `EventID` (= `ID[person]` etc.; unexported markers). A module declares its own with `type shift struct{}; type ShiftID = model.ID[shift]`; never uses another module's ID types.
+- `NewID[T ~[16]byte]() T` (v4 from `crypto/rand`, cannot fail); `ParseID[T ~[16]byte](s) (T, error)` (canonical 36-char form only, either case, `Invalid`, never echoes s; the nil UUID parses).
+- `ID` methods: `String()` (lower-case canonical), `IsZero()`, `Validate()` (rejects only the zero ID), `MarshalText`, `UnmarshalText` (`Invalid` bad text, `Internal` nil receiver, `*id` unchanged on failure; JSON `null` leaves the field unchanged, use `omitzero`).
+- `type Sensitivity uint8`: `SensitivityPublic`=1 < `SensitivityInternal` < `SensitivityPersonal` < `SensitivitySensitive`=4; zero is invalid. `ParseSensitivity(s)` (exact lower-case names `public|internal|personal|sensitive`), `String()` (`Sensitivity(<n>)` if out of range), `Validate()`, `ReadIsAudited(self bool) bool` (never for public/internal; personal unless self; always for sensitive; invalid level is audited), `MarshalText` (fails `Invalid` for an invalid level), `UnmarshalText`.
+- `type TimeRange struct{ Start, End time.Time }` (JSON `start`, `end`; half-open `[Start, End)`): `Validate()` (joined `FieldError`s on fields `start`, `end`), `Contains(t)`, `Overlaps(o)` (touching ranges do not overlap), `Duration()`.
+- `type Email string`: `ParseEmail(s)` (trims; non-empty, <= 254 bytes, one `@`, local part 1..64 bytes, domain non-empty and not starting or ending with `.`, no whitespace, control characters or `< > , ; "`; shape only), `Validate()` (no trimming; zero value "" fails, so validate optional addresses only when set), `Canonical()` (lower-case only; idempotent; the uniqueness key), `LogValue()` (`secret.Redacted` or `secret.Unset`).
+
+**Key decisions.**
+1. UUID v4 from stdlib, no third-party library, no timestamp leak.
+2. One generic `ID[E]` with marker types.
+3. Constructors generic over `~[16]byte`.
+4. `ParseID` accepts exactly one form.
+5. `Validate` rejects only the zero ID (imported IDs may be other versions).
+6. Zero ID means "none" (nullable in SQL, `omitzero` in JSON, no pointers to IDs).
+7. `Sensitivity` zero is invalid; runtime methods treat invalid as sensitive.
+8. `ReadIsAudited` lives on the type.
+9. `Sensitivity.MarshalText` fails for an invalid value.
+10. `TimeRange` is half-open and validates with field names through `validate.Errors`, not `timeutil.CheckRange`.
+11. `Email` is in `model` (identity, people, notify, departments-events share it); case-only canonicalisation (owner, 2026-10-16), no dot or `+tag` stripping.
+12. Error reasons never echo input.
+
+**What callers handle.** `errs.Invalid` from every parse and `Validate` (a `validate.FieldError`, readable with `validate.Fields`); `errs.Internal` only for a nil receiver in `UnmarshalText`. Optional references are the zero value and are validated only when set. Event dates are instants (`TimeRange` plus the IANA zone, owned by `departments-events`); no civil `Date`, no `Money` type.
+
+**Storage seam.** `postgres/` packages convert by underlying type (`[16]byte` to `uuid`, `string` to `text`; `Sensitivity` via `String`/`ParseSensitivity`); `model` implements no `sql.Scanner`/`driver.Valuer`. Expected mappings: unique index on `Email.Canonical()` where D21 applies; `db.md` integration test proves pgx scans `ID[E]` and `Email`.
+
+**Expects of dependencies.** `lib-errs`: `errs.E`, `Is`, kinds `Invalid`, `Internal`. `lib-core`: `validate.Errors`, `validate.FieldError` (with the pending Code/Params amendment this spec does not rely on codes). `lib-secret`: `Redacted`, `Unset` markers.
+
+**Pending.** Proposed changes (1-8) to 07-abstractions, add-module skill, module-contract, db, identity/people, lib-core (item 7: `CheckRange` no longer listed as used by `model.TimeRange.Validate`), departments-events remain to be applied; api.md item 6 is applied.
+
 ## Purpose
 
 Give every layer one vocabulary of identifiers and small values so that records from the

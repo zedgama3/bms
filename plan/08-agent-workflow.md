@@ -11,6 +11,7 @@ explains how they fit together. Adapted from Sojourn (D7).
 | Agent | Model | Job | Writes? |
 |---|---|---|---|
 | `architect` | fable | Designs abstractions and modules and writes design specs in `plan/design/` | spec files only |
+| `spec-editor` | sonnet | Applies already-decided edits: folds the owner's answers into a spec, applies an approved spec's proposed changes, keeps Summary sections current | plan, specs, skills, agents, lint and deploy config |
 | `go-implementer` | sonnet | Implements one spec (one package, core contract or module) with its happy-path tests | Go code |
 | `test-author` | sonnet | Writes error-path, permission and contract tests **from the spec**, without reading the implementation first | `_test.go` only |
 | `sql-author` | sonnet | Writes PostgreSQL schema, migrations and queries, and checks them against the compose database | SQL and Go query files |
@@ -18,7 +19,11 @@ explains how they fit together. Adapted from Sojourn (D7).
 | `go-reviewer` | opus | Reviews a Go/SQL change against the spec and the tenets: boundaries, errors, access and privacy, resources, concurrency | nothing |
 | `web-reviewer` | opus | Reviews a UI change: spec conformance, every state handled, accessibility, mobile, privacy in the browser | nothing |
 | `check-runner` | haiku | Runs one named check command and reports pass or fail with the failing output | nothing |
-| `plan-keeper` | haiku | Records decisions and answers in `plan/`, updates status tables | `plan/` only |
+| `plan-keeper` | haiku | Records decisions and answers in `plan/` (the decision log, open questions, roadmap) | `plan/` only |
+
+Spec status lines, the status rows in `plan/design/README.md` and the next-step line in
+`plan/README.md` are one-line edits; the main session makes them itself when the owner
+approves a spec, without an agent.
 
 ## Skills
 

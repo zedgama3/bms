@@ -14,6 +14,37 @@
   **Used by:** every layer; named consumers are listed per method below.
 - **Excluded:** `lib/testkit` (separate spec, later).
 
+## Summary
+
+**Purpose.** One shared implementation of time, backoff, input checks and bucket math: four packages `internal/lib/clock`, `internal/lib/retry`, `internal/lib/validate`, `internal/lib/timeutil`. Imports only stdlib and `lib/errs` (`retry` also `clock` and `validate`). No tables, config keys, settings, permissions, routes or signals. `lib/testkit` is a separate, later spec.
+
+**clock.**
+- `Clock` interface: `Now()`, `Since(t)`, `After(d) <-chan time.Time`, `NewTimer(d) Timer`, `NewTicker(d) (Ticker, error)` (Invalid if d <= 0). `Timer`: `C()`, `Stop() bool`, `Reset(d) bool` (Go 1.23+ no-stale-value). `Ticker`: `C()`, `Stop()` (idempotent), `Reset(d) error` (Invalid if d <= 0).
+- `Real() Clock`; `Wait(ctx, c, d) error` (nil after d; `Canceled`/`Timeout` from ctx; `Invalid` if c nil; always stops its timer).
+- `Fake` (in `clock`, not testkit): `NewFake(start) *Fake`, `Advance(d) error` (fires waiters in deadline order, non-blocking sends, Invalid if d < 0), `BlockUntil(ctx, n) error` (exactly n armed waiters; Canceled/Timeout/Invalid).
+
+**retry.**
+- `Policy{Initial, Max, Multiplier, MaxAttempts}`; `Default()` = 500ms, 30s, 2, 5; `Validate()` joins `validate.FieldError`s for fields `initial`, `max`, `multiplier`, `max_attempts`; `Delay(attempt, u)` = u * min(Max, Initial * Multiplier^(n-2)), 0 for n < 2; `type Rand func() float64`.
+- `Retryable(err) bool`: true only for kinds `Unavailable` and `Timeout`. Callers wrapping writes must check `db.ErrReadOnly` first (it is `Unavailable`).
+- `Do(ctx, clk, p, rnd, fn) error`: non-retryable error returned unchanged; exhausted gives `fmt.Errorf("retry: gave up after %d attempts: %w")` keeping last kind; ctx done gives `errs.E("retry.Do", Canceled|Timeout, errors.Join(ctx.Err(), last))`. Pre: clk and fn non-nil, valid policy, and a ctx deadline if MaxAttempts == 0. Never logs; safe for concurrent use.
+- `Backoff`: `NewBackoff(p, rnd)`, `Next() (delay, ok)`, `Attempt()`, `Reset()`; not concurrency-safe.
+
+**validate.**
+- `FieldError{Field, Code, Params, Reason}`; `Error()` is "<Field>: <Reason>"; `Fields(err) []*FieldError` walks the whole tree. `Reason` never echoes string input (numbers and durations may be echoed). Callers pass the full dotted path or variable name; the package never prefixes.
+- Checks, each returning `errs.Invalid` wrapping a `FieldError`: `NonEmpty`, `Range[T cmp.Ordered]` (inclusive), `Positive(duration)`, `OneOf` (empty allowed list is `Internal`), `URL(field, v, schemes...)` (scheme and host required), `HostPort` (numeric port 1..65535), `ListenAddr` (empty host allowed).
+- `Errors{Op}` accumulator (zero value usable, not concurrency-safe): `Add(err)`, `Addf(field, code, format, args...)`, `Err()` = `errs.E(Op or "validate", Invalid, errors.Join(...))`; insertion order kept.
+- Code constants (stable API strings, pinned by a test): `CodeRequired` "required", `CodeRange` "range" (Params min, max), `CodePositive` "positive", `CodeOneOf` "one_of" (Params options), `CodeURL` "url" (Params schemes), `CodeHostPort` "host_port", `CodeMalformed` "malformed" (reserved for decoders such as `httpx.ReadJSON`).
+
+**timeutil.** `MaxBuckets` = 100000; `CheckBucket(d)` (0 < d and 24h divisible by d), `CheckRange(start, end)` (both set, start before end), `Truncate`, `Align`, `Buckets`, `BucketFor(start, end, maxPoints)` (ladder 1s, 5s, 10s, 15s, 30s, 1m, 5m, 10m, 15m, 30m, 1h, 2h, 3h, 6h, 12h, 24h), `Day(t)`. All results UTC; failures are `Invalid`; DST and local time out of scope.
+
+**Key decisions.** `Fake` lives in `clock` so one contract test covers both clocks; retry loops must be bounded by MaxAttempts or a ctx deadline; per-attempt deadlines are the caller's; `Do` returns non-retryable errors unchanged; validation reports all problems at once, outer kind always `Invalid`; `Validate` helpers take a full path and never prefix. (This spec has no numbered decisions; these are in its Behavior sections.)
+
+**What callers handle.** `Invalid` for every bad input here; `Canceled`/`Timeout` from `Wait`, `BlockUntil` and `Do`; `Backoff.Next` returns `ok == false` (no error) when attempts are exhausted. Minimum Go version 1.24.
+
+**Expects of dependencies.** `lib-errs`: `E`, `Is`, `KindOf`, kinds `Invalid`, `Unavailable`, `Timeout`, `Canceled`, `Internal`.
+
+**Pending amendment (2026-10-17, api.md decision 25).** The spec text already defines `FieldError.Code` and `Params`, the `Code*` constants, per-check codes and params, and the `code` argument of `Errors.Addf`, but the ported code does not have them yet. Implementation follow-up, tests `TestChecks_SetCodeAndParams_Table`, `TestCodes_Pinned`, `TestAddf_SetsCodeNoParams`; must land before `httpx` is built on it. Consumers (`config`, `model`, `telemetry`) are not yet implemented, so nothing else changes.
+
 ## Purpose
 
 Give every layer one shared implementation of the primitives that would otherwise be

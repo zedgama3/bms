@@ -28,6 +28,46 @@
   listed under "Proposed changes elsewhere"), `frontend-implementer` and `web-reviewer`
   (the rules they work by), `docs/operating.md` (browsers, building the UI).
 
+## Summary
+
+**Purpose:** host every module's screens in one browser application (`web/`, React/TypeScript, pnpm), plus the Go package `web` (`web/embed.go`) that embeds the built files for `app`. This spec is the UI frame; module and core-area screens plug into it.
+
+**Exported to screens (TypeScript; a module may import only `@/registry/types`, `@/api`, `@/i18n`, `@/ui`):**
+- `ScreenSet{name, kind: "module"|"core", routes: RouteObject[] (relative paths, lazy elements, handle {title, access?}), nav: NavEntry[], messages: {lang: () => Promise<Messages>}}` (`en` required); `NavEntry{label: MessageKey, to, area: "main"|"admin", access?: "public"|"signed-in"|string[]}`. A set is exported as `ui` from `web/src/modules/<name>/index.ts` or `web/src/core/<area>/index.ts` and listed in the matching `index.ts` (D31).
+- `api` typed client generated from `/api/openapi.json` (`openapi-typescript` + `openapi-fetch`, both outputs committed); `CallOptions{signal, params}`; `ApiError{status, code, ref, fields, method, route, module, traceId, retryAfter, reported}`; `ProblemCode` (mirrors api.md codes), `ClientCode` (`network`, `malformed_response`); `Problem`, `Field`, `Method`; wire types `ID`, `Sensitivity`, `TimeRange`; `configureClient({onUnauthenticated, onReadOnly, onFailure})` (frame only).
+- i18n: `useT()`, `MessageKey` (generated typed keys), `useFormat()` (date/time with an event zone, number, relative, list), `useLanguage()`.
+- Error display: `messageFor`, `ErrorState`, `ErrorSummary`, `useFieldErrors` (returns `FieldMessage{text, reason?}`), `showsRef`.
+- Reporter: `installReporter(...)`, `Reporter{apiFailure, screenCrash, flush, reportable}`.
+- UI kit: `Button`, `Field`, `Dialog` (native `<dialog>`), `Banner`, `EmptyState`, `Loading`, `Table`, `Toast`.
+- Go `web`: `FS() (fs.FS, error)` (`errs.NotFound` when `dist/index.html` is missing), `Version() (string, error)` (`NotFound`, or `Invalid` unless a telemetry token of at most 64 bytes). Imports stdlib and `lib/errs`; only `app` imports it.
+
+**Key decisions:**
+- D1 modules mount under `/<name>/` in the browser; reserved names `api, assets, admin, account, sign-in, healthz, readyz, modules, core`.
+- D2 an untranslated field code shows the server's English `reason` inside the translated `field.unknown` wrapper in `<span lang="en">` and is reported (owner 2026-10-17); a top-level unknown code shows `error.unknown`.
+- D3 core areas register through the same `ScreenSet` (`kind: "core"`, always enabled).
+- D4 module isolation enforced by ESLint and `scripts/check-web-module-imports.sh` (under `make imports`); a literal `"/api/<other>/"` is refused.
+- D5 client generated from the server's document, committed; `make openapi-check` regenerates via `bms openapi`; `fetch` only in `@/api` and the reporter.
+- D6 every call: fresh `traceparent` (flags `01`), same-origin credentials, 35 s timeout, one `ApiError`, three hooks; `401` (except the session endpoint) signs out and goes to `/sign-in?returnTo=`.
+- D7 language = regional default then the person's explicit choice (`localStorage["bms.lang"]`, the only storage key); terminology via `{term_*}` arguments; FormatJS/ICU.
+- D8 typed message keys, `en` reference, missing keys in other languages fall back to `en`; Go test `TestMessageCatalogues_EnglishCoversManifests` in `internal/app`.
+- D9 the reference is shown for every error except `invalid`, `unauthenticated`, `read_only`, `network`.
+- D10 lives inside `api.DefaultCSP`: no inline script or style, no `style` prop, Tailwind classes only, regional colours via same-origin `GET /theme.css`.
+- D11 TanStack Query, memory only, `staleTime` 30 s, `gcTime` 5 min, cleared on sign-out and `401`; GETs retried twice, mutations never.
+- D12 no component library (Tailwind v4, Lucide); D13 reporter installed before React and never throws.
+- D14 only `network`, `malformed_response`, `internal`, `cross_origin`, `misdirected`, `method_not_allowed`, `payload_too_large`, `unsupported_media_type` (and untranslated codes) are reported as `api`.
+- D15 no third-party request, system fonts; D16 admin modules screen is tables, not a graph.
+- D17 Baseline widely-available browsers only, no "update your browser" page; D18 dark mode from `prefers-color-scheme` in M0; D19 logical CSS properties.
+- D20 bundle version = binary version (`BMS_VERSION`, `dist/version.txt`, `__BMS_VERSION__`).
+- D21 phone first is a hard requirement (owner 2026-10-17; 320 px, 44x44 px targets, touch only); D22 end-to-end Playwright smoke run in M0 at phone and desktop viewports.
+
+**Errors/codes callers handle (client side, no Go errs except `web.*`):** `ApiError.code` is the problem body code or `network` (offline, DNS, reset, 35 s timeout) or `malformed_response` (non-2xx without problem body, or unparseable 2xx). `RegistryError` (F19-F21) for a bad name, absolute route path, untitled leaf or missing `en`. `web.FS`: `errs.NotFound` (app warns, `UI: nil`). `web.Version`: `NotFound`/`Invalid` (app warns).
+
+**Owns (routes, keys, constants):** screens `/`, `/sign-in`, `/admin/modules`, not-found, crashed, cannot-reach-server; keys `error.<code>`, `field.<code>`, `field.unknown`, `module.<name>.field.<code>`, `term.*`; constants (not settings): 35 s timeout, reporter 10 s timer / 100 pending / count cap 1000 / backoff 10 s to 5 min, 300 ms loading delay, bundle budget (entry 200 KB gzip JS, 30 KB CSS, lazy chunks 100 KB), `localStorage["bms.lang"]`. No Go settings or permissions; reads `core.modules.read` (api) and `session.permissions` only to hide UI. Defaults used until `settings` exists: regional name `BMS`, language `en`.
+
+**Expects of dependencies:** api (problem body with `fields[].code/params/reason`, `X-Read-Only`, `X-Trace-Id`, `GET /api/modules` and `/api/admin/modules` shapes, `POST /api/client-errors`, CSP, `Options.UI`); telemetry (intake wire form and limits, `Ref`, `traceparent` form, token grammar for `screen` and `api.route`); module-contract (name grammar, message-key derivation, admin graph); identity (`GET /api/accounts/session`, `POST /api/accounts/sign-in|sign-out`; M0 answers 404 and the shell is signed out); authz (`permissions` in the session response); settings (`GET /api/settings/public`, `/theme.css`); lib-core (field codes `required, range, positive, one_of, url, host_port, malformed`).
+
+**Pending proposed changes:** items 4 (`app.md`: `bms openapi`, `web.FS`/`Version`, Makefile targets), 5 (identity endpoints), 6 (authz session permissions), 7 (settings public endpoint, theme, `language.detect_browser`), 10 (module-hello), 13 (people `language` field), 15 (`docs/operating.md`) wait on targets not yet written; the rest are applied.
+
 ## Purpose
 
 Host every module's screens in one browser application.

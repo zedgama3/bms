@@ -34,6 +34,59 @@
   with routes (`httpx.ReadJSON`, `WriteJSON`, `Fail`), the `hello` reference module,
   `frontend-implementer` (works from `/api/openapi.json`, 08-agent-workflow).
 
+## Summary
+
+**Purpose:** expose the core's and the modules' routes over HTTP through one request pipeline. Two packages: `internal/lib/httpx` (what any handler may import) and `internal/api` (the shell; imports core contracts, model, lib; never a module, `app`, `config`, otel or pgx).
+
+**Exported, `httpx` (stdlib + errs + validate only):**
+- `Problem{Status, Code, Ref, Fields []Field}`, `Field{Field, Code, Params, Reason}`, `ContentTypeProblem` (`application/problem+json`, RFC 9457).
+- Shell codes (pinned strings): `read_only`(503), `rate_limited`(429), `shutting_down`(503), `payload_too_large`(413), `unsupported_media_type`(415), `cross_origin`(403), `misdirected`(403), `method_not_allowed`(405), `not_found`(404); otherwise the `errs.Kind` name.
+- `StatusOf(errs.Kind) int` (Invalid 400, Unauthenticated 401, Permission 403, NotFound 404, Conflict 409, Unavailable 503, Timeout 504, Canceled 503, Unsupported 501, Internal 500).
+- `Fail(w, r, err)` hands any error to the shell's mapper (falls back to the same table without one); `Failer`, `WithFailer`.
+- `ReadJSON(r, dst) error` (JSON content type required, unknown fields ignored, errors never echo the body); `WriteJSON(w, status, v) error`; `ErrUnsupportedMediaType`.
+- `ClientAddrFrom(ctx)`, `SchemeFrom(ctx)`, `WithClientAddr`, `WithScheme` (derived values; the address is personal data, never log it).
+
+**Exported, `api`:**
+- `New(Options) (*Server, error)`, `Options.Validate()`; `Server`: `Handler()`, `OpenAPI() []byte`, `Listen(ctx) (net.Addr, error)`, `Serve() error`, `Shutdown(ctx) error`.
+- `Options`: `Addr, RequestTimeout, MaxBodyBytes, TrustedProxies []netip.Prefix, AllowPlaintext` (from `config.HTTP`); `Logger, Tracer, Meter, Clock, Version, Routes []module.ModuleRoutes, Database, Intake, Graph, Schema, Authenticator, Permissions, UI fs.FS, ContentSecurityPolicy`.
+- Seams: `Authenticator.Authenticate(ctx, r) (ctx, model.PersonID, error)` (identity, nil in M0 so signed-in routes 401); `PermissionChecker.Allow(ctx, authz.Permission) error` (authz, nil until M2 so permissioned shell routes 403); `Database{Ping, ReadOnly}`; `SchemaStatus func(ctx) ([]db.Status, error)`; `PermissionModulesRead = "core.modules.read"`; `DefaultCSP`.
+
+**Key decisions:**
+- D1 `net/http.ServeMux` is the router, no third-party router.
+- D2 wire form, status table and handler helpers live in `lib/httpx`, because modules may not import `api`.
+- D3 routes mount as `<METHOD> /api/<name><pattern>`, trailing `/` becomes exact (`{$}`), one `/api/` fallback gives JSON 404/405 with `Allow`, no mux redirects under `/api/`, conflicts are `Conflict` at `New`.
+- D4 one RFC 9457 body, no prose, `err.Error()` never sent; one log record per error response (error 5xx, warn signed-in 4xx, debug anonymous 4xx); successes log nothing.
+- D5 authentication is a seam called on every routed request; invalid session on a public route counts as anonymous.
+- D6 CSRF via `net/http.CrossOriginProtection` plus SameSite=Lax; no token cookie, no `Access-Control-*` ever.
+- D7 cookies `Secure; HttpOnly; SameSite=Lax; Path=/`, no Domain, session cookie `__Host-` prefixed; a cookie guard turns violations into 500.
+- D8 client address and scheme from `X-Forwarded-For`/`-Proto` only for peers in `TrustedProxies` (rightmost-untrusted rule); zero-bit prefix refused.
+- D9 direct peer that is neither loopback nor trusted gets `403 misdirected` (not 421), health routes exempt, log per /24 or /64 prefix per hour (max 1,000 prefixes).
+- D10 span opened per route after routing, named `<METHOD> <route token>`; method normalised to 7 known or `_OTHER` (span `HTTP <token>`); `{$}` rendered as `/`; unmatched route token `/{unmatched}`; no span for `/healthz`, `/readyz`.
+- D11 OpenAPI 3.1 JSON assembled from per-set fragments; routes and fragments must agree at `New`; a set with routes must have a fragment.
+- D12 serves the web UI: `/assets/` immutable year cache, `index.html` no-cache for app paths, CSP on every `text/html`, `no-store` on `/api/`.
+- D13 unknown JSON fields ignored.
+- D14 permissioned shell route with nil checker answers 403.
+- D15/D27 `GET /api/modules` public, names and enabled only (owner 2026-10-17); graph and schema versions behind `core.modules.read`.
+- D16 writes are not refused by the shell; `db.ErrReadOnly` maps to `503 read_only`; `X-Read-Only: true` on every response from a read-only copy.
+- D17 `Canceled`: client gone writes nothing; while draining `503 shutting_down` + `Connection: close`.
+- D18 request deadline = ctx deadline + connection read deadline; `WriteTimeout = RequestTimeout + 15s` is a backstop.
+- D19 every response carries `X-Trace-Id`.
+- D20 shell routes are absolute paths (`/healthz`, `/readyz`, `/api/modules`, `/api/admin/modules`, `/api/client-errors`, `/api/openapi.json`); set names `core`, `modules`, `admin` refused.
+- D21 `/healthz` carries no version.
+- D22 `/readyz` single-flights and caches `Ping` for 1 s (ping deadline 2 s).
+- D23 `Serve` after `Shutdown` is nil; `Listen` after `Shutdown` is `Conflict`.
+- D24 only cookie without `Secure`: `bms_session_dev`, when `AllowPlaintext` and scheme `http` (owner 2026-10-17).
+- D25 field errors carry `code` and `params`; shell translates by code, falls back to `reason` (owner 2026-10-17).
+- D26 HSTS `max-age=31536000` only when scheme https, no `includeSubDomains` (owner 2026-10-17).
+
+**Errors callers handle:** `Options.Validate`/`New`: `Invalid` (fields `http.addr`, `http.request_timeout`, `http.max_body_bytes`, `http.trusted_proxies`, `api.*`), `Conflict` (pattern or schema-name clash), `Invalid` for route/fragment mismatch or bad route token; `Listen`: `Unavailable` (in use), `Invalid`, `Conflict`; `Serve`: `Internal` (no Listen), `Unavailable`; `Shutdown`: `Timeout`/`Canceled` (late handlers may still run). `ReadJSON`: `Invalid` (wrapping `ErrUnsupportedMediaType` for 415; field `body` or JSON path), `*http.MaxBytesError` returned unchanged (413), `Timeout`, `Canceled`, `Internal` (bad dst). `WriteJSON`: `Internal` (unencodable), `Canceled` (write failed). Mapper checks sentinels before kind: `db.ErrReadOnly`, `intake.ErrRateLimited` (429, `Retry-After: 60`), `httpx.ErrUnsupportedMediaType`, `*http.MaxBytesError`. `Unavailable` adds `Retry-After: 5`.
+
+**Owns:** config consumed (via `Options`): `http.addr`, `http.request_timeout`, `http.max_body_bytes`, `http.trusted_proxies`, `http.allow_plaintext`. Permission `core.modules.read` (scope site, reaches internal; declared here, registered by `app`). No settings, signals, tables. Metric `http.server.request.duration` (s; method, route, status). Span attrs `http.request.method`, `http.route`, `http.response.status_code`, `person_id`, `duration_ms`. Headers: nosniff, Referrer-Policy, X-Frame-Options, Permissions-Policy, COOP/CORP, HSTS, `X-Trace-Id`, `X-Read-Only`. `POST /api/client-errors` answers 202/400/413/415/429 over `intake.Accept` (64 KiB cap). Constants (not keys): ReadHeaderTimeout 10s, IdleTimeout 120s, MaxHeaderBytes 64 KiB.
+
+**Expects of dependencies:** telemetry (`Tracer.Start` with `WithParentFrom`, `RefFrom`, `TraceIDFrom`, token grammar admitting `_OTHER` and the `<METHOD> <route>` span form, `intake`); module-contract (`Route.Access`, `ModuleRoutes`, `Graph`, `RouteProvider` must also provide an OpenAPI fragment); db (`Ping`, `ReadOnly`, `ErrReadOnly`, `Status`, `Close` tolerant of late callers); identity (Authenticator, cookie rules); authz (PermissionChecker); lib-core (`validate.FieldError.Code/Params`, applied in spec, implementation follow-up needed); app (shutdown order and sub-deadline).
+
+**Pending proposed changes:** items 9 (identity), 10 (authz), 11 (app), 15 (settings: trusted origins and Host allowlist), 16 (module-hello), and the front-end examples and `docs/operating.md` half of 14 wait on targets not yet written; the rest are applied.
+
 ## Purpose
 
 Expose the core's and the modules' routes over HTTP with one request pipeline.

@@ -45,7 +45,10 @@ Building and checking are always done by different agents. The full roster and l
   migrations → `sql-author`; UI → `frontend-implementer`
 - Run a check (fmt, vet, lint, test, build) → `check-runner`. Don't spend a large model on it.
 - Review a Go/SQL change → `go-reviewer`; review a UI change → `web-reviewer`
-- Record a decision or answer, or update plan status → `plan-keeper`
+- Fold the owner's answers into a spec, or apply an approved spec's proposed changes →
+  `spec-editor`
+- Record a decision or answer in the decision log, open questions or roadmap → `plan-keeper`.
+  Spec status lines and status rows are one-line edits the main session makes itself.
 
 Skills: `go-conventions` (before writing any Go), `design-spec`, `build-loop` (how the main
 session orchestrates the above), `add-module`, `privacy-data`, `postgres-sql`,

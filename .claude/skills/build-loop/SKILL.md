@@ -66,8 +66,9 @@ weaken the test.
 
 ## 4. Stop conditions
 
-- **Done:** checks green and no reviewer has must-fix findings. Ask `plan-keeper` to set the
-  spec to **Implemented** and tick the roadmap item. Then report to the owner: what was
+- **Done:** checks green and no reviewer has must-fix findings. Set the spec's Status line and
+  its row in `plan/design/README.md` to **Implemented** yourself, and ask `plan-keeper` to
+  tick the roadmap item. Then report to the owner: what was
   built, its verification, consider-level findings, and open questions.
 - **Commit (D16):** on the feature branch only (create `feat/<topic>` from `main` first if
   you're on `main`). Stage the files by name, never `plan/private/`, and commit with a

@@ -31,6 +31,51 @@
   `departments-events`, `jobs`, `notify`, `files`: each plugs in through one *part*, see
   "How later core services plug in").
 
+## Summary
+
+**Purpose:** run the command the operator asked for over the core assembled from its configuration. Composition root: `internal/app`, helper `internal/app/secrets`, binary `cmd/bms` (a one-liner over `app.Main`). Status Draft; the open questions are listed at the end.
+
+**Exported (`app`):**
+- `Main(ctx, args, environ []string, stdout, stderr io.Writer) int` runs one command in process, never panics on operator input, never calls `os.Exit`.
+- `Version() (string, error)`: `-ldflags -X ...internal/app.version`, else `debug.ReadBuildInfo`, else `dev`; must be a telemetry token of at most 64 bytes.
+- Exit statuses (pinned, `TestExitCodes_Pinned`): `ExitOK=0` (also `serve` stopped by signal), `ExitFailure=1` (runtime failure, closer failed, interrupted), `ExitUsage=2` (bad config/OTEL variable/unknown module name/registry or routing problem/missing session key), `ExitSchema=3` (schema behind or ahead, changed migration file, lock held).
+- `secrets.Ensure(ctx, path, fields) (created []string, err)`: creates the secrets file once (0600, dir 0700, 64 random bytes base64 per field), adds missing fields, never overwrites, atomic replace; `secrets.FieldBytes = 64`.
+- Unexported seams every later core spec writes against: `command{name, summary, usage, run}`, `process`, `assembly` (cfg, tel, dbc, pool, migrator, disp, plan, set, ui, coreSignals, corePoints, coreSets, corePerms, routeSets, authenticator, permissions, deps, runnables, commands), `coreDeps`, `part{name, declare, build, link}`, `runnable{name, start, stop}`, `closer`, `shutdown(...)`, `provision`, `skipSchema`.
+
+**Commands:** `serve`, `migrate`, `check`, `openapi`, `version`, `help` (later `create-superuser`, `rotate-secret` from identity; `export`, `delete` from people, added through parts).
+
+**Key decisions:**
+- D1 `app.Main` owns command line, config loading and exit status; second SIGINT/SIGTERM terminates with the OS default (escape hatch).
+- D2 commands are a table that parts' `declare` appends to; names unique.
+- D3 exactly four exit statuses; `check` uses the same numbers as `serve` would.
+- D4 `serve` logs to stdout; all other commands log to stderr so stdout carries the command's output alone.
+- D5 each command loads config itself; `version`, `help`, `openapi` load none.
+- D6 `serve` requires the session key from M0.
+- D7 `openapi` and `check` build modules against `db.None()` with the schema check skipped; a factory that reads the database fails.
+- D8 missing or stale web build and a missing collector are warnings/nothing, never fatal.
+- D9 start order: config, telemetry, registry, database, signals, parts, modules, HTTP shell, `Set.Start`, runnables, `Listen`.
+- D10 stop order HTTP, runnables, signals, modules, database, telemetry within `http.shutdown_timeout`; HTTP gets `max(1s, 2*budget/3)`; every closer is called even after failure; shutdown ctx is `WithoutCancel`.
+- D11 `serve` starts on a read-only copy; `migrate` refuses one.
+- D12 later core services plug in as ordered parts with `declare`, `build`, `link`, `start`/`stop` (order: identity, audit, settings, authz, people, departments-events, jobs, notify, files), not a registry.
+- D13 end-to-end test runs the real assembly in process through `Main`, plus one subprocess signal test.
+- D14 `migrate` creates data dir and secrets file before touching the database, only when `cfg.Session.Key` is unset, then reloads config.
+- D15 the module list is `internal/app/modules.go` (blank imports) mirrored by `web/src/modules/index.ts`.
+- D16 `TestMessageCatalogues_EnglishCoversManifests` lives here and requires `messages/en.json` for every registered module.
+
+**Errors callers handle:** `Main` converts everything to exit statuses (F3 config `Invalid` to 2; F4 OTEL `Invalid` to 2; F5 unknown `BMS_MODULES_DISABLED` name to 2; F6 no session key to 2; F7 `Resolve` failure to 2; F8 `db.Open` `Invalid` to 2, `Unavailable` to 1; F9 `Build`: `Conflict` from `CheckSchema` to 3, `Invalid` to 2, others to 1; F10 `api.New` to 2; F11-F13 start/listen/serve failures to 1 after stopping what started; F19 read-only `migrate` to 1; F20 migrate `Conflict` to 3). `Version` and `secrets.Ensure`: `Invalid` (never echoes content or path contents), `Internal` (rand failure), `Canceled`/`Timeout`. F28 duplicate part/command names are `Internal`.
+
+**Owns (config, files, constants, no permissions/signals/settings):** consumes `config.Config` (all sections) and copies sections into each package's options; writes `cfg.Secrets.File` (default `<data.dir>/secrets.json`) and creates `cfg.Data.Dir` (0700). Registers permission `core.modules.read` for `api` via `authz`'s part. Constants (not keys): `buildTimeout` 30s, `startTimeout` 30s, `listenTimeout` 5s, `migrateTimeout` 30m, `checkTimeout` 30s, `signals.HandlerTimeout` 5s, `openapi` `info.version` `dev`. Log lines: "bms starting", "listening", "stopping", "stopped" (fields `version, instance, go_version, exporting, addr, modules, read_only, ui, ui_version`). Makefile targets: `fmt vet build test lint test-integration imports web-check web-build openapi-check bin run migrate test-e2e check check-go up observe down ps`.
+
+**Expects of dependencies:** config (`Load`, `Keys`, `SecretsFieldSessionKey`, decisions 7/12, F22/F22b); module-contract (`Registry`, `Resolve`, `Plan`, `Provision`, `Deps` incl. `Tracer`, `SchemaChecker`, `Set`, `ModuleRoutes`); db (`Open`, `Migrator`, `Pool.Ping/ReadOnly/Close`, `ErrReadOnly`, plus the proposed `db.None()` and `ErrNoDatabase`); telemetry (`New` with `Stdout`/`Environ`, `Close` last); signals (`New`, `Scope`, `Close`); api (`New`, `Listen`, `Serve`, `Shutdown`, `OpenAPI`); web (`web.FS`, `web.Version`); authz (`PermissionDecl`).
+
+**Open questions (proposed answers in parentheses):**
+- Q1 drain delay between stop signal and closing the listener for probe-based balancers (not in M0; would add `http.drain_delay` and `api.Server.BeginDrain()`).
+- Q2 whether non-`serve` commands log to stderr (yes; D20 gets a clarification).
+- Q3 whether `serve` requires the session key before `identity` exists (yes, from M0).
+- Q4 whether a second signal forces termination (yes, the escape hatch).
+
+**Pending proposed changes:** all 17 items await owner approval of this spec: config (consumer wording), module-contract (`Set.Contributors`, no-read `Factory`, timeouts, `en.json` for every module), db (`None()`, `ErrNoDatabase`), telemetry/signals/web-shell/api (mark their app-targeted changes applied), jobs/identity/people/departments-events/authz/settings/audit/notify/files (part hooks), Makefile and `scripts/e2e.sh`, D20 clarification, 07-abstractions `app` entry, 09 §1, add-module/go-conventions skills, `docs/operating.md`.
+
 ## Purpose
 
 Run the command the operator asked for over the core assembled from its configuration.

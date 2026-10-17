@@ -15,8 +15,11 @@ names something not listed in `plan/design/README.md`, stop and say so.
 **Before you write anything:** invoke the `design-spec` skill (the template and checklist),
 the `go-conventions` skill (the error and layering rules your interfaces must allow), the
 `privacy-data` skill and the `burn-domain` skill (how burns work and the words to use). For a module spec (`module-<name>`), also invoke `add-module`. Read
-`plan/00-principles.md`, the abstraction's entry in `plan/07-abstractions.md`, and every spec
-it depends on that's already Approved. If `plan/private/` exists (it's gitignored), read any notes there
+`plan/00-principles.md` and the abstraction's entry in `plan/07-abstractions.md`. For each
+Approved spec it depends on, read its **Summary** section only, and open other sections only
+when the summary leaves a question your design depends on (`design-spec`, "Reading other
+specs"). Don't read whole specs by default: they are long, and reading them all is the main
+cost of a draft. If `plan/private/` exists (it's gitignored), read any notes there
 that bear on the spec, and keep what they say about specific organizations out of the spec.
 
 **You may write exactly two files:** `plan/design/<name>.md`, and the status row for that spec
@@ -44,6 +47,11 @@ Rules:
   implementable on an OSI-licensed or self-hostable alternative. Say which.
 - Go signatures in the spec must compile in principle (real types, `context.Context`
   first, `error` last).
+
+Write the spec's **Summary** last, from the finished spec, and keep it within 80 lines.
+
+Recording the owner's answers and applying "Proposed changes elsewhere" after approval is
+`spec-editor`'s job, not yours.
 
 Return: the spec path; the abstraction's purpose in one line; its sub-abstractions; any
 proposed changes elsewhere; the open questions that need the owner. Don't paste the spec.

@@ -25,6 +25,78 @@
   `postgres/` package (`DB`, `Transact`, `Wrap`, `*Error`), `signals` (`AfterCommit`),
   `moduletest` and module tests (`dbtest`).
 
+## Summary
+
+Purpose: give every `postgres/` package one bounded, classified way to reach PostgreSQL: the
+pool, statements with deadlines, transactions, error classification, read-only detection and
+the migration runner. Only `db` and `postgres/` packages import pgx (depguard `storage-seam`).
+Owns one table, `core.schema_migration` (no personal data, kept forever).
+
+Exported names (package `db`):
+- `Options{URL secret.Secret, MaxConns 1..1000, ConnectTimeout 1s..10m, QueryTimeout
+  100ms..10m, Tracer, Meter (both optional)}` with `Validate` (fields `db.url`, `db.max_conns`,
+  `db.connect_timeout`, `db.query_timeout`); `MinServerVersion = 160000`.
+- `Open(ctx, Options, clock.Clock, *slog.Logger) (*Pool, error)`; `*Pool` implements `DB` and
+  adds `Ping(ctx) error`, `Close(ctx) error` (idempotent), `Stats() Stats`.
+- `Querier{Exec, Query, QueryRow}` returning pgx types, errors already classified; `DB` =
+  `Querier` + `Transact(ctx, Mode, func(ctx) error) error` + `ReadOnly() bool`; `Mode`
+  (`Read`, `Write`; zero invalid).
+- `AfterCommit(ctx, fn) error`: runs fn after the ctx's transaction commits, at once when
+  there is none.
+- `Wrap(op, err) error` (idempotent classifier, nil in nil out), `*Error{Code, Schema, Table,
+  Column, Constraint}` (names only), `ErrReadOnly` sentinel.
+- Migrations: `Set{Name, Schema, Files fs.FS}` (+`Validate`), `Version(fs.FS) (int, error)`,
+  `NewMigrator(*Pool, logger)`, `Migrate(ctx, []Set) ([]Applied, error)`, `Status(ctx, []Set)
+  ([]Status, error)`, `CheckSchema(ctx, module, fs.FS) error` (implements
+  `module.SchemaChecker` structurally).
+- `dbtest`: `Fake` (`NewFake`, `SetReadOnly`, `Calls`, `Call{SQL, Args, InTx}`; no rows,
+  `QueryRow.Scan` is NotFound, Transact runs hooks after fn), `TempDB(t) *db.Pool`
+  (integration tag, needs `BMS_TEST_DB_DSN`, `CREATEDB`).
+
+Key decisions: 1 db speaks pgx, the storage seam is each service's interface (D8); 2
+`Deps.DB` is an interface (`*Pool`, `dbtest.Fake`); 3 every error leaving db is classified,
+`Wrap` is the one mapping; 4 server errors scrubbed to SQLSTATE and names, never
+message/detail/hint; 5 the transaction travels in the ctx (fn's ctx must not cross
+goroutines); 6 nested `Transact` joins the outer, no savepoints; 7 read-only = in recovery or
+`default_transaction_read_only` (owner, 2026-10-16); 8 state cached, refreshed by a 15 s
+watcher, `Ping`, and every `25006`; 9 refused write is `Unavailable` wrapping `ErrReadOnly`;
+10 one transaction per migration file with its row (owner, 2026-10-16); 11 no
+non-transactional migrations yet; 12 SHA-256 checksums recorded and checked; 13 migrator
+creates each set's schema; 14 pgx `PG*` variables and pgpass honoured for what the URL omits;
+15 `Open` retries only Unavailable/Timeout; 16 every statement gets `min(ctx deadline,
+QueryTimeout)`, `Migrate` excepted; 17 `Migrate` takes a session advisory lock, fails fast;
+18 missing `core.schema_migration` means nothing applied; 19 `TempDB` is a database not a
+schema; 20 PostgreSQL 16 minimum (owner, 2026-10-16).
+
+Errs kinds and sentinels callers handle: `Invalid` (bad options/URL/credentials/old server,
+FK/not-null/check/data errors, malformed migrations), `Conflict` (unique violation with
+`*Error.Constraint`, concurrent `Migrate`, schema version or checksum mismatch), `NotFound`
+(`QueryRow` no rows), `Unavailable` (connection loss, serialization/deadlock, closed pool,
+read-only), `Timeout`/`Canceled`, `Internal` (bad SQL `42xxx`, unknown). Check
+`errors.Is(err, db.ErrReadOnly)` before the kind: `retry.Retryable` would retry it. `db` never
+retries a statement or transaction. Stores re-kind `23503` to `Conflict` for "in use".
+
+Config and surfaces owned: reads no env itself; `app` copies `config.DB` (`db.url`,
+`db.max_conns`, `db.connect_timeout`, `db.query_timeout`) into `Options`. No settings,
+permissions, signals or routes; supplies `ReadOnly`/`Ping` for `/readyz` and the banner and
+`Status` for the admin modules screen. Constants: connect retry 500ms to 5s doubling, probe
+interval 15 s, probe timeout 5 s, advisory lock key from `bms.migrate`, `application_name`
+`bms`. Telemetry: a client span `db.<OPERATION>` per statement (no text or args), gauges
+`db.client.connection.count|max|pending_requests` from `Stats`.
+
+Migration file rules: `NNNN_name.sql` at the set root, contiguous from `0001`, highest is the
+version, never edited after release; core sets use schema `core`, a module set uses its name.
+
+Expects of dependencies: lib-errs (kinds), lib-core (`clock`, `retry.Do`, `validate`),
+lib-secret (`Secret`), model (`ID[E]`, `Email` scanned by underlying type), config (`Options`
+mirrors `config.DB` bounds), module-contract (`SchemaChecker`, `Deps.DB`, `Manifest.Migrations`,
+`Plan.Order()`), telemetry (`Tracer`, `Meter`, spans, gauges). Expects of consumers: `app` opens
+once, calls `Close` after `Set.Stop` and the HTTP server; core packages export `Set`s.
+
+Pending proposed changes (targets not yet written): 5 app.md (Open/Close, set order, `bms
+check` prints `PG*` names), 10 core specs with tables export a migration `Set`, 11
+`docs/operating.md`, 13 jobs/notify read `ReadOnly()` and stop on `ErrReadOnly`.
+
 ## Purpose
 
 Give every `postgres/` package one bounded, classified way to reach the installation's

@@ -27,6 +27,78 @@
   `Delivery`, `Redeliver`; M4), `authz` (`InDelivery`, Proposed change 7), `core/module`
   (`Name`, already), `moduletest` and every module's unit tests (`signalstest.Fake`).
 
+## Summary
+
+Purpose: let a module react to what another module or the core did, once it is committed,
+without importing it. In-process, synchronous, after commit, payloads hold record references
+only. Owns no tables or files; nothing is durable before delivery (no outbox in M0).
+
+Exported names (package `signals`):
+- `Name` (`<publisher>.<ident>`, past tense; `Validate`, `Publisher`); a state change is its
+  own name, never a name plus a status.
+- `RecordID = model.ID[record]`; `Payload map[string]RecordID` (ident keys, non-zero IDs, at
+  most `MaxRefs = 16`; `Validate`); `Entry`, `Ref[T ~[16]byte](key, id) Entry`,
+  `NewPayload(...Entry) Payload`, `Get[T](p, key) (T, error)`.
+- `SignalID`; `Signal{ID, Name, At, Payload}` (+`Validate`; ID and At filled at Publish);
+  `Handler func(ctx, Signal) error`.
+- `Bus{Publish(ctx, Name, Payload) error; Subscribe(Name, Handler) error}` (= `Deps.Signals`).
+- `Options{Logger, Tracer, Meter, Clock, HandlerTimeout 100ms..1m, Deferrer}` (+`Validate`);
+  `New(Options) (*Dispatcher, error)`; `Dispatcher.Scope(owner, publishes, subscribes) (Bus,
+  error)`, `Redeliver(ctx, Delivery) error`, `Close(ctx) error` (idempotent).
+- `MaxDepth = 8`; `InDelivery(ctx) bool`; `Delivery{Signal, Subscriber, Attempt}`;
+  `Deferrer.Defer(ctx, Delivery) error` (nil in M0; `jobs` implements it from M4).
+- `signalstest`: `Fake` (`NewFake(owner, publishes, subscribes)`, `Published()`, `Deliver(ctx,
+  Signal)`, `Handlers()`); same scoping as `Scope`; records publishes only after commit and
+  never delivers on its own.
+
+Key decisions: 1 publish inside the transaction, deliver after commit from `db.AfterCommit`;
+2 no outbox, delivery in memory, at-most-once (owner, 2026-10-16); 3 a failed delivery is
+final until `jobs` exists, then retryable kinds go to the `Deferrer` (owner, 2026-10-16); 4
+payloads are typed record references only, no strings/numbers/times (owner, 2026-10-16); 5
+delivery is synchronous on the publisher's goroutine, sequential in subscription (module
+build) order, 5 s per handler (owner, 2026-10-16); 6 handler ctx is the publisher's ctx
+without cancellation plus a deadline (`Redeliver` keeps cancellation); 7 a handler runs as
+the system, never as the person who caused it; 8 a handler panic is recovered, logged with
+stack, counted, remaining handlers still run; 9 scopes enforced here, not trusted to the
+manifest check; 10 one handler per name per scope; 11 nesting allowed up to `MaxDepth`; 12
+span names `signal:<name>` and `deliver:<name>`; 13 a failed or refused `Publish` rolls back
+the publisher.
+
+Errs kinds callers handle: `Publish` fails `Invalid` (undeclared name, invalid payload, depth
+at `MaxDepth`), `Canceled`/`Timeout` (ctx already done), `Unavailable` (after `Close`);
+publishers must let the error fail and roll back the use case. A handler's error never reaches
+the publisher. `Subscribe`: `Invalid` (undeclared, nil handler), `Conflict` (second handler for
+a name), `Internal` (after `Close`). `Scope`: `Invalid`, `Conflict` (owner scoped twice),
+`Internal` after `Close`. `Get`: `Invalid` naming the key (return it from the handler).
+`Redeliver`: `Invalid`, `NotFound` (no handler), `Unavailable`, `Canceled`/`Timeout`, or the
+handler's own error unchanged. Handler outcomes: `ok`, `failed`, `deferred`, `read_only`
+(`db.ErrReadOnly`, warn, never deferred), `panicked`. No exported sentinels.
+
+Owns: no routes, permissions, settings or signals of its own; names come from manifests. Only
+config-like value is `HandlerTimeout` (app passes 5 s). Metrics `bms.signals.published{signal,
+module}` and `bms.signals.delivered{signal,module,outcome}`; never the payload on a log, span
+or metric. Core publishers get their own `Scope` from `app` (`people`, `departments`,
+`events`); in M0 the core publishes none (`Env.CoreSignals` empty); `hello.greeted` carries
+`{person}`.
+
+Rules for modules: declare names in the manifest; subscribe once per name in `Module.Start`
+(no I/O, works read-only); never publish in `Start`; publish inside the `Transact` that makes
+the change; handlers are quick and idempotent on `Signal.ID`, long work becomes a job.
+
+Expects of dependencies: lib-errs; lib-core (`clock`, `validate`); model (`ID[E]`, `NewID`);
+db (`AfterCommit` runs hooks on commit or at once outside a transaction, passes the caller's
+ctx unchanged; `ErrReadOnly`; `dbtest.Fake.Transact` runs hooks after fn and skips them on
+failure); telemetry (`Tracer` Producer/Consumer spans, `Meter` counters,
+`telemetrytest.Capture`); module-contract (`Manifest.Publishes/Subscribes`, `Env.CoreSignals`,
+`Deps.Signals`, `Start`; the graph check of unknown or disabled publishers is `Resolve`'s).
+`app` order at shutdown: HTTP drained, `signals.Close`, `Set.Stop`, `db.Close`,
+`telemetry.Close`.
+
+Pending proposed changes (targets not written): 5 app.md (build and scope the dispatcher,
+shutdown order), 6 jobs.md (implement `Deferrer`, call `Redeliver`), 7 authz/identity (ignore
+the session when `InDelivery`), 8 people/departments-events (declare their signals), 11
+module-hello (`hello.greeted`). Items 1, 2, 3, 4, 9, 10 are applied.
+
 ## Purpose
 
 Let a module react to what another module or the core did, once it is committed, without

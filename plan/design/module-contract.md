@@ -29,6 +29,87 @@
   and deletion across modules), `signals` (the declared names), every module (`Manifest`,
   `Register`, `Deps`, `Links`), and the `hello` reference module (09-core-features §1).
 
+## Summary
+
+Purpose: describe each compiled-in module to the core (Manifest) so `app` can resolve, build,
+start and stop it without knowing it. `module` is the top of the core graph: it imports core
+contracts; no core package imports it. Owns no tables, settings or signals.
+
+Exported names (package `module`):
+- `Capability` (one ident; Go interface in `contracts/<name>`), `ExtensionPoint`
+  (`<definer>.<ident>`, `.Definer()`), `ExtensionPointDecl{Name, Accepts func(any) bool}`;
+  each has `Validate() error`. Idents are `[a-z][a-z0-9]*(-[a-z0-9]+)*`, at most 64 bytes.
+- `SettingKind` (`SettingBool|Int|Duration|Text|Enum`, zero invalid), `SettingDecl{Key, Kind,
+  Default, Options, Validate func(string) error}`.
+- `Manifest{Name, Migrations fs.FS, Permissions []authz.PermissionDecl, Settings, Publishes,
+  Subscribes []signals.Name, Provides/Requires/Uses []Capability, Defines
+  []ExtensionPointDecl, ContributesTo []ExtensionPoint}`; `Validate()` joins every problem.
+- `Factory func(ctx, Deps) (Module, error)`; `Module` = `PersonData` + `Start(ctx) error` +
+  `Stop(ctx) error`. Optional: `RouteProvider.Routes() []Route`, `APIDescriber.OpenAPI()
+  []byte` (mandatory for a RouteProvider), `CapabilityProvider.Capabilities()
+  map[Capability]any`, `Contributor.Contributions() map[ExtensionPoint]any`.
+- `PersonData{ExportPerson(ctx, PersonID) (Export, error); DeletePerson(ctx, PersonID)
+  (Deletion, error)}`; `Export{Data json.RawMessage}`, `Deletion{Deleted, Anonymized int,
+  Kept []Kept}`, `Kept{Kind string, Count int}`.
+- `Route{Method, Pattern, Access, Handler}` (relative to `/api/<name>`; `Validate`),
+  `Access` (`AccessSignedIn` zero default, `AccessPublic`).
+- `Deps{Logger, Tracer telemetry.Tracer, Clock, Links *Links, DB db.DB, Signals signals.Bus}`;
+  later fields Settings, Authz, People, Audit, Jobs, Notify, Files (M2 to Later).
+- `Links.Capability(name) (any, error)`, `Links.Contributors(point) ([]Contribution, error)`,
+  `Contribution{Module, Value}`. Frozen after `Build`; safe for concurrent use.
+- `Registry`: `NewRegistry`, `Default`, package `Register(Manifest, Factory)` (called in
+  `init`; records problems, never panics), `Add`, `Manifests`, `Resolve(Env) (*Plan, error)`.
+  `Env{Enabled []string, CoreSignals, CoreExtensionPoints}` with `Validate`.
+- `Plan`: `Order()`, `Permissions()`, `Settings() []ModuleSettings`, `Graph() Graph`,
+  `Build(ctx, SchemaChecker, Provision) (*Set, error)`. `Graph{Modules []Node, Edges []Edge,
+  Warnings []Warning}`; `EdgeKind` (`EdgeRequires|Uses|Contributes|Subscribes`).
+- `SchemaChecker.CheckSchema(ctx, module, fs.FS) error` (`*db.Migrator` satisfies it
+  structurally); `Provision func(ctx, Manifest) (Deps, error)` (sets all but `Links`).
+- `Set`: `Modules() []Built`, `Routes() []ModuleRoutes` (also the shape of core route sets),
+  `PersonData() []ModulePersonData`, `Start(ctx)`, `Stop(ctx)` (reverse order, continues).
+- Leaf types placed elsewhere, defined here: `authz.Permission` (`<module>.<ident>(.<ident>)*`,
+  `.Module()`), `authz.Scope` (`ScopeSite`, `ScopeDepartment`), `authz.PermissionDecl{Name,
+  Scope, Reaches model.Sensitivity}`; `signals.Name` (now owned by signals.md).
+- `moduletest.Conformance(t, manifest, factory, provision)`: named subtests including
+  `manifest_valid`, `implements_declared`, `start_read_only`, `subscribes_every_declared_name`,
+  `stop_honors_context`, `export_zero_id`, `delete_read_only`, `no_personal_data_in_logs`.
+
+Key decisions: 1 static Manifest plus separate Factory; 2 `Register` records problems, no
+panic; 3 module is top of core graph, name types live in authz/signals; 4 capabilities resolve
+at construction (providers built first, cycle is an error), extension points per request; 5
+types checked at start-up by the side that knows the interface (`any` plus `Accepts`); 6
+dangling subscription/contribution to a disabled module is a Warning, to an unknown name an
+error; 7 all compiled-in modules enabled unless `modules.disabled` names them; 8 no English
+text in manifests, titles are message keys `module.<name>.*`; 9 no "has UI" flag; 10 module
+names `[a-z][a-z0-9]{1,31}` letters and digits only (`afterreports`), reserved list pinned by a
+test; 11 `PersonData` mandatory on every module; 12 schema check once in `Build`, all errors
+collected (D17); 13 routes are a list with `Access`, default signed-in; 14 `Start` never
+writes (works on a read-only copy); 15 contract calls take batches, providers check
+permissions for the actor in ctx, payloads carry IDs only.
+
+Errs kinds callers handle: `Invalid` (manifest/route/graph problems, undeclared Links use,
+zero PersonID), `Conflict` (duplicate name, two providers, `Start` twice, schema mismatch from
+the checker), `NotFound` (`Links.Capability` for an absent `Uses` capability: hide the
+feature), `Internal` (nil module, `Links` misuse before freeze), `Unavailable` wrapping
+`db.ErrReadOnly` (`DeletePerson` on a read-only copy), `Timeout`/`Canceled`. No sentinels.
+
+Owns: permission `core.modules.read` (declared by `api`; reads the graph at
+`GET /api/admin/modules`; the public `GET /api/modules` lists enabled names only);
+`people.data.export`/`people.data.delete` are `people`'s. No signals. No settings: proposed
+config key `modules.disabled` (config.md). Route prefix `/api/<name>/`; message-key
+convention in decision 8; web catalogues are web-shell's.
+
+Expects of dependencies: lib-errs (kinds, `errs.E`/`Is`); lib-core (`clock.Clock`,
+`validate.Errors`/`FieldError`); model (`PersonID`, `Sensitivity.Validate`); db (`db.DB`,
+`db.ErrReadOnly`, `*db.Migrator` as checker with `CheckSchema` kinds Conflict/Unavailable/
+Timeout/Invalid, `dbtest.Fake`); telemetry (`Tracer`, `telemetrytest`); signals (`Bus`,
+`Name`, `signalstest.NewFake` handed to factories). Expected of consumers: `app` supplies
+`Env`, `Provision`, the checker and the order of Build, Start, Stop; `api` mounts `Set.Routes`;
+`authz`/`settings` take `Plan.Permissions`/`Plan.Settings`; `people` runs `Set.PersonData`.
+
+Pending proposed changes (only 3, 6, 7 are marked applied; the rest carry no status): 1
+07-abstractions, 2 authz, 4 db, 5 settings, 8 people, 9 app, 10 config, 11 skills, 12-14.
+
 ## Purpose
 
 Describe each compiled-in module to the core well enough that `app` can wire it in without

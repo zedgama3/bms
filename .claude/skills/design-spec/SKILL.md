@@ -21,6 +21,14 @@ File: `plan/design/<name>.md` (modules: `module-<name>.md`). Status is tracked i
 - **Package:** internal/<path>   **UI:** web/src/<path> (if any)
 - **Depends on specs:** <list>   **Used by:** <consumers>
 
+## Summary
+The contract other specs rely on, in at most 80 lines: the purpose; the exported names
+(types, interfaces, functions, constants) each with a one-line signature or meaning; the key
+decisions, one line each with their number; the errs kinds and sentinels a caller must
+handle; routes, signals, permissions, settings and config keys this spec owns; and what it
+expects of each spec it depends on. Every later change to the spec updates this section in
+the same edit.
+
 ## Purpose
 One sentence. No "and".
 
@@ -80,14 +88,22 @@ conformance (if a contract).
 Only real unknowns, each with a proposed answer.
 
 ## Proposed changes elsewhere
-Edits this spec needs in 07-abstractions.md or other specs (the architect lists them; the
-owner applies them).
+Edits this spec needs in 07-abstractions.md or other specs (the architect lists them;
+`spec-editor` applies those whose target exists once the owner approves).
 ```
 
 Sections that don't apply say "None" with a reason, rather than being dropped.
 
+## Reading other specs
+
+Read the **Summary** of each spec yours depends on, not the whole file. Open a specific
+section (an interface, a decision, a failure mode) only when the summary leaves a question
+your design depends on. If a summary is missing or contradicts its spec, say so in your
+return message.
+
 ## Checklist: a spec is ready to approve when
 
+- [ ] The Summary is present, at most 80 lines, and matches the rest of the spec.
 - [ ] The purpose is one sentence with no "and".
 - [ ] "Not responsible for" names who owns each excluded concern.
 - [ ] Every interface method names its consumer. No method lacks a consumer.

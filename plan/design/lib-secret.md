@@ -12,6 +12,42 @@
   (S3-compatible access keys), `app` (passes config secrets to constructors), and every test
   that builds one of those values by hand.
 
+## Summary
+
+**Purpose.** Hold a string so that no formatting, logging or encoding path can print it. Package `internal/lib/secret`; imports `fmt`, `log/slog`, `errors`, `lib/errs`. No config keys, settings, permissions, routes or signals.
+
+**Exported names.**
+- `const Redacted = "[redacted]"`, `const Unset = "[unset]"`: the one spelling of the markers (tests, API wire form, UI).
+- `type Secret struct{ p *string }`: zero value is unset. The value sits behind a pointer so fmt's reflective fallbacks (bad verbs, unexported fields, `%p`) print an address, never the bytes. `==` compares identity, so compare `Value()`, never `==` or `reflect.DeepEqual`.
+- `New(v string) Secret`: empty v gives the zero Secret. Cannot fail.
+- `(Secret) Value() string`: the only way to read it; read it once at the point of use. `IsSet() bool`.
+- `String()` and `GoString()`: `Redacted` when set, `Unset` when not.
+- `Format(fmt.State, rune)`: handles every verb except `%T`, `%p`, `%w` (fmt handles those itself, printing an address); writes the marker honouring width, precision and flags; `%q` quotes.
+- `LogValue() slog.Value`, `MarshalText() ([]byte, error)`: the marker (so `encoding/json` and `encoding/xml` emit it); never an error.
+- `(*Secret) UnmarshalText([]byte) error`: stores text verbatim (no trimming); empty text gives unset; fails `Invalid` if text equals `Redacted` or `Unset`, `Internal` if the receiver is nil; on failure `*s` is unchanged.
+
+**Key decisions (numbers from Behavior).**
+1. Shape is `struct{ p *string }` (second line of defence against reflective leaks).
+2. `Format` handles every verb; `%q` quotes; width and flags honoured.
+3. `MarshalText` redacts: the encoded form is display-only, a Secret never survives a JSON round trip.
+4. `UnmarshalText` is verbatim and refuses the two markers (a real password equal to a marker is refused too; accepted cost); JSON `null` leaves the field unchanged; non-string JSON is a `*json.UnmarshalTypeError` (no errs kind; the loader wraps it as `Invalid`); `omitzero` omits an unset Secret, `omitempty` does not.
+5. No length cap in `UnmarshalText`; the owner validates (length, UTF-8, NUL).
+6. No `Equal`; callers use `crypto/subtle.ConstantTimeCompare` on `Value()`.
+7. `New("")` equals the zero value (`IsSet` checks both nil and empty).
+8. Markers are exported constants. 9. Constructor is `New`.
+
+**What callers handle.** `errs.Invalid` from `UnmarshalText` (marker text fed back in); it reaches the caller of `json.Unmarshal` unwrapped, so `errs.Is(err, errs.Invalid)` holds at the loader boundary. `errs.Internal` only for a nil receiver. `gob` encoding fails by design (no exported fields).
+
+**Concurrency.** Immutable after `New`; safe to share. `UnmarshalText` writes its receiver (not concurrently with reads of the same variable).
+
+**Not done here.** Encryption, persistence (owners store a hash or sealed form), reading env or files (config), content validation, zeroing memory, defence against `reflect`/`unsafe`.
+
+**Expects of dependencies.** `lib-errs`: `errs.E`, kinds `Invalid`, `Internal`.
+
+**Used by.** `config` (every secret key, `New`, `Value`, `IsSet`), `identity`, `notify`, `db`, `files`, `app`, `model` (`Email.LogValue` uses the markers).
+
+**Open question.** Wire form of a redacted field in API responses: proposed that `api.md` documents `[redacted]`/`[unset]` as a `readOnly` enum in OpenAPI. api.md (Approved) does not yet mention it, so still open. Nothing here changes either way.
+
 ## Purpose
 
 Hold a string so that no formatting, logging or encoding path can print it.

@@ -10,6 +10,40 @@
   `jobs`, `api` (ErrorMapper), `lib/retry`, `lib/validate`, logging, and every test that checks
   an error path.
 
+## Summary
+
+**Purpose.** Give every error in bms one machine-readable kind that callers decide on without reading its message. Package `internal/lib/errs`; standard library only (`context`, `errors`, `strconv`); no config, signals, permissions or routes.
+
+**Exported names.**
+- `type Kind uint8`; zero value is `Internal`. Ten constants: `Internal`, `Invalid` (bad input or config), `Unauthenticated`, `Permission`, `NotFound`, `Conflict` (state conflict or duplicate), `Unavailable` (dependency down; retry may help), `Timeout`, `Canceled` (caller gave up; never retry), `Unsupported` (feature or module off in this deployment).
+- `func (Kind) String() string`: stable lower_snake_case name (`internal`, `invalid`, `unauthenticated`, `permission`, `not_found`, `conflict`, `unavailable`, `timeout`, `canceled`, `unsupported`); out of range gives `Kind(<n>)`; never panics. These strings are API error codes; changing one is a breaking change.
+- `type Error struct { Op string; Kind Kind; Err error }`, with `Error() string` ("<Op>: <Err>", kind not in the text) and `Unwrap() error`. Build with `E`, not a literal.
+- `func E(op string, kind Kind, err error) error`: nil if err is nil; out-of-range kind recorded as `Internal`; the outer kind wins over any inner kind.
+- `func KindOf(err error) Kind`: depth-first, left-to-right through wrap and join trees; kind of the first `*Error` found (even if out of range or typed-nil, which give `Internal`); else `context.Canceled` gives `Canceled` (wins over deadline), `context.DeadlineExceeded` gives `Timeout`, else `Internal`; `KindOf(nil)` is `Internal`.
+- `func Is(err error, kind Kind) bool`: `KindOf(err) == kind`; false for nil err.
+
+**Key decisions (Behavior).**
+1. Unkinded errors classify as `Internal`; there is no `Other` kind.
+2. `Canceled` is distinct from `Timeout`.
+3. Context sentinels map to kinds only when no `*Error` is present; other stdlib sentinels are not recognised (drivers translate their own).
+4. Joined errors: first kinded error, depth-first, left to right.
+5. One kind per error.
+6. Re-kinding allowed, outer wins; to keep the inner kind use `fmt.Errorf("...: %w", err)`; no `Wrap` helper.
+7. `E(op, kind, nil)` returns nil; to make a fresh error pass an explicit cause (`errors.New`).
+8. No public-message field; the api derives client text from the kind and from `validate` field errors.
+9. No retryable helper here; `lib/retry` owns it.
+10. Kind not repeated in message text; log it as a structured field.
+11. Op format `pkg.Type.Method` or `pkg.Func`; an empty op is tolerated (prefix omitted).
+Failure modes F1-F18 are degenerate-input results of total, pure functions (nothing here returns an error about itself).
+
+**What callers handle.** Branch with `errs.Is` / `errs.KindOf`, never on message text. Classify driver and network errors at the boundary package that owns the driver. `Canceled`: stop, do not retry, api writes no response if the client is gone (api.md decision 17; during shutdown it answers 503 `shutting_down`).
+
+**Config, settings, permissions, routes, signals.** None. Concurrency: pure functions; `*Error` immutable after `E`.
+
+**Expects of dependencies.** None (foundation; depends on no spec). It defers to `lib-core` (`lib/retry` decides retryable kinds, `lib/validate` defines the typed field error that `E(..., Invalid, ...)` wraps), to `lib/httpx` (kind to HTTP status table, `Kind.String()` as body `code`; applied in api.md), and to `api` (never emits `err.Error()` to a client).
+
+**Pending amendments.** None. Open questions: None.
+
 ## Purpose
 
 Give every error in bms one machine-readable kind that callers can decide on without
