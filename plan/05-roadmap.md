@@ -23,7 +23,7 @@ Design comes before code. Specs are tracked in [design/README.md](design/README.
       api.md decision 25). Must land before `httpx`.
 - [x] A "hello" module that exercises every part of the module contract, as the reference for
       module authors
-- [ ] CI on GitHub Actions running `make check` (repository: `github.com/zedgama3/bms`)
+- [ ] CI on GitHub Actions running `make check` (repository: `github.com/zedgama3/bms`) (workflow written 2026-10-17; runs once pushed)
 - [ ] CODE_OF_CONDUCT.md and governance (Q-GOV1, Q-GOV2)
 
 ## Phase 1: First module (MVP)

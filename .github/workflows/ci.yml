@@ -1,0 +1,67 @@
+# Runs `make check` (every Go and web check) and the integration tests on every push and
+# pull request. The same targets run locally; CI adds nothing a developer can't run.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - name: Enable pnpm (the version in web/package.json)
+        run: |
+          corepack enable
+          corepack install -g "$(node -p "require('./web/package.json').packageManager")"
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
+      - name: Install web dependencies
+        run: pnpm -C web install --frozen-lockfile
+      - run: make check
+
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: bms
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: bms
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U bms"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      # A throw-away service container: the password guards nothing.
+      BMS_TEST_DB_DSN: postgres://bms:ci-only-password@localhost:5432/bms?sslmode=disable
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - run: make test-integration

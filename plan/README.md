@@ -92,9 +92,14 @@ copy and can fork it. Features are modules.
      - (a) Confirm D34 as D20's debug-level exception.
      - (b) The M3 part name `departments-events` is not a core area name for `module.IsCoreArea`
        (split into two parts, or amend F28).
-     - (c) `scripts/e2e.sh` has no readonly mode yet.
-     - (d) CI on GitHub once the branch is pushed.
-  3. CI on GitHub (`make check`), once the owner pushes the branch.
+     - (c) Done 2026-10-17: `scripts/e2e.sh` has a readonly mode. `BMS_E2E_MODE=readonly`
+       migrates a throw-away database, freezes it with `ALTER DATABASE ... SET
+       default_transaction_read_only = on` and runs the read-only Playwright scenario.
+     - (d) CI workflow `.github/workflows/ci.yml` is written (2026-10-17): a `make check` job and
+       an integration-test job with a PostgreSQL 17 service. It runs once the owner pushes the
+       branch; waiting for the first push.
+  3. CI on GitHub (`make check`): workflow `.github/workflows/ci.yml` is written (2026-10-17);
+     waiting for the owner to push the branch so it runs.
 
 ## Conventions
 
