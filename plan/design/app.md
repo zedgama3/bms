@@ -1,6 +1,7 @@
 # app: the composition root
 
-- **Status:** Approved (2026-10-17)
+- **Status:** Implemented (2026-10-17); Approved (2026-10-17)
+- **Amended 2026-10-17 (owner):** `check` ignores a never-migrated disabled module and exits 2 without a session key; `openapi` prints indented JSON; `migrate` creates the data directory only when it writes the secrets file; the part-name check uses `module.IsCoreArea`; debug logging is announced (decision 18); reviewer-accepted implementation deviations are recorded ("Accepted deviations").
 - **Package:** `internal/app` (Go module `github.com/zedgama3/bms`), plus the helper package
   `internal/app/secrets` (the generated-secrets file) and the binary `cmd/bms`. **UI:**
   none of its own; `serve` hands the built web shell to `api`.
@@ -33,12 +34,12 @@
 
 ## Summary
 
-**Purpose:** run the command the operator asked for over the core assembled from its configuration. Composition root: `internal/app`, helper `internal/app/secrets`, binary `cmd/bms` (a one-liner over `app.Main`). Status Draft; the open questions are answered (owner, 2026-10-17).
+**Purpose:** run the command the operator asked for over the core assembled from its configuration. Composition root: `internal/app`, helper `internal/app/secrets`, binary `cmd/bms` (a one-liner over `app.Main`). The open questions are answered (owner, 2026-10-17).
 
 **Exported (`app`):**
 - `Main(ctx, args, environ []string, stdout, stderr io.Writer) int` runs one command in process, never panics on operator input, never calls `os.Exit`.
 - `Version() (string, error)`: `-ldflags -X ...internal/app.version`, else `debug.ReadBuildInfo`, else `dev`; must be a telemetry token of at most 64 bytes.
-- Exit statuses (pinned, `TestExitCodes_Pinned`): `ExitOK=0` (also `serve` stopped by signal), `ExitFailure=1` (runtime failure, closer failed, interrupted), `ExitUsage=2` (bad config/OTEL variable/unknown module name/registry or routing problem/missing session key), `ExitSchema=3` (schema behind or ahead, changed migration file, lock held).
+- Exit statuses (pinned, `TestExitCodes_Pinned`): `ExitOK=0` (also `serve` stopped by signal), `ExitFailure=1` (runtime failure, closer failed, interrupted), `ExitUsage=2` (bad config/OTEL variable/unknown module name/registry or routing problem/missing session key, also for `check`), `ExitSchema=3` (schema behind or ahead, changed migration file, lock held).
 - `secrets.Ensure(ctx, path, fields) (created []string, err)`: creates the secrets file once (0600, dir 0700, 64 random bytes base64 per field), adds missing fields, never overwrites, atomic replace; `secrets.FieldBytes = 64`.
 - Unexported seams every later core spec writes against: `command{name, summary, usage, run}`, `process`, `assembly` (cfg, tel, dbc, pool, migrator, disp, plan, set, ui, coreSignals, corePoints, coreSets, corePerms, routeSets, authenticator, permissions, deps, runnables, commands), `coreDeps`, `part{name, declare, build, link}`, `runnable{name, start, stop}`, `closer`, `shutdown(...)`, `provision`, `skipSchema`.
 
@@ -58,14 +59,16 @@
 - D11 `serve` starts on a read-only copy; `migrate` refuses one.
 - D12 later core services plug in as ordered parts with `declare`, `build`, `link`, `start`/`stop` (order: identity, audit, settings, authz, people, departments-events, jobs, notify, files), not a registry.
 - D13 end-to-end test runs the real assembly in process through `Main`, plus one subprocess signal test.
-- D14 `migrate` creates data dir and secrets file before touching the database, only when `cfg.Session.Key` is unset, then reloads config.
+- D14 `migrate` creates data dir and secrets file before touching the database, only when `cfg.Session.Key` is unset (a read-only filesystem with `BMS_SESSION_KEY` injected works), then reloads config.
 - D15 the module list is `internal/app/modules.go` (blank imports) mirrored by `web/src/modules/index.ts`.
 - D16 `TestMessageCatalogues_EnglishCoversManifests` lives here and requires `messages/en.json` for every registered module.
 - D17 no drain delay in M0 (owner, 2026-10-17); `http.drain_delay` and `api.Server.BeginDrain()` are designed with Phase 1 packaging if a regional needs them.
+- D18 debug logging is announced (owner, 2026-10-17): `serve` warns after "bms starting" (`log.level=debug`), other commands print the same warning to stderr, `check` prints `log level: debug (logs may contain personal data)`; scrubbing stays on at every level. `check` without a session key exits 2 like `serve`; a never-migrated disabled module is not a `check` problem; `openapi` prints indented JSON.
+- D19 accepted deviations (reviewed, 2026-10-17) listed under Behavior "Accepted deviations" (Version `+` to `-`, per-closer "step stopped" and one final "stopped", wall-time shutdown deadlines, `check` with a broken `OTEL_*` still runs later sections, "interrupted: rerun the command", `Load`/`Ensure` under `checkTimeout`, temp file + `link(2)`, `e2ehang` module in `internal/app`, `make check` needs Node, `openapi-check` temp file).
 
 **Errors callers handle:** `Main` converts everything to exit statuses (F3 config `Invalid` to 2; F4 OTEL `Invalid` to 2; F5 unknown `BMS_MODULES_DISABLED` name to 2; F6 no session key to 2; F7 `Resolve` failure to 2; F8 `db.Open` `Invalid` to 2, `Unavailable` to 1; F9 `Build`: `Conflict` from `CheckSchema` to 3, `Invalid` to 2, others to 1; F10 `api.New` to 2; F11-F13 start/listen/serve failures to 1 after stopping what started; F19 read-only `migrate` to 1; F20 migrate `Conflict` to 3). `Version` and `secrets.Ensure`: `Invalid` (never echoes content or path contents), `Internal` (rand failure), `Canceled`/`Timeout`. F28 duplicate part/command names are `Internal`.
 
-**Owns (config, files, constants, no permissions/signals/settings):** consumes `config.Config` (all sections) and copies sections into each package's options; writes `cfg.Secrets.File` (default `<data.dir>/secrets.json`) and creates `cfg.Data.Dir` (0700). Registers permission `core.modules.read` for `api` via `authz`'s part. Constants (not keys): `buildTimeout` 30s, `startTimeout` 30s, `listenTimeout` 5s, `migrateTimeout` 30m, `checkTimeout` 30s, `signals.HandlerTimeout` 5s, `openapi` `info.version` `dev`. Log lines: "bms starting", "listening", "stopping", "stopped" (fields `version, instance, go_version, exporting, addr, modules, read_only, ui, ui_version`). Makefile targets: `fmt vet build test lint test-integration imports web-check web-build openapi-check bin run migrate test-e2e check check-go up observe down ps`.
+**Owns (config, files, constants, no permissions/signals/settings):** consumes `config.Config` (all sections) and copies sections into each package's options; writes `cfg.Secrets.File` (default `<data.dir>/secrets.json`) and creates `cfg.Data.Dir` (0700). Registers permission `core.modules.read` for `api` via `authz`'s part. Part names are checked with `module.IsCoreArea` (F28). Constants (not keys): `buildTimeout` 30s, `startTimeout` 30s, `listenTimeout` 5s, `migrateTimeout` 30m, `checkTimeout` 30s, `signals.HandlerTimeout` 5s, `openapi` `info.version` `dev`. Log lines: "bms starting", the debug-logging warning (D18), "listening", "stopping", "stopped" (fields `version, instance, go_version, exporting, addr, modules, read_only, ui, ui_version`). Makefile targets: `fmt vet build test lint test-integration imports web-check web-build openapi-check bin run migrate test-e2e check check-go up observe down ps`.
 
 **Expects of dependencies:** config (`Load`, `Keys`, `SecretsFieldSessionKey`, decisions 7/12, F22/F22b); module-contract (`Registry`, `Resolve`, `Plan`, `Provision`, `Deps` incl. `Tracer`, `SchemaChecker`, `Set`, `ModuleRoutes`); db (`Open`, `Migrator`, `Pool.Ping/ReadOnly/Close`, `ErrReadOnly`, plus the proposed `db.None()` and `ErrNoDatabase`); telemetry (`New` with `Stdout`/`Environ`, `Close` last); signals (`New`, `Scope`, `Close`); api (`New`, `Listen`, `Serve`, `Shutdown`, `OpenAPI`); web (`web.FS`, `web.Version`); authz (`PermissionDecl`).
 
@@ -574,7 +577,9 @@ stale bundle apart from a bug.
     still gets its key, and the reload means the rest of `migrate` (and `identity`'s
     later use of the key in the same command, if any) sees the same `Config` any other
     command would. `Ensure` runs only when `cfg.Session.Key` is unset: a platform that
-    injects `BMS_SESSION_KEY` never gets a file, so config.md F27 cannot trigger.
+    injects `BMS_SESSION_KEY` never gets a file, so config.md F27 cannot trigger. The data
+    directory is created only when the file must be written (owner, 2026-10-17), so
+    `migrate` also works on a read-only filesystem with `BMS_SESSION_KEY` injected.
 15. **The module list is one file, `internal/app/modules.go`, and its web mirror is
     `web/src/modules/index.ts`.** D5 and D31 promised one import line each. A test pins
     that every registered manifest has a `web/src/modules/<name>/messages/en.json`
@@ -596,6 +601,39 @@ stale bundle apart from a bug.
     with the Phase 1 packaging work if a regional runs two instances behind a probing
     balancer. Until then it is under "Not responsible for".
 
+18. **Debug logging is announced (owner, 2026-10-17).** The app never logs e-mail
+    addresses; test fixtures may hold them. Debug logging may carry private information if
+    needed, but the app must make it obvious when it runs that way. In M0 scrubbing and
+    redaction stay on at every level, so nothing is relaxed yet; the warning is the
+    contract for the day something is. `serve` logs at warn, right after "bms starting",
+    "debug logging is on: logs may contain personal data; do not run this way in
+    production" with attribute `log.level=debug`; every other command prints the same text
+    to stderr at start; `check` prints `log level: debug (logs may contain personal data)`
+    in its configuration section. `/readyz` and the UI are unchanged. Any relaxation of
+    scrubbing at debug level needs its own spec change.
+
+### Accepted deviations (implementation review, 2026-10-17)
+
+The reviewers accepted these differences from the text above; they are the behavior.
+
+- `Version` takes build info's version and replaces `+` with `-` (a token has no `+`); with
+  no usable version it falls back to `dev`.
+- Shutdown writes one record per closer, "`<step>` stopped"; the final lifecycle line is
+  the single "stopped" (with `duration_ms`).
+- Shutdown deadlines are computed from the injected clock and applied as wall-time
+  contexts.
+- `check` with a broken `OTEL_*` variable still runs the database, schema and api sections
+  (only the log line sources are lost).
+- A `Canceled` configuration or secrets step prints "interrupted: rerun the command".
+- `config.Load` and `secrets.Ensure` run under `checkTimeout`.
+- `secrets.Ensure` creates a new file through a temp file and `link(2)`, so a concurrent
+  creator never sees a partial file and never loses its own.
+- The `e2ehang` test module lives in `internal/app` (test file with the build tag).
+- `make check` needs Node (`web-check`, `openapi-check`); `check-go` is the Go-only
+  subset.
+- `openapi-check` writes `web/openapi.json` via a temp file, so a failed run leaves the
+  committed file intact.
+
 ### `serve`, step by step
 
 1. `config.Load(ctx, environ)` (F3). `Version()` (F2). `cfg.Session.Key.IsSet()` or F6.
@@ -603,6 +641,8 @@ stale bundle apart from a bug.
    cfg.Instance.Name, Version: version, Stdout: p.stdout, Clock: p.clock, Environ:
    p.lookup})` (F4). From here every problem is also logged. Log at info "bms starting"
    with `version`, `instance`, `go_version`, `exporting`, and `slog.Any("config", cfg)`.
+   When `cfg.Log.Level` is debug, log at warn "debug logging is on: logs may contain
+   personal data; do not run this way in production" with `log.level=debug` (decision 18).
 3. Derive `Enabled` (config.md "`modules.disabled`": names from
    `p.registry.Manifests()`, unknown names → F5 under `BMS_MODULES_DISABLED`, all listed).
 4. Run every part's `declare` (F28). `p.registry.Resolve(module.Env{Enabled,
@@ -651,14 +691,15 @@ table gives. `ctx` ending during start-up is F14.
 ### `migrate`, step by step
 
 1. `config.Load` (F3); `Version()` (F2).
-2. `os.MkdirAll(cfg.Data.Dir, 0o700)` (F23). If `!cfg.Session.Key.IsSet()`:
+2. If `!cfg.Session.Key.IsSet()`: `os.MkdirAll(cfg.Data.Dir, 0o700)` (F23), then
    `secrets.Ensure(ctx, cfg.Secrets.File, []string{config.SecretsFieldSessionKey})` (F22);
    for each created name print config.md decision 7's notice to stderr, framed by a blank
    line before and after: "Created `<path>`. It holds this installation's session key.
    Back it up separately from the database and copy it to every copy of this
    installation; without it, every session is invalid and anything sealed with it is
    unreadable. Keep it readable by the bms user only."; then `config.Load` again (F3).
-3. `telemetry.New` with `Stdout: p.stderr` (F4); log the configuration at debug.
+3. `telemetry.New` with `Stdout: p.stderr` (F4); log the configuration at debug. At debug
+   level print the warning of decision 18 to stderr first.
 4. Steps 3 and 4 of `serve` (enablement, `declare`, `Resolve`, warnings).
 5. `db.Open` with the tracer and meter, `NewMigrator` (F8).
 6. `sets` = `a.coreSets` in part order, then for each manifest in `plan.Order()` with
@@ -682,7 +723,10 @@ and the exit status is the worst one found (`ExitUsage` > `ExitSchema` > `ExitFa
    `configuration: <n> problem(s)`, and return `ExitUsage` (nothing else can run).
    Otherwise print `configuration` and one line per `config.Keys()` entry:
    `<Env> = <value>` with a secret as `[redacted]` or `[unset]`, an unset `Generated` key
-   marked `run bms migrate`, then `secrets file: <path> (present | absent)`.
+   marked `run bms migrate`, then `secrets file: <path> (present | absent)`. When the log
+   level is debug print `log level: debug (logs may contain personal data)` here. When
+   `cfg.Session.Key` is unset still print "run bms migrate" but record `ExitUsage`, as
+   `serve` would (F6); the remaining sections still run.
 2. `telemetry.New` with `Stdout: p.stderr` (on failure print `<VAR>: <reason>`, status
    `ExitUsage`, and continue without logs where possible: nothing below logs). Print
    `log: <format> <level>`, `OTLP export: on | off`. Print `PG* variables set: <names>`
@@ -698,7 +742,9 @@ and the exit status is the worst one found (`ExitUsage` > `ExitSchema` > `ExitFa
    module with migrations, enabled or not, so an operator sees what a disabled module left
    behind): print `schema` and one line per set: `<set>  built <b>  applied <a>  current |
    <Status.Err text>`; any `Err` records `ExitSchema` (its kind `Conflict`) or
-   `ExitFailure` (`Unavailable`, `Timeout`).
+   `ExitFailure` (`Unavailable`, `Timeout`). A disabled module that has never been
+   migrated is not a problem (printed as not migrated, disabled; `migrate` never migrates
+   a disabled module).
 6. The parts' `build`, `Build` with `skipSchema` and `db.None()`, `link`, `api.New` with
    the stub `Database`, an empty `SchemaStatus`, `UI: nil` (decision 7): print `api: <n>
    operations` (counted over the document's `paths`), or the problem with `ExitUsage`
@@ -717,7 +763,7 @@ and the exit status is the worst one found (`ExitUsage` > `ExitSchema` > `ExitFa
    `Build` with `skipSchema`; `link` (F25, F9 for a factory error).
 3. `api.New` with the options of `serve` except `Database`: the stub; `Schema`: returns
    `nil, nil`; `Authenticator`, `Permissions`: nil; `UI`: nil; `Version`: `dev` (F10).
-4. Write `srv.OpenAPI()` to stdout, followed by one newline; `ExitOK`.
+4. Write `srv.OpenAPI()` to stdout as indented JSON, followed by one newline; `ExitOK`. (`openapi` loads no configuration and logs at warn, so no debug warning.)
 
 ### `version` and `help`
 
@@ -854,7 +900,10 @@ never `go.opentelemetry.io`, never `dbtest` or `telemetrytest` outside test file
 | F25 | `openapi`, `check` | a module's factory or a part's `build` reads the database (gets `db.ErrNoDatabase`) | Unavailable wrapping `db.ErrNoDatabase`, wrapped with the module's name; `ExitFailure` | move the read to `Start` or a request | `TestOpenAPI_FactoryReads_Exit1NamesModule` (a test module whose factory queries) |
 | F26 | `secrets.Ensure` | `crypto/rand` fails | Internal | retry; a broken host | `TestEnsure_RandFails_ReturnsInternal` (an injectable reader in an internal test) |
 | F27 | `cmd/bms` | a second `SIGINT`/`SIGTERM` after the first | none: the default disposition terminates the process; the status is the operating system's | — | `TestBinary_SecondSignal_Terminates` (subprocess; a test module whose `Stop` blocks) |
-| F28 | `Main` (the parts) | two parts or two commands share a name; a part's name is not a reserved core area name | Internal (a programming error); `ExitFailure` | fix `core.go` | `TestParts_OrderAndNames_Pinned`, `TestCommands_UniqueNames` |
+| F28 | `Main` (the parts) | two parts or two commands share a name; a part's name is not a core area name (`module.IsCoreArea`) | Internal (a programming error); `ExitFailure` | fix `core.go` | `TestParts_OrderAndNames_Pinned`, `TestCommands_UniqueNames` |
+| F58 | `serve`, `migrate`, `check` | log level is debug | the debug-logging warning (decision 18): a warn record in `serve`, a stderr line in the others, a `log level:` line in `check` | none | `TestServe_DebugLevel_WarnsAfterStarting`, `TestMigrate_DebugLevel_PrintsWarning`, `TestCheck_DebugLevel_PrintsLogLevelLine` |
+| F59 | `check` | no session key | `ExitUsage`, still printing "run bms migrate" and running the other sections | run migrate or restore the file | `TestCheck_SessionKeyMissing_Exit2` |
+| F60 | `check` | a disabled module with a schema was never migrated | none | — | `TestCheck_DisabledNeverMigrated_NotAProblem` |
 | F29 | `provision` | `Tracer` or `Scope` refuses (a name the registry already validated) | the refuser's kind, wrapped with the module name (module-contract F24) | fix app | `TestProvision_ScopeConflict_ReturnsKind` (a dispatcher already holding the scope) |
 | F30 | `TestMessageCatalogues_EnglishCoversManifests` | a registered module lacks `web/src/modules/<name>/messages/en.json`, or the file lacks a key module-contract decision 8 derives (`module.<name>.title`, `.description`, `.permission.<rest>.title`/`.description`, `.setting.<key>.title`/`.description`/`.option.<opt>`, `.signal.<rest>.title` for each published name) | a test failure naming module and key (not a runtime path); skipped when `web/src` is absent | add the key | the test itself; `TestMessageCatalogues_FixtureMissingKey_Fails` over a fixture |
 

@@ -1,0 +1,7 @@
+{
+  "module.zqfix.title": "Fixture",
+  "module.zqfix.description": "A fixture.",
+  "module.zqfix.permission.things.read.title": "See things",
+  "module.zqfix.setting.mode.title": "Mode",
+  "module.zqfix.setting.mode.option.fast": "Fast"
+}
