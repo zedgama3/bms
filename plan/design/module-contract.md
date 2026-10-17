@@ -11,7 +11,10 @@
   `model.PersonID`, `model.Sensitivity`, `ID.Validate`, `Sensitivity.Validate`. `db.md`
   (Approved): `db.DB` (the type of `Deps.DB`), `db.ErrReadOnly` (the sentinel a write gets
   on a read-only copy), `*db.Migrator` (the `SchemaChecker` that `app` passes to `Build`),
-  `dbtest.Fake` (what `moduletest.Conformance` hands to a factory). Two leaf
+  `dbtest.Fake` (what `moduletest.Conformance` hands to a factory). `telemetry.md`
+  (Approved, 2026-10-16; its Proposed change 1 amended this spec the same day):
+  `telemetry.Tracer` (the type of `Deps.Tracer`), `telemetrytest.Capture` (what
+  `moduletest.Conformance` uses for `Logger` and `Tracer`). Two leaf
   types that this spec places in other core packages and defines here because no spec for
   them exists yet: `authz.Permission`, `authz.Scope`, `authz.PermissionDecl`
   (`internal/core/authz`, row 7) and `signals.Name` (`internal/core/signals`, row 10). See
@@ -60,7 +63,7 @@ knowing it.
 | The module's UI: screens, navigation, its message catalogue, the build-time web registry (D31) | `web-shell.md`. The manifest does not declare "has UI"; see decision 9. |
 | Forms (D32), terminology, any feature a burner sees | the module's own spec, written with `add-module`. |
 | Process configuration, including which modules are enabled | `config` (`config.md`). This spec receives the enabled names in `Env`. |
-| Telemetry: tracer, meter, request IDs | `telemetry.md`. Modules get a scoped logger in `Deps`; tracing is the api shell's middleware. |
+| Telemetry: the logger, tracer and meter, trace IDs, the error reference | `telemetry.md`. Modules get a scoped logger and a scoped tracer in `Deps`; the request span is the api shell's; a module opens sub-spans through `Deps.Tracer`. |
 | Trust between regionals, versioned contracts, upgrade promises | Q-TRUST, Q-UPGRADE. A capability or extension point name is stable; a breaking change to a contract is a new name (D19). |
 
 ## Sub-abstractions
@@ -340,9 +343,10 @@ type Contributor interface {
 // Fields typed by later specs are added when those specs are Approved; adding a field is
 // not a breaking change for modules. A module validates the fields it uses.
 type Deps struct {
-	Logger *slog.Logger // scoped; never nil (Build checks)
-	Clock  clock.Clock  // never nil (Build checks)
-	Links  *Links       // set by Build, never by Provision
+	Logger *slog.Logger     // scoped (module=<name>); never nil (Build checks)
+	Tracer telemetry.Tracer // telemetry.md (row 15b): scope module.<name>; never nil (Build checks)
+	Clock  clock.Clock      // never nil (Build checks)
+	Links  *Links           // set by Build, never by Provision
 
 	DB      db.DB       // db.md (row 5): pool, transactions, read-only state
 	Signals signals.Bus // signals.md (row 10): publish declared signals, subscribe to declared ones
@@ -590,7 +594,8 @@ package moduletest
 
 // Conformance runs the contract checks against one module (see Test plan,
 // "Conformance"). provision supplies the module's dependencies as fakes (db, signals and
-// later fields); Conformance supplies Logger, Clock and Links. It fails t on the first
+// later fields); Conformance supplies Logger and Tracer (both from telemetrytest.New(t),
+// so any policy violation fails the test), Clock and Links. It fails t on the first
 // broken rule with the rule's name.
 func Conformance(t *testing.T, m module.Manifest, f module.Factory, provision module.Provision)
 ```
@@ -610,7 +615,7 @@ func Conformance(t *testing.T, m module.Manifest, f module.Factory, provision mo
 | `APIDescriber` | modules with an API; `api` (merges fragments) | embedded | non-empty bytes |
 | `CapabilityProvider` | providing modules; `Build` (checks keys); consumers through `Links` | built | one value per declared name |
 | `Contributor` | contributing modules; `Build` (checks keys, `Accepts`); definers through `Links.Contributors` | built | accepted values only |
-| `Deps` | every `Factory`; `Provision` in `app`; `Build` (sets `Links`, checks `Logger`, `Clock`) | — | scoped services |
+| `Deps` | every `Factory`; `Provision` in `app`; `Build` (sets `Links`, checks `Logger`, `Tracer`, `Clock`) | — | scoped services |
 | `Links.Capability` | consuming modules, in their `Factory` | provider built (order) | the impl, `NotFound` for an absent optional one |
 | `Links.Contributors` | defining modules and the core's definers (`people` for the person page, `departments-events` for new-event copying), at request time | `Build` finished | accepted contributions, build order |
 | `Registry`, `NewRegistry`, `Default`, `Register`, `Add`, `Manifests` | every module (`init`); `app`; tests | — | the compiled-in set |
@@ -632,7 +637,7 @@ Defines: `Capability`, `ExtensionPoint`, `ExtensionPointDecl`, `SettingKind`, `S
 `EdgeKind`, `Warning`, `SchemaChecker`, `Provision`, `Set`, `Built`, `ModuleRoutes`,
 `ModulePersonData`. Uses `model.PersonID`, `model.Sensitivity`, `clock.Clock`,
 `validate.Errors`, `validate.FieldError`, `fs.FS`, `http.Handler`, `json.RawMessage`,
-`slog.Logger`.
+`slog.Logger`, `telemetry.Tracer`.
 
 ### Leaf types placed in `core/authz` and `core/signals`
 
@@ -704,7 +709,8 @@ func (n Name) Publisher() string
 
 | Field | Typed by | Scoped how | Available from |
 |---|---|---|---|
-| `Logger` | `log/slog` | `module=<name>` attribute; never logs personal data (go-conventions) | M0 |
+| `Logger` | `log/slog` (built by `telemetry.md`) | `module=<name>` attribute; never logs personal data (go-conventions) | M0 |
+| `Tracer` | `telemetry.md` | scope `module.<name>`; sub-spans inside the api's request span; typed attributes only (IDs and tokens, never personal data) | M0 |
 | `Clock` | `lib-core` | shared | M0 |
 | `Links` | this spec | the module's own declarations | M0 |
 | `DB` | `db.md` | the module's schema is its own responsibility; `db` reports read-only | M0 |
@@ -891,7 +897,7 @@ starting with `pg`). The list is a constant in the package and a test pins it.
 
 1. For every module in order with `Migrations != nil`: `schema.CheckSchema`; collect every
    error (F26) and stop if any.
-2. For each module in order: `provision(ctx, m)` (F24); check `Logger` and `Clock` (F25); set
+2. For each module in order: `provision(ctx, m)` (F24); check `Logger`, `Tracer` and `Clock` (F25); set
    `Links` to the module's view with providers built so far; call the factory (F27, F28).
 3. Verify: `Capabilities()` keys equal `Provides` and no value is nil (F29); `Contributions()`
    keys equal `ContributesTo` (F30); `Routes()` each validate and no two share method and
@@ -922,8 +928,10 @@ them.
 Standard library (`context`, `encoding/json`, `errors`, `fmt`, `io/fs`, `log/slog`,
 `net/http`, `regexp`, `sort`, `sync`), `internal/lib/errs`, `internal/lib/validate`,
 `internal/lib/clock`, `internal/model`, `internal/core/authz`, `internal/core/signals`,
-`internal/core/db`. Never `internal/contracts`, a module, `api`, `app` or `config`
-(depguard rule `core`). `moduletest` adds `testing` and `internal/lib/testkit`.
+`internal/core/db`, `internal/core/telemetry` (the `Tracer` type only). Never
+`internal/contracts`, a module, `api`, `app` or `config` (depguard rule `core`); never
+`go.opentelemetry.io` (depguard rule `otel-seam`). `moduletest` adds `testing`,
+`internal/lib/testkit` and `internal/core/telemetry/telemetrytest`.
 
 ## Failure modes
 
@@ -953,7 +961,7 @@ Standard library (`context`, `encoding/json`, `errors`, `fmt`, `io/fs`, `log/slo
 | F22 | `Registry.Resolve` | several of F15–F21 at once | one error joining all | fix them all | `TestResolve_ReportsAllProblems` |
 | F23 | `Registry.Resolve` | publisher or definer registered but disabled; used capability with no provider | none: `Warning` in the plan | `app` logs at warn | `TestResolve_DisabledOtherSide_Warns` |
 | F24 | `Plan.Build` | `provision` fails | its kind, wrapped with the module name | stop start-up | `TestBuild_ProvisionFails_WrapsWithModule` |
-| F25 | `Plan.Build` | `Deps.Logger` or `Deps.Clock` nil after `provision` | Invalid | fix app | `TestBuild_DepsMissingLoggerOrClock_ReturnsInvalid` |
+| F25 | `Plan.Build` | `Deps.Logger`, `Deps.Tracer` or `Deps.Clock` nil after `provision` | Invalid | fix app | `TestBuild_DepsMissingLoggerTracerOrClock_ReturnsInvalid` |
 | F26 | `Plan.Build` | `CheckSchema` fails for one or more modules | the checker's kind (Conflict for a version mismatch, Unavailable, Timeout), all joined, nothing built | run `bms migrate` / fix the database | `TestBuild_SchemaMismatch_ReportsEveryModuleAndBuildsNothing` |
 | F27 | `Plan.Build` | a factory returns an error | its kind, wrapped with the module name | stop start-up | `TestBuild_FactoryFails_WrapsWithModule` |
 | F28 | `Plan.Build` | a factory returns `(nil, nil)` | Internal | fix the module | `TestBuild_FactoryReturnsNilModule_ReturnsInternal` |
@@ -1035,9 +1043,11 @@ enabled and its required capabilities faked succeeds); `implements_declared`
 a plain `dbtest.NewFake()`, which holds no rows); `delete_read_only` (F45, with the
 read-only fake); `export_is_json_object` (`Data` empty or
 parses as an object); `routes_under_prefix` (patterns start with `/`; no absolute `/api/`);
-`no_personal_data_in_logs` (a capturing `slog.Handler`; the test runs `Start`, one export
-and one delete of an invented person and asserts no log record contains the fake e-mail or
-legal name the test's fake store holds). Integration of a real module end to end (routes
+`no_personal_data_in_logs` (`Logger` and `Tracer` come from `telemetrytest.New(t)`; the
+test runs `Start`, one export and one delete of an invented person, asserts
+`!c.Contains(marker)` for the fake e-mail and legal name the test's fake store holds, so
+log records and spans are both checked, and `telemetrytest` fails the test on any policy
+`Violation` at cleanup). Integration of a real module end to end (routes
 mounted, migrations applied, signals delivered) is `app.md`'s and the `hello` module's
 integration test, behind the `integration` tag.
 
@@ -1050,8 +1060,9 @@ the contract" it must: declare one permission (`hello.greetings.read`, `ScopeSit
 one, provide capability `greeter` (`contracts/greeter`), define point `hello.banner`,
 contribute to its own point, ship one migration creating `hello.greeting`, serve `GET
 /greeting` (signed in) and `GET /public-greeting` (public) with an OpenAPI fragment,
-implement `PersonData` over the greetings a person saved, start one goroutine, and pass
-`Conformance`.
+implement `PersonData` over the greetings a person saved, start one goroutine, open one
+span through `Deps.Tracer` in its `GET /greeting` handler (a child of the api's request
+span), and pass `Conformance`.
 
 ## Open questions
 

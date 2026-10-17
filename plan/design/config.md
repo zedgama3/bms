@@ -316,8 +316,16 @@ holds an ID, a sensitivity or an address) and nothing from `core/`.
 | `modules.disabled` | `BMS_MODULES_DISABLED` | list | empty | items non-empty after trimming, unique; ≤ 64; registered (checked by app) | app |
 
 Variables the process reads that are **not** in the catalogue and are not `BMS_*`:
-`OTEL_*` (the OpenTelemetry SDK, `telemetry.md`, D20) and, if `db` chooses to honour them,
-pgx's `PG*`. `BMS_TEST_*` are read only by integration tests.
+`OTEL_*` (`telemetry.md`, D20) and, if `db` chooses to honour them, pgx's `PG*`.
+`BMS_TEST_*` are read only by integration tests. `telemetry` validates the `OTEL_*`
+variables it reads itself (its table "What is read from the environment":
+`OTEL_SDK_DISABLED`, the `OTEL_EXPORTER_OTLP_*ENDPOINT` and `*PROTOCOL` variables,
+`OTEL_TRACES_SAMPLER`, `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES`) at start, and a
+bad value fails `telemetry.New` with `errs.Invalid` naming the variable, printed by
+`cmd/bms` like a config failure; `OTEL_EXPORTER_OTLP_PROTOCOL`, when set, must be
+`http/protobuf` (`grpc` is refused: telemetry.md decision 5). The rest of `OTEL_*` is read
+by the OpenTelemetry SDK with its own defaults. `config` still neither reads nor validates
+any of them.
 
 ## Data
 

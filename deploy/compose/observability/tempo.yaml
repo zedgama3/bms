@@ -14,6 +14,13 @@ storage:
     local: { path: /tmp/tempo/traces }
     wal: { path: /tmp/tempo/wal }
 
+# Traces are kept 30 days (telemetry.md decision 18): spans hold person IDs only and are
+# not covered by per-person export or deletion, so a bounded retention is what makes that a
+# true privacy statement. Logs (Loki) are kept 30 days and metrics (Prometheus) 1 year.
+compactor:
+  compaction:
+    block_retention: 720h
+
 # Request rates, errors and durations per route, and the service graph, derived from traces.
 metrics_generator:
   storage:

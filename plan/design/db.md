@@ -13,7 +13,10 @@
   are scanned by underlying type (Proposed change 4 there; proven in the test plan).
   `config.md` (Approved): `Options` mirrors `config.DB` (its decision 12 and Proposed change
   4). `module-contract.md` (Approved): `SchemaChecker` (its Proposed change 4), `Deps.DB`,
-  `Manifest.Migrations`, `Plan.Order()`.
+  `Manifest.Migrations`, `Plan.Order()`. `telemetry.md` (Approved, 2026-10-16; its Proposed
+  change 2 answered this spec's Proposed change 12 the same day): `telemetry.Tracer`,
+  `telemetry.Meter`, `telemetry.Span`, `WithKind`, `WithAttrs`, `Token`, `Int`, `Meter.Gauge`,
+  `Sample`, `WithUnit` (statement spans and pool gauges).
   **Used by:** `app` (`Open`, `Close`, `NewMigrator`, the `migrate` and `check` commands,
   `Deps.DB`), `api` (`Ping` and `ReadOnly` for `/readyz`; the `ErrReadOnly` mapping),
   `core/module` (`SchemaChecker`, structurally), every core package with tables
@@ -61,7 +64,7 @@ PostgreSQL database.
 | Running jobs only on the writing copy | `jobs` (`jobs.md`) reads `ReadOnly()`. |
 | The switchover between the on-site and off-site copies (Q-OFFLINE); promoting or demoting a PostgreSQL server | a later `switchover` spec and the operator. `db` only reports what it finds. |
 | Backups, replication set-up, the `bms` database role and its privileges, TLS to the server | the operator docs (`docs/operating.md`, Proposed change 11). |
-| Connection-pool metrics and traces of statements | `telemetry` (`telemetry.md`); `Pool.Stats` is added when that spec needs it (Proposed change 12). |
+| The tracer and meter themselves, the privacy policy on attributes, OTLP export | `telemetry` (`telemetry.md`). This spec only *uses* them: a span per statement (the pgx `QueryTracer` adapter) and the pool gauges from `Pool.Stats`, both inside `db` because only `db` may import pgx (depguard `storage-seam`). Statement text and arguments never reach a span. |
 | Where `BMS_TEST_DB_DSN` comes from (a container or the compose stack) | `lib/testkit` when it is specified; until then the running `deploy/compose` stack. |
 | Cross-process messaging over `LISTEN`/`NOTIFY` | nobody (D24: signals are in-process). |
 
@@ -94,6 +97,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/zedgama3/bms/internal/core/telemetry"
 	"github.com/zedgama3/bms/internal/lib/clock"
 	"github.com/zedgama3/bms/internal/lib/secret"
 )
@@ -113,12 +117,19 @@ type Options struct {
 	// QueryTimeout is the longest one statement may run when the caller's context allows
 	// more (Behavior: "Deadlines"). 100ms..10m.
 	QueryTimeout time.Duration
+	// Tracer, when set, gives every statement a client span (Behavior: "Open", step 2).
+	// nil means no statement spans. app passes tel.Tracer("db") (telemetry.md).
+	Tracer telemetry.Tracer
+	// Meter, when set, registers the pool gauges (Behavior: "Open", step 5). nil means no
+	// gauges. app passes tel.Meter("db").
+	Meter telemetry.Meter
 }
 
 // Validate fails with errs.Invalid joining one validate.FieldError per problem, fields
 // "db.url", "db.max_conns", "db.connect_timeout", "db.query_timeout": URL unset or not an
 // absolute postgres/postgresql URL with a host (never echoed), a number or duration out
-// of range (the same bounds as config.md's catalogue).
+// of range (the same bounds as config.md's catalogue). Tracer and Meter are not checked:
+// nil is a valid value for each (tests and `bms migrate` run without them).
 func (o Options) Validate() error
 
 // MinServerVersion is the oldest PostgreSQL server Open accepts, as server_version_num.
@@ -135,7 +146,24 @@ func Open(ctx context.Context, opts Options, clk clock.Clock, logger *slog.Logge
 
 // Pool is the process's connection pool. It implements DB. Safe for concurrent use from
 // Open until Close returns.
-type Pool struct{ /* unexported: pgxpool, opts, clock, logger, readOnly atomic, watcher */ }
+type Pool struct{ /* unexported: pgxpool, opts, clock, logger, tracer, readOnly atomic, watcher */ }
+
+// Stats is a snapshot of the pool, copied from pgxpool.Stat so no caller sees pgx types.
+type Stats struct {
+	Acquired     int           // connections in use
+	Idle         int           // open connections not in use
+	Total        int           // Acquired + Idle + connections being opened
+	Max          int           // Options.MaxConns
+	Pending      int           // callers waiting to acquire
+	WaitDuration time.Duration // total time callers have spent waiting since Open
+}
+
+// Stats returns the pool's current counters. Cannot fail: it reads pgxpool's own counters
+// and after Close returns zeros. Safe for concurrent use.
+// Consumers: the gauges this package registers when Options.Meter is set (telemetry.md
+// metrics table: db.client.connection.count{state}, .max, .pending_requests); app's
+// `bms check` may print it.
+func (p *Pool) Stats() Stats
 
 // Querier runs one statement. DB and the transaction a context carries both implement it.
 // Each call derives a deadline (Behavior: "Deadlines") and returns errors already
@@ -376,6 +404,7 @@ func TempDB(t testing.TB) *db.Pool
 | `ReadOnly` | `api` (`/readyz`, the banner), `jobs` (run only on the writer), `notify` (send only on the writer), `Transact` (fail fast) | — | cached, current within one watcher interval or one `Ping` |
 | `Ping` | `api` (`/readyz`), `app` (`bms check`) | — | reachable; state refreshed |
 | `Close` | `app` at shutdown | — | watcher stopped, pool closed |
+| `Stats` | the pool gauges `db` registers on `Options.Meter` (telemetry.md); `app` (`bms check`) | opened | a plain snapshot, zeros after `Close` |
 | `ErrReadOnly` | `api` (error mapper: "this copy is read-only"), `moduletest` (`delete_read_only`), `dbtest.Fake` | — | `errors.Is` works through any wrapping |
 | `Error` | stores mapping a constraint to a field (`identity`: duplicate e-mail → field `email`) | `errors.As` | names only, never values |
 | `Wrap` | every store method's return path; `db` itself | — | an `*errs.Error` with the mapped kind |
@@ -390,10 +419,13 @@ func TempDB(t testing.TB) *db.Pool
 
 ## Types
 
-Defines `Options`, `Pool`, `Querier`, `DB`, `Mode`, `Error`, `Set`, `Migrator`, `Applied`,
-`Status`, and in `dbtest` `Fake`, `Call`. Uses `secret.Secret`, `clock.Clock`,
-`retry.Policy`, `validate.Errors`, `validate.FieldError`, `slog.Logger`, `fs.FS`, and from
-pgx `pgx.Rows`, `pgx.Row`, `pgconn.CommandTag`. Uses nothing from `model`: IDs and
+Defines `Options`, `Pool`, `Stats`, `Querier`, `DB`, `Mode`, `Error`, `Set`, `Migrator`,
+`Applied`, `Status`, and in `dbtest` `Fake`, `Call`. Uses `secret.Secret`, `clock.Clock`,
+`retry.Policy`, `validate.Errors`, `validate.FieldError`, `slog.Logger`, `fs.FS`,
+`telemetry.Tracer`, `telemetry.Meter` (and, inside the package, `telemetry.Span`,
+`telemetry.Attr`, `telemetry.Sample`), and from pgx `pgx.Rows`, `pgx.Row`,
+`pgconn.CommandTag` (and, inside the package only, `pgx.QueryTracer`, `pgxpool.Stat`).
+Uses nothing from `model`: IDs and
 addresses pass through pgx by underlying type (model.md "At the storage seam"), which the
 integration test proves.
 
@@ -678,8 +710,19 @@ dependency that was unavailable, and the message says "waiting for a connection"
 1. `opts.Validate()` (F1–F3); `clk` and `logger` non-nil (F4).
 2. `pgxpool.ParseConfig(opts.URL.Value())`; a parse error becomes `Invalid` with the
    fixed reason "the driver rejected db.url (check scheme, host, port and parameters)",
-   dropping the driver's text (F5). Set `MaxConns`, `application_name`, and a
-   `BeforeAcquire`/`AfterRelease` pair only if telemetry later needs them (not now).
+   dropping the driver's text (F5). Set `MaxConns` and `application_name`. When
+   `opts.Tracer` is set, set `ConnConfig.Tracer` to this package's `pgx.QueryTracer`
+   adapter (unexported): `TraceQueryStart` opens a `telemetry.SpanClient` span named
+   `db.<OPERATION>`, where `OPERATION` is the statement's first SQL keyword upper-cased
+   (`SELECT`, `INSERT`, `UPDATE`, `DELETE`, `BEGIN`, `COMMIT`, ...; `OTHER` when the text
+   does not start with a letter), with `Token("db.operation", OPERATION)` and
+   `Token("db.system", "postgresql")` as start attributes, and stores the span in the ctx
+   pgx hands back; `TraceQueryEnd` calls `RecordError` on a failed statement, adds
+   `Token("db.response.status_code", <SQLSTATE>)` when the error is a `*pgconn.PgError`,
+   and ends the span. The adapter never records statement text, arguments, row values or
+   the connection URL (decision 4 applies to spans as to errors); a statement whose text
+   cannot be classified still gets a span (`db.OTHER`), never the text. Pool-level hooks
+   (`BeforeAcquire`, `AfterRelease`) are not used: `Stats` covers the pool.
 3. Under `ctx` bounded by `ConnectTimeout`: `retry.Do` with the connect policy; each
    attempt derives a 5 s attempt timeout, acquires one connection and runs the probe
    statement (step 4). `Invalid` stops the loop at once (F7); `Unavailable` and `Timeout`
@@ -689,8 +732,15 @@ dependency that was unavailable, and the message says "waiting for a connection"
 4. The probe: `SELECT current_setting('server_version_num')::int, pg_is_in_recovery() OR
    current_setting('transaction_read_only')::bool`. Version below `MinServerVersion` →
    `Invalid` naming both versions (F8). Store the read-only state.
-5. Log the start line; start the watcher goroutine (interval from the constant; `clk.NewTicker`);
-   return the `Pool`.
+5. When `opts.Meter` is set, register the three gauges from telemetry.md's metrics table,
+   each observed from `Stats()`: `db.client.connection.count` (unit `{connection}`; two
+   samples per collection, `Token("state", "idle")` = `Idle` and `Token("state", "used")` =
+   `Acquired`), `db.client.connection.max` (`{connection}`; `Max`) and
+   `db.client.connection.pending_requests` (`{request}`; `Pending`). A registration error
+   (telemetry F20–F22) fails `Open` with the meter's kind after closing the pgx pool
+   (F56); the observers return nil after `Close` (telemetry's gauge rule). Log the start
+   line; start the watcher goroutine (interval from the constant; `clk.NewTicker`); return
+   the `Pool`.
 
 ### The watcher
 
@@ -749,9 +799,11 @@ Standard library (`context`, `crypto/sha256`, `encoding/hex`, `errors`, `fmt`, `
 `io/fs`, `log/slog`, `net`, `regexp`, `sort`, `strconv`, `sync`, `sync/atomic`, `time`),
 `github.com/jackc/pgx/v5` (`pgx`, `pgconn`, `pgxpool`), `internal/lib/errs`,
 `internal/lib/clock`, `internal/lib/retry`, `internal/lib/validate`,
-`internal/lib/secret`. Not `model`, not `core/module` (`module` imports `db`; the
-`SchemaChecker` is satisfied structurally and asserted in `app`), not `config`. `dbtest`
-adds `testing`, `crypto/rand`, `os`. depguard's `storage-seam` rule already allows pgx
+`internal/lib/secret`, `internal/core/telemetry` (`telemetry` is below `db` in the core
+graph and imports no core package). Not `model`, not `core/module` (`module` imports `db`;
+the `SchemaChecker` is satisfied structurally and asserted in `app`), not `config`, never
+`go.opentelemetry.io` (depguard rule `otel-seam`). `dbtest` adds `testing`, `crypto/rand`,
+`os`; its tests use `telemetrytest`. depguard's `storage-seam` rule already allows pgx
 under `**/internal/core/db/**`.
 
 ## Failure modes
@@ -813,10 +865,13 @@ under `**/internal/core/db/**`.
 | F53 | `dbtest.Fake` | `QueryRow(...).Scan` | NotFound (always: the fake holds no rows) | treat as absent | `TestFake_QueryRow_ReturnsNotFound` |
 | F54 | `dbtest.TempDB` | `BMS_TEST_DB_DSN` unset | `t.Skip` | — | `TestTempDB_SkipsWithoutDSN` |
 | F55 | `dbtest.TempDB` | the role cannot create a database | `t.Fatal` with the reason | grant `CREATEDB` | covered by running the suite with a restricted role once, by hand |
+| F56 | `Open` | `Options.Meter` set and a gauge registration fails (telemetry F20–F22: a duplicate name in the `db` scope) | the meter's kind (Invalid / Conflict); the pgx pool closed before returning | fix app (one `Open` per meter scope) | `TestOpen_GaugeRegistrationFails_ReturnsKindAndClosesPool` (unit, a fake `telemetry.Meter` that refuses) |
+| F57 | the `QueryTracer` adapter | a statement fails | none to the caller beyond the statement's own error: the span is marked failed with `error.kind` and the SQLSTATE; statement text and arguments are never on it | — | `TestQueryTracer_FailedStatement_SpanHasKindAndSQLSTATENoText` |
 
-Members that cannot fail, and why: `ReadOnly` (an atomic read); `Mode.String`,
-`Error.Error` (formatting of fields); `Wrap` on nil (returns nil); `NewFake`,
-`SetReadOnly`, `Calls` (in-memory). Each has a success-path test.
+Members that cannot fail, and why: `ReadOnly` (an atomic read); `Stats` (a copy of
+pgxpool's counters; zeros after `Close`); `Mode.String`, `Error.Error` (formatting of
+fields); `Wrap` on nil (returns nil); `NewFake`, `SetReadOnly`, `Calls` (in-memory). Each
+has a success-path test.
 
 ## Lock-in check
 
@@ -850,6 +905,13 @@ every error path):
   `TestWatcher_StopsOnClose`.
 - Transact without a database: F21, F22 (a `Pool` built in an internal test with the
   read-only flag set), F27; `TestAfterCommit_OutsideTransaction_RunsImmediately`.
+- Telemetry (internal tests over the adapter with `telemetrytest.New(t)`; the SQL text and
+  an argument carry the marker): `TestQueryTracer_SpanNamedByOperation_Table` (`select`,
+  `  INSERT`, `with ... `, `begin`, an unclassifiable text → `db.OTHER`; kind
+  `SpanClient`; `db.system=postgresql`); `TestQueryTracer_NeverRecordsSQLOrArgs`
+  (`!c.Contains(marker)` over spans and logs); `TestOpen_NilTracerAndMeter_NoSpansNoGauges`;
+  `TestGauges_ObserveFromStats` (a fake `Stats` source; two `state` samples, max,
+  pending; nil after `Close`); F56, F57.
 - Migrations: `TestVersion_ParsesContiguousFiles` (`fstest.MapFS`);
   `TestVersion_HighestNumberIsVersion`; F32–F35, F41, F48, F50, F51.
 - dbtest: `TestFake_RecordsCallsInOrderWithInTx`;
@@ -875,6 +937,11 @@ every error path):
 - Read-only: `TestReadOnly_ProbeSeesDefaultTransactionReadOnly`;
   `TestPing_RefreshesReadOnlyState`; F28 (a pool whose server is stopped is hard to
   arrange; the unit test covers it with a closed port).
+- Telemetry: `TestOpen_WithTracer_OneSpanPerStatementUnderCallerSpan` (a `Query` inside a
+  span started by the test yields one child `db.SELECT` span; a `Transact` yields
+  `db.BEGIN`, the statement, `db.COMMIT`); `TestStats_ReflectsAcquiredAndIdle` (hold one
+  connection open in a transaction: `Acquired` 1; after commit: `Idle` ≥ 1, `Max` equals
+  `MaxConns`).
 - Migrations: `TestMigrate_EmptyDatabase_AppliesBootstrapThenSetsInOrder` (two invented
   sets, the schemas exist after, `core.schema_migration` has one row per file with
   checksums and durations); `TestMigrate_Idempotent_SecondRunAppliesNothing`;
@@ -899,8 +966,8 @@ the owner on 2026-10-16 and are recorded as decisions 20, 10 and 7.
 
 ## Proposed changes elsewhere
 
-Status as of 2026-10-16: items 1, 2, 6, 7, 8, 9 and the `.env.example` half of 11 are
-applied. Items 3, 4, 5, 10, 12, 13 and the `docs/operating.md` half of 11 wait for their
+Status as of 2026-10-16: items 1, 2, 6, 7, 8, 9, 12 and the `.env.example` half of 11 are
+applied. Items 3, 4, 5, 10, 13 and the `docs/operating.md` half of 11 wait for their
 target to be written and are carried by this list until then.
 
 1. **`plan/07-abstractions.md`, `db` entry** (applied 2026-10-16): replace "Owns" with: the pool and its
@@ -978,10 +1045,13 @@ target to be written and are carried by this list until then.
     pin TLS; `ALTER DATABASE ... SET default_transaction_read_only = on` as the manual
     freeze (decision 7); backups contain everything (privacy-data); integration tests
     need `CREATEDB` for `dbtest.TempDB`.
-12. **`plan/design/telemetry.md` (row 15b)** (pending: spec not written): if pool metrics are wanted, propose
+12. **`plan/design/telemetry.md` (row 15b)** (applied 2026-10-16, by telemetry.md's
+    Proposed change 2): if pool metrics are wanted, propose
     `Pool.Stats()` returning a plain struct (acquired, idle, total, waits) back to this
     spec; statement tracing through pgx's `QueryTracer` is set in `Open` by an option
-    added then.
+    added then. Answered: `Options.Tracer` and `Options.Meter` (nil means none), the
+    `QueryTracer` adapter in `Open` step 2, `Pool.Stats()` and the three gauges in `Open`
+    step 5, F56 and F57.
 13. **`plan/design/jobs.md` (row 14) and `notify.md` (row 11)** (pending: specs not written): read `ReadOnly()` before
     each run and send, and treat `errors.Is(err, db.ErrReadOnly)` as "stop until the next
     probe", not as a retryable failure.

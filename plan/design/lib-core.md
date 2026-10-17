@@ -135,7 +135,7 @@ Consumers per method:
 | Method | Needed by |
 |---|---|
 | `Now` | `jobs` scheduler (tick timestamps), `identity` sessions (expiry), `audit` (event timestamps), `api` middleware (request duration) |
-| `Since` | `jobs` scheduler (job run duration for overrun detection), `telemetry` (health) |
+| `Since` | `jobs` scheduler (job run duration for overrun detection), `api` (request duration for `http.server.request.duration`, telemetry.md). `telemetry` itself uses `Clock` for its own rate limits (export-failure and violation warnings) and `intake` for its token buckets; it has no health endpoint (`/healthz` and `/readyz` are `api`'s). |
 | `After` | `signals` and `notify` (a deadline in a `select` with an input channel) |
 | `NewTimer` | `retry.Do`, `clock.Wait` (must `Stop` when ctx wins, so no goroutine or fake waiter leaks) |
 | `NewTicker` | `jobs` scheduler (one per job interval), `identity` (expired-session sweep) |
@@ -217,7 +217,7 @@ Consumers per method:
 | `Policy.Delay` | `Do`, `Backoff`; tests assert the schedule table-style |
 | `Retryable` | `Do`; `jobs` runner (decide whether a failure is worth backing off on or is a permanent `Permission` problem to report). Note: `db.ErrReadOnly` is `Unavailable`, so `Retryable` says yes to a write refused on a read-only copy; a loop around a write must check `errors.Is(err, db.ErrReadOnly)` first (db.md decision 9). |
 | `Do` | `notify` e-mail sender (SMTP sends), `db.Open` (initial connect, with `db`'s own constant policy under `db.connect_timeout`; db.md "Settings") |
-| `Backoff.Next/Attempt/Reset` | `jobs` runner; `telemetry` (health) shows `Attempt()` |
+| `Backoff.Next/Attempt/Reset` | `jobs` runner (`Attempt()` is the attribute on its per-run span and log line; telemetry.md Proposed change 6). Not `telemetry`: it has no health endpoint and no retry loop. |
 
 Pre- and post-conditions for `Do`:
 

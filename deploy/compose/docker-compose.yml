@@ -72,6 +72,7 @@ services:
       - --config.file=/etc/prometheus/prometheus.yml
       - --web.enable-remote-write-receiver
       - --enable-feature=exemplar-storage
+      - --storage.tsdb.retention.time=1y  # telemetry.md decision 18
     ports: ["${PROMETHEUS_PORT:-9090}:9090"]
 
   grafana:

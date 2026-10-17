@@ -149,6 +149,26 @@ func (r *reader) query(ctx context.Context) (out []Row, err error) {
   `==`.
 - Never log personal data: log person IDs, not names, e-mails or phone numbers. Never log
   fields marked sensitive (`privacy-data`).
+- Use the `*Context` methods (`logger.InfoContext(ctx, ...)`) wherever a ctx exists, so the
+  record carries the request's `trace_id` and `span_id` (`sloglint` with `context: scope`
+  enforces it). The trace ID is the request ID; there is no second one.
+- Attribute keys follow the key grammar `[a-z][a-z0-9_.]{0,63}` and are never a denied key
+  (the list is in `plan/design/telemetry.md`, "The key denylist": `email`, `legal_name`,
+  `phone`, `body`, `sql`, `token`, ...). The telemetry handler rewrites a denied value to
+  `[denied]` and counts a violation, which fails any test built on `telemetrytest`.
+- Spans come from a `telemetry.Tracer` passed in (`Deps.Tracer` in a module, an
+  `Options` field in a core package), with typed attributes: `telemetry.Token` for names,
+  routes, operations and status words; `telemetry.ID` for records; `telemetry.Int`,
+  `Duration`, `Bool`, `Kind` for the rest; `telemetry.Text` only for an error message (it
+  scrubs and caps). Metrics take tokens, numbers and kinds only, never an ID or free text.
+  `defer span.End()` right after `Start`; `span.RecordError(err)` where the error is
+  handled.
+- Never import `go.opentelemetry.io` outside `internal/core/telemetry` (depguard
+  `otel-seam`), and never use `otel.Tracer`, `otel.Meter` or `otel.GetTracerProvider`
+  (forbidigo).
+- A test that must prove nothing personal leaks builds its logger and tracer with
+  `telemetrytest.New(t)` and asserts `!c.Contains(marker)`; the capture fails the test on
+  any policy violation at cleanup.
 
 ## Testing
 

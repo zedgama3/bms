@@ -69,7 +69,9 @@ copy and can fork it. Features are modules.
   2. Done 2026-10-16: `config` is Approved (design/README.md row 3).
      Done 2026-10-16: `db` is Approved (design/README.md row 5, order 4 in
      09-core-features.md).
-     Next: `telemetry` (design/README.md row 15b, order 5 in 09-core-features.md), then the
+     Done 2026-10-16: `telemetry` is Approved (design/README.md row 15b, order 5 in
+     09-core-features.md).
+     Next: `signals` (design/README.md row 10, order 6 in 09-core-features.md), then the
      rest of the spec order in [09-core-features.md](09-core-features.md).
   3. CI on GitHub (`make check`), once the owner pushes the branch.
 

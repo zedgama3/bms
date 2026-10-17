@@ -45,6 +45,8 @@ linters:
           msg: use a *slog.Logger passed in
         - pattern: ^fmt\.Print.*$
           msg: use a *slog.Logger passed in (cmd/ may write to stdout explicitly)
+        - pattern: ^otel\.(GetTracerProvider|Tracer|Meter)$
+          msg: no OpenTelemetry globals; take a telemetry.Tracer or telemetry.Meter from app (telemetry.md decision 1)
     depguard:
       rules:
         third-party-bans:
@@ -135,6 +137,18 @@ linters:
               desc: "SQL lives only in a postgres/ package behind a storage interface (D8)"
             - pkg: database/sql
               desc: "SQL lives only in a postgres/ package behind a storage interface (D8)"
+        otel-seam:
+          # telemetry.md decision 1: only core/telemetry imports the OpenTelemetry API and
+          # SDK, so the privacy policy on attributes cannot be bypassed and an SDK upgrade
+          # touches one package. Everything else uses telemetry.Tracer, telemetry.Meter
+          # and a *slog.Logger. Files under internal/core/telemetry/ are excluded here, so
+          # go.opentelemetry.io is allowed there and nowhere else.
+          files:
+            - "$all"
+            - "!**/internal/core/telemetry/**"
+          deny:
+            - pkg: go.opentelemetry.io
+              desc: "telemetry wraps the SDK; use telemetry.Tracer, Meter and slog (telemetry.md)"
         api:
           files: ["**/internal/api/**"]
           deny:

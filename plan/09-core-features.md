@@ -102,6 +102,8 @@ it depends on getting this right.
 - Shutdown finishes requests in flight, within a deadline.
 - A request gets a trace ID; error responses carry a short reference; the web shell reports its
   errors to `POST /api/client-errors` (D20).
+- A collector that is down or absent never fails start-up, a request or shutdown; stdout
+  logs carry the trace ID without any collector.
 - The web shell renders its frame, sign-in page and a "this copy is read-only" banner.
 - A `hello` module exercises every part of the module contract and is the reference for
   module authors.

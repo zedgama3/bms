@@ -27,7 +27,7 @@ is tracked in [design/README.md](design/README.md).
                         ▼                              ▼
      ┌──────────────────────────────────────────────────────────────────────────┐
      │ core contracts: module · db · identity · authz · people · departments ·  │   core
-     │ events · signals · notify · audit · files · jobs · settings              │
+     │ events · signals · notify · audit · files · jobs · settings · telemetry  │
      └──────────────────────────────────┬───────────────────────────────────────┘
                                         │ implemented by
        local, oidc (identity) · email (notify) · disk, s3-compatible (files) · postgres (db)
@@ -53,6 +53,11 @@ Rules (enforced by depguard and `make imports`):
 7. **Storage seam (D8).** Only `postgres/` subpackages and core `db` import the database
    driver. Services depend on a storage interface they declare themselves.
 8. `config` imports only `lib`; only `cmd/bms` and `app` import it.
+9. **Telemetry seam.** `core/telemetry` is at the bottom of the core graph: it imports `lib`
+   only (and the OpenTelemetry SDK, which no other package imports; depguard `otel-seam`);
+   every core package, `api`, `app` and every module may import it. Spans and metrics go
+   through its `Tracer` and `Meter` interfaces with typed attributes, never through
+   OpenTelemetry globals.
 
 ---
 
@@ -166,12 +171,20 @@ Rules (enforced by depguard and `make imports`):
 - **Purpose:** run scheduled and deferred work (reminders, retention) once, with retries.
 
 ### telemetry: logs, traces, metrics and client error reports (D20)
-- **Purpose:** let maintainers see problems early and trace any one request end to end.
-- **Owns:** logger, tracer and meter set-up (OpenTelemetry, OTLP), request and trace IDs, the
-  short error reference shown to people, and the intake of error reports from the web UI
-  (validation, scrubbing, rate limits).
-- **Doesn't do:** dashboards or alerts (those are deployment config), audit (`audit`),
-  analytics about people.
+- **Purpose:** let a maintainer find what happened in any one request from the reference
+  the person saw.
+- **Owns:** the logger (JSON or text on stdout, trace IDs on every record); the `Tracer` and
+  `Meter` interfaces over the OpenTelemetry SDK, with OTLP/HTTP export when `OTEL_*` names
+  a collector and nothing exported (but everything still working) when it does not; the
+  privacy policy on everything emitted (typed attributes, key denylist, `Scrub`, caps,
+  counted violations); the error reference (`XXXX-XXXX`, the first four bytes of the trace
+  ID, which is the request ID: there is no separate one); `TraceIDFrom` for `audit`; the
+  client error intake service (`intake`: validation, limits, scrubbing; `api` owns the
+  route); `telemetrytest` (in-memory capture that fails a test on any policy violation).
+- **Doesn't do:** the request middleware and the `/api/client-errors` route (`api`), the
+  browser side (web shell), statement spans and pool gauges (`db`), dashboards, alerts and
+  retention (the deployment), audit (`audit`), analytics about people.
+- **Spec:** [design/telemetry.md](design/telemetry.md), Approved.
 
 ### settings: what a regional configures at runtime
 - **Purpose:** typed, validated settings per module and for the core (terminology, branding,
@@ -181,7 +194,7 @@ Rules (enforced by depguard and `make imports`):
 
 ### api shell
 - **Purpose:** expose the core's and modules' routes over HTTP.
-- **Owns:** router, middleware (session, CSRF, request IDs and tracing, limits), the error mapper
+- **Owns:** router, middleware (session, CSRF, the request span and error reference, limits), the error mapper
   (`errs` kind → HTTP status), the OpenAPI document assembled from module fragments.
 - **Doesn't do:** business logic.
 

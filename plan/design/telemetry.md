@@ -1,6 +1,6 @@
 # telemetry: logs, traces, metrics and client error reports
 
-- **Status:** Draft (2026-10-16)
+- **Status:** Approved (2026-10-16)
 - **Package:** `internal/core/telemetry` (Go module `github.com/zedgama3/bms`), plus the
   sub-package `internal/core/telemetry/intake` (client error reports) and the test helper
   package `internal/core/telemetry/telemetrytest`. **UI:** none of its own; the error
@@ -1126,7 +1126,12 @@ answered by the owner on 2026-10-16 and are recorded in decisions 3, 9, 17, 18 a
 
 ## Proposed changes elsewhere
 
-1. **`plan/design/module-contract.md` (row 4):** add `Tracer telemetry.Tracer` to `Deps`
+Status as of 2026-10-16: items 1, 2, 8, 10, 11, 13, 14 and 15 are applied; item 9 is
+applied for `deploy/compose/.env.example` and Tempo's retention, and Prometheus's retention flag, and pending for
+Loki retention, the alert rules and `docs/operating.md`; item 12 is applied; items 3, 4, 5, 6 and 7 wait for their target to be written and are carried
+by this list until then.
+
+1. **`plan/design/module-contract.md` (row 4)** (applied 2026-10-16): add `Tracer telemetry.Tracer` to `Deps`
    (scope `module.<name>`, set by `Provision`, checked non-nil by `Build` beside `Logger`
    and `Clock`; F25 there gains it); add the row to "`Deps` fields by spec" (M0); in
    "Not responsible for", replace "tracing is the api shell's middleware" with "the request
@@ -1134,7 +1139,7 @@ answered by the owner on 2026-10-16 and are recorded in decisions 3, 9, 17, 18 a
    Conformance` supplies `Logger` and `Tracer` from `telemetrytest.New(t)`, and
    `no_personal_data_in_logs` also fails on any `Violation` and checks spans. The `hello`
    module opens one span in its handler.
-2. **`plan/design/db.md` (row 5), answering its Proposed change 12:** add
+2. **`plan/design/db.md` (row 5), answering its Proposed change 12** (applied 2026-10-16; db's F56 and F57 added): add
    `Tracer telemetry.Tracer` and `Meter telemetry.Meter` to `db.Options` (nil means none;
    `Validate` unchanged); in `Open`, when `Tracer` is set, install a pgx `QueryTracer`
    written inside `db` that opens a `SpanClient` span named `db.<OPERATION>` (first SQL
@@ -1144,7 +1149,7 @@ answered by the owner on 2026-10-16 and are recorded in decisions 3, 9, 17, 18 a
    `Stats{Acquired, Idle, Total, Max, Pending int; WaitDuration time.Duration}` and,
    when `Meter` is set, register the three gauges in the metrics table from it. `db` imports
    `core/telemetry` (allowed: `telemetry` is below `db` in the core graph).
-3. **`plan/design/api.md` (row 16):** the tracing middleware opens one `SpanServer` span per
+3. **`plan/design/api.md` (row 16)** (pending: target not written): the tracing middleware opens one `SpanServer` span per
    request with `WithParentFrom(r.Header)`, names it `<METHOD> <route pattern>` once the
    route is known, sets `http.request.method`, `http.route`, `http.response.status_code`
    and `person_id` (when a session exists), calls `RecordError` with the mapped error, and
@@ -1160,7 +1165,7 @@ answered by the owner on 2026-10-16 and are recorded in decisions 3, 9, 17, 18 a
    and `User-Agent`; answer 202 with no body, 400 with field errors for `Invalid`, 415 for a
    content type other than `application/json`, and 429 with `Retry-After: 60` and code
    `rate_limited` when `errors.Is(err, intake.ErrRateLimited)`, checked before the kind.
-4. **`plan/design/web-shell.md` (row 17):** the API client sends a fresh W3C `traceparent`
+4. **`plan/design/web-shell.md` (row 17)** (pending: target not written): the API client sends a fresh W3C `traceparent`
    per call (random trace ID and parent ID, flags `01`) and keeps it with the call's result;
    it catches uncaught errors, unhandled rejections, error boundaries and failed calls,
    deduplicates by `(kind, message, screen)` with a `count`, batches at most 20 reports
@@ -1171,7 +1176,7 @@ answered by the owner on 2026-10-16 and are recorded in decisions 3, 9, 17, 18 a
    response body; it never reports a failure of `/api/client-errors` itself and backs off
    for `Retry-After` on 429; error screens show the `ref` with the wording in "UI" and a
    copy button; nothing is written to browser storage.
-5. **`plan/design/app.md` (row 18):** call `telemetry.New` right after `config.Load` with
+5. **`plan/design/app.md` (row 18)** (pending: target not written): call `telemetry.New` right after `config.Load` with
    `Options{Level: cfg.Log.Level, Format: cfg.Log.Format, Instance: cfg.Instance.Name,
    Version: <build version>, Stdout: os.Stdout, Clock: clock.Real()}`; on failure print
    `<VARIABLE>: <reason>` to stderr and exit 2; log the effective configuration once
@@ -1183,7 +1188,7 @@ answered by the owner on 2026-10-16 and are recorded in decisions 3, 9, 17, 18 a
    `Close` last at shutdown within `http.shutdown_timeout`; `bms check` prints the log
    level and format and `Exporting()`; `bms serve`'s start-up line includes the version and
    whether export is on.
-6. **`plan/design/signals.md` (row 10) and `jobs.md` (row 14):** wrap each publish in a
+6. **`plan/design/signals.md` (row 10) and `jobs.md` (row 14)** (pending: targets not written): wrap each publish in a
    `SpanProducer` span `signal <name>` and each delivery in a `SpanConsumer` span
    `signal <name>` with `Module(subscriber)` as a child of the publisher's ctx (after
    commit, so the trace spans the request and its consequences); each job run in a
@@ -1191,15 +1196,18 @@ answered by the owner on 2026-10-16 and are recorded in decisions 3, 9, 17, 18 a
    `bms.signals.delivered{signal,module,outcome}` and `bms.jobs.runs{job,outcome}`
    (`outcome` = `ok`, `failed`, `retried`); payloads never on spans (IDs only, by their
    own rule).
-7. **`plan/design/audit.md` (row 12):** record `telemetry.TraceIDFrom(ctx)` on every entry
+7. **`plan/design/audit.md` (row 12)** (pending: target not written): record `telemetry.TraceIDFrom(ctx)` on every entry
    (09 §8), empty when none.
-8. **`.golangci.yml`:** add a depguard rule `otel-seam`: files `$all` except
+8. **`.golangci.yml`** (applied 2026-10-16): add a depguard rule `otel-seam`: files `$all` except
    `**/internal/core/telemetry/**`, deny `go.opentelemetry.io` ("telemetry wraps the SDK;
    use telemetry.Tracer, Meter and slog"); allow `go.opentelemetry.io` under
    `internal/core/telemetry/**`. forbidigo: deny `otel\.GetTracerProvider`,
    `otel\.Tracer`, `otel\.Meter` everywhere (globals are not used).
 9. **`deploy/compose/.env.example`, `deploy/compose/observability/*`, `docs/operating.md`
-   (when written):** add a commented `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`
+   (when written)** (`.env.example`, Tempo's `block_retention: 720h` and Prometheus's
+   `--storage.tsdb.retention.time=1y` applied 2026-10-16; pending: Loki retention needs a
+   Loki config file the compose stack does not yet carry, the alert rules wait for the production example, and
+   `docs/operating.md` is not written): add a commented `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`
    with a note that only `http/protobuf` is supported and that `OTEL_EXPORTER_OTLP_HEADERS`
    is a credential; set retention in Loki (30 d), Tempo (30 d) and Prometheus (1 y) per
    decision 18 and say so; add D20's alert rules (error rate, client-error spikes, slow
@@ -1207,7 +1215,7 @@ answered by the owner on 2026-10-16 and are recorded in decisions 3, 9, 17, 18 a
    maintainer's path from a reference ("UI") and state that Grafana access is for
    maintainers only, that telemetry holds person IDs and expires with retention, and that
    stdout logs are the host's to rotate.
-10. **`plan/07-abstractions.md`, `telemetry` entry:** replace "Owns" with: the logger
+10. **`plan/07-abstractions.md`, `telemetry` entry** (applied 2026-10-16, as layer rule 9; the api shell's "request IDs and tracing" became "the request span and error reference"): replace "Owns" with: the logger
     (JSON or text on stdout, trace IDs on every record), `Tracer` and `Meter` interfaces
     over the OpenTelemetry SDK with OTLP/HTTP export when `OTEL_*` names a collector, the
     privacy policy (typed attributes, key denylist, `Scrub`, caps, counted violations), the
@@ -1219,24 +1227,24 @@ answered by the owner on 2026-10-16 and are recorded in decisions 3, 9, 17, 18 a
     `lib` only (and the OpenTelemetry SDK, which no other package imports); every core
     package, `api`, `app` and every module may import it." Drop "request and trace IDs" in
     favour of "trace IDs" (decision 2).
-11. **`.claude/skills/go-conventions/SKILL.md`, "Logging and observability":** add: use the
+11. **`.claude/skills/go-conventions/SKILL.md`, "Logging and observability"** (applied 2026-10-16): add: use the
     `*Context` log methods wherever a ctx exists, so records carry the trace ID
     (`sloglint context: scope` enforces it); attribute keys follow the key grammar and
     never a denied key (list in telemetry.md); spans come from `telemetry.Tracer` with
     typed `Attr`s, `Token` for names and routes, `ID` for records, `Text` only for error
     messages; never import `go.opentelemetry.io` outside `core/telemetry`; tests that
     check leaks use `telemetrytest.New(t)` and `Contains`.
-12. **`plan/03-decisions.md`, D20 (for `plan-keeper`):** add: "bms exports OTLP over
+12. **`plan/03-decisions.md`, D20 (for `plan-keeper`)** (applied 2026-10-16): add: "bms exports OTLP over
     HTTP/protobuf only; the error reference is the first four bytes of the trace ID
     (`XXXX-XXXX`); traces are sampled 100% by default; the server ignores the browser's
     sampled flag (telemetry.md decisions 3, 5, 6; confirmed by the owner, 2026-10-16)".
-13. **`plan/09-core-features.md` §1 "Done when":** add "a collector that is down or absent
+13. **`plan/09-core-features.md` §1 "Done when"** (applied 2026-10-16): add "a collector that is down or absent
     never fails start-up, a request or shutdown; stdout logs carry the trace ID without
     any collector".
-14. **`plan/design/lib-core.md`, consumer rows:** `clock.Since` and `Backoff.Attempt` name
+14. **`plan/design/lib-core.md`, consumer rows** (applied 2026-10-16): `clock.Since` and `Backoff.Attempt` name
     "`telemetry` (health)"; there is no health endpoint in this spec (`/healthz` and
     `/readyz` are `api`'s). Replace with `api` (request duration) and `jobs` respectively;
     `telemetry` uses `clock.Clock` for its own rate limits and `intake` for the buckets.
 15. **`plan/design/config.md` (row 3), "Variables the process reads that are not in the
-    catalogue":** note that `OTEL_EXPORTER_OTLP_PROTOCOL` must be `http/protobuf` and that
+    catalogue"** (applied 2026-10-16): note that `OTEL_EXPORTER_OTLP_PROTOCOL` must be `http/protobuf` and that
     `telemetry` validates the `OTEL_*` variables it reads (this spec's table) at start.
