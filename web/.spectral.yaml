@@ -1,0 +1,12 @@
+extends: ["spectral:oas"]
+rules:
+  # The server's own document: tag descriptions and contact info are not worth a warning.
+  info-contact: off
+  info-description: off
+  license-url: off
+  openapi-tags-alphabetical: off
+  # The document is assembled by the server from each module's fragment; the base schemas
+  # (Sensitivity, TimeRange) exist for modules to reference, and the server is same-origin.
+  oas3-api-servers: off
+  operation-description: off
+  oas3-unused-component: off

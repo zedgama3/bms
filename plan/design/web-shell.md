@@ -1,6 +1,7 @@
 # web-shell: the browser application
 
-- **Status:** Approved (2026-10-17)
+- **Status:** Implemented (2026-10-17); Approved (2026-10-17)
+- **Amended 2026-10-17 (owner):** decisions 24 to 26 added (real error code sent in `code`; licence allowlist gains MIT-0 and Python-2.0 with a dev-only caniuse-lite exception; `web.FS()` hides dot-paths) and decision 27 (accepted implementation deviations); decision 6 amended so sign-in's own 401 does not redirect.
 - **Package:** `web/` (pnpm workspace; `web/src/...`), plus the Go package `web`
   (`web/embed.go`, Go module `github.com/zedgama3/bms/web`) that embeds the built files for
   `app`. **UI:** this spec is the UI frame; module and core-area screens plug into it.
@@ -39,7 +40,7 @@
 - Error display: `messageFor`, `ErrorState`, `ErrorSummary`, `useFieldErrors` (returns `FieldMessage{text, reason?}`), `showsRef`.
 - Reporter: `installReporter(...)`, `Reporter{apiFailure, screenCrash, flush, reportable}`.
 - UI kit: `Button`, `Field`, `Dialog` (native `<dialog>`), `Banner`, `EmptyState`, `Loading`, `Table`, `Toast`.
-- Go `web`: `FS() (fs.FS, error)` (`errs.NotFound` when `dist/index.html` is missing), `Version() (string, error)` (`NotFound`, or `Invalid` unless a telemetry token of at most 64 bytes). Imports stdlib and `lib/errs`; only `app` imports it.
+- Go `web`: `FS() (fs.FS, error)` (`errs.NotFound` when `dist/index.html` is missing; dot-prefixed paths hidden, D26), `Version() (string, error)` (`NotFound`, or `Invalid` unless a telemetry token of at most 64 bytes). Imports stdlib and `lib/errs`; only `app` imports it.
 
 **Key decisions:**
 - D1 modules mount under `/<name>/` in the browser; reserved names `api, assets, admin, account, sign-in, healthz, readyz, modules, core`.
@@ -47,7 +48,7 @@
 - D3 core areas register through the same `ScreenSet` (`kind: "core"`, always enabled).
 - D4 module isolation enforced by ESLint and `scripts/check-web-module-imports.sh` (under `make imports`); a literal `"/api/<other>/"` is refused.
 - D5 client generated from the server's document, committed; `make openapi-check` regenerates via `bms openapi`; `fetch` only in `@/api` and the reporter.
-- D6 every call: fresh `traceparent` (flags `01`), same-origin credentials, 35 s timeout, one `ApiError`, three hooks; `401` (except the session endpoint) signs out and goes to `/sign-in?returnTo=`.
+- D6 every call: fresh `traceparent` (flags `01`), same-origin credentials, 35 s timeout, one `ApiError`, three hooks; `401` (except the session endpoint and sign-in's own) signs out and goes to `/sign-in?returnTo=`.
 - D7 language = regional default then the person's explicit choice (`localStorage["bms.lang"]`, the only storage key); terminology via `{term_*}` arguments; FormatJS/ICU.
 - D8 typed message keys, `en` reference, missing keys in other languages fall back to `en`; Go test `TestMessageCatalogues_EnglishCoversManifests` in `internal/app`.
 - D9 the reference is shown for every error except `invalid`, `unauthenticated`, `read_only`, `network`.
@@ -59,6 +60,10 @@
 - D17 Baseline widely-available browsers only, no "update your browser" page; D18 dark mode from `prefers-color-scheme` in M0; D19 logical CSS properties.
 - D20 bundle version = binary version (`BMS_VERSION`, `dist/version.txt`, `__BMS_VERSION__`).
 - D21 phone first is a hard requirement (owner 2026-10-17; 320 px, 44x44 px targets, touch only); D22 end-to-end Playwright smoke run in M0 at phone and desktop viewports.; D23 `isMessageKey(s)` exported from `@/i18n` (module-hello's request; additive).
+- D24 the reporter sends the error body's real code in `api.code` (any telemetry token), never folded into `message` (owner 2026-10-17).
+- D25 licence allowlist adds MIT-0 and Python-2.0; caniuse-lite (CC-BY-4.0, dev-only) is an explicit exception (owner 2026-10-17).
+- D26 `web.FS()` hides dot-prefixed paths (owner 2026-10-17).
+- D27 accepted deviations: react-router 8.4; the client resolves with the body; `useSession` and `Session` are exported from `@/api`, every other client/i18n/ui setter is frame-private (`internal.ts`) and lint-banned in `modules/**` and `core/**`; nav catalogues load at boot (report plus retry banner on failure); `ui` may `import type` from `@/api`; sets may not declare route loaders or actions; `axe-core` helper instead of `vitest-axe`; logical-property violations are lint errors; the isolation script is `scripts/check-web-module-imports.sh`.
 
 **Errors/codes callers handle (client side, no Go errs except `web.*`):** `ApiError.code` is the problem body code or `network` (offline, DNS, reset, 35 s timeout) or `malformed_response` (non-2xx without problem body, or unparseable 2xx). `RegistryError` (F19-F21) for a bad name, absolute route path, untitled leaf or missing `en`. `web.FS`: `errs.NotFound` (app warns, `UI: nil`). `web.Version`: `NotFound`/`Invalid` (app warns).
 
@@ -572,7 +577,8 @@ under `module.<name>.field.<code>` (for example `module.volunteers.field.overlap
    `AbortSignal.any`, decision 17). The response's `X-Read-Only` goes to `onReadOnly` on
    every response, present or not, so the banner appears on the next call and clears on
    the first response after the copy is writable again (api decision 16). A `401` on any
-   route but the session endpoint calls `onUnauthenticated(returnTo)`: the frame clears the
+   route but the session endpoint and sign-in's own (a wrong password is the form's error,
+   not a lost session; amended 2026-10-17) calls `onUnauthenticated(returnTo)`: the frame clears the
    session and the query cache and navigates to `/sign-in?returnTo=<path>`; the error is
    still thrown so the screen's state settles. Every failure calls `onFailure`, and the
    reporter decides (decision 14). No automatic retry lives in the client: TanStack Query
@@ -690,7 +696,7 @@ under `module.<name>.field.<code>` (for example `module.volunteers.field.overlap
 19. **Logical properties, not left/right.** Spanish is left-to-right, but a right-to-left
     language later would otherwise mean touching every margin. Tailwind's `ms-`/`me-`/
     `ps-`/`pe-`/`start`/`end` utilities are used; `ml-`/`mr-`/`pl-`/`pr-`/`left-`/`right-`
-    are a lint warning (a custom ESLint rule over class strings), so the habit forms now.
+    are a lint error (a custom ESLint rule over class strings), so the habit forms now.
 20. **The bundle version is the binary's version.** `make web-build` runs `pnpm build` with
     `BMS_VERSION` set to the same string `-ldflags -X` gives the binary (`git describe`,
     or `dev`); Vite injects it as `__BMS_VERSION__`, the reporter sends it as `app_version`,
@@ -714,6 +720,27 @@ under `module.<name>.field.<code>` (for example `module.volunteers.field.overlap
     module's message keys, which are dynamic by nature; without a runtime guard a screen
     cannot translate them without a cast. The guard checks the loaded `en` catalogues, and
     a key it rejects is shown as the key itself (F23's fallback), never thrown on.
+24. **The reporter sends the error body's real code in `api.code`** (owner, 2026-10-17;
+    telemetry decision 21). Intake accepts any token there now, so the shell no longer
+    folds the code into `message` to get past a validator that knew only `errs.Kind`
+    names. A code that is not a token is sent as "".
+25. **Licence allowlist: MIT-0 and Python-2.0 are added; caniuse-lite is a dev-only
+    exception** (owner, 2026-10-17). MIT-0 and Python-2.0 are OSI-approved. caniuse-lite
+    (CC-BY-4.0) is data read by the build tooling (browserslist), never shipped in
+    `dist/`; `check-licenses.mjs` lists it by name as the single exception, and a test
+    pins that nothing outside the allowlist or that name passes.
+26. **`web.FS()` hides dot-prefixed paths** (owner, 2026-10-17), so `dist/.vite/manifest.json`
+    and `.gitkeep` are never served; `FS()` otherwise returns `fs.Sub(dist)`.
+27. **Accepted implementation deviations** (reviewed, 2026-10-17). The tooling table says
+    react-router 8.4 (data mode), not 7. The `api` client resolves with the parsed body.
+    `useSession` and `Session` are exported from `@/api`; every other client, i18n and ui
+    setter (`configureClient`, language and read-only setters) lives in a frame-private
+    `internal.ts` that ESLint bans in `modules/**` and `core/**`. Navigation catalogues
+    load at boot; a failure is reported and shows a banner with retry. `@/ui` may
+    `import type` from `@/api`. A `ScreenSet` may not declare route loaders or actions
+    (the registry refuses them; F38). The accessibility helper wraps `axe-core` directly
+    instead of `vitest-axe`. Logical-property violations are lint errors, not warnings
+    (decision 19). The isolation script is `scripts/check-web-module-imports.sh`.
 
 ### Boot, step by step (`main.tsx`, `app.tsx`)
 
@@ -731,7 +758,8 @@ under `module.<name>.field.<code>` (for example `module.volunteers.field.overlap
    later `GET /api/settings/public`). Until both settle: the frame's chrome with a
    `Loading` region (text after 300 ms, `aria-live="polite"`), no navigation yet. If
    `/api/modules` fails: the cannot-reach-server state with retry (F27). If the session
-   call fails: F28/F29.
+   call fails: F28/F29. The navigation catalogues of the enabled sets load at boot too;
+   if one fails to load, the failure is reported and a banner with retry shows (F39).
 6. `enabledSets = sets.filter(s => s.kind === "core" || enabled.has(s.name))`. Build the
    router: the shell's routes, then for each enabled set a parent route `/<name>` with the
    set's children, each wrapped in an `ErrorBoundary` (the set's `errorElement`) and a
@@ -793,7 +821,8 @@ under `module.<name>.field.<code>` (for example `module.volunteers.field.overlap
 2. **Shape.** `message` and `stack` with every `?query` stripped and cut at 512 and 4096
    bytes (the server cuts again); `screen` = the current matched route pattern with
    `:param` rewritten `{param}` (or omitted before the router mounted); `occurred_at` =
-   now (ISO); `app_version`; for `api`: `api: { method, route, status, code }`,
+   now (ISO); `app_version`; for `api`: `api: { method, route, status, code }` (`code` is the error body's real code, a token
+   per telemetry decision 21, or ""; never put in `message`, decision 24),
    `error_ref`, `trace_id`. Never the URL, a query string, a body, a form value or a header.
    A test pins that every `screen` and `route` the shell can produce matches telemetry's
    token grammar (F17).
@@ -816,7 +845,7 @@ under `module.<name>.field.<code>` (for example `module.volunteers.field.overlap
    sets, and is not reserved (`api`, `assets`, `admin`, `account`, `sign-in`, `healthz`,
    `readyz`, `modules`, `core`) (F19).
 2. Routes: every `path` is relative and contains no `..` segment; `handle.title` is present
-   on every leaf (F20).
+   on every leaf (F20); no route declares a `loader` or `action` (F38, decision 27).
 3. Catalogues: `messages.en` exists (F21); other languages are whatever the set ships.
 4. Navigation: `to` is relative; `access` well-formed. (A missing `label` key is a type
    error, F22.)
@@ -875,12 +904,12 @@ viewport and a desktop one), and by `web-reviewer`:
 |---|---|---|
 | Runtime | Node.js LTS (MIT); pnpm (MIT) | `web/.nvmrc`, `packageManager` in `package.json`; `pnpm-lock.yaml` committed; `save-exact=true` in `.npmrc` |
 | Build | Vite (MIT); `@vitejs/plugin-react` (MIT); `@tailwindcss/vite` (MIT) | exact versions |
-| UI | React 19 (MIT); react-router 7 in data mode (MIT); TanStack Query (MIT); FormatJS `react-intl` (BSD-3); Lucide (ISC) | exact versions |
+| UI | React 19 (MIT); react-router 8.4 in data mode (MIT); TanStack Query (MIT); FormatJS `react-intl` (BSD-3); Lucide (ISC) | exact versions |
 | API | `openapi-typescript` (MIT, dev); `openapi-fetch` (MIT) | exact versions |
 | Lint and format | ESLint (MIT) with `typescript-eslint` (MIT), `eslint-plugin-react-hooks` (MIT), `eslint-plugin-jsx-a11y` (MIT); Prettier (MIT) | exact versions |
-| Tests | Vitest (MIT), jsdom (MIT), Testing Library (MIT), `axe-core` and `vitest-axe` (MPL-2.0, OSI-approved), Playwright and `@axe-core/playwright` (Apache-2.0, MPL-2.0) | exact versions |
+| Tests | Vitest (MIT), jsdom (MIT), Testing Library (MIT), `axe-core` through a small project helper (MPL-2.0, OSI-approved), Playwright and `@axe-core/playwright` (Apache-2.0, MPL-2.0) | exact versions |
 | OpenAPI lint | Spectral CLI (Apache-2.0) with the `spectral:oas` ruleset | exact version |
-| Licenses | `web/scripts/check-licenses.mjs` over `pnpm licenses list --json`: every package's license must be in the allowlist (MIT, ISC, BSD-2/3, Apache-2.0, MPL-2.0, 0BSD, Unlicense, CC0-1.0, BlueOak-1.0.0); anything else fails `pnpm check` | the allowlist is in the script |
+| Licenses | `web/scripts/check-licenses.mjs` over `pnpm licenses list --json`: every package's license must be in the allowlist (MIT, ISC, BSD-2/3, Apache-2.0, MPL-2.0, 0BSD, Unlicense, CC0-1.0, BlueOak-1.0.0, MIT-0, Python-2.0), plus caniuse-lite (CC-BY-4.0, dev-only) by name (decision 25); anything else fails `pnpm check` | the allowlist is in the script |
 
 `pnpm check` runs, in order: `generate:messages` (and fails if `keys.d.ts` changed and is
 not committed), `lint`, `typecheck` (`tsc --noEmit`, strict), `test` (Vitest with
@@ -900,7 +929,7 @@ api decision 24). Vite's dev server has its own relaxed CSP; the production buil
 Output: `dist/index.html`, `dist/assets/<name>-<hash>.{js,css,svg}`, `dist/version.txt`,
 `dist/.vite/manifest.json`; `base: "/"`; no inline scripts; no `public/` files besides
 `favicon.svg` and `robots.txt` (`Disallow: /`: a regional's site is not for indexing). The
-Go package `web` embeds `all:dist` and `FS()` returns `fs.Sub(dist)`; `web/dist/.gitkeep` is
+Go package `web` embeds `all:dist` and `FS()` returns `fs.Sub(dist)` with dot-prefixed paths hidden (decision 26); `web/dist/.gitkeep` is
 committed so the embed compiles in a checkout without a build (Proposed change 9).
 
 ### Concurrency and lifecycle
@@ -919,7 +948,8 @@ its next call.
 `web/src/shell/**` → anything under `@/` plus `@/modules/index.ts` and `@/core/index.ts`
 (never a set's folder). `web/src/modules/<a>/**` and `web/src/core/<a>/**` → `@/api`,
 `@/i18n`, `@/ui`, `@/registry/types`, themselves. `web/src/api/**` → `@/i18n` (nothing
-else of ours). `web/src/i18n/**`, `web/src/ui/**`, `web/src/registry/**` → `@/i18n`, `@/ui`
+else of ours). `web/src/ui/**` may `import type` from `@/api`. The frame-private
+setters (`internal.ts` in `api`, `i18n`, `ui`) are imported by `shell/**` only (decision 27). `web/src/i18n/**`, `web/src/ui/**`, `web/src/registry/**` → `@/i18n`, `@/ui`
 (acyclic). `fetch`, `XMLHttpRequest`, `sendBeacon`, `WebSocket`, `EventSource`: `@/api/**`
 and `shell/report.ts` only. `localStorage`: `i18n/lang.ts` only; `sessionStorage`,
 `indexedDB`, `caches`, `document.cookie`: nowhere. The Go package `web`: standard library
@@ -937,7 +967,7 @@ package) the `errs` kind. Tests are Vitest files and names unless marked Go or e
 | F3 | `api.*` | non-2xx with `application/problem+json` | `ApiError` from the body: `status`, `code`, `ref`, `fields`, `retryAfter` | show per code | "problem body maps every field", "codes table is pinned against web/openapi.json" |
 | F4 | `api.*` | non-2xx without a problem body (HTML from a proxy, empty) | `malformed_response` with the status; reported | generic error with ref if any | "non-problem error body is malformed_response and reported" |
 | F5 | `api.*` | 2xx whose JSON does not parse | `malformed_response`; reported | generic error | "unparsable success body" |
-| F6 | `api.*` | `401` on any route but the session endpoint | `unauthenticated`; `onUnauthenticated(returnTo)` called; not reported | the frame redirects; the screen settles | "401 clears session and navigates to sign-in with returnTo", "401 on the session endpoint does not redirect" |
+| F6 | `api.*` | `401` on any route but the session endpoint and sign-in's own | `unauthenticated`; `onUnauthenticated(returnTo)` called; not reported | the frame redirects; the screen settles | "401 clears session and navigates to sign-in with returnTo", "401 on the session endpoint does not redirect" |
 | F7 | `api.*` | `403 cross_origin`, `403 misdirected`, `405`, `413`, `415` | that code; reported | generic error with ref | "deployment and shell bugs are reported" (table) |
 | F8 | `api.*` | `429` | `rate_limited`, `retryAfter`; not reported | `error.rate_limited` with the seconds | "429 carries retryAfter" |
 | F9 | `api.*` | `503 read_only` | `read_only`; `onReadOnly(true)` already from the header; not reported | `error.read_only` in the summary; banner up | "read_only sets the store and is not reported" |
@@ -969,6 +999,8 @@ package) the `errs` kind. Tests are Vitest files and names unless marked Go or e
 | F34 | `/sign-in` | `returnTo` not a same-origin path (`//evil`, `https://...`) | ignored; `/` after sign-in | — | `signin.test.tsx` "open redirect refused" |
 | F35 | gate | a signed-in route visited while signed out | redirect to `/sign-in?returnTo=` without a call | sign in | "gate redirects before calling" |
 | F36 | build | a chunk over budget; a dependency with a license outside the allowlist; an external origin in `dist/` | `pnpm check` fails | fix it | `check-bundle-size` and `check-licenses` have fixture tests; `TestBundle_NoExternalURLs` |
+| F38 | `validateRegistry` | a set declares a route `loader` or `action` | `RegistryError` | fetch in the screen through TanStack Query | `registry.test.ts` "loaders and actions are refused" |
+| F39 | boot | a navigation catalogue of an enabled set fails to load | reported as `api`/`network` or `malformed_response`; banner with retry; the frame stays | retry | `app.test.tsx` "catalogue failure shows retry banner" |
 | F37 | `make imports` | `modules/<a>` imports `modules/<b>`, `core/*` or `shell/*`, or names `"/api/<b>/"` | the script fails naming the file | use a contract or extension point | `scripts/check-web-module-imports.sh` fixture run in CI; ESLint rule tests |
 
 Members that cannot fail, and why: `messageFor`, `showsRef` (table lookups with a default);
@@ -994,7 +1026,7 @@ is enforced in `pnpm check`), self-hosted from the binary, and replaceable at a 
 ## Test plan
 
 **Unit and component** (Vitest, jsdom, Testing Library, `vi.useFakeTimers()` for every
-timing, a fake `fetch` installed per test, `vitest-axe` on every rendered state; no network,
+timing, a fake `fetch` installed per test, the `axe-core` helper on every rendered state; no network,
 no real timers, no `localStorage` unless the test is about it; invented people and markers
 `ZQ9MARKER7` / `zq9@marker.example` asserted absent from every report body and URL):
 

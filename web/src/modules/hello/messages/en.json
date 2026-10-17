@@ -1,0 +1,19 @@
+{
+  "module.hello.title": "Hello",
+  "module.hello.description": "The reference module: a greeting, a counter and a banner.",
+  "module.hello.permission.greetings.read.title": "See greetings",
+  "module.hello.permission.greetings.read.description": "See your own greeting count.",
+  "module.hello.permission.greetings.write.title": "Greet",
+  "module.hello.permission.greetings.write.description": "Record a greeting.",
+  "module.hello.setting.greeting.title": "Greeting word",
+  "module.hello.setting.greeting.description": "The word the greeting screen shows.",
+  "module.hello.signal.greeted.title": "Someone greeted",
+  "module.hello.nav.greeting": "Hello",
+  "module.hello.banner.welcome": "Welcome to the reference module.",
+  "module.hello.screen.greeting": "{greeting}!",
+  "module.hello.screen.mine": "You have greeted {mine, plural, =0 {never} one {once} other {# times}}.",
+  "module.hello.screen.seen": "This server has seen {seen, plural, =0 {no greetings} one {one greeting} other {# greetings}} since it started.",
+  "module.hello.screen.greet": "Say hello",
+  "module.hello.screen.greeted": "Greeting saved",
+  "module.hello.screen.banners": "Notices"
+}

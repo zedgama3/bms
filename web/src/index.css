@@ -1,0 +1,93 @@
+@import "tailwindcss";
+
+/*
+ * Colour tokens, one set per palette (decision 18): the light values are the default and
+ * `prefers-color-scheme: dark` swaps them. src/ui/tokens.test.ts checks 4.5:1 for text and
+ * 3:1 for UI against these exact values. A regional's colours will arrive as a same-origin
+ * /theme.css (decision 10); there are no inline styles.
+ */
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --fg: #1a1a1a;
+  --muted: #4b5563;
+  --surface: #f5f5f4;
+  --border: #6b7280;
+  --primary: #9a3412;
+  --primary-fg: #ffffff;
+  --primary-hover: #7c2d12;
+  --danger: #b91c1c;
+  --danger-bg: #fef2f2;
+  --warn-bg: #fffbeb;
+  --warn-fg: #78350f;
+  --info-bg: #eff6ff;
+  --info-fg: #1e3a8a;
+  --focus: #1d4ed8;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121212;
+    --fg: #f5f5f4;
+    --muted: #a8a29e;
+    --surface: #1c1917;
+    --border: #8b8680;
+    --primary: #fb923c;
+    --primary-fg: #1a1a1a;
+    --primary-hover: #fdba74;
+    --danger: #f87171;
+    --danger-bg: #2a1313;
+    --warn-bg: #2b2108;
+    --warn-fg: #fde68a;
+    --info-bg: #0f1d3a;
+    --info-fg: #bfdbfe;
+    --focus: #93c5fd;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-fg: var(--primary-fg);
+  --color-primary-hover: var(--primary-hover);
+  --color-danger: var(--danger);
+  --color-danger-bg: var(--danger-bg);
+  --color-warn-bg: var(--warn-bg);
+  --color-warn-fg: var(--warn-fg);
+  --color-info-bg: var(--info-bg);
+  --color-info-fg: var(--info-fg);
+  --color-focus: var(--focus);
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+html {
+  scroll-padding-top: 5rem; /* a focused element is never hidden under the sticky header (2.4.11) */
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+    scroll-behavior: auto !important;
+  }
+}

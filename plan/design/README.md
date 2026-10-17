@@ -31,7 +31,7 @@ The order follows dependencies: foundation first, then the core, then modules.
 | 15 | `settings.md` | runtime settings and terminology | Not started |
 | 15b | `telemetry.md` | logs, traces, metrics, client error intake (D20) | Implemented (2026-10-17) |
 | 16 | `api.md` | router, middleware, error mapper, OpenAPI assembly | Approved (2026-10-17) |
-| 17 | `web-shell.md` | UI frame, API client, module screen registry | Approved (2026-10-17) |
+| 17 | `web-shell.md` | UI frame, API client, module screen registry | Implemented (2026-10-17) |
 | 18 | `app.md` | composition root and lifecycle | Approved (2026-10-17) |
 | 19 | `module-volunteers.md` | volunteers module | Not started |
 | 20 | `module-registrations.md` | registrations module | Not started |
