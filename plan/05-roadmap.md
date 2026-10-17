@@ -17,11 +17,11 @@ Design comes before code. Specs are tracked in [design/README.md](design/README.
 - [ ] **Design specs, foundation and core:** `model`, `config`, `module-contract`, `db`,
       `identity`, `authz`, `people`, `departments-events`, `signals`, `notify`, `audit`, `files`, `jobs`, `api`,
       `web-shell`, `app` (architect writes, owner approves)
-- [ ] Implement the core with the build loop
+- [ ] Implement the core with the build loop (M0 done 2026-10-17: model, config, telemetry, db, signals, module contract, httpx/api, web shell, app; M1+ remain)
 - [x] Implement the `lib-core` `validate` amendment: `validate.FieldError` gains `Code` and
       `Params`, each check sets its code, the `Code*` constants are added (lib-core.md,
       api.md decision 25). Must land before `httpx`.
-- [ ] A "hello" module that exercises every part of the module contract, as the reference for
+- [x] A "hello" module that exercises every part of the module contract, as the reference for
       module authors
 - [ ] CI on GitHub Actions running `make check` (repository: `github.com/zedgama3/bms`)
 - [ ] CODE_OF_CONDUCT.md and governance (Q-GOV1, Q-GOV2)

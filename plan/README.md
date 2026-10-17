@@ -85,10 +85,15 @@ copy and can fork it. Features are modules.
      now Approved.
      Done 2026-10-17: M0 implementation round — owner approved 21 spec corrections and the
      module-contract moduletest amendment (2026-10-17).
-     Next: implement M0 with the build loop, or draft `audit` (order 10) and the rest of the
-     spec order in [09-core-features.md](09-core-features.md) first; the owner chooses.
-     Pending implementation: the `lib-core` `validate` amendment (FieldError `Code` and
-     `Params`), which must land before `httpx`; tracked in [05-roadmap.md](05-roadmap.md).
+     Done 2026-10-17: M0 implemented on branch feat/m0 (every M0 spec Implemented; `bms migrate`,
+     `check` and `serve` verified against the dev database; Playwright smoke passes against the
+     real server). Next: draft `audit` (order 10) and `identity` (order 11) for M1.
+     Open follow-ups:
+     - (a) Confirm D34 as D20's debug-level exception.
+     - (b) The M3 part name `departments-events` is not a core area name for `module.IsCoreArea`
+       (split into two parts, or amend F28).
+     - (c) `scripts/e2e.sh` has no readonly mode yet.
+     - (d) CI on GitHub once the branch is pushed.
   3. CI on GitHub (`make check`), once the owner pushes the branch.
 
 ## Conventions
