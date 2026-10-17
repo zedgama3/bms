@@ -1217,7 +1217,8 @@ target to be written and are carried by this list until then.
    span is the api shell's; a module opens sub-spans through `Deps.Tracer`"; `moduletest.
    Conformance` supplies `Logger` and `Tracer` from `telemetrytest.New(t)`, and
    `no_personal_data_in_logs` also fails on any `Violation` and checks spans. The `hello`
-   module opens one span in its handler.
+   module opens one span per use case in its service, under the request span (tail
+   amended 2026-10-17 by module-hello.md's Proposed change 5).
 2. **`plan/design/db.md` (row 5), answering its Proposed change 12** (applied 2026-10-16; db's F56 and F57 added): add
    `Tracer telemetry.Tracer` and `Meter telemetry.Meter` to `db.Options` (nil means none;
    `Validate` unchanged); in `Open`, when `Tracer` is set, install a pgx `QueryTracer`

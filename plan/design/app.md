@@ -938,12 +938,16 @@ port>`, `BMS_LOG_FORMAT=json`, no `OTEL_*`):
   goroutine → poll `GET /readyz` with `clock.Wait` until `200` (bounded by a deadline) →
   `GET /api/modules` lists `hello` enabled → `GET /api/hello/public-greeting` is `200`
   with `X-Trace-Id` → `GET /api/hello/greeting` is `401` (no identity in M0) →
+  `GET /api/hello/nope` is `404` with the `not_found` problem body →
   `GET /healthz` `200` → cancel ctx → `Main` returns `ExitOK` → stdout holds the four
   lifecycle lines in order and the six closers' `stopped` records in the order of
   decision 10, no record carries the markers; the trace of the greeting request has the
-  `hello` module's span under the request span (api.md Proposed change 11's assertion
-  for `deliver:hello.greeted` runs on the write route the `hello` spec defines, once
-  that spec exists; until then the read route's child span is asserted).
+  `hello` module's span under the request span. The write route is `POST
+  /api/hello/greetings`; in M0 it answers `401` before the handler, so api.md Proposed
+  change 11's request-driven `deliver:hello.greeted` assertion moves to M1 (first
+  session), while `hello`'s own integration test `TestGreet_EndToEnd_DeliversInSameTrace`
+  proves the same trace relationship in M0 (module-hello.md's Proposed change 6, applied
+  2026-10-17).
 - `TestServe_ReadOnlyDatabase_StartsAndReadyzSaysReadOnly` (`ALTER DATABASE ... SET
   default_transaction_read_only = on` after `migrate`, then `serve`; `/readyz` says
   `read-only`; every response carries `X-Read-Only: true`).
@@ -1027,7 +1031,7 @@ decision 17 (not in M0); the stderr logging of `migrate`, `check` and `openapi` 
    is `max(1 s, 2 × shutdown_timeout / 3)`; the drain delay is decision 17 (not in M0; if added later, `api` gains `Server.BeginDrain()`: health routes answer `503` while
    the listener stays open); `core.modules.read` is registered through `authz`'s part
    with `corePerms`; `bms check` prints the operation count; the `deliver:hello.greeted`
-   assertion runs in app's e2e test once `module-hello.md` defines the write route.
+   assertion runs in app's e2e test on `POST /api/hello/greetings` once identity gives a session (M1); `module-hello.md` defines the route and proves the M0 trace relationship itself.
 8. **`plan/design/jobs.md` (row 14):** (pending: target not written) `jobs` is core part 7: its `build` constructs the
    runner before `signals.New` and hands it as `Options.Deferrer`; it then receives the
    `*signals.Dispatcher` for `Redeliver` through a setter (`Runner.SetRedeliverer` or

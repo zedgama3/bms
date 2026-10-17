@@ -1,6 +1,6 @@
 # module-hello
 
-- **Status:** Draft (2026-10-17)
+- **Status:** Approved (2026-10-17)
 - **Package:** `internal/modules/hello` (with `internal/modules/hello/greeting`,
   `internal/modules/hello/postgres`) and `internal/contracts/greeter`
   **UI:** `web/src/modules/hello`
@@ -79,11 +79,13 @@ fragment check, 401 before the handler on signed-in routes in M0); web-shell (`S
 `api` client, `useSession`, `useT`, `ErrorState`, `EmptyState`, `Button`, `Toast`); app
 (`modules.go` line, e2e test, catalogue test); model (`ID`, `PersonID`, `NewID`).
 
-**Open questions:** default roles for the two permissions (authz, M2); whether `hello`
-stays compiled in at the first release. **Proposed changes elsewhere:** module-contract
-(hello paragraph), api (item 16), web-shell (item 10, `isMessageKey` guard), signals (item
-11), telemetry (item 1 tail), app (e2e assertion timing), 07-abstractions, add-module and
-go-conventions (record-type leaf package, M0 seams), README row 4b.
+**Settled by the owner (2026-10-17).** 11 once authz exists, the base role every signed-in
+person gets holds both `hello.greetings.read` and `hello.greetings.write`. 12 `hello` stays
+compiled in and enabled by default through Phase 1; regionals set `BMS_MODULES_DISABLED=hello`;
+revisit when `volunteers` is Implemented.
+
+**Open questions:** None. **Proposed changes elsewhere:** all applied 2026-10-17 (item 9 is
+README row 4b).
 
 ## Purpose
 
@@ -658,49 +660,56 @@ and without banners, `403`, `network`, signed-in counts with `mine` 0 and 3, gre
 and `read_only`; `axe` on the screen; Playwright scenarios are web-shell's, run at the
 phone and desktop viewports by `make test-e2e`.
 
+## Decisions settled here
+
+Decisions 1 to 10 are listed in the Summary. The owner settled two more on 2026-10-17, each
+with the proposed answer:
+
+11. **Default roles for `hello.greetings.read` and `hello.greetings.write`** (owner,
+    2026-10-17). Once `authz` (M2) exists, the base role every signed-in person gets holds
+    both, so a fresh installation can greet without an admin touching roles.
+12. **`hello` stays compiled in at the first release** (owner, 2026-10-17). It is enabled by
+    default through Phase 1 so `make test-e2e` and the admin modules screen always have a
+    module to show; the operator docs tell a regional to set `BMS_MODULES_DISABLED=hello`;
+    revisit when `volunteers` is Implemented.
+
 ## Open questions
 
-1. **Default roles for `hello.greetings.read` and `hello.greetings.write`.** Only `authz`
-   (M2) can give an answer. Proposed: whatever base role every signed-in person gets holds
-   both, so a fresh installation can greet without an admin touching roles.
-2. **Does `hello` stay compiled in at the first release?** Proposed: yes, enabled by
-   default through Phase 1 so `make test-e2e` and the admin modules screen always have a
-   module to show; the operator docs tell a regional to set `BMS_MODULES_DISABLED=hello`,
-   and the question is revisited when `volunteers` is Implemented.
+None. Both questions in the draft are answered above (decisions 11 and 12).
 
 ## Proposed changes elsewhere
 
-1. **`plan/design/module-contract.md` (row 4), "The `hello` reference module":** replace
+1. (applied 2026-10-17) **`plan/design/module-contract.md` (row 4), "The `hello` reference module":** replace
    the paragraph's list with this spec's: two permissions (`hello.greetings.read`,
    `hello.greetings.write`), the write route `POST /greetings`, `greeter.Greeter{Greeting(ctx)
    (string, error)}` and `greeter.Banner{Key}` as the point's shape, one span per use case in
    the service (not only in the `GET /greeting` handler), the counter goroutine, and the core
    subscription deferred until `people.person-deleted` exists. Mark Proposed change 12 done.
-2. **`plan/design/api.md` (row 16), Proposed change 16:** mark applied with this wording:
+2. (applied 2026-10-17) **`plan/design/api.md` (row 16), Proposed change 16:** mark applied with this wording:
    `hello`'s unit tests assert `httpx.Fail`'s fallback statuses for the kinds `hello`
    returns (401, 403, 503); `hello` has no `NotFound` path, so the `404 not_found` body is
    asserted by `app`'s e2e test on `GET /api/hello/nope`, and the 401 body on
    `GET /api/hello/greeting`.
-3. **`plan/design/web-shell.md` (row 17):** mark Proposed change 10 applied (the set is as
+3. (applied 2026-10-17) **`plan/design/web-shell.md` (row 17):** mark Proposed change 10 applied (the set is as
    described in "UI"). New request: export from `@/i18n` a runtime guard `isMessageKey(s:
    string): s is MessageKey` over the loaded catalogues, because extension-point
    contributions (`hello.banner` now, `people.person-page` later) carry another module's
    keys, which are dynamic by nature; without it a screen cannot translate them without a
    cast.
-4. **`plan/design/signals.md` (row 10), Proposed change 11:** mark applied; the handler
+4. (applied 2026-10-17) **`plan/design/signals.md` (row 10), Proposed change 11:** mark applied; the handler
    counts on the counter goroutine, idempotent on `Signal.ID` with a 256-entry ring.
-5. **`plan/design/telemetry.md` (row 15b), Proposed change 1 (tail):** "The `hello` module
+5. (applied 2026-10-17) **`plan/design/telemetry.md` (row 15b), Proposed change 1 (tail):** "The `hello` module
    opens one span in its handler" becomes "one span per use case in its service, under the
    request span".
-6. **`plan/design/app.md` (row 18), e2e test and Proposed change 7:** the write route is
+6. (applied 2026-10-17) **`plan/design/app.md` (row 18), e2e test and Proposed change 7:** the write route is
    `POST /api/hello/greetings`; in M0 it answers 401 before the handler, so the
    request-driven `deliver:hello.greeted` assertion moves to M1 (first session), while
    `hello`'s own integration test `TestGreet_EndToEnd_DeliversInSameTrace` proves the same
    trace relationship in M0. Add `GET /api/hello/nope` → `404 not_found` body to
    `TestServe_EndToEnd_StartsServesStops`.
-7. **`plan/07-abstractions.md`, "Modules" and "contracts":** list `hello` as the reference
+7. (applied 2026-10-17) **`plan/07-abstractions.md`, "Modules" and "contracts":** list `hello` as the reference
    module (M0, this spec), and name `contracts/greeter` as the first, example contract.
-8. **`.claude/skills/add-module/SKILL.md` and `go-conventions`, "Module package layout":**
+8. (applied 2026-10-17) **`.claude/skills/add-module/SKILL.md` and `go-conventions`, "Module package layout":**
    add the leaf package for record types (`<name>/<record>/`: the module root imports
    `postgres/` to build the store, so `postgres/` cannot import the root; record types shared
    by both live in a leaf that imports only `model` and `lib`), and note the M0 seams (actor,

@@ -43,7 +43,12 @@ See the `add-module` skill. In short: `module.go` (the manifest, `New` and the r
 `init`), `service.go` (use cases, each checking its permission, and declaring the storage
 interface it needs), `postgres/` (the only place with SQL and the driver: `store.go`, `sql/`,
 `migrations/`; D8), `http.go` (handlers, thin), `signals.go`, `privacy.go` (implements
-`module.PersonData`). `Start` registers signal handlers and jobs and never writes, so it
+`module.PersonData`). Record types shared by `service.go` and `postgres/` live in a leaf package
+(`<name>/<record>/`, importing only `model` and `lib`): the module root imports `postgres/` to
+build the store, so `postgres/` cannot import the root. Until identity, authz and settings
+exist (M0), the service takes an actor function, a permission checker and a setting source
+wired to "no actor", "deny" and "the declared default", so it fails closed. The `hello`
+module (`plan/design/module-hello.md`) is the template. `Start` registers signal handlers and jobs and never writes, so it
 succeeds on a read-only copy. `New` needs no database read, because `bms openapi` and
 `bms check` build every module against a `DB` that refuses every statement (app.md decision
 7). Every module ships `web/src/modules/<name>/messages/en.json`, screens or not. The manifest carries no human-readable text: titles and

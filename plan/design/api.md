@@ -85,7 +85,7 @@
 
 **Expects of dependencies:** telemetry (`Tracer.Start` with `WithParentFrom`, `RefFrom`, `TraceIDFrom`, token grammar admitting `_OTHER` and the `<METHOD> <route>` span form, `intake`); module-contract (`Route.Access`, `ModuleRoutes`, `Graph`, `RouteProvider` must also provide an OpenAPI fragment); db (`Ping`, `ReadOnly`, `ErrReadOnly`, `Status`, `Close` tolerant of late callers); identity (Authenticator, cookie rules); authz (PermissionChecker); lib-core (`validate.FieldError.Code/Params`, applied in spec, implementation follow-up needed); app (shutdown order and sub-deadline).
 
-**Pending proposed changes:** items 9 (identity), 10 (authz), 15 (settings: trusted origins and Host allowlist), 16 (module-hello), and the front-end examples and `docs/operating.md` half of 14 wait on targets not yet written; the rest are applied.
+**Pending proposed changes:** items 9 (identity), 10 (authz), 15 (settings: trusted origins and Host allowlist), and the front-end examples and `docs/operating.md` half of 14 wait on targets not yet written; the rest are applied.
 
 ## Purpose
 
@@ -1451,7 +1451,7 @@ this list until then. Item 17 needs nothing.
    ID exists; `Permission` is for an action the caller may not take on a record they may
    see."
 3. **`plan/design/module-contract.md` (row 4)** (applied 2026-10-17; (e) is carried by item
-   16 until `module-hello.md` exists): its Proposed change 6 is answered here
+   16, applied with `module-hello.md`): its Proposed change 6 is answered here
    (mounting, fragment form, `GET /api/modules` split into a public list and a
    permissioned admin route, the read-only mapping). Proposed amendments: (a) a
    `RouteProvider` must also implement `APIDescriber` (F34 becomes "a `RouteProvider`
@@ -1599,13 +1599,16 @@ this list until then. Item 17 needs nothing.
     the bind address): a request whose `Host` is not listed is answered `404` with no
     body, which closes DNS rebinding against the API; until the setting exists the front
     end's virtual host is the allowlist and `AllowPlaintext` deployments have none.
-16. **`plan/design/module-hello.md` (row 4b)** (pending: target not written; carries
+16. **`plan/design/module-hello.md` (row 4b)** (applied 2026-10-17, by module-hello.md's Proposed change 2; carries
     item 3(e): the fragment documents `GET /greeting` and `GET /public-greeting` and its
     schema names start with `Hello`): ship `openapi.json` next to `module.go`
     (embedded), use `httpx.ReadJSON`/`WriteJSON`/`Fail`, read the actor through
     `identity`'s accessor (M1) and return `errs.Permission` from its service until then
     for `GET /greeting`; its tests assert `404 not_found` from `httpx.Fail`'s fallback and
-    the full problem body through `app`'s integration test.
+    the full problem body through `app`'s integration test. As built: `hello`'s unit tests
+    assert `httpx.Fail`'s fallback statuses for the kinds `hello` returns (401, 403, 503);
+    `hello` has no `NotFound` path, so the `404 not_found` body is asserted by `app`'s e2e
+    test on `GET /api/hello/nope`, and the 401 body on `GET /api/hello/greeting`.
 17. **`.golangci.yml`** (nothing to apply): no new rule needed: `foundation-lib` already confines `httpx` to
     the standard library and `lib`, and the `api` rule already denies modules, `app` and
     `config`. If the owner wants a strict allowlist for `internal/api` (stdlib, `lib`,

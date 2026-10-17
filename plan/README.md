@@ -81,9 +81,10 @@ copy and can fork it. Features are modules.
      17, 18, 21, 22).
      Done 2026-10-17: `app` is Approved (design/README.md row 18, order 9 in
      09-core-features.md), with the owner's answers to its four open questions.
-     Next: `module-hello` (design/README.md row 4b), the reference module and the last M0
-     spec; then `audit` (order 10) and the rest of the spec order in
-     [09-core-features.md](09-core-features.md).
+     Done 2026-10-17: `module-hello` is Approved (design/README.md row 4b); every M0 spec is
+     now Approved.
+     Next: implement M0 with the build loop, or draft `audit` (order 10) and the rest of the
+     spec order in [09-core-features.md](09-core-features.md) first; the owner chooses.
      Pending implementation: the `lib-core` `validate` amendment (FieldError `Code` and
      `Params`), which must land before `httpx`; tracked in [05-roadmap.md](05-roadmap.md).
   3. CI on GitHub (`make check`), once the owner pushes the branch.

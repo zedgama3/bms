@@ -95,8 +95,7 @@ failure); telemetry (`Tracer` Producer/Consumer spans, `Meter` counters,
 `telemetry.Close`.
 
 Pending proposed changes (targets not written): 6 jobs.md (implement `Deferrer`, call `Redeliver`), 7 authz/identity (ignore
-the session when `InDelivery`), 8 people/departments-events (declare their signals), 11
-module-hello (`hello.greeted`). Items 1, 2, 3, 4, 5, 9, 10 are applied.
+the session when `InDelivery`), 8 people/departments-events (declare their signals). Items 1, 2, 3, 4, 5, 9, 10, 11 are applied.
 
 ## Purpose
 
@@ -925,7 +924,7 @@ wait for their target to be written and are carried by this list until then.
     `NewPayload(signals.Ref(...))` calls and the handlers; add the rule "publish inside the
     `Transact` that makes the change; subscribe in `Start`; handlers are quick, long work is
     a job"; `go-conventions` adds `signalstest.NewFake` to the testing patterns.
-11. **`plan/design/module-hello.md` (row 4b)** (pending: target not written): `hello.greeted {person}`,
+11. **`plan/design/module-hello.md` (row 4b)** (applied 2026-10-17, by module-hello.md's Proposed change 4; the handler counts on the counter goroutine, idempotent on `Signal.ID` with a 256-entry ring): `hello.greeted {person}`,
     published inside the transaction that saves a greeting; its handler for its own signal
     counts the greeting in memory (no write), so the reference shows a subscriber that
     works on a read-only copy; its test uses `signalstest.Fake.Deliver`.

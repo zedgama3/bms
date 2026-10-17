@@ -104,6 +104,9 @@ Rules (enforced by depguard and `make imports`):
 - **Owns:** interfaces and plain data types. Calls take batches; providers check
   permissions for the person asking.
 - **Doesn't do:** any implementation, storage, or HTTP.
+- **Example:** `contracts/greeter` (capability `greeter`, extension point `hello.banner`),
+  the first contract, shipped with the `hello` reference module
+  ([design/module-hello.md](design/module-hello.md)); it has no consumer in M0.
 
 ## Core
 
@@ -264,3 +267,8 @@ Rules (enforced by depguard and `make imports`):
 Each gets its own spec (`plan/design/module-<name>.md`), written with the `add-module`
 skill: `volunteers`, `registrations`, `incidents`, `afterreports`. Module names are letters
 and digits only (`after-reports` is `afterreports` in code, schema and URLs).
+
+`hello` is the **reference module** (M0): the smallest module that touches the whole
+contract, copied by every later module author and used to calibrate `moduletest.Conformance`.
+It is useful to no burner, is enabled by default through Phase 1 and is turned off with
+`BMS_MODULES_DISABLED=hello`. Spec: [design/module-hello.md](design/module-hello.md).

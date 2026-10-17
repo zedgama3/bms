@@ -47,6 +47,13 @@ internal/modules/<name>/
                    line, D31)
   service.go       use cases; each one checks its permission via authz first. Declares the
                    storage interface it needs (no SQL or driver types in it)
+                   Until identity, authz and settings exist (M0), the service takes three seams
+                   (an actor function, a permission checker, a setting source) wired to "no
+                   actor", "deny" and "the declared default"; the service fails closed and
+                   the wiring, not the code, changes later (`hello` shows it)
+  <record>/        a leaf package for record types shared by the service and the store
+                   (`hello/greeting`). The module root imports postgres/ to build the store,
+                   so postgres/ cannot import the root; the leaf imports only model and lib
   postgres/        the PostgreSQL implementation of that interface (D8). Only this
                    package imports the driver.
     store.go       implements the interface
@@ -80,6 +87,8 @@ web/src/modules/<name>/
                    shows its title, and app's catalogue test fails without it
   screens/, components/
 ```
+
+The template to copy is the `hello` reference module (`plan/design/module-hello.md`).
 
 ## 3. Rules
 

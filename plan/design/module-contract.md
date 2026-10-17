@@ -1180,16 +1180,19 @@ integration test, behind the `integration` tag.
 
 ### The `hello` reference module (09 §1)
 
-Specified separately (`module-hello.md`, Proposed change 12). To "exercise every part of
-the contract" it must: declare one permission (`hello.greetings.read`, `ScopeSite`,
-`Reaches` internal), one setting (`greeting`, text, default `"hello"`), publish
-`hello.greeted` (payload `{person}`, inside the transaction that saves a greeting),
-subscribe to `hello.greeted` and to one core signal once the core publishes one, provide capability `greeter` (`contracts/greeter`), define point `hello.banner`,
-contribute to its own point, ship one migration creating `hello.greeting`, serve `GET
-/greeting` (signed in) and `GET /public-greeting` (public) with an OpenAPI fragment,
-implement `PersonData` over the greetings a person saved, start one goroutine, open one
-span through `Deps.Tracer` in its `GET /greeting` handler (a child of the api's request
-span), and pass `Conformance`.
+Specified separately (`module-hello.md`; its Proposed change 1 applied this paragraph
+2026-10-17). To "exercise every part of the contract" it declares two permissions
+(`hello.greetings.read` and `hello.greetings.write`, both `ScopeSite`, `Reaches` internal),
+one setting (`greeting`, text, default `"hello"`), publishes `hello.greeted` (payload
+`{person}`, inside the transaction that saves a greeting) and subscribes to it, provides
+capability `greeter` (`contracts/greeter`: `Greeter{Greeting(ctx) (string, error)}`) and
+defines point `hello.banner` (shape `greeter.Banner{Key}`), contributes to its own point,
+ships one migration creating `hello.greeting`, serves `GET /public-greeting` (public),
+`GET /greeting` (signed in) and `POST /greetings` (signed in) with an OpenAPI fragment,
+implements `PersonData` over the greetings a person saved, starts one goroutine (the
+counter), opens one span per use case in its service through `Deps.Tracer` (children of the
+api's request span), and passes `Conformance`. Its subscription to a core signal is
+deferred until `people.person-deleted` exists.
 
 ## Open questions
 
