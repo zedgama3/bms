@@ -1,6 +1,7 @@
 # telemetry: logs, traces, metrics and client error reports
 
-- **Status:** Approved (2026-10-16)
+- **Status:** Implemented (2026-10-17); Approved (2026-10-16)
+- **Amended 2026-10-17 (owner):** decisions 21 to 25 (intake `api.code` is any token, client reports carry `origin=client`, `IsToken` and `Collect` and the accepted implementation deviations, `client.stack` cap, debug logging keeps scrubbing on); the Data section now says `New` reads the OTLP certificate and key files.
 - **Package:** `internal/core/telemetry` (Go module `github.com/zedgama3/bms`), plus the
   sub-package `internal/core/telemetry/intake` (client error reports) and the test helper
   package `internal/core/telemetry/telemetrytest`. **UI:** none of its own; the error
@@ -36,13 +37,13 @@
 
 **Exported (`internal/core/telemetry`):**
 - `Options{Level slog.Level; Format (FormatJSON|FormatText); Instance; Version; Stdout io.Writer; Clock; Environ func(string)(string,bool); Observer}`; `Options.Validate()`; `New(ctx, Options) (*Telemetry, error)` never dials the collector.
-- `(*Telemetry)`: `Logger() *slog.Logger` (instance attr; trace_id/span_id from ctx on `*Context` calls), `Tracer(scope) (Tracer, error)`, `Meter(scope) (Meter, error)`, `Exporting() bool`, `Close(ctx) error` (idempotent; stdout handler keeps working after).
+- `(*Telemetry)`: `Logger() *slog.Logger` (instance attr; trace_id/span_id from ctx on `*Context` calls), `Tracer(scope) (Tracer, error)`, `Meter(scope) (Meter, error)`, `Exporting() bool`, `Collect(ctx) error` (tests only; needs an `Observer`), `Close(ctx) error` (idempotent; stdout handler keeps working after).
 - `Tracer.Start(ctx, name, ...StartOption) (ctx, Span)` never fails; `Span{SetAttrs(...Attr), RecordError(err), End()}`; `SpanKind` (`SpanInternal|Server|Client|Producer|Consumer`); `WithKind`, `WithAttrs`, `WithParentFrom(http.Header)` (W3C traceparent; IDs only, sampled flag and tracestate ignored; malformed means root).
-- `Attr` constructors: `Int, Int64, Float, Bool, Duration (ms), Token, Text (scrubbed, cap 512), ID[T ~[16]byte], Kind(errs.Kind), Module`; `Attr.Key()`; `Scrub(string)`; consts `MaxTextBytes=512`, `MaxLogValueBytes=2048`.
+- `Attr` constructors: `Int, Int64, Float, Bool, Duration (ms), Token, Text (scrubbed, cap 512), ID[T ~[16]byte], Kind(errs.Kind), Module`; `Attr.Key()`; `Scrub(string)`; `IsToken(s) bool` (the token grammar); consts `MaxTextBytes=512`, `MaxLogValueBytes=2048` (the log handler allows `client.stack` up to `intake.MaxStackBytes`).
 - `Meter{Counter, Histogram, Gauge(name, observe func(ctx) []Sample, ...)}`; `Counter.Add(ctx,n,...Attr)`, `Histogram.Record`; `Sample`; `WithUnit`, `WithDescription`, `WithBuckets`.
 - `Ref` (`XXXX-XXXX`), `Ref.Validate()`, `RefFrom(ctx) (Ref, bool)`, `TraceIDFrom(ctx) (string, bool)` (32 lower-case hex).
 - `Observer`, `LogRecord`, `SpanData`, `Measurement`, `Violation{Signal, Rule, Key}` (test/observation hooks).
-- `intake`: `New(Options{Logger, Meter, Clock})`; `(*Intake).Accept(ctx, Submission{From netip.Addr, Person model.PersonID, UserAgent, Batch}) error` (service, no HTTP); `Batch{Reports}`, `Report{Kind, Message, Stack, Screen, OccurredAt, Count, AppVersion, ErrorRef, TraceID, API *APICall}`, `APICall{Method, Route, Status, Code}`, `Kind` (`crash|rejection|screen|api`); `Validate()` on Report and Batch; consts `MaxReports=20, MaxMessageBytes=512, MaxStackBytes=4096, MaxUserAgentBytes=200, MaxCount=1000, PerAddressPerMinute=30, GlobalPerMinute=600, MaxTrackedAddresses=10000, RetryAfter=1m, OccurredWithin=24h`; `ErrRateLimited`.
+- `intake`: `New(Options{Logger, Meter, Clock})`; `(*Intake).Accept(ctx, Submission{From netip.Addr, Person model.PersonID, UserAgent, Batch}) error` (service, no HTTP); `Batch{Reports}`, `Report{Kind, Message, Stack, Screen, OccurredAt, Count, AppVersion, ErrorRef, TraceID, API *APICall}`, `APICall{Method, Route, Status, Code}` (`Code` is any token), `Kind` (`crash|rejection|screen|api`); `Validate()` on Report and Batch; consts `MaxReports=20, MaxMessageBytes=512, MaxStackBytes=4096, MaxUserAgentBytes=200, MaxCount=1000, PerAddressPerMinute=30, GlobalPerMinute=600, MaxTrackedAddresses=10000, RetryAfter=1m, OccurredWithin=24h`; `ErrRateLimited`.
 - `telemetrytest`: `New(t) *Capture` (fails t on any Violation at cleanup); `Telemetry/Logger/Tracer/Meter`, `Records/Spans/Measurements/Violations`, `Contains(needle)`, `Stdout()`.
 
 **Key decisions:**
@@ -66,6 +67,11 @@
 - D18 example deployment retention: logs and traces 30 days, metrics 1 year; export/deletion do not reach telemetry.
 - D19 span name is a token or `<METHOD> <route pattern>` (`[A-Z]{3,10}`, one space, token starting `/`).
 - D20 token grammar `[A-Za-z0-9/_][A-Za-z0-9._:/{}-]{0,127}` so `_OTHER` is a token; unknown-method span is `HTTP <route>`.
+- D21 `api.code` accepts any token (`IsToken`), not only `errs.Kind` names; the web shell sends its real code in `code` (owner 2026-10-17).
+- D22 client reports are logged with `origin=client`, not `source=client` (avoids slog `AddSource`'s `source` at debug).
+- D23 `IsToken`, `Collect`; `New` reads the OTLP certificate and key files to pre-check them; accepted deviations: violations ride on `Attr`, caps include the ellipsis, `Float`/`Duration` dropped on metrics (rule `invalid_metric_attr`), generic `slog.Any` rendered with `%v` then scrubbed, no global propagator, `otel.SetLogger(logr.Discard())`, two-phase build.
+- D24 `client.stack` may be up to `MaxStackBytes` (4096); every other log string keeps `MaxLogValueBytes`.
+- D25 scrubbing and redaction stay on at every level, including debug; the startup warning is `app`'s.
 
 **Errors callers handle:** `New`/`Validate`: `Invalid` with field names (`log.level`, `log.format`, `instance.name`, `telemetry.version`, `telemetry.stdout`, `telemetry.clock`, or the offending `OTEL_*` variable), `Canceled`/`Timeout`. `Tracer`/`Meter`: `Invalid` (bad scope), `Internal` (after Close). `Meter.*`: `Invalid` (name, unit, nil observe), `Conflict` (name reused with another kind or unit). `Close`: `Timeout`/`Canceled`. `Ref.Validate`: `Invalid`. `intake.Accept`: `Invalid` (field errors `reports[i].<field>`), `Unavailable` wrapping `ErrRateLimited` (check `errors.Is` before kind; api maps to 429, `Retry-After: 60`), `Canceled`/`Timeout`. Span/Attr/log methods never fail: bad input becomes a marker (`[denied]`, `[invalid-token]`, `invalid-span-name`) plus a Violation. `RefFrom`/`TraceIDFrom` return ok=false without a span (omit the field).
 
@@ -96,7 +102,7 @@ Let a maintainer find what happened in any one request from the reference the pe
   error body, how it is derived from the trace, and how the maintainer gets from it to
   the trace and its logs.
 - Accept **client error reports** from the web shell (`intake`): validate, limit, scrub and
-  log them with `source=client`, so a crash in the browser is as visible as one on the
+  log them with `origin=client`, so a crash in the browser is as visible as one on the
   server.
 - Keep going when the collector is down: no request, no start-up and no shutdown ever
   waits on, or fails because of, the observability backend.
@@ -236,6 +242,10 @@ func (t *Telemetry) Meter(name string) (Meter, error)
 // Consumers: app's start-up log line and `bms check` ("OTLP export: on/off").
 func (t *Telemetry) Exporting() bool
 
+// Collect forces one metric collection and delivers it to the Observer. For tests only:
+// it returns errs.Invalid when Options.Observer is nil (decision 23).
+func (t *Telemetry) Collect(ctx context.Context) error
+
 // Close flushes every provider and shuts them down, each within ctx, and returns their
 // errors joined: errs.Timeout or errs.Canceled when ctx ends first (F26). Idempotent: a
 // second Close returns nil. After Close, log records still reach Stdout (the stdout
@@ -351,11 +361,16 @@ func Kind(k errs.Kind) Attr
 func Module(name string) Attr
 
 // MaxTextBytes caps a Text attribute and exception.message. MaxLogValueBytes caps any
-// string value in a log record (a stack trace keeps its top frames).
+// string value in a log record (a stack trace keeps its top frames), except client.stack,
+// which may be up to intake.MaxStackBytes (decision 24).
 const (
 	MaxTextBytes     = 512
 	MaxLogValueBytes = 2048
 )
+
+// IsToken reports whether s matches the token grammar (decision 20): what Token, Module
+// and intake's code and route checks accept. Pure.
+func IsToken(s string) bool
 
 // Scrub returns s with every e-mail-shaped token replaced by "[email]" and every "?query"
 // part of a URL-shaped token replaced by "?[query]". It is applied to every string that
@@ -486,7 +501,7 @@ func TraceIDFrom(ctx context.Context) (string, bool)
 
 ```go
 // Package intake accepts error reports from the web shell (D20: POST /api/client-errors),
-// limits them, validates and scrubs them, and logs each at warn with source=client. It is
+// limits them, validates and scrubs them, and logs each at warn with origin=client. It is
 // a service: api owns the route, the body cap and the status codes. It imports telemetry,
 // model and lib.
 package intake
@@ -553,7 +568,7 @@ type APICall struct {
 	Method string `json:"method"` // GET, POST, PUT, PATCH, DELETE
 	Route  string `json:"route"`  // the route pattern the shell called; a Token
 	Status int    `json:"status"` // 0 for a network failure, else 100..599
-	Code   string `json:"code"`   // the error body's code (an errs.Kind name) or ""
+	Code   string `json:"code"`   // the error body's code: any token (IsToken), or ""
 }
 
 // Validate checks shape (F38–F44). It does not truncate: Accept does that after Scrub.
@@ -578,7 +593,7 @@ type Submission struct {
 
 // Options is what New needs.
 type Options struct {
-	Logger *slog.Logger    // records are written through it at warn with source=client
+	Logger *slog.Logger    // records are written through it at warn with origin=client
 	Meter  telemetry.Meter // bms.client_errors.* counters
 	Clock  clock.Clock     // the token buckets and OccurredWithin
 }
@@ -669,8 +684,9 @@ types (never in an exported signature, so a caller compiles against this spec al
 
 ## Data
 
-No tables, no files. `telemetry` writes to `Options.Stdout` and to the collector; it
-reads nothing from disk. What it emits, by field, with the sensitivity each would have if
+No tables, no files. `telemetry` writes to `Options.Stdout` and to the collector; the only
+files it reads are the OTLP certificate and client certificate and key named by `OTEL_*`,
+which `New` reads once to pre-check them (decision 23). What it emits, by field, with the sensitivity each would have if
 it were stored by bms (privacy-data), and where retention is set:
 
 | Field | Where | Level | Why it is needed | Retention |
@@ -884,6 +900,30 @@ None of its own. What this spec provides for screens elsewhere:
     else is admitted. Span names are unaffected: the span for an unknown method is
     `HTTP <route token>` (the method part `[A-Z]{3,10}` already admits `HTTP`), never
     `_OTHER <route>`.
+21. **`api.code` accepts any token, not only `errs.Kind` names** (owner, 2026-10-17). The
+    web shell reports the error body's real code (for example `invalid_credentials`) in
+    `code`, not folded into `message`. `Report.Validate` checks it with `IsToken`; F39
+    changes to match.
+22. **Client reports carry `origin=client`, not `source=client`** (owner, 2026-10-17).
+    At debug level slog's `AddSource` writes a `source` attribute; the old name collided.
+23. **Implementation additions and accepted deviations** (owner, 2026-10-17). `IsToken(s)`
+    is exported; `(*Telemetry).Collect(ctx)` exists for tests and needs an `Observer`;
+    `New` reads the OTLP certificate and key files to pre-check them. Accepted as built:
+    violations are carried on `Attr`; caps count the ellipsis; `Float` and `Duration` on a
+    metric are dropped with rule `invalid_metric_attr`; a generic `slog.Any` is rendered
+    with `%v` and then scrubbed; no global propagator is set (step 8 no longer sets one);
+    `otel.SetLogger(logr.Discard())`; `New` builds in two phases.
+24. **The log handler allows `client.stack` up to `intake.MaxStackBytes` (4096); every other
+    string keeps `MaxLogValueBytes` (2048)** (owner, 2026-10-17), so a stack trace is not
+    cut below what intake accepted.
+25. **Debug logging keeps scrubbing on** (owner, 2026-10-17). Owner rule: the app never
+    logs e-mail addresses; test structures may hold them; debug logging may hold private
+    information if needed, but the app must make it clear it is running that way. In M0
+    scrubbing, redaction and the key denylist apply at every level, `LevelDebug` included
+    (it only adds source file and line); nothing is relaxed. The startup warning ("debug
+    logging is on: logs may contain personal data; do not run this way in production",
+    `log.level=debug`) and the `bms check` line are `app`'s, not this package's. Any future
+    relaxation at debug level needs its own spec change.
 
 ### What is read from the environment
 
@@ -930,8 +970,8 @@ endpoint is set and nothing otherwise. A signal exports iff `OTEL_SDK_DISABLED` 
    when `Level <= Debug`), then the policy handler over stdout and the bridge, then the base
    logger `With("instance", opts.Instance)`.
 8. Route the SDK's global error handler to the base logger at warn, rate-limited (once per
-   message per minute). Set the global text-map propagator to W3C Trace Context (used only
-   by `WithParentFrom` and a later `Inject`). No other global is set.
+   message per minute). `WithParentFrom` parses `traceparent` itself; no global propagator is set (decision 23).
+   The SDK's logger is silenced with `otel.SetLogger(logr.Discard())`. No other global is set.
 9. Return. Nothing has been dialed. If any step after 4 fails, the providers built so far
    are shut down before returning.
 
@@ -1001,7 +1041,7 @@ the kind is `Canceled`. Span names are tokens, or the HTTP form `<METHOD> <route
 
 ### What a client report becomes
 
-One record at `warn`, message `client error`, attributes: `source=client`,
+One record at `warn`, message `client error`, attributes: `origin=client`,
 `client.kind`, `client.message`, `client.stack` (omitted when empty), `client.screen`,
 `client.occurred_at` (RFC 3339), `client.count`, `client.app_version`, `client.error_ref`,
 `client.trace_id` (the reported one; the record's own `trace_id` is the intake request's),
@@ -1097,7 +1137,7 @@ under `internal/core/telemetry/**` (Proposed change 8).
 | F36 | `Accept` | `From` not valid | Invalid | fix api | `TestAccept_InvalidAddress_ReturnsInvalid` |
 | F37 | `Accept`, `Batch.Validate` | zero or more than `MaxReports` reports | Invalid, field `reports` | 400 | `TestAccept_EmptyOrTooManyReports_ReturnsInvalid` |
 | F38 | `Batch.Validate` | `kind` not one of the four | Invalid, `reports[i].kind` | 400 | `TestBatchValidate_BadKind_ReturnsInvalid` |
-| F39 | `Batch.Validate` | `api` absent for `kind=api`, or present for another kind; method not one of five; route not a token; status not 0 or 100..599; code not an `errs.Kind` name or `""` | Invalid, `reports[i].api.<field>` | 400 | `TestBatchValidate_APICall_Table` |
+| F39 | `Batch.Validate` | `api` absent for `kind=api`, or present for another kind; method not one of five; route not a token; status not 0 or 100..599; code not a token (`IsToken`) or `""` | Invalid, `reports[i].api.<field>` | 400 | `TestBatchValidate_APICall_Table` |
 | F40 | `Batch.Validate` | `screen` not a token | Invalid, `reports[i].screen`, reason "must be a route pattern" | 400 | `TestBatchValidate_ScreenNotToken_ReturnsInvalid` |
 | F41 | `Batch.Validate` | `error_ref` fails `Ref.Validate`; `trace_id` not 32 lower-case hex | Invalid | 400 | `TestBatchValidate_RefAndTraceID_ReturnInvalid` |
 | F42 | `Batch.Validate` (with the clock) | `occurred_at` zero or more than `OccurredWithin` from now | Invalid, `reports[i].occurred_at` | 400 | `TestAccept_OccurredAtOutOfWindow_ReturnsInvalid` |
@@ -1166,7 +1206,7 @@ asserts `!c.Contains(marker)`; invented people only):
 - Refs: `TestRefFrom_FirstFourBytesUpperHex`; `TestTraceIDFrom_MatchesSpan`; F27, F28.
 - Close: `TestClose_FlushesPendingSpansAndLogs` (with an in-process receiver, below);
   `TestClose_StdoutStillWorksAfter`; F26, F13.
-- intake: `TestAccept_HappyPath_OneRecordPerReport` (every attribute present, `source=client`,
+- intake: `TestAccept_HappyPath_OneRecordPerReport` (every attribute present, `origin=client`,
   `person_id` only when set, the address never in `Contains`); `TestAccept_AnonymousSubmission`;
   `TestAccept_CountsAcceptedByCount`; `TestBucket_RefillsWithFakeClock`;
   `TestBucket_IPv6KeyedBySlash64`; `TestAccept_HourlyRateLimitLineHasNoAddress`;
