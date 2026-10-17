@@ -52,6 +52,7 @@ Rules (enforced by depguard and `make imports`):
    only. Contracts import only `model`, `lib` and other contracts.
 7. **Storage seam (D8).** Only `postgres/` subpackages and core `db` import the database
    driver. Services depend on a storage interface they declare themselves.
+8. `config` imports only `lib`; only `cmd/bms` and `app` import it.
 
 ---
 
@@ -73,8 +74,15 @@ Rules (enforced by depguard and `make imports`):
 - **Doesn't do:** anything that knows about the domain.
 
 ### config: configuration loading
-- **Purpose:** load and validate the process configuration, reporting every problem at once.
-- **Doesn't do:** module settings that a regional edits at runtime (that's `settings`).
+- **Purpose:** turn what the operator sets in the environment into one typed, validated
+  value the process starts from.
+- **Owns:** the catalogue of keys (`Keys()`: dotted name, `BMS_*` variable, type, default,
+  required, secret), loading from the environment with `*_FILE` for secrets, strict
+  grammars, `Validate` reporting every problem at once by variable name, refusing unknown
+  `BMS_*` variables.
+- **Doesn't do:** runtime settings (`settings`), `OTEL_*` (`telemetry`), read-only detection
+  (`db`), checking that a disabled module is registered (`app`), a configuration file or
+  flags.
 
 ### contracts: what modules share (D19)
 - **Purpose:** the shared shapes modules cooperate through: capability interfaces (one

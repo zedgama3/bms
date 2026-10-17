@@ -213,7 +213,7 @@ Consumers per method:
 
 | Method | Needed by |
 |---|---|
-| `Policy.Validate`, `Default` | `config` (database connect retry, notifier retry settings) |
+| `Policy.Validate`, `Default` | `db` (its initial-connect schedule, a constant inside `db.connect_timeout`), `notify` sender (its retry settings). Not `config`: it validates its own keys with `validate` and holds no `retry.Policy` (config.md, Proposed change 10). |
 | `Policy.Delay` | `Do`, `Backoff`; tests assert the schedule table-style |
 | `Retryable` | `Do`; `jobs` runner (decide whether a failure is worth backing off on or is a permanent `Permission` problem to report) |
 | `Do` | `notify` e-mail sender (SMTP sends), `db` (initial connect) |
@@ -302,7 +302,8 @@ func (e *Errors) Addf(field, format string, args ...any)
 func (e *Errors) Err() error
 ```
 
-Consumers: `config.Validate` (every check, `ListenAddr`, `URL` for OIDC issuer, `Errors`);
+Consumers: `config` (`URL`, `ListenAddr`, `Range`, `OneOf`, `NonEmpty`, `Errors`, `Fields`;
+config.md, Proposed change 10);
 `model` types' `Validate()` methods (`NonEmpty`, `OneOf`, `Range`, `Errors`); module services
 validating requests (`NonEmpty`, `Range`, `Errors`); `notify` settings (`HostPort` for the SMTP
 server); `identity` (`URL` for the OIDC issuer);

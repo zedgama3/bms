@@ -1,7 +1,6 @@
 # config: process configuration
 
-- **Status:** Draft (2026-10-16; revised the same day with the owner's answers to its three
-  open questions)
+- **Status:** Approved (2026-10-16)
 - **Package:** `internal/config` (Go module `github.com/zedgama3/bms`; foundation-level, not
   a bms module). **UI:** none.
 - **Depends on specs:** `lib-errs.md` (Implemented): `errs.E`, `errs.Is`, kinds `Invalid`,

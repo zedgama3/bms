@@ -78,6 +78,15 @@ linters:
             - "$gostd"
             - github.com/zedgama3/bms/internal/lib
             - github.com/zedgama3/bms/internal/model
+        config:
+          # config is a leaf: stdlib and lib only. cmd/bms and internal/app are its only importers.
+          files:
+            - "**/internal/config/**"
+          list-mode: strict
+          allow:
+            - "$gostd"
+            - github.com/zedgama3/bms/internal/lib
+            - github.com/zedgama3/bms/internal/config
         contracts:
           # D19: shared interfaces and data types only; they depend on model, lib and other contracts.
           files:
@@ -133,3 +142,5 @@ linters:
               desc: "the api shell mounts routes it is given; only app knows the modules"
             - pkg: github.com/zedgama3/bms/internal/app
               desc: "only main imports app"
+            - pkg: github.com/zedgama3/bms/internal/config
+              desc: "the api shell receives typed options from app, not the app config"
