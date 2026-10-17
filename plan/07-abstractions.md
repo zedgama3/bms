@@ -150,9 +150,13 @@ Rules (enforced by depguard and `make imports`):
 
 ### signals: in-process domain events (D24)
 - **Purpose:** let modules react to each other without importing each other.
-- **Owns:** publish and subscribe, delivery inside a transaction or after commit (decided in
-  the spec), the catalog of event types and their payloads, the `Name` type.
-- **Doesn't do:** cross-process messaging.
+- **Owns:** the `Name` type; the `Payload` (record references only); the `Bus` (`Publish`
+  inside the publisher's transaction, `Subscribe` in `Start`); the `Dispatcher` (delivery
+  after commit from `db.AfterCommit`, synchronous, in order, each handler under a deadline,
+  failures logged and counted, never rolling back the publisher); per-module scoping to the
+  manifest's names; the `Deferrer` seam for `jobs`; `signalstest`.
+- **Doesn't do:** cross-process messaging; an outbox (until a consumer needs one); retries
+  (`jobs`); the start-up graph check (`module`).
 
 ### notify: tell someone something
 - **Purpose:** deliver a notification to a person through a channel.

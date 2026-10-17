@@ -112,8 +112,9 @@ it depends on getting this right.
 `web-shell`, `app`.
 
 **Settled here:** signals (in-process domain events, D24) are delivered **after commit**, with
-the subscriber's failures logged and retried by `jobs`, never rolling back the publisher. The
-`signals` spec confirms the details.
+the subscriber's failures logged and counted, and, from M4, retryable ones handed to `jobs`;
+nothing is durable before delivery (signals.md decisions 2 and 3); a failure never rolls back
+the publisher. The `signals` spec confirms the details.
 
 ## 2. Accounts and login (MVP, M1)
 

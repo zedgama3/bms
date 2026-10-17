@@ -1,6 +1,6 @@
 # signals: in-process domain events
 
-- **Status:** Draft (2026-10-16)
+- **Status:** Approved (2026-10-16)
 - **Package:** `internal/core/signals` (Go module `github.com/zedgama3/bms`), plus the test
   helper package `internal/core/signals/signalstest`. **UI:** none of its own; the admin
   "modules" screen (`web-shell.md`) shows each module's published and subscribed names from
@@ -60,7 +60,7 @@ importing it.
 |---|---|
 | Declaring which signals a module publishes and subscribes to; checking at start-up that every subscribed name has a publisher (unknown name → `Invalid`; publisher compiled in but disabled → warning); the admin graph | `module-contract.md` (`Manifest.Publishes`/`Subscribes`, `Env.CoreSignals`, `Resolve` step 5, decision 6). `app` hands the resulting lists to `Scope`. |
 | The transaction, the after-commit hook, and whether an autocommit write runs the hook at once | `db.md` (`Transact`, `AfterCommit`). This spec only registers a hook. Its Proposed change 3 is answered here: no outbox table; delivery from the hook (decision 2). |
-| Retrying a failed delivery later, with backoff, only on the writing copy; storing a deferred delivery until then | `jobs.md` (M4) implements `Deferrer` and calls `Redeliver` (Proposed change 6). Until then a failure is final (decision 3 and Open question 1). |
+| Retrying a failed delivery later, with backoff, only on the writing copy; storing a deferred delivery until then | `jobs.md` (M4) implements `Deferrer` and calls `Redeliver` (Proposed change 6). Until then a failure is final (decision 3). |
 | Durability across a crash between commit and delivery (an outbox) | nobody in M0 (decision 3). If a consumer ever needs at-least-once, `signals` adds a `core.signal_outbox` set written through the same `Transact`; the `Bus` interface does not change. |
 | What a subscriber does with a signal, what it reads, and whose permission that needs | the subscribing module's spec. A handler runs as the system, not as the person who caused the signal (decision 7); it reads data through contracts (D19), never from the payload, which holds IDs only. |
 | Payload fields beyond record references (a count, a status, a time) | nobody (decision 4). The name says what happened; everything else is fetched through a capability or an extension point (D19: signals are "for reactions, not for reading data"). |
@@ -468,8 +468,10 @@ delivery in the trace of the request that caused it (D20), by `signal` and `sign
    redelivery. D19 says signals are for reactions, not data; every reaction so far (a
    notice, a copy of templates into a new event) is recoverable by a person. The `Bus`
    interface does not change if an outbox is added later, and db.md's Proposed change 3
-   already allows it ("writes it through the same `Transact`"). Open question 1 asks the
-   owner to confirm at-most-once until a consumer needs more.
+   already allows it ("writes it through the same `Transact`"). **Confirmed (owner,
+   2026-10-16):** at-most-once until `jobs` exists is acceptable; `jobs` (M4) retries
+   failed deliveries through `Deferrer`; an outbox is added only if a module later needs
+   at-least-once.
 3. **A failed delivery is final until `jobs` exists; then it is deferred, not retried
    here.** 09 §1 says failures are "logged and retried by `jobs`". Retrying in the request
    would hold the request; retrying on a goroutine here would duplicate `jobs` (backoff,
@@ -479,7 +481,8 @@ delivery in the trace of the request that caused it (D20), by `signal` and `sign
    logged at error and not retried, because trying again cannot change it; a write refused
    on a read-only copy (`db.ErrReadOnly`) is logged at warn and not deferred, because the
    `Deferrer` would need to write too (db.md Proposed change 13). In M0 `Deferrer` is nil
-   and the log line says "not retried".
+   and the log line says "not retried". **Confirmed (owner, 2026-10-16)** together with
+   decision 2: a handler failure in M0–M3 is logged and counted, not retried.
 4. **Payloads hold record references only: typed IDs under ident keys. No strings, no
    numbers, no times.** privacy-data says personal data is never in a signal; a payload
    type that can hold a `string` makes that a review rule, a type that cannot makes it a
@@ -492,6 +495,7 @@ delivery in the trace of the request that caused it (D20), by `signal` and `sign
    plus a registry of types for a future outbox, plus a review rule against personal
    fields) and `map[string]any` (no rule at all). If a consumer ever needs a number (hours
    credited), it is added here as a bounded kind with a design change, not by a module.
+   **Confirmed (owner, 2026-10-16):** payloads are record references only.
 5. **Delivery is synchronous, on the publisher's goroutine, sequential over subscribers,
    each handler under `HandlerTimeout`.** The alternative, a queue and worker goroutines,
    gives a faster request and costs a bounded queue, a drop policy, a shutdown drain, and a
@@ -499,7 +503,10 @@ delivery in the trace of the request that caused it (D20), by `signal` and `sign
    quick by contract, and a maintainer who opens the trace of a request sees the request,
    its statements and every reaction under one ID (D20). Sequential delivery in
    subscription order (module build order) makes tests deterministic. A handler that needs
-   long work registers a job.
+   long work registers a job. **Confirmed (owner, 2026-10-16):** delivery is synchronous
+   on the publisher's request, with 5 s per handler (`HandlerTimeout`, set by `app`):
+   generous for "a small write or a notification" and short enough that a stuck dependency
+   does not hold a request past `http.request_timeout` more than once.
 6. **The handler's ctx is the publisher's ctx without its cancellation, plus a deadline.**
    db.md runs hooks with the caller's ctx, which for a request is cancelled when the client
    leaves or `http.request_timeout` passes. A reaction to a committed change must not
@@ -535,9 +542,11 @@ delivery in the trace of the request that caused it (D20), by `signal` and `sign
     names the chain's last signal. Depth travels in the ctx, so it survives a nested
     `Transact`.
 12. **Span names are tokens: `signal:<name>` and `deliver:<name>`.** telemetry.md's
-    Proposed change 6 suggested `signal <name>`, but its own `Tracer.Start` rejects a name
+    Proposed change 6 suggested `signal <name>`, but its `Tracer.Start` rejects a name
     with a space (F14 there) and would emit `invalid-span-name`. `:` is in the token
-    grammar; `<name>` is itself a token. Proposed change 3 reports the mismatch.
+    grammar; `<name>` is itself a token. The owner (2026-10-16) widened telemetry's
+    span-name grammar only for the api's `<METHOD> <route pattern>` form (telemetry
+    decision 19); signals are not HTTP and keep the token names (Proposed change 3).
 13. **`Publish` fails when the bus is closed or the name is undeclared, and that failure
     rolls back the publisher.** The publisher calls `Publish` before it commits, so a
     refusal makes the use case fail. That is the right outcome: a declared signal that
@@ -766,27 +775,16 @@ a new rule `subscribes_every_declared_name` asserts `Fake.Handlers()` equals
 
 ## Open questions
 
-1. **At-most-once until `jobs` exists.** A crash between a commit and the end of delivery
-   loses that signal's reactions, and in M0–M3 a handler failure is logged and not
-   retried. Is that acceptable for the MVP, with `jobs` (M4) adding retries of failed
-   deliveries through `Deferrer`, and an outbox table only if a module later needs
-   at-least-once? **Proposed answer:** yes. Reactions so far are recoverable by a person
-   (a notice can be resent, templates copied by hand), D19 forbids using signals for data,
-   and an outbox before any consumer needs it is machinery without a user. (Decisions 2
-   and 3.)
-2. **Payloads are record references only.** No status words, counts or times on a
-   signal; a state change is its own name; everything else is fetched through contracts.
-   Confirm? **Proposed answer:** yes (decision 4). If a module later needs a number, it
-   is added here as a bounded kind with a design change.
-3. **Synchronous delivery on the publisher's request, 5 s per handler.** The request that
-   made the change waits for every reaction; a slow reaction is a bug and belongs in a
-   job. Confirm the model and the 5 s? **Proposed answer:** yes (decision 5); 5 s is
-   generous for "a small write or a notification" and short enough that a stuck dependency
-   does not hold a request past `http.request_timeout` more than once.
+None. The draft's three questions (at-most-once until `jobs` exists; payloads as record
+references only; synchronous delivery with 5 s per handler) were answered by the owner on
+2026-10-16, each with the proposed answer, and are recorded in decisions 2 and 3, 4, and 5.
 
 ## Proposed changes elsewhere
 
-1. **`plan/design/module-contract.md` (row 4):** `Deps.Signals` is `signals.Bus` as
+Status as of 2026-10-16: items 1, 2, 3, 4, 9 and 10 are applied. Items 5, 6, 7, 8 and 11
+wait for their target to be written and are carried by this list until then.
+
+1. **`plan/design/module-contract.md` (row 4)** (applied 2026-10-16): `Deps.Signals` is `signals.Bus` as
    defined here; `Provision` sets it to `disp.Scope(m.Name, m.Publishes, m.Subscribes)`;
    `moduletest.Conformance` supplies `signalstest.NewFake(m.Name, m.Publishes,
    m.Subscribes)` and gains the rule `subscribes_every_declared_name` (after `Start`,
@@ -794,21 +792,22 @@ a new rule `subscribes_every_declared_name` asserts `Fake.Handlers()` equals
    module subscribes at most once per name and never publishes in `Start`; the `hello`
    module's `hello.greeted` payload is `{person}`. Its Proposed change 3 is answered: names
    adopted unchanged, scoping as asked, subscriptions in `Start`.
-2. **`plan/design/db.md` (row 5):** its Proposed change 3 is answered: delivery from
+2. **`plan/design/db.md` (row 5)** (applied 2026-10-16): its Proposed change 3 is answered: delivery from
    `AfterCommit`, no outbox, no change to `db`. One sentence to add beside `AfterCommit`:
    "`signals` detaches the hook's ctx from the request's cancellation itself; `db` passes
    the caller's ctx unchanged."
-3. **`plan/design/telemetry.md` (row 15b):** its Proposed change 6 is answered for
+3. **`plan/design/telemetry.md` (row 15b)** (applied 2026-10-16): its Proposed change 6 is answered for
    signals with the names `signal:<name>` (Producer) and `deliver:<name>` (Consumer),
    because `signal <name>` contains a space and `Tracer.Start` would replace it with
-   `invalid-span-name` (its F14). The same applies to the api's proposed `<METHOD> <route
-   pattern>` request span name (its Proposed change 3): either the span-name grammar
-   admits one space (OpenTelemetry's HTTP convention uses one) or `api.md` picks
-   `<METHOD>:<route>`; telemetry's owner decides. Counters are
+   `invalid-span-name` (its F14). The same applied to the api's proposed `<METHOD> <route
+   pattern>` request span name (its Proposed change 3); the owner (2026-10-16) chose to let
+   the span-name grammar admit exactly one space, between an upper-case HTTP method and a
+   route pattern (telemetry decision 19), so the api keeps OpenTelemetry's HTTP form and
+   signals keep their token names. Counters are
    `bms.signals.published{signal,module}` and `bms.signals.delivered{signal,module,
    outcome}` with `outcome` ∈ `ok`, `failed`, `deferred`, `read_only`, `panicked`
    (replacing the suggested `retried`, which is `jobs`' to count on `bms.jobs.runs`).
-4. **`plan/07-abstractions.md`, `signals` entry:** replace "Owns" with: the `Name` type;
+4. **`plan/07-abstractions.md`, `signals` entry** (applied 2026-10-16): replace "Owns" with: the `Name` type;
    the `Payload` (record references only); the `Bus` (`Publish` inside the publisher's
    transaction, `Subscribe` in `Start`); the `Dispatcher` (delivery after commit from
    `db.AfterCommit`, synchronous, in order, each handler under a deadline, failures logged
@@ -817,7 +816,7 @@ a new rule `subscribes_every_declared_name` asserts `Fake.Handlers()` equals
    messaging, an outbox (until a consumer needs one), retries (`jobs`), the start-up graph
    check (`module`). Drop "delivery inside a transaction or after commit (decided in the
    spec)": it is after commit.
-5. **`plan/design/app.md` (row 18):** `serve` builds `signals.New(Options{Logger:
+5. **`plan/design/app.md` (row 18)** (pending: target not written): `serve` builds `signals.New(Options{Logger:
    tel.Logger().With("component", "signals"), Tracer: tel.Tracer("signals"), Meter:
    tel.Meter("signals"), Clock: clock.Real(), HandlerTimeout: 5 * time.Second, Deferrer:
    <jobs, M4>})` after `db.Open` and before `Build`; `Provision` scopes it per module;
@@ -825,28 +824,28 @@ a new rule `subscribes_every_declared_name` asserts `Fake.Handlers()` equals
    define); `Env.CoreSignals` lists the core's names; shutdown order: HTTP server drained →
    `signals.Close` → `Set.Stop` → `db.Close` → `telemetry.Close`, all within
    `http.shutdown_timeout`.
-6. **`plan/design/jobs.md` (row 14):** implement `signals.Deferrer` (store the `Delivery`
+6. **`plan/design/jobs.md` (row 14)** (pending: target not written): implement `signals.Deferrer` (store the `Delivery`
    on the writing copy; the job name `signals.redeliver`); run `Dispatcher.Redeliver` with
    backoff from `retry.Policy`, `Attempt` incremented per try, on the writer only; treat
    `NotFound` from `Redeliver` as "drop with a log line" and `errors.Is(err,
    db.ErrReadOnly)` as "stop until the next probe" (db.md Proposed change 13); state the
    give-up count; a handler is called again with the same `Signal.ID`, so the module's spec
    says how its handler is idempotent.
-7. **`plan/design/authz.md` (row 7) and `identity.md` (row 6):** a handler's ctx may carry
+7. **`plan/design/authz.md` (row 7) and `identity.md` (row 6)** (pending: targets not written): a handler's ctx may carry
    the request's session value (signals decision 6); `authz` must not treat it as the actor
    when `signals.InDelivery(ctx)` is true (the decision there is `Permission` or an explicit
    "system" path the module's spec names), and `identity` should document that the
    session value is a request-scoped value only.
-8. **`plan/design/people.md` (row 8) and `departments-events.md` (row 9):** declare their
+8. **`plan/design/people.md` (row 8) and `departments-events.md` (row 9)** (pending: targets not written): declare their
    signal names and payload keys in a "Signals" table (name, when, keys and ID types):
    `people.person-created {person}`, `people.person-deleted {person}` (published after the
    deletion across modules commits), and the department and event signals; obtain a scoped
    `Bus` from `app`; put the names in `Env.CoreSignals`.
-9. **`plan/09-core-features.md` §1 "Settled here":** "with the subscriber's failures logged
+9. **`plan/09-core-features.md` §1 "Settled here"** (applied 2026-10-16): "with the subscriber's failures logged
    and retried by `jobs`" becomes "with the subscriber's failures logged and counted, and,
    from M4, retryable ones handed to `jobs`; nothing is durable before delivery (signals.md
-   decisions 2 and 3)", once the owner answers Open question 1.
-10. **`.claude/skills/add-module/SKILL.md` and `go-conventions`:** in §1, "the signals it
+   decisions 2 and 3)".
+10. **`.claude/skills/add-module/SKILL.md` and `go-conventions`** (applied 2026-10-16): in §1, "the signals it
     publishes and subscribes to (payloads carry IDs, not personal data)" becomes "a table
     per published signal: name, when it is published, payload keys and their ID types
     (`signals.Payload` holds record references only); for each subscription, what the
@@ -855,7 +854,7 @@ a new rule `subscribes_every_declared_name` asserts `Fake.Handlers()` equals
     `NewPayload(signals.Ref(...))` calls and the handlers; add the rule "publish inside the
     `Transact` that makes the change; subscribe in `Start`; handlers are quick, long work is
     a job"; `go-conventions` adds `signalstest.NewFake` to the testing patterns.
-11. **`plan/design/module-hello.md` (row 4b, when written):** `hello.greeted {person}`,
+11. **`plan/design/module-hello.md` (row 4b)** (pending: target not written): `hello.greeted {person}`,
     published inside the transaction that saves a greeting; its handler for its own signal
     counts the greeting in memory (no write), so the reference shows a subscriber that
     works on a read-only copy; its test uses `signalstest.Fake.Deliver`.

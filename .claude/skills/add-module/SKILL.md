@@ -19,7 +19,10 @@ cover:
 - the tables, in schema `<name>`, with a sensitivity level for each personal-data column
 - the permissions it declares, their scopes (department, event, own records), the Reaches
   level of each permission, and the default roles that get them
-- the signals it publishes and subscribes to (payloads carry IDs, not personal data)
+- a table per published signal: name, when it is published, payload keys and their ID
+  types (`signals.Payload` holds record references only, so no personal data can travel
+  on a signal); for each subscription, what the handler does, that it runs as the system,
+  how it is idempotent on `Signal.ID`, and what happens when it fails
 - its settings, with defaults (anything regionals would do differently)
 - its screens and who sees them
 - how it answers "export my data" and "delete my data" for one person
@@ -46,7 +49,8 @@ internal/modules/<name>/
     migrations/    forward-only, numbered: 0001_init.sql, ... applied by `bms migrate`; the
                    highest number is the module's schema version, checked at init (D17)
   http.go          handlers: decode, call service, encode. No business logic.
-  signals.go       signals published, and subscribers
+  signals.go       the payload key constants, the NewPayload(signals.Ref(...)) calls for
+                   each published signal, and the handlers for each subscription
   privacy.go       implements module.PersonData: export and delete for one person
   <name>_test.go   black-box tests (test-author); calls moduletest.Conformance
 web/src/modules/<name>/
@@ -64,7 +68,12 @@ web/src/modules/<name>/
     **capability** from `internal/contracts/`. Prefer optional use, and hide the feature
     when the capability is missing.
   - to **react** when something happens, subscribe to a **signal** (domain event, D24).
-  - Declare all of it in the manifest. Contract calls take batches, and providers check
+  - Declare all of it in the manifest.
+- **Signals:** publish inside the `Transact` that makes the change (delivery happens after
+  commit, so a rolled-back change publishes nothing); subscribe in `Start`, once per name;
+  handlers are quick and run as the system, long work is a job. Tests use
+  `signalstest.NewFake(Manifest.Name, Manifest.Publishes, Manifest.Subscribes)` as
+  `Deps.Signals` and `Fake.Deliver` to drive a handler (`plan/design/signals.md`). Contract calls take batches, and providers check
     permissions for the person asking. A new contract or a change to one is a design
     change: stop and send it to `architect`.
 - **Never read or write another module's schema.** Foreign keys go only to your own tables

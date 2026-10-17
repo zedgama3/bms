@@ -224,7 +224,9 @@ func (m Mode) String() string
 // transaction, fn runs immediately, because an autocommit write is already durable.
 // Hooks are for work that must not run if the transaction rolls back: signals delivers
 // published signals from one. A hook cannot fail the transaction (it is already
-// committed); it handles its own errors. Fails with errs.Invalid if fn is nil (F27).
+// committed); it handles its own errors. db passes the caller's ctx unchanged; signals
+// detaches the hook's ctx from the request's cancellation itself (signals.md decision 6).
+// Fails with errs.Invalid if fn is nil (F27).
 func AfterCommit(ctx context.Context, fn func(ctx context.Context)) error
 
 // Ping checks that the server answers and refreshes the read-only state in the same round
@@ -966,8 +968,8 @@ the owner on 2026-10-16 and are recorded as decisions 20, 10 and 7.
 
 ## Proposed changes elsewhere
 
-Status as of 2026-10-16: items 1, 2, 6, 7, 8, 9, 12 and the `.env.example` half of 11 are
-applied. Items 3, 4, 5, 10, 13 and the `docs/operating.md` half of 11 wait for their
+Status as of 2026-10-16: items 1, 2, 3, 6, 7, 8, 9, 12 and the `.env.example` half of 11
+are applied. Items 4, 5, 10, 13 and the `docs/operating.md` half of 11 wait for their
 target to be written and are carried by this list until then.
 
 1. **`plan/07-abstractions.md`, `db` entry** (applied 2026-10-16): replace "Owns" with: the pool and its
@@ -987,7 +989,9 @@ target to be written and are carried by this list until then.
    `export_unknown_person_is_empty`; F45's kind is `errs.Unavailable` wrapping
    `db.ErrReadOnly`; `Build` passes `*db.Migrator` as the `SchemaChecker` (asserted in
    `app`).
-3. **`plan/design/signals.md` (row 10)** (pending: spec not written): publish inside the publisher's transaction and
+3. **`plan/design/signals.md` (row 10)** (applied 2026-10-16, by signals.md's Proposed
+   change 2: delivery from `AfterCommit`, no outbox, no change to `db` beyond the sentence
+   on ctx added to `AfterCommit`'s doc): publish inside the publisher's transaction and
    deliver from a `db.AfterCommit` hook (09 §1: after commit, failures logged and retried
    by `jobs`, never rolling back the publisher); outside a transaction the hook runs at
    once. If `signals` instead chooses an outbox table, it writes it through the same

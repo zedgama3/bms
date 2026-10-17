@@ -14,12 +14,15 @@
   `dbtest.Fake` (what `moduletest.Conformance` hands to a factory). `telemetry.md`
   (Approved, 2026-10-16; its Proposed change 1 amended this spec the same day):
   `telemetry.Tracer` (the type of `Deps.Tracer`), `telemetrytest.Capture` (what
-  `moduletest.Conformance` uses for `Logger` and `Tracer`). Two leaf
-  types that this spec places in other core packages and defines here because no spec for
-  them exists yet: `authz.Permission`, `authz.Scope`, `authz.PermissionDecl`
-  (`internal/core/authz`, row 7) and `signals.Name` (`internal/core/signals`, row 10). See
-  "Types" and Proposed changes 2 and 3. The `Deps` struct also names a field typed by
-  `signals.md` (row 10), added when that spec is Approved (see "Types: Deps").
+  `moduletest.Conformance` uses for `Logger` and `Tracer`). `signals.md` (Approved,
+  2026-10-16; its Proposed change 1 amended this spec the same day): `signals.Bus` (the
+  type of `Deps.Signals`), `signals.Name` (adopted unchanged from this spec's "Leaf
+  types"), `signalstest.NewFake` (what `moduletest.Conformance` hands to a factory as
+  `Deps.Signals`). Leaf types that this spec places in other core packages and defines
+  here because no spec for them exists yet: `authz.Permission`, `authz.Scope`,
+  `authz.PermissionDecl` (`internal/core/authz`, row 7); `signals.Name`
+  (`internal/core/signals`, row 10) was defined the same way and is now `signals.md`'s. See
+  "Types" and Proposed changes 2 and 3.
   **Used by:** `app` (composition root: resolves, builds, starts and stops the modules; the
   `migrate` and `check` commands), `api` (mounts routes, serves the graph), `authz` (receives
   the declared permissions), `settings` (receives the declared settings), `people` (export
@@ -228,10 +231,11 @@ type Module interface {
 	PersonData
 
 	// Start begins the module's background work: it registers signal handlers and jobs
-	// through Deps and launches goroutines that exit when Stop is called. It returns once
-	// that is set up, without blocking, and must succeed on a read-only database (it
-	// performs no writes). It fails with the kind of whatever it tried; Set.Start then
-	// stops the modules already started.
+	// through Deps and launches goroutines that exit when Stop is called. It subscribes at
+	// most once per declared signal name and never publishes (a signal describes a write;
+	// signals.md). It returns once that is set up, without blocking, and must succeed on a
+	// read-only database (it performs no writes). It fails with the kind of whatever it
+	// tried; Set.Start then stops the modules already started.
 	Start(ctx context.Context) error
 
 	// Stop ends the work Start began and waits for it, within ctx. It is called once,
@@ -349,7 +353,7 @@ type Deps struct {
 	Links  *Links           // set by Build, never by Provision
 
 	DB      db.DB       // db.md (row 5): pool, transactions, read-only state
-	Signals signals.Bus // signals.md (row 10): publish declared signals, subscribe to declared ones
+	Signals signals.Bus // signals.md (row 10): Provision sets disp.Scope(m.Name, m.Publishes, m.Subscribes)
 
 	// Added by later specs, named here so modules know where to look:
 	// Settings settings.Reader   settings.md (row 15)
@@ -594,9 +598,11 @@ package moduletest
 
 // Conformance runs the contract checks against one module (see Test plan,
 // "Conformance"). provision supplies the module's dependencies as fakes (db, signals and
-// later fields); Conformance supplies Logger and Tracer (both from telemetrytest.New(t),
-// so any policy violation fails the test), Clock and Links. It fails t on the first
-// broken rule with the rule's name.
+// later fields): db is dbtest.NewFake() and signals is
+// signalstest.NewFake(m.Name, m.Publishes, m.Subscribes), so an undeclared publish or
+// subscribe fails the test; Conformance supplies Logger and Tracer (both from
+// telemetrytest.New(t), so any policy violation fails the test), Clock and Links. It
+// fails t on the first broken rule with the rule's name.
 func Conformance(t *testing.T, m module.Manifest, f module.Factory, provision module.Provision)
 ```
 
@@ -644,8 +650,9 @@ Defines: `Capability`, `ExtensionPoint`, `ExtensionPointDecl`, `SettingKind`, `S
 `module` is the top of the core graph (it holds every core contract in `Deps`), so no core
 package may import it. `authz` must read the declared permissions and `signals` the declared
 names without importing `module`; therefore the name types live in those packages. They are
-defined here because `authz.md` and `signals.md` are not yet written; those specs adopt them
-unchanged (Proposed changes 2 and 3). Until then, each package holds exactly these types.
+defined here because `authz.md` and `signals.md` were not yet written; those specs adopt them
+unchanged (Proposed changes 2 and 3; `signals.md` did so on 2026-10-16). Until then, each
+package holds exactly these types.
 
 ```go
 package authz // internal/core/authz
@@ -1037,7 +1044,10 @@ the reference; each rule is a named subtest): `manifest_valid` (`Validate` passe
 enabled and its required capabilities faked succeeds); `implements_declared`
 (`Build` passes F29–F34 against the manifest); `start_read_only` (F46, with
 `dbtest.NewFake()` after `SetReadOnly(true)`, which fails every write with
-`errs.Unavailable` wrapping `db.ErrReadOnly`); `stop_honors_context` (F47);
+`errs.Unavailable` wrapping `db.ErrReadOnly`, and with `signalstest.NewFake(m.Name,
+m.Publishes, m.Subscribes)` as `Deps.Signals`, so `Start` also proves it subscribes only
+to declared names); `subscribes_every_declared_name` (after `Start`, `Fake.Handlers()`
+equals the manifest's `Subscribes`; signals.md Proposed change 1); `stop_honors_context` (F47);
 `stop_without_start_is_nil`; `export_zero_id`, `delete_zero_id` (F44);
 `export_unknown_person_is_empty` and `delete_unknown_person_is_zero_and_idempotent` (with
 a plain `dbtest.NewFake()`, which holds no rows); `delete_read_only` (F45, with the
@@ -1056,8 +1066,8 @@ integration test, behind the `integration` tag.
 Specified separately (`module-hello.md`, Proposed change 12). To "exercise every part of
 the contract" it must: declare one permission (`hello.greetings.read`, `ScopeSite`,
 `Reaches` internal), one setting (`greeting`, text, default `"hello"`), publish
-`hello.greeted`, subscribe to `hello.greeted` and to one core signal once the core publishes
-one, provide capability `greeter` (`contracts/greeter`), define point `hello.banner`,
+`hello.greeted` (payload `{person}`, inside the transaction that saves a greeting),
+subscribe to `hello.greeted` and to one core signal once the core publishes one, provide capability `greeter` (`contracts/greeter`), define point `hello.banner`,
 contribute to its own point, ship one migration creating `hello.greeting`, serve `GET
 /greeting` (signed in) and `GET /public-greeting` (public) with an OpenAPI fragment,
 implement `PersonData` over the greetings a person saved, start one goroutine, open one
@@ -1098,7 +1108,9 @@ with the proposed answer:
    from `app` at start-up; show `Reaches` in the role editor and allow separation-of-duties
    rules to refer to it ("may never hold a permission reaching sensitive"); declare
    `core.modules.read` (or let `api.md` do it).
-3. **`plan/design/signals.md` (row 10):** adopt `signals.Name` as defined here; the bus
+3. **`plan/design/signals.md` (row 10)** (applied 2026-10-16, by signals.md's Proposed
+   change 1: names adopted unchanged, scoping as asked, subscriptions in `Start`): adopt
+   `signals.Name` as defined here; the bus
    handed to a module through `Deps.Signals` is scoped by `app` to the module's `Publishes`
    and `Subscribes` and fails with `errs.Invalid` outside them; the core's published names
    are listed for `Env.CoreSignals`; subscriptions are registered in `Module.Start`.

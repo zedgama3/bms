@@ -175,7 +175,12 @@ func (r *reader) query(ctx context.Context) (out []Row, err error) {
 - Table-driven tests with `t.Run(tc.name, ...)`. Check error kinds with `errs.Is`. Never
   compare error strings.
 - Dependencies are interfaces, so tests use **fakes** (hand-written, in `<pkg>test` or
-  `lib/testkit`). No mocking frameworks.
+  `lib/testkit`). No mocking frameworks. The core ships them: `dbtest.NewFake()` for
+  `Deps.DB`, `telemetrytest.New(t)` for the logger and tracer, and
+  `signalstest.NewFake(Manifest.Name, Manifest.Publishes, Manifest.Subscribes)` for
+  `Deps.Signals` (it records what a use case published after commit, enforces the
+  manifest's names, and `Deliver` runs a handler with the handler's error returned
+  unchanged).
 - Time comes from `lib/clock`. Tests use a fake clock. **No `time.Sleep` in tests.**
 - Tests that need a real database: `//go:build integration`, using containers from
   `lib/testkit` (or the running `deploy/compose` stack). Unit tests must pass with no

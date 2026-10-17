@@ -203,7 +203,11 @@ func (t *Telemetry) Close(ctx context.Context) error
 type Tracer interface {
 	// Start begins a span named name as a child of the span ctx carries, or a root span
 	// when it carries none, and returns a ctx carrying the new span. It never fails and
-	// never blocks: a name that is not a token of at most 128 bytes yields a span named
+	// never blocks. name is a token of at most 128 bytes ("db.SELECT",
+	// "signal:hello.greeted"), or the HTTP form "<METHOD> <route pattern>": an upper-case
+	// method ([A-Z]{3,10}), exactly one space, then a token beginning with "/", the whole
+	// at most 128 bytes ("GET /api/people/{id}"; decision 19). The route is always the
+	// pattern, never a concrete path. Anything else yields a span named
 	// "invalid-span-name" and a counted Violation (F14). The caller must End the span
 	// exactly once, usually with defer.
 	Start(ctx context.Context, name string, opts ...StartOption) (context.Context, Span)
@@ -807,6 +811,19 @@ None of its own. What this spec provides for screens elsewhere:
     metrics hold no IDs, so a year costs nothing in privacy terms. bms cannot enforce
     retention; the values are set in Loki, Tempo and Prometheus configuration and stated in
     `docs/operating.md` (Proposed change 9).
+19. **A span name is a token, or `<METHOD> <route pattern>`: exactly one space, between an
+    upper-case HTTP method and a route pattern, and nothing else new** (owner,
+    2026-10-16). The first draft allowed tokens only, which rejected the api's request
+    span name (`GET /api/people/{id}`, Proposed change 3) and the `signal <name>` form this
+    spec had suggested to `signals` (signals.md Proposed change 3 reported both).
+    OpenTelemetry's HTTP semantic conventions name a server span `{method} {route}`, and
+    every backend in D20 groups, searches and derives rates by that form; `GET:/api/...`
+    would be a private dialect. So the grammar admits `[A-Z]{3,10}`, one space, then a
+    token beginning with `/`: a lower-case method, two spaces, a space anywhere else or a
+    name without the leading `/` still fail (F14). The route is the pattern, never the
+    concrete path, for the same reason as `http.route` and `screen`: a concrete path puts
+    an ID in a name and makes a series per record. Signals are not HTTP and keep the token
+    names `signal:<name>` and `deliver:<name>` (signals.md decision 12).
 
 ### What is read from the environment
 
@@ -900,8 +917,8 @@ not all zero, 16-hex parent ID not all zero, 2-hex flags) and builds a remote pa
 context with flags cleared; anything else is a root. `End` computes `SpanData` for the
 observer and ends the SDK span. `RecordError`: `error.kind`, `error.op` (first
 `*errs.Error` by `errors.As`), `exception.message` (scrubbed, capped); status Error unless
-the kind is `Canceled`. Span and instrument names are tokens; scope names are tokens of at
-most 64 bytes.
+the kind is `Canceled`. Span names are tokens, or the HTTP form `<METHOD> <route pattern>`
+(decision 19); instrument names are tokens; scope names are tokens of at most 64 bytes.
 
 ### `intake.Accept`, step by step
 
@@ -947,7 +964,7 @@ One record at `warn`, message `client error`, attributes: `source=client`,
 | `bms.telemetry.dropped` | counter, `{record}` | `signal` | this package |
 | `bms.telemetry.policy_violations` | counter, `{violation}` | `signal`, `rule` | this package |
 | `bms.telemetry.log_write_failures` | counter, `{record}` | — | this package |
-| `bms.signals.delivered`, `bms.jobs.runs` | counter | `signal`/`job` (token), `module`, `outcome` | `signals`, `jobs` (Proposed change 6) |
+| `bms.signals.published`, `bms.signals.delivered`, `bms.jobs.runs` | counter | `signal`/`job` (token), `module`, `outcome` (`delivered`: `ok`, `failed`, `deferred`, `read_only`, `panicked`; `published` has none) | `signals` (signals.md "Telemetry"), `jobs` (Proposed change 6) |
 
 Rates, errors and durations per route also come from Tempo's metrics generator over the
 spans (`deploy/compose/observability/tempo.yaml`), so a regional that exports traces only
@@ -995,7 +1012,7 @@ under `internal/core/telemetry/**` (Proposed change 8).
 | F11 | `New` | an exporter constructor fails (an unreadable `OTEL_EXPORTER_OTLP_CERTIFICATE`) | Invalid wrapping the SDK error, naming the signal; providers built so far shut down | fix the file | `TestNew_ExporterConstructionFails_ReturnsInvalidAndCleansUp` |
 | F12 | `Tracer`, `Meter` | name not a token or over 64 bytes | Invalid | fix the caller | `TestTracerMeter_BadScopeName_ReturnsInvalid` |
 | F13 | `Tracer`, `Meter` | after `Close` | Internal | fix app ordering | `TestTracerMeter_AfterClose_ReturnsInternal` |
-| F14 | `Tracer.Start` | name not a token or over 128 bytes | none: span named `invalid-span-name`; `Violation{trace, invalid_span_name}` | fix the caller (the test fails) | `TestStart_BadName_UsesPlaceholderAndCountsViolation` |
+| F14 | `Tracer.Start` | name neither a token nor `<METHOD> <route pattern>` (`[A-Z]{3,10}`, one space, a token beginning with `/`; decision 19), or over 128 bytes: a lower-case method (`get /x`), two spaces, a space elsewhere (`signal hello.greeted`), a route without `/` (`GET x`) | none: span named `invalid-span-name`; `Violation{trace, invalid_span_name}` | fix the caller (the test fails) | `TestStart_BadName_UsesPlaceholderAndCountsViolation` (table of the rejected shapes), `TestStart_HTTPSpanName_Accepted` (`GET /api/people/{id}`, `POST /api/client-errors` pass unchanged) |
 | F15 | any `Attr` constructor | key on the denylist | none: value `[denied]`; `Violation{…, denied_key}` | fix the caller | `TestAttr_DeniedKey_RedactsAndCountsViolation` |
 | F16 | any `Attr` constructor | key fails the grammar | none: `telemetry.invalid_key=<key>`; `Violation{…, invalid_key}` | fix the caller | `TestAttr_InvalidKey_ReplacedAndCounted` |
 | F17 | `Token`, `Module` | value fails the token grammar (a space, `@`, `?`, over 128 bytes) | none: `[invalid-token]`; `Violation{…, invalid_token}` | fix the caller | `TestToken_InvalidValue_ReplacedAndCounted` |
@@ -1074,8 +1091,9 @@ asserts `!c.Contains(marker)`; invented people only):
   `TestHandler_RecordWithoutContext_HasNoTraceID`.
 - Tracer and spans: `TestStart_ChildOfContextSpan`; `TestStart_RootWhenNoSpan`;
   `TestSpan_RecordError_KindOpMessage` (an `errs.E` chain: `error.kind`, `error.op`,
-  scrubbed message; `Canceled` not marked failed); `TestSpan_KindsAndStartAttrs`; F12–F14,
-  F33, F34; `TestSpan_SafeForConcurrentUse`.
+  scrubbed message; `Canceled` not marked failed); `TestSpan_KindsAndStartAttrs`; F12–F14
+  (both F14 tests: the rejected shapes and the accepted HTTP form), F33, F34;
+  `TestSpan_SafeForConcurrentUse`.
 - Attributes and policy: `TestKeyGrammar_Table`; `TestDenylist_Pinned` (the list is
   stable) and `TestDenylist_Matching_Table` (`email`, `person.email`, `http_request_body`
   denied; `user_agent`, `db.name`, `set_name`, `module` allowed); `TestTokenGrammar_Table`
@@ -1128,8 +1146,9 @@ answered by the owner on 2026-10-16 and are recorded in decisions 3, 9, 17, 18 a
 
 Status as of 2026-10-16: items 1, 2, 8, 10, 11, 13, 14 and 15 are applied; item 9 is
 applied for `deploy/compose/.env.example` and Tempo's retention, and Prometheus's retention flag, and pending for
-Loki retention, the alert rules and `docs/operating.md`; item 12 is applied; items 3, 4, 5, 6 and 7 wait for their target to be written and are carried
-by this list until then.
+Loki retention, the alert rules and `docs/operating.md`; item 12 is applied; item 6 is
+applied for `signals.md` and pending for `jobs.md`; items 3, 4, 5 and 7 wait for their
+target to be written and are carried by this list until then.
 
 1. **`plan/design/module-contract.md` (row 4)** (applied 2026-10-16): add `Tracer telemetry.Tracer` to `Deps`
    (scope `module.<name>`, set by `Provision`, checked non-nil by `Build` beside `Logger`
@@ -1151,7 +1170,7 @@ by this list until then.
    `core/telemetry` (allowed: `telemetry` is below `db` in the core graph).
 3. **`plan/design/api.md` (row 16)** (pending: target not written): the tracing middleware opens one `SpanServer` span per
    request with `WithParentFrom(r.Header)`, names it `<METHOD> <route pattern>` once the
-   route is known, sets `http.request.method`, `http.route`, `http.response.status_code`
+   route is known (the one non-token span-name form, decision 19), sets `http.request.method`, `http.route`, `http.response.status_code`
    and `person_id` (when a session exists), calls `RecordError` with the mapped error, and
    records `http.server.request.duration` in seconds; the error body carries `ref` from
    `RefFrom` (omitted when `ok` is false) and the api writes one log record per error
@@ -1188,7 +1207,12 @@ by this list until then.
    `Close` last at shutdown within `http.shutdown_timeout`; `bms check` prints the log
    level and format and `Exporting()`; `bms serve`'s start-up line includes the version and
    whether export is on.
-6. **`plan/design/signals.md` (row 10) and `jobs.md` (row 14)** (pending: targets not written): wrap each publish in a
+6. **`plan/design/signals.md` (row 10) and `jobs.md` (row 14)** (applied 2026-10-16 for
+   `signals.md`, by its Proposed change 3, with the token names `signal:<name>` (Producer)
+   and `deliver:<name>` (Consumer), the counters `bms.signals.published{signal,module}`
+   and `bms.signals.delivered{signal,module,outcome}`, and `outcome` ∈ `ok`, `failed`,
+   `deferred`, `read_only`, `panicked`, `retried` being `jobs`' to count; pending for
+   `jobs.md`: target not written): wrap each publish in a
    `SpanProducer` span `signal <name>` and each delivery in a `SpanConsumer` span
    `signal <name>` with `Module(subscriber)` as a child of the publisher's ctx (after
    commit, so the trace spans the request and its consequences); each job run in a
