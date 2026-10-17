@@ -29,7 +29,7 @@ The order follows dependencies: foundation first, then the core, then modules.
 | 13 | `files.md` | attachments and storage | Not started |
 | 14 | `jobs.md` | scheduled and deferred work | Not started |
 | 15 | `settings.md` | runtime settings and terminology | Not started |
-| 15b | `telemetry.md` | logs, traces, metrics, client error intake (D20) | Not started |
+| 15b | `telemetry.md` | logs, traces, metrics, client error intake (D20) | Draft |
 | 16 | `api.md` | router, middleware, error mapper, OpenAPI assembly | Not started |
 | 17 | `web-shell.md` | UI frame, API client, module screen registry | Not started |
 | 18 | `app.md` | composition root and lifecycle | Not started |
