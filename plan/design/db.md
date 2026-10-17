@@ -1,6 +1,7 @@
 # db: database access
 
-- **Status:** Approved (2026-10-16)
+- **Status:** Implemented (2026-10-17); Approved (2026-10-16)
+- Amended 2026-10-17 (owner): `Write` begins with plain `BEGIN` so the session's `default_transaction_read_only` applies (server answers 25006); a NULL uuid scans into `*model.ID[E]`; accepted implementation deviations recorded in Behavior, "Accepted implementation deviations".
 - **Package:** `internal/core/db` (Go module `github.com/zedgama3/bms`), plus the test
   helper package `internal/core/db/dbtest`. **UI:** none of its own; the "this copy is
   read-only" banner and `/readyz` are `web-shell.md`'s and `api.md`'s, fed by `ReadOnly()`
@@ -91,8 +92,10 @@ version, never edited after release; core sets use schema `core`, a module set u
 Expects of dependencies: lib-errs (kinds), lib-core (`clock`, `retry.Do`, `validate`),
 lib-secret (`Secret`), model (`ID[E]`, `Email` scanned by underlying type), config (`Options`
 mirrors `config.DB` bounds), module-contract (`SchemaChecker`, `Deps.DB`, `Manifest.Migrations`,
-`Plan.Order()`), telemetry (`Tracer`, `Meter`, spans, gauges). Expects of consumers: `app` opens
+`Plan.Order()`), telemetry (`Tracer`, `Meter`, spans, gauges). Scanning: a NULL uuid column scans into `*model.ID[E]` (nil = none). Expects of consumers: `app` opens
 once, calls `Close` after `Set.Stop` and the HTTP server; core packages export `Set`s.
+
+Accepted deviations (2026-10-17, see Behavior): `Write` is plain `BEGIN`; the probe also reads `pg_db_role_setting` and the pool is Reset on a state change; a `25006` in a Read tx owned by the pool is `Internal` and flips nothing; a closed pool is `Unavailable`; `Write` nested in `Read` and `AfterCommit` after an ended tx are `Invalid`; `Migrate` returns the files applied so far with the error; `Wrap` keeps only `%T` for unknown errors.
 
 Pending proposed changes (targets not yet written): 10 core specs with tables export a migration `Set`, 11
 `docs/operating.md`, 13 jobs/notify read `ReadOnly()` and stop on `ErrReadOnly`.
@@ -284,7 +287,7 @@ type Mode uint8
 
 const (
 	Read  Mode = iota + 1 // BEGIN READ ONLY; allowed on a read-only copy
-	Write                 // BEGIN READ WRITE; refused on a read-only copy
+	Write                 // plain BEGIN, so the session's default_transaction_read_only applies and the server answers 25006; refused on a read-only copy
 )
 
 // String returns "read", "write" or "Mode(<n>)". Cannot fail.
@@ -849,7 +852,8 @@ the transitions without a database.
    its error (joined; decision 6). Hooks registered inside are the outer transaction's.
 2. If `mode == Write && ReadOnly()`: return `errs.E(op, errs.Unavailable, ErrReadOnly)`
    (F22).
-3. Acquire, `BEGIN` with the access mode (deadline rule). Failure → `Wrap` (F25).
+3. Acquire; `BEGIN READ ONLY` for `Read`, plain `BEGIN` for `Write` (so a session with
+   `default_transaction_read_only` makes the server answer `25006`; deadline rule). Failure → `Wrap` (F25).
 4. Build `txCtx` carrying the transaction and an empty hook list; `defer` a recover that
    rolls back and re-panics (F24).
 5. `err := fn(txCtx)`. If non-nil: `ROLLBACK`; return `err` joined with any rollback error
@@ -899,6 +903,25 @@ the `SchemaChecker` is satisfied structurally and asserted in `app`), not `confi
 `go.opentelemetry.io` (depguard rule `otel-seam`). `dbtest` adds `testing`, `crypto/rand`,
 `os`; its tests use `telemetrytest`. depguard's `storage-seam` rule already allows pgx
 under `**/internal/core/db/**`.
+
+### Accepted implementation deviations (owner, 2026-10-17)
+
+- `Write` begins with plain `BEGIN`; `Read` with `BEGIN READ ONLY`. The session's
+  `default_transaction_read_only` then applies to `Write` and the server answers `25006`.
+- The probe also reads `pg_db_role_setting` (role and database defaults of
+  `default_transaction_read_only`), and the pool is Reset (connections recycled) when the
+  state changes, so new sessions pick the setting up.
+- A `25006` inside a `Read` transaction owned by the pool is `Internal` (a bug in the
+  caller's SQL, not a read-only copy) and does not flip the cached state.
+- Using a closed pool is `Unavailable`.
+- An internal `txctx` package carries the transaction in the ctx and is shared with `dbtest`.
+- `Wrap` keeps only `%T` of an error it does not recognise, and for a pgx `ScanArgError`
+  only the column index and name; never messages.
+- A `Write` `Transact` nested in a `Read` one is `Invalid`; `AfterCommit` called after its
+  transaction ended without committing is `Invalid`.
+- The statement-span name parser skips leading SQL comments.
+- `Migrate` returns the files applied so far together with the error.
+- `Close` runs one extra goroutine (it waits for in-flight work, then closes the pool).
 
 ## Failure modes
 
@@ -1019,7 +1042,8 @@ every error path):
 - Scanning: `TestPgx_ScansModelIDAndEmailByUnderlyingType` (model.md Proposed change 4): a
   table with `uuid` and `text` columns; insert and select `model.PersonID`, a
   module-style `model.ID[shift]`, and `model.Email` directly, and once more through the
-  documented fallback `[16]byte(id)` / `string(e)`; a `NULL` uuid scans into a zero ID.
+  documented fallback `[16]byte(id)` / `string(e)`; a `NULL` uuid column scans into a `*model.PersonID` (nil = none), not into a zero ID
+  (owner, 2026-10-17).
 - Querier: `TestQuerier_RoundTrip`; `TestQuery_RowsCloseCancelsDeadline` (no goroutine
   leak, `runtime.NumGoroutine` before and after); F11, F18, F20.
 - Transactions: `TestTransact_CommitRunsHooksInOrderWithCallerCtx`;
