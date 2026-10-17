@@ -640,8 +640,7 @@ database URL. `secret.Secret` and `model.Email` print markers on their own; this
 Per-person export and deletion (privacy-data, module-contract `PersonData`) do not cover
 telemetry: logs and spans hold a person's ID only, cannot be searched by person inside bms,
 and expire with the collector's retention. That is the reason a bounded retention is part
-of D20 and of the deploy examples (Proposed change 9); open question 4 asks the owner to
-confirm the default.
+of D20 and of the deploy examples (Proposed change 9); decision 18 sets the default.
 
 ## Permissions
 
@@ -721,7 +720,7 @@ None of its own. What this spec provides for screens elsewhere:
    when the trace itself was sampled away or dropped. Thirty-two bits is enough: a regional
    produces thousands of errors a month, not billions, and the maintainer also has a date.
    Upper-case hex has no `O`/`0` or `l`/`1` ambiguity beyond `0`, which is the only one of
-   the pair present. Open question 1 asks the owner to confirm the format.
+   the pair present. Format confirmed: `XXXX-XXXX`, no prefix (owner, 2026-10-16).
 4. **The span and log providers are always the SDK's, even with no collector; only the
    exporters depend on `OTEL_*`.** With a no-op provider there would be no trace IDs, so no
    references and no `trace_id` on log lines, which a regional running without Grafana still
@@ -738,7 +737,8 @@ None of its own. What this spec provides for screens elsewhere:
    remote parent and drop every browser-originated request. `always_on`, `always_off` and
    `traceidratio` (deterministic on the ID) are supported through `OTEL_TRACES_SAMPLER`;
    the others fail `New` (F8). A regional's traffic is hundreds of people, so 100% costs
-   little; open question 5 asks the owner to confirm.
+   little. Default `always_on`, operator override with `OTEL_TRACES_SAMPLER=traceidratio`,
+   confirmed (owner, 2026-10-16).
 7. **One log handler applies the policy before fan-out.** Scrubbing in `ReplaceAttr` on the
    stdout handler alone would leave the OTLP copy unscrubbed. The handler rewrites the
    record (keys checked, strings scrubbed and capped, `trace_id`/`span_id` added) and then
@@ -751,8 +751,9 @@ None of its own. What this spec provides for screens elsewhere:
    address) and the one that smuggles everything (`?query`). On metrics, a free string or
    an ID is an unbounded series, which is also a memory leak, so both are refused.
 9. **The client-error route is public, rate-limited per address and globally, and the
-   address is never logged.** A crash on the sign-in page is exactly the kind a maintainer
-   never hears about otherwise. Making the route public means the only protection is
+   address is never logged.** `POST /api/client-errors` is reachable without a session,
+   protected by the limits (owner, 2026-10-16). A crash on the sign-in page is exactly the
+   kind a maintainer never hears about otherwise. Making the route public means the only protection is
    limits, so they are strict (30 reports per address per minute, 600 per process) and the
    whole batch is refused when short, so a runaway page cannot trickle through. The client
    address is needed for the limit and for nothing else; it is personal data under most
@@ -794,6 +795,18 @@ None of its own. What this spec provides for screens elsewhere:
     into one collector.
 16. **The stdout handler is never closed.** `Close` flushes exporters; a record logged
     after `Close` (a shutdown error in `app`) must still reach the terminal.
+17. **Client error reports include the browser's `User-Agent`, capped at 200 bytes**
+    (owner, 2026-10-16). Most browser crashes are browser-specific, so without it the
+    maintainer has to ask which browser the person used. It is internal-level data (Data),
+    cut at `MaxUserAgentBytes`, and bounded by the collector's retention like every other
+    field of the record.
+18. **The example deployment keeps logs and traces for 30 days and metrics for 1 year,
+    and the operator docs say that per-person export and deletion do not reach telemetry**
+    (owner, 2026-10-16). Logs and spans hold IDs only and expire with the collector, so a
+    bounded retention is what makes "IDs only, bounded retention" a true privacy statement;
+    metrics hold no IDs, so a year costs nothing in privacy terms. bms cannot enforce
+    retention; the values are set in Loki, Tempo and Prometheus configuration and stated in
+    `docs/operating.md` (Proposed change 9).
 
 ### What is read from the environment
 
@@ -1107,24 +1120,9 @@ violation (Proposed change 1).
 
 ## Open questions
 
-1. **Error reference format.** Proposed: `XXXX-XXXX`, the first four bytes of the trace ID
-   in upper-case hex (decision 3); no prefix, since the screen says "reference". The
-   alternative is an independent random code logged beside the trace ID, which adds a
-   field and a join and gains nothing. Needs the owner because people will read it aloud.
-2. **The client-error route is reachable without a session.** Proposed: yes, so the
-   sign-in page can report its own crash, with the limits of decision 9. The alternative,
-   signed-in only, loses exactly the errors nobody else reports.
-3. **The browser's `User-Agent` in client error reports.** Proposed: include it, cut at 200
-   bytes, because most browser crashes are browser-specific and the collector's retention
-   bounds it. The alternative is to drop it and ask people which browser they use.
-4. **Retention defaults in the deploy examples.** Proposed: logs and traces 30 days (D20),
-   metrics 1 year (they hold no IDs), set in Loki, Tempo and Prometheus configuration and
-   stated in `docs/operating.md`, with the note that a person's export and deletion do not
-   reach telemetry (Data). bms cannot enforce it; the owner decides what the examples say.
-5. **Sample every trace by default.** Proposed: `always_on`, overridable with
-   `OTEL_TRACES_SAMPLER=traceidratio` (decision 6); every error gets its trace, and a
-   regional's volume makes the cost small. The alternative is a default ratio, which makes
-   "the reference finds the trace" true only most of the time.
+None. The draft's five questions (error reference format, public client-error route,
+`User-Agent` in client reports, example-deployment retention, default sampler) were
+answered by the owner on 2026-10-16 and are recorded in decisions 3, 9, 17, 18 and 6.
 
 ## Proposed changes elsewhere
 
@@ -1203,8 +1201,8 @@ violation (Proposed change 1).
 9. **`deploy/compose/.env.example`, `deploy/compose/observability/*`, `docs/operating.md`
    (when written):** add a commented `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`
    with a note that only `http/protobuf` is supported and that `OTEL_EXPORTER_OTLP_HEADERS`
-   is a credential; set retention in Loki (30 d), Tempo (30 d) and Prometheus (1 y) per open
-   question 4 and say so; add D20's alert rules (error rate, client-error spikes, slow
+   is a credential; set retention in Loki (30 d), Tempo (30 d) and Prometheus (1 y) per
+   decision 18 and say so; add D20's alert rules (error rate, client-error spikes, slow
    requests) when the production example is written; the operator docs give the
    maintainer's path from a reference ("UI") and state that Grafana access is for
    maintainers only, that telemetry holds person IDs and expires with retention, and that
@@ -1231,8 +1229,7 @@ violation (Proposed change 1).
 12. **`plan/03-decisions.md`, D20 (for `plan-keeper`):** add: "bms exports OTLP over
     HTTP/protobuf only; the error reference is the first four bytes of the trace ID
     (`XXXX-XXXX`); traces are sampled 100% by default; the server ignores the browser's
-    sampled flag (telemetry.md decisions 3, 5, 6)", once the owner answers open questions 1
-    and 5.
+    sampled flag (telemetry.md decisions 3, 5, 6; confirmed by the owner, 2026-10-16)".
 13. **`plan/09-core-features.md` §1 "Done when":** add "a collector that is down or absent
     never fails start-up, a request or shutdown; stdout logs carry the trace ID without
     any collector".
