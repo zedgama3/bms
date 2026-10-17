@@ -15,7 +15,7 @@ The order follows dependencies: foundation first, then the core, then modules.
 | 1b | `lib-core.md` | clock, retry, validate, timeutil (port from Sojourn, D11) | Implemented (ported, D11; FieldError codes amendment implemented 2026-10-17) |
 | 1c | `lib-secret.md` | a string that can't be printed (port from Sojourn, D11) | Implemented (ported, D11) |
 | 2 | `model.md` | shared value types | Approved |
-| 3 | `config.md` | config loading and validation | Approved |
+| 3 | `config.md` | config loading and validation | Implemented (2026-10-17) |
 | 4 | `module-contract.md` | the Module interface and registry | Approved |
 | 4b | `module-hello.md` | the reference module (M0) | Approved (2026-10-17) |
 | 5 | `db.md` | pool, transactions, per-schema migrations, error mapping | Approved |
