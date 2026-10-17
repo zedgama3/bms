@@ -1,6 +1,7 @@
 # model: shared value types
 
-- **Status:** Approved (2026-10-16)
+- **Status:** Implemented (2026-10-17); Approved (2026-10-16)
+- Amended 2026-10-17 (owner): Email also rejects invalid UTF-8 and Unicode format characters (Cf); `Email.LogValue` redacts only a directly logged Email (never log a struct holding one; the app never logs addresses); a NULL uuid column scans into `*model.ID[E]` (Proposed change 4).
 - **Package:** `internal/model` (Go module `github.com/zedgama3/bms`; foundation, not a bms
   module). **UI:** none.
 - **Depends on specs:** `lib-errs.md` (Implemented): `errs.E`, `errs.Is`, kinds `Invalid`
@@ -21,7 +22,7 @@
 - `ID` methods: `String()` (lower-case canonical), `IsZero()`, `Validate()` (rejects only the zero ID), `MarshalText`, `UnmarshalText` (`Invalid` bad text, `Internal` nil receiver, `*id` unchanged on failure; JSON `null` leaves the field unchanged, use `omitzero`).
 - `type Sensitivity uint8`: `SensitivityPublic`=1 < `SensitivityInternal` < `SensitivityPersonal` < `SensitivitySensitive`=4; zero is invalid. `ParseSensitivity(s)` (exact lower-case names `public|internal|personal|sensitive`), `String()` (`Sensitivity(<n>)` if out of range), `Validate()`, `ReadIsAudited(self bool) bool` (never for public/internal; personal unless self; always for sensitive; invalid level is audited), `MarshalText` (fails `Invalid` for an invalid level), `UnmarshalText`.
 - `type TimeRange struct{ Start, End time.Time }` (JSON `start`, `end`; half-open `[Start, End)`): `Validate()` (joined `FieldError`s on fields `start`, `end`), `Contains(t)`, `Overlaps(o)` (touching ranges do not overlap), `Duration()`.
-- `type Email string`: `ParseEmail(s)` (trims; non-empty, <= 254 bytes, one `@`, local part 1..64 bytes, domain non-empty and not starting or ending with `.`, no whitespace, control characters or `< > , ; "`; shape only), `Validate()` (no trimming; zero value "" fails, so validate optional addresses only when set), `Canonical()` (lower-case only; idempotent; the uniqueness key), `LogValue()` (`secret.Redacted` or `secret.Unset`).
+- `type Email string`: `ParseEmail(s)` (trims; non-empty, <= 254 bytes, one `@`, local part 1..64 bytes, domain non-empty and not starting or ending with `.`, no whitespace, control characters, Unicode format characters (Cf) or `< > , ; "`; valid UTF-8; shape only), `Validate()` (no trimming; zero value "" fails, so validate optional addresses only when set), `Canonical()` (lower-case only; idempotent; the uniqueness key), `LogValue()` (`secret.Redacted` or `secret.Unset`; applies only when the Email itself is logged: never log a struct holding an Email, log fields or give the struct its own `LogValue`).
 
 **Key decisions.**
 1. UUID v4 from stdlib, no third-party library, no timestamp leak.
@@ -29,17 +30,18 @@
 3. Constructors generic over `~[16]byte`.
 4. `ParseID` accepts exactly one form.
 5. `Validate` rejects only the zero ID (imported IDs may be other versions).
-6. Zero ID means "none" (nullable in SQL, `omitzero` in JSON, no pointers to IDs).
+6. Zero ID means "none" (nullable in SQL, `omitzero` in JSON, no pointers to IDs in domain types or APIs; a store scans a nullable column into `*ID` and converts nil to the zero ID, owner 2026-10-17).
 7. `Sensitivity` zero is invalid; runtime methods treat invalid as sensitive.
 8. `ReadIsAudited` lives on the type.
 9. `Sensitivity.MarshalText` fails for an invalid value.
 10. `TimeRange` is half-open and validates with field names through `validate.Errors`, not `timeutil.CheckRange`.
 11. `Email` is in `model` (identity, people, notify, departments-events share it); case-only canonicalisation (owner, 2026-10-16), no dot or `+tag` stripping.
 12. Error reasons never echo input.
+13. `Email` rejects invalid UTF-8 and Unicode format characters (owner, 2026-10-17); `LogValue` covers only a directly logged Email (owner, 2026-10-17).
 
 **What callers handle.** `errs.Invalid` from every parse and `Validate` (a `validate.FieldError`, readable with `validate.Fields`); `errs.Internal` only for a nil receiver in `UnmarshalText`. Optional references are the zero value and are validated only when set. Event dates are instants (`TimeRange` plus the IANA zone, owned by `departments-events`); no civil `Date`, no `Money` type.
 
-**Storage seam.** `postgres/` packages convert by underlying type (`[16]byte` to `uuid`, `string` to `text`; `Sensitivity` via `String`/`ParseSensitivity`); `model` implements no `sql.Scanner`/`driver.Valuer`. Expected mappings: unique index on `Email.Canonical()` where D21 applies; `db.md` integration test proves pgx scans `ID[E]` and `Email`.
+**Storage seam.** `postgres/` packages convert by underlying type (`[16]byte` to `uuid`, `string` to `text`; `Sensitivity` via `String`/`ParseSensitivity`); `model` implements no `sql.Scanner`/`driver.Valuer`. Expected mappings: unique index on `Email.Canonical()` where D21 applies; `db.md` integration test proves pgx scans `ID[E]` and `Email`; a NULL uuid column scans into `*model.ID[E]` (nil = none), not into a zero ID.
 
 **Expects of dependencies.** `lib-errs`: `errs.E`, `Is`, kinds `Invalid`, `Internal`. `lib-core`: `validate.Errors`, `validate.FieldError` (with the pending Code/Params amendment this spec does not rely on codes). `lib-secret`: `Redacted`, `Unset` markers.
 
@@ -235,8 +237,9 @@ type Email string
 
 // ParseEmail trims surrounding space and checks shape: non-empty; at most 254 bytes;
 // exactly one "@"; a local part of 1 to 64 bytes; a domain of at least 1 byte that neither
-// starts nor ends with "."; and no whitespace, control characters or any of < > , ; "
-// anywhere. Deliverability is not checked here (notify proves it by sending). It fails
+// starts nor ends with "."; valid UTF-8 (utf8.ValidString); and no whitespace, control
+// characters, Unicode format characters (category Cf: zero-width space, bidi overrides,
+// etc.) or any of < > , ; " anywhere. Deliverability is not checked here (notify proves it by sending). It fails
 // with errs.Invalid wrapping a validate.FieldError whose Reason never echoes the input.
 func ParseEmail(s string) (Email, error)
 
@@ -249,7 +252,9 @@ func (e Email) Validate() error
 func (e Email) Canonical() Email
 
 // LogValue returns secret.Redacted when e is non-empty and secret.Unset when it is empty,
-// so slog never prints an address. Cannot fail.
+// so slog never prints an address. It applies only when the Email itself is logged: a struct
+// holding an Email is printed field by field without calling it, so never log such a struct;
+// log fields, or give the struct its own LogValue. The app never logs addresses. Cannot fail.
 func (e Email) LogValue() slog.Value
 ```
 
@@ -343,7 +348,7 @@ names, `{start, end}`) in TypeScript; `web-shell.md` decides where those types l
    `uuid` stores any 128-bit value.
 6. **The zero ID means "none".** Optional references (work with no event, a person with no
    account) are the zero value, nullable in SQL, omitted from JSON with `omitzero`, and
-   validated by their owner only when set. No pointers to IDs.
+   validated by their owner only when set. No pointers to IDs outside the scanning seam (a store scans a nullable column into `*ID`, then converts nil to the zero ID).
 7. **`Sensitivity`'s zero value is invalid, and the levels start at 1 in increasing order of
    restriction.** `privacy-data` says "when in doubt, pick the higher level"; a zero that
    silently meant `public` would be the opposite. Rejecting zero in `Validate` fails early
@@ -422,7 +427,7 @@ Nothing else: `foundation-model` in `.golangci.yml` enforces it.
 | F14 | `ParseEmail`, `Email.Validate` | empty (after trimming, for `ParseEmail`) | Invalid, field `email` | 400 / "required" | `TestParseEmail_Empty_ReturnsInvalid` |
 | F15 | `ParseEmail`, `Email.Validate` | longer than 254 bytes, or local part longer than 64 bytes | Invalid | 400 | `TestParseEmail_TooLong_ReturnsInvalid` |
 | F16 | `ParseEmail`, `Email.Validate` | zero or more than one `@`, empty local part, empty domain, domain starting or ending with `.` | Invalid | 400 | `TestParseEmail_BadShape_ReturnsInvalid` |
-| F17 | `ParseEmail`, `Email.Validate` | whitespace, a control character, or any of `< > , ; "` inside | Invalid | 400 (also blocks header injection) | `TestParseEmail_ForbiddenCharacters_ReturnsInvalid` |
+| F17 | `ParseEmail`, `Email.Validate` | invalid UTF-8, a Unicode format character (Cf), whitespace, a control character, or any of `< > , ; "` inside | Invalid | 400 (also blocks header injection) | `TestParseEmail_ForbiddenCharacters_ReturnsInvalid` |
 | F18 | `ParseEmail`, `ParseID`, `ParseSensitivity` | any failure | the `FieldError.Reason` does not contain the input | nothing; this pins decision 12 | `TestParseErrors_NeverEchoInput` |
 
 Members that cannot fail, and why: `NewID` (`crypto/rand.Read` never errors on Go 1.24+,
@@ -465,8 +470,8 @@ real addresses.
   zones); `TestTimeRange_Duration`; `TestTimeRangeJSON_RoundTrip`; plus F12–F13.
 - Email: `TestParseEmail_AcceptsTable` (plain, trimmed, upper-case, `+` tag, dots, a
   `localhost` domain, a non-ASCII local part); `TestEmailCanonical_LowercasesAndIsIdempotent`;
-  `TestEmailLogValue_RedactsUnderTextAndJSONHandlers` (`slog.Any` on an `Email` and on a
-  struct holding one yields the marker and never the address; empty yields `[unset]`);
+  `TestEmailLogValue_RedactsUnderTextAndJSONHandlers` (`slog.Any` on an `Email` yields the
+  marker and never the address; empty yields `[unset]`; no struct case, see the Email doc);
   `TestEmailValidate_MatchesParseEmailWithoutTrimming` (a value with surrounding space fails
   `Validate` but `ParseEmail` of the same text succeeds); plus F14–F18.
 - Lint: the package passes `foundation-model` (depguard), `errcheck`, `errorlint`,
@@ -503,7 +508,7 @@ None. The two questions in the first draft were answered by the owner on 2026-10
    (`core/module` or `core/authz`); `model` does not hold it.
 4. **`plan/design/db.md` (row 5):** the integration test proves pgx scans and encodes
    `model.ID[E]` into `uuid` columns and `model.Email` into `text` columns by underlying
-   type, and documents the explicit `[16]byte` conversion as the fallback.
+   type, and that a NULL uuid column scans into `*model.ID[E]` (nil = none) rather than a zero ID (owner, 2026-10-17), and documents the explicit `[16]byte` conversion as the fallback.
 5. **`plan/design/identity.md` (row 6) and `people.md` (row 8):** store the address as
    entered and index `Email.Canonical()` uniquely (D21); the login lookup is by canonical
    form.
