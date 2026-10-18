@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/zedgama3/bms/internal/core/audit/postgres"
-	"github.com/zedgama3/bms/internal/core/authz"
+	"github.com/zedgama3/bms/internal/core/authz/perm"
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/telemetry"
 	"github.com/zedgama3/bms/internal/lib/errs"
@@ -107,7 +107,7 @@ type Page struct {
 }
 
 // authorize decides that the actor in ctx is signed in and holds p.
-func (l *Log) authorize(ctx context.Context, op string, p authz.Permission) error {
+func (l *Log) authorize(ctx context.Context, op string, p perm.Permission) error {
 	actor, ok := l.opts.Actor(ctx)
 	if !ok || actor.Kind != ActorPerson {
 		return errs.E(op, errs.Unauthenticated, errors.New("sign in to use the audit log"))

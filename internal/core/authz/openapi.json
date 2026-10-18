@@ -1,0 +1,692 @@
+{
+  "tags": [
+    {
+      "name": "access",
+      "description": "Roles, grants and separation-of-duties rules: who may do what."
+    }
+  ],
+  "paths": {
+    "/permissions": {
+      "get": {
+        "tags": [
+          "access"
+        ],
+        "operationId": "accessListPermissions",
+        "summary": "The catalogue of declared permissions, sorted by name. Needs access.roles.read, or a grants permission in any extent (then only the permissions a department role may hold).",
+        "responses": {
+          "200": {
+            "description": "The catalogue.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "permissions"
+                  ],
+                  "properties": {
+                    "permissions": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AccessPermission"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/roles": {
+      "get": {
+        "tags": [
+          "access"
+        ],
+        "operationId": "accessListRoles",
+        "summary": "List roles with their permissions. Same permission rule as the catalogue; a department-only caller sees department roles only.",
+        "responses": {
+          "200": {
+            "description": "The roles.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "roles"
+                  ],
+                  "properties": {
+                    "roles": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AccessRole"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "access"
+        ],
+        "operationId": "accessCreateRole",
+        "summary": "Create a role. Needs access.roles.manage. 409 with field name, code taken, when another role has the name.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccessRoleInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessRole"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/roles/{role}": {
+      "get": {
+        "tags": [
+          "access"
+        ],
+        "operationId": "accessGetRole",
+        "summary": "One role. 404 for an unknown role, or a site role for a department-only caller.",
+        "parameters": [
+          {
+            "name": "role",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The role.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessRole"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "access"
+        ],
+        "operationId": "accessUpdateRole",
+        "summary": "Replace a role's name, description and permissions. Needs access.roles.manage. Scope is immutable (400, field scope, code immutable). 409 last_access_admin when the change would leave nobody holding access.grants.manage site-wide.",
+        "parameters": [
+          {
+            "name": "role",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccessRoleInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The changed role.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessRole"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "access"
+        ],
+        "operationId": "accessDeleteRole",
+        "summary": "Delete a role. Needs access.roles.manage. 400 (field role, code base) for the base role; 409 in_use while a grant or rule references it.",
+        "parameters": [
+          {
+            "name": "role",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          }
+        }
+      }
+    },
+    "/grants": {
+      "get": {
+        "tags": [
+          "access"
+        ],
+        "operationId": "accessListGrants",
+        "summary": "List grants, newest first. Needs access.grants.read in some extent (results are limited to it), or person set to your own ID.",
+        "parameters": [
+          {
+            "name": "person",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            },
+            "description": "Only this person's grants."
+          },
+          {
+            "name": "role",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            },
+            "description": "Only grants of this role."
+          },
+          {
+            "name": "department",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            },
+            "description": "Only grants for this department."
+          },
+          {
+            "name": "permission",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Only grants of roles that hold this permission."
+          },
+          {
+            "name": "include_ended",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Include grants whose end date has passed."
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "The next value of the previous page."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 200
+            },
+            "description": "Page size; 0 or absent means 50."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of grants.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessGrantPage"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "access"
+        ],
+        "operationId": "accessGrant",
+        "summary": "Grant a role to a person. 403 outside what you may grant; 400 self, base, mismatch, range; 409 duplicate or separation_of_duties (params rule, note); 501 when departments are not available.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccessGrantInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Granted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessGrant"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/grants/{grant}": {
+      "delete": {
+        "tags": [
+          "access"
+        ],
+        "operationId": "accessRevoke",
+        "summary": "Revoke a grant. 404 for a grant outside what you may grant; 400 (field person, code self) for your own; 409 last_access_admin for the last site-wide holder of access.grants.manage.",
+        "parameters": [
+          {
+            "name": "grant",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked."
+          }
+        }
+      }
+    },
+    "/rules": {
+      "get": {
+        "tags": [
+          "access"
+        ],
+        "operationId": "accessListRules",
+        "summary": "List separation-of-duties rules with how many people each affects now. Needs access.roles.read.",
+        "responses": {
+          "200": {
+            "description": "The rules.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "rules"
+                  ],
+                  "properties": {
+                    "rules": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AccessRule"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "access"
+        ],
+        "operationId": "accessCreateRule",
+        "summary": "Create a rule: holding the role forbids a permission, or every permission reaching a level. Needs access.rules.manage. Takes effect at once. 409 duplicate.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccessRuleInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessRule"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rules/{rule}": {
+      "delete": {
+        "tags": [
+          "access"
+        ],
+        "operationId": "accessDeleteRule",
+        "summary": "Delete a rule. Needs access.rules.manage.",
+        "parameters": [
+          {
+            "name": "rule",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AccessPermission": {
+        "type": "object",
+        "required": [
+          "name",
+          "scope",
+          "reaches",
+          "module",
+          "starter_roles"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "site",
+              "department"
+            ]
+          },
+          "reaches": {
+            "$ref": "#/components/schemas/Sensitivity"
+          },
+          "module": {
+            "type": "string",
+            "description": "The first segment of the name."
+          },
+          "starter_roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Starter role keys the permission is seeded into."
+          }
+        }
+      },
+      "AccessRole": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "scope",
+          "base",
+          "permissions",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "key": {
+            "type": "string",
+            "description": "Starter roles only."
+          },
+          "name": {
+            "type": "string",
+            "description": "Empty while an unrenamed starter role; show the translated title for its key."
+          },
+          "description": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "site",
+              "department"
+            ]
+          },
+          "base": {
+            "type": "boolean",
+            "description": "The one role every signed-in person holds."
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "name",
+                "declared"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "declared": {
+                  "type": "boolean",
+                  "description": "False: not available in this installation."
+                }
+              }
+            }
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "AccessRoleInput": {
+        "type": "object",
+        "required": [
+          "name",
+          "permissions"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "site",
+              "department"
+            ],
+            "description": "Required on create; on change absent or the role's own scope."
+          },
+          "permissions": {
+            "type": "array",
+            "maxItems": 256,
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "AccessGrant": {
+        "type": "object",
+        "required": [
+          "id",
+          "person_id",
+          "role_id",
+          "created_at",
+          "ended"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "person_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "role_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "department_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Absent when the grant has no end."
+          },
+          "granted_by": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ended": {
+            "type": "boolean",
+            "description": "The end date has passed."
+          }
+        }
+      },
+      "AccessGrantInput": {
+        "type": "object",
+        "required": [
+          "person_id",
+          "role_id"
+        ],
+        "properties": {
+          "person_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "role_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "department_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Optional; must be in the future."
+          }
+        }
+      },
+      "AccessGrantPage": {
+        "type": "object",
+        "required": [
+          "grants"
+        ],
+        "properties": {
+          "grants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccessGrant"
+            }
+          },
+          "next": {
+            "type": "string",
+            "description": "Pass as after to get the next page; absent on the last page."
+          }
+        }
+      },
+      "AccessRule": {
+        "type": "object",
+        "required": [
+          "id",
+          "role_id",
+          "note",
+          "affected",
+          "created_at"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "role_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "permission": {
+            "type": "string",
+            "description": "Set for a permission rule."
+          },
+          "reaches": {
+            "$ref": "#/components/schemas/Sensitivity"
+          },
+          "note": {
+            "type": "string"
+          },
+          "affected": {
+            "type": "integer",
+            "description": "People holding the role and a forbidden permission now."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "AccessRuleInput": {
+        "type": "object",
+        "required": [
+          "role_id"
+        ],
+        "properties": {
+          "role_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "permission": {
+            "type": "string"
+          },
+          "reaches": {
+            "$ref": "#/components/schemas/Sensitivity"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 256
+          }
+        },
+        "description": "Set exactly one of permission and reaches."
+      }
+    }
+  }
+}

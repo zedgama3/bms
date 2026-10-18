@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/zedgama3/bms/internal/core/authz"
+	"github.com/zedgama3/bms/internal/core/authz/perm"
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/telemetry"
 	"github.com/zedgama3/bms/internal/lib/clock"
@@ -65,7 +65,7 @@ type TitleSource interface {
 // as api.PermissionChecker. authz implements it (M2); nil denies everything with
 // errs.Permission, so Search and Export fail closed in M1.
 type PermissionChecker interface {
-	Allow(ctx context.Context, p authz.Permission) error
+	Allow(ctx context.Context, p perm.Permission) error
 }
 
 // Options builds the log. app copies config.Instance.Name and config.Data.Dir in.
@@ -126,6 +126,6 @@ func (o Options) interval() time.Duration {
 // denyAll is the PermissionChecker used when Options.Permissions is nil: it fails closed.
 type denyAll struct{}
 
-func (denyAll) Allow(context.Context, authz.Permission) error {
+func (denyAll) Allow(context.Context, perm.Permission) error {
 	return errs.E("audit.denyAll.Allow", errs.Permission, errNoChecker)
 }
