@@ -118,6 +118,7 @@ const (
 	actionContactDeleted   audit.Action = "people.contact.deleted"
 	actionConsentChanged   audit.Action = "people.consent.changed"
 	actionRequestCreated   audit.Action = "people.request.created"
+	actionRequestRead      audit.Action = "people.request.read"
 	actionRequestWithdraw  audit.Action = "people.request.withdrawn"
 	actionRequestDeclined  audit.Action = "people.request.declined"
 	actionRequestFulfilled audit.Action = "people.request.fulfilled"
@@ -559,6 +560,13 @@ func checkLanguage(v *validate.Errors, field, s string) string {
 // profileFields are the editable fields of a ProfileInput, by name.
 type profileFields struct {
 	playaName, pronouns, language, legalName, phone, contactEmail *string
+}
+
+// languageOnly says the body sets the language and nothing else, the one save the shell
+// makes before the profile is complete (D37).
+func (f profileFields) languageOnly() bool {
+	return f.language != nil && f.playaName == nil && f.pronouns == nil && f.legalName == nil &&
+		f.phone == nil && f.contactEmail == nil
 }
 
 // normalize validates in field by field and returns the trimmed values. Every problem is

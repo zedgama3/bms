@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/audit/audittest"
 	"github.com/zedgama3/bms/internal/core/authz/rows"
 	"github.com/zedgama3/bms/internal/core/db/dbtest"
@@ -39,6 +40,7 @@ type fakeStore struct {
 	filter  rows.GrantFilter
 	seedK   []string
 	seedP   []string
+	seedOut []rows.SeededPermission
 	queries int
 }
 
@@ -72,9 +74,9 @@ func (f *fakeStore) ListRoles(context.Context, string) ([]rows.Role, error) { re
 
 func (f *fakeStore) LockInvariants(context.Context) error { return nil }
 
-func (f *fakeStore) SeedStarterPermissions(_ context.Context, keys, perms []string, _ time.Time) (int, error) {
+func (f *fakeStore) SeedStarterPermissions(_ context.Context, keys, perms []string, _ time.Time) ([]rows.SeededPermission, error) {
 	f.seedK, f.seedP = keys, perms
-	return len(keys), nil
+	return f.seedOut, nil
 }
 
 type ctxActor struct{}
@@ -257,6 +259,48 @@ func TestSeed_SiteOnlyPermissionIsNotAddedToTheDepartmentRole(t *testing.T) {
 	wantP := []string{string(pMedRead), string(pShiftRead)}
 	if !slices.Equal(fs.seedK, wantK) || !slices.Equal(fs.seedP, wantP) {
 		t.Errorf("seeded %v / %v, want %v / %v", fs.seedK, fs.seedP, wantK, wantP)
+	}
+}
+
+func TestSeed_UpgradeAddsPermission_RecordsAudit(t *testing.T) {
+	role := model.NewID[RoleID]()
+	fs := &fakeStore{seedOut: []rows.SeededPermission{{Role: role, Permission: string(pMedRead)}}}
+	s := newTestService(t, fs)
+	rec, ok := s.audit.(*audittest.Fake)
+	if !ok {
+		t.Fatalf("audit is %T, want *audittest.Fake", s.audit)
+	}
+	decls := []PermissionDecl{{Name: pMedRead, Scope: ScopeSite, Reaches: model.SensitivitySensitive, StarterRoles: []string{RoleAuditReviewer}}}
+	res, err := s.Seed(t.Context(), decls)
+	if err != nil || res.Added != 1 {
+		t.Fatalf("Seed = %+v, %v", res, err)
+	}
+	got := rec.Recorded()
+	if len(got) != 1 || got[0].Action != actionRoleChanged || got[0].Record != audit.RefOf(kindRole, role) ||
+		got[0].Actor.Kind != audit.ActorOperator || got[0].Reason != seedReasonPrefix+string(pMedRead) {
+		t.Fatalf("recorded = %+v, want one access.role.changed for the role by the operator", got)
+	}
+	// A second run adds nothing, so records nothing.
+	fs.seedOut = nil
+	if _, err := s.Seed(t.Context(), decls); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(rec.Recorded()); n != 1 {
+		t.Errorf("recorded = %d after a run that added nothing, want 1", n)
+	}
+}
+
+func TestSeed_AuditFails_FailsSeed(t *testing.T) {
+	fs := &fakeStore{seedOut: []rows.SeededPermission{{Role: model.NewID[RoleID](), Permission: string(pMedRead)}}}
+	s := newTestService(t, fs)
+	rec, ok := s.audit.(*audittest.Fake)
+	if !ok {
+		t.Fatalf("audit is %T", s.audit)
+	}
+	rec.Fail(errs.E("test", errs.Unavailable, context.DeadlineExceeded))
+	_, err := s.Seed(t.Context(), []PermissionDecl{{Name: pMedRead, Scope: ScopeSite, Reaches: model.SensitivitySensitive, StarterRoles: []string{RoleAuditReviewer}}})
+	if !errs.Is(err, errs.Unavailable) {
+		t.Errorf("Seed = %v, want Unavailable", err)
 	}
 }
 

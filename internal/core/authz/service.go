@@ -43,13 +43,13 @@ type store interface {
 	DeleteRolePermissions(ctx context.Context, id rows.RoleID) error
 	InsertRolePermissions(ctx context.Context, id rows.RoleID, perms []string) error
 	DeleteRole(ctx context.Context, id rows.RoleID) error
-	CountHolders(ctx context.Context, q rows.Holders) (removed, remaining int, err error)
+	AdminGrants(ctx context.Context, q rows.Holders) ([]rows.AdminGrant, error)
 
 	GetGrant(ctx context.Context, id rows.GrantID) (rows.Grant, error)
 	InsertGrant(ctx context.Context, g rows.Grant) error
 	DeleteGrant(ctx context.Context, id rows.GrantID) (rows.Grant, error)
 	ListGrants(ctx context.Context, f rows.GrantFilter) ([]rows.Grant, error)
-	DeleteGrantsByPerson(ctx context.Context, person model.PersonID) (int, error)
+	DeleteGrantsByPerson(ctx context.Context, person model.PersonID) ([]rows.Grant, error)
 	ClearGrantedBy(ctx context.Context, person model.PersonID) error
 	ExportByPerson(ctx context.Context, person model.PersonID) ([]rows.ExportGrant, error)
 
@@ -57,7 +57,7 @@ type store interface {
 	InsertRule(ctx context.Context, r rows.Rule) error
 	DeleteRule(ctx context.Context, id rows.RuleID) error
 
-	SeedStarterPermissions(ctx context.Context, keys, perms []string, at time.Time) (int, error)
+	SeedStarterPermissions(ctx context.Context, keys, perms []string, at time.Time) ([]rows.SeededPermission, error)
 }
 
 var _ store = (*postgres.Store)(nil)

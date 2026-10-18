@@ -598,3 +598,21 @@ func TestTransact_WriteOnFreshPoolOfReadOnlyDatabase_RefusedAndNothingWritten(t 
 		t.Errorf("rows written despite refusal: %d", n)
 	}
 }
+
+func TestTxMode_InsidePoolTransaction_ReportsMode(t *testing.T) {
+	p, _ := tempDB(t)
+	if mode, ok := db.TxMode(ctxT(t)); ok || mode != 0 {
+		t.Errorf("outside a transaction TxMode = (%v, %v)", mode, ok)
+	}
+	for _, mode := range []db.Mode{db.Read, db.Write} {
+		err := p.Transact(ctxT(t), mode, func(ctx context.Context) error {
+			if got, ok := db.TxMode(ctx); !ok || got != mode {
+				t.Errorf("TxMode = (%v, %v), want (%v, true)", got, ok, mode)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("Transact(%v): %v", mode, err)
+		}
+	}
+}

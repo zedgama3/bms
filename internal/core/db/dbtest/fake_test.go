@@ -304,3 +304,33 @@ func TestFake_SafeForConcurrentUse(t *testing.T) {
 		t.Fatalf("recorded %d calls, want %d", got, want)
 	}
 }
+
+func TestTxMode_InsideFakeTransaction_ReportsMode(t *testing.T) {
+	type key struct{}
+	f := dbtest.NewFake()
+	for _, mode := range []db.Mode{db.Read, db.Write} {
+		t.Run(mode.String(), func(t *testing.T) {
+			ran := false
+			err := f.Transact(context.Background(), mode, func(ctx context.Context) error {
+				ran = true
+				if got, ok := db.TxMode(ctx); !ok || got != mode {
+					t.Errorf("TxMode = (%v, %v), want (%v, true)", got, ok, mode)
+				}
+				// A nested Read joins and reports the outer's mode.
+				return f.Transact(ctx, db.Read, func(inner context.Context) error {
+					if got, ok := db.TxMode(inner); !ok || got != mode {
+						t.Errorf("nested TxMode = (%v, %v), want (%v, true)", got, ok, mode)
+					}
+					child := context.WithValue(inner, key{}, "v")
+					if got, ok := db.TxMode(child); !ok || got != mode {
+						t.Errorf("child TxMode = (%v, %v), want (%v, true)", got, ok, mode)
+					}
+					return nil
+				})
+			})
+			if err != nil || !ran {
+				t.Fatalf("Transact err %v, ran %v", err, ran)
+			}
+		})
+	}
+}

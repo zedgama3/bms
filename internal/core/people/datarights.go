@@ -24,6 +24,9 @@ const (
 	reasonAdmin   = "admin"
 	reasonCommand = "command"
 	reasonLink    = "link" // the empty row sign-up minted, dropped by LinkAccount
+
+	reasonGranted   = "granted"   // a consent change: the person agreed (SetConsent)
+	reasonWithdrawn = "withdrawn" // a consent change: the person took their agreement back
 )
 
 // commandActor is the audit actor of the export and delete commands.
@@ -35,7 +38,7 @@ var commandActor = audit.Actor{Kind: audit.ActorOperator}
 type exportDoc struct {
 	Format     int                        `json:"format"`
 	ExportedAt time.Time                  `json:"exported_at"`
-	Person     exportPerson               `json:"person"`
+	Person     *exportPerson              `json:"person,omitempty"` // absent for an account holder with no profile row
 	Contacts   []exportContact            `json:"emergency_contacts"`
 	Consents   []exportConsent            `json:"consents"`
 	Requests   []exportRequest            `json:"requests"`
@@ -169,8 +172,19 @@ func (s *Service) exportDocument(ctx context.Context, op string, person model.Pe
 		return nil, false, err
 	}
 	row, err := s.store.ExportPerson(ctx, person)
+	hasRow := err == nil
 	if err != nil {
-		return nil, false, wrap(op, err)
+		if !errs.Is(err, errs.NotFound) {
+			return nil, false, wrap(op, err)
+		}
+		// An account holder whose profile row was never made (D37): the identity, access
+		// and module parts still hold data about them. NotFound only when no account exists.
+		if aerr := s.accountExists(ctx, op, person); aerr != nil {
+			if errs.Is(aerr, errs.NotFound) {
+				return nil, false, wrap(op, err)
+			}
+			return nil, false, aerr
+		}
 	}
 	if err := s.record(ctx, audit.Entry{
 		Action: actionExported, Outcome: audit.Succeeded, Actor: act, Subject: person,
@@ -180,11 +194,13 @@ func (s *Service) exportDocument(ctx context.Context, op string, person model.Pe
 	}
 	doc := exportDoc{
 		Format: ExportFormat, ExportedAt: s.now(),
-		Person: exportPerson{
+		Modules: make(map[string]json.RawMessage, len(st.sources)),
+	}
+	if hasRow {
+		doc.Person = &exportPerson{
 			ID: row.ID, PlayaName: row.PlayaName, Pronouns: row.Pronouns, Language: row.Language, LegalName: row.LegalName,
 			Phone: row.Phone, ContactEmail: row.ContactEmail, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
-		},
-		Modules: make(map[string]json.RawMessage, len(st.sources)),
+		}
 	}
 	contacts, err := s.store.ExportContacts(ctx, person)
 	if err != nil {
@@ -235,6 +251,13 @@ func (s *Service) exportDocument(ctx context.Context, op string, person model.Pe
 		return nil, true, errs.E(op, errs.Internal, fmt.Errorf("encode the export: %w", err))
 	}
 	return out, true, nil
+}
+
+// accountExists asks identity whether person has an account: nil when it does, errs.NotFound
+// when it does not, and the failure's kind otherwise.
+func (s *Service) accountExists(ctx context.Context, op string, person model.PersonID) error {
+	_, err := s.accounts.EmailOf(ctx, person)
+	return wrap(op, err)
 }
 
 // rawPart calls identity's or authz's export and checks it is JSON.
@@ -380,9 +403,21 @@ func (s *Service) deleteInTx(ctx context.Context, op string, st *linkState, d de
 		}
 	}
 	// Lock the row: a contact added concurrently would otherwise be dropped by the cascade
-	// without being counted.
+	// without being counted. An account holder with no row (D37) still has an account and
+	// grants: the module, access and identity steps run, people's own deletes are no-ops
+	// and no people.person-deleted is published. NotFound only when no account exists.
+	hasRow := true
 	if _, err := s.store.GetForUpdate(ctx, person); err != nil {
-		return DeletionReport{}, wrap(op, err)
+		if !errs.Is(err, errs.NotFound) || !d.request.IsZero() {
+			return DeletionReport{}, wrap(op, err)
+		}
+		if aerr := s.accountExists(ctx, op, person); aerr != nil {
+			if errs.Is(aerr, errs.NotFound) {
+				return DeletionReport{}, wrap(op, err)
+			}
+			return DeletionReport{}, aerr
+		}
+		hasRow = false
 	}
 	rep := DeletionReport{Person: person, Modules: make(map[string]ModuleDeletion, len(st.sources))}
 	for _, src := range st.sources {
@@ -399,24 +434,26 @@ func (s *Service) deleteInTx(ctx context.Context, op string, st *linkState, d de
 	if rep.Identity, err = s.accounts.DeletePerson(ctx, person); err != nil {
 		return DeletionReport{}, fmt.Errorf("%s: identity: %w", op, err)
 	}
-	for _, del := range []func(context.Context, model.PersonID) (int, error){
-		s.store.DeleteRequestsOf, s.store.DeleteConsentsOf, s.store.DeleteContactsOf,
-	} {
-		n, err := del(ctx, person)
+	if hasRow {
+		for _, del := range []func(context.Context, model.PersonID) (int, error){
+			s.store.DeleteRequestsOf, s.store.DeleteConsentsOf, s.store.DeleteContactsOf,
+		} {
+			n, err := del(ctx, person)
+			if err != nil {
+				return DeletionReport{}, wrap(op, err)
+			}
+			rep.People += n
+		}
+		n, err := s.store.DeletePerson(ctx, person)
 		if err != nil {
+			if errs.Is(err, errs.Conflict) {
+				return DeletionReport{}, fieldConflict(op, "person", codeInUse,
+					map[string]string{"constraint": constraintOf(err)}, "a record elsewhere still refers to this person")
+			}
 			return DeletionReport{}, wrap(op, err)
 		}
 		rep.People += n
 	}
-	n, err := s.store.DeletePerson(ctx, person)
-	if err != nil {
-		if errs.Is(err, errs.Conflict) {
-			return DeletionReport{}, fieldConflict(op, "person", codeInUse,
-				map[string]string{"constraint": constraintOf(err)}, "a record elsewhere still refers to this person")
-		}
-		return DeletionReport{}, wrap(op, err)
-	}
-	rep.People += n
 	kept, err := s.auditCount.CountAbout(ctx, person)
 	if err != nil {
 		return DeletionReport{}, fmt.Errorf("%s: count the audit entries: %w", op, err)
@@ -436,6 +473,9 @@ func (s *Service) deleteInTx(ctx context.Context, op string, st *linkState, d de
 	}
 	if err := s.record(ctx, entries...); err != nil {
 		return DeletionReport{}, err
+	}
+	if !hasRow {
+		return rep, nil
 	}
 	if err := s.publishPerson(ctx, SignalPersonDeleted, person); err != nil {
 		return DeletionReport{}, err
@@ -570,13 +610,15 @@ func notFoundRequest(op string) error {
 }
 
 // ListRequests returns the deletion requests with the status (open when zero), oldest
-// first, optionally for one person. Needs people.data.delete. Fails errs.Permission (F44),
-// errs.Invalid (status) and store kinds.
+// first, optionally for one person. Needs people.data.delete. Reading a request that has a
+// note, someone else's, records people.request.read (F57). Fails errs.Permission (F44),
+// errs.Invalid (status), the recorder's kind and store kinds.
 func (s *Service) ListRequests(ctx context.Context, q RequestQuery) (_ []Request, err error) {
 	const op = "people.Service.ListRequests"
 	ctx, span := s.start(ctx, "list-requests")
 	defer endSpan(span, &err)
-	if _, err := s.actorPerson(ctx, op); err != nil {
+	a, err := s.actorPerson(ctx, op)
+	if err != nil {
 		return nil, err
 	}
 	if err := s.require(ctx, op, PermissionDataDelete); err != nil {
@@ -592,6 +634,23 @@ func (s *Service) ListRequests(ctx context.Context, q RequestQuery) (_ []Request
 	rs, err := s.store.ListRequests(ctx, status.String(), q.Person, maxRequestsListed)
 	if err != nil {
 		return nil, wrap(op, err)
+	}
+	// A note is the person's own words and may say anything: reading someone else's is
+	// recorded after loading and before returning, one entry per request with a note (D37).
+	var reads []audit.Entry
+	for _, r := range rs {
+		if r.Note == "" || r.Person == a.Person {
+			continue
+		}
+		reads = append(reads, audit.Entry{
+			Action: actionRequestRead, Outcome: audit.Succeeded, Subject: r.Person, Record: audit.RefOf(kindRequest, r.ID),
+			Fields: []string{"note"}, Level: model.SensitivityPersonal,
+		})
+	}
+	if len(reads) > 0 {
+		if err := s.record(ctx, reads...); err != nil {
+			return nil, err
+		}
 	}
 	return requestsOf(rs), nil
 }

@@ -110,3 +110,21 @@ func AfterCommit(ctx context.Context, fn func(ctx context.Context)) error {
 	}
 	return t.Add(ctx, fn) //nolint:wrapcheck // txctx returns errs errors
 }
+
+// TxMode reports the transaction ctx carries: its Mode and true when some DB's Transact
+// (a *Pool's or a dbtest.Fake's; the owner is not checked, as AfterCommit does not check
+// it) handed this ctx, or a child of it, to its fn; the zero Mode and false otherwise.
+// It still reports a transaction that has ended when the caller kept fn's ctx past
+// Transact's return. It reads one context value, does no I/O and cannot fail. audit uses
+// it to never spool an entry while ctx carries a transaction. db.None() never runs a
+// Transact fn, so a ctx under it never carries a transaction.
+func TxMode(ctx context.Context) (Mode, bool) {
+	t := txctx.From(ctx)
+	if t == nil {
+		return 0, false
+	}
+	if t.Write {
+		return Write, true
+	}
+	return Read, true
+}

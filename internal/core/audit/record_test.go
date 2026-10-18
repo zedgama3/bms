@@ -8,8 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn" //nolint:depguard // refusingDB must implement db.DB, whose Exec returns pgconn.CommandTag
+
 	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/db"
+	"github.com/zedgama3/bms/internal/core/db/dbtest"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/signals/signalstest"
 	"github.com/zedgama3/bms/internal/lib/errs"
@@ -100,6 +103,72 @@ func TestRecord_InsideWriteTx_JoinsTheCallersTransaction(t *testing.T) {
 	calls := f.db.Calls()
 	if len(calls) != 1 || !calls[0].InTx {
 		t.Fatalf("calls = %+v, want one statement inside the caller's transaction", calls)
+	}
+}
+
+func TestRecord_InsideReadTx_Fake_ReturnsInternal(t *testing.T) {
+	f := newFx(t)
+	rec := f.scoped(t, "identity")
+	err := f.db.Transact(ctxT(t), db.Read, func(ctx context.Context) error {
+		return rec.Record(ctx, loginEntry())
+	})
+	wantKind(t, err, errs.Internal)
+	if n := len(f.db.Calls()); n != 0 {
+		t.Errorf("a Record inside a read transaction ran %d statements", n)
+	}
+}
+
+func TestRecord_InsideReadTx_OnReadOnlyCopy_ReturnsInternal_NotSpooled(t *testing.T) {
+	f := newFx(t)
+	rec := f.scoped(t, "identity")
+	f.readOnly()
+	err := f.db.Transact(ctxT(t), db.Read, func(ctx context.Context) error {
+		return rec.Record(ctx, loginEntry())
+	})
+	wantKind(t, err, errs.Internal)
+	if n := len(f.spoolLines(t)); n != 0 {
+		t.Errorf("spool lines = %d, want none", n)
+	}
+}
+
+// refusingDB is a dbtest.Fake whose Exec records whether the attempt ran on a transaction
+// and then refuses it as a read-only server does, so the attempted insert is visible (the
+// Fake itself lists no refused statement).
+type refusingDB struct {
+	*dbtest.Fake
+	attempts []bool // one per Exec: true when ctx carried a transaction
+}
+
+func (r *refusingDB) Exec(ctx context.Context, _ string, _ ...any) (pgconn.CommandTag, error) {
+	_, inTx := db.TxMode(ctx)
+	r.attempts = append(r.attempts, inTx)
+	return pgconn.CommandTag{}, errs.E("test.refusingDB.Exec", errs.Unavailable, db.ErrReadOnly)
+}
+
+func TestRecord_InsideWriteTx_ReadOnly_ReturnsErrReadOnly_NotSpooled(t *testing.T) {
+	var rdb *refusingDB
+	f := newFx(t, func(o *audit.Options) {
+		fake, ok := o.DB.(*dbtest.Fake)
+		if !ok {
+			t.Fatalf("Options.DB is %T, want *dbtest.Fake", o.DB)
+		}
+		rdb = &refusingDB{Fake: fake}
+		o.DB = rdb
+	})
+	rec := f.scoped(t, "identity")
+	err := rdb.Transact(ctxT(t), db.Write, func(ctx context.Context) error {
+		f.readOnly() // the cached flag flips after the transaction began
+		return rec.Record(ctx, loginEntry())
+	})
+	wantKind(t, err, errs.Unavailable)
+	if !errors.Is(err, db.ErrReadOnly) {
+		t.Errorf("err = %v, want it to wrap db.ErrReadOnly", errs.KindOf(err))
+	}
+	if len(rdb.attempts) != 1 || !rdb.attempts[0] {
+		t.Errorf("insert attempts (in transaction?) = %v, want one, on the transaction", rdb.attempts)
+	}
+	if n := len(f.spoolLines(t)); n != 0 {
+		t.Errorf("spool lines = %d, want none", n)
 	}
 }
 

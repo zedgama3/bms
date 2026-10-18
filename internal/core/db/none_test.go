@@ -80,3 +80,29 @@ func TestAfterCommit_OutsideTransaction_RunsImmediately(t *testing.T) {
 		t.Fatalf("hook ran %d times before AfterCommit returned, want 1", ran)
 	}
 }
+
+func TestTxMode_OutsideTransaction_ReturnsFalse(t *testing.T) {
+	type key struct{}
+	for name, ctx := range map[string]context.Context{
+		"background": context.Background(),
+		"with value": context.WithValue(context.Background(), key{}, "v"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if mode, ok := db.TxMode(ctx); ok || mode != 0 {
+				t.Errorf("TxMode = (%v, %v), want (0, false)", mode, ok)
+			}
+		})
+	}
+}
+
+func TestTxMode_UnderNoneDB_ReportsFalse(t *testing.T) {
+	ran := false
+	err := db.None().Transact(context.Background(), db.Write, func(context.Context) error {
+		ran = true
+		return nil
+	})
+	wantNoDatabase(t, err)
+	if ran {
+		t.Error("None().Transact ran fn, so a ctx could carry a transaction")
+	}
+}

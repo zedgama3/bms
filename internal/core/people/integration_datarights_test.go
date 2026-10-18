@@ -638,14 +638,31 @@ func TestExport_UnknownPerson_ReturnsNotFound(t *testing.T) {
 	wantKind(t, err, errs.NotFound)
 }
 
-// F11 applies to a person's own export too: no row, no export. (The spec lists Export
-// among the calls that fail NotFound for an unknown person and makes no exception for self.)
-func TestExport_SelfWithoutARow_ReturnsNotFound(t *testing.T) {
+// F58: an account holder whose profile row was never made still has an export; with no
+// account either, there is nothing to export.
+func TestExport_AccountWithoutPersonRow_ReturnsDocumentWithoutPerson(t *testing.T) {
 	f := newExportFixture(t)
 	ghost := newPerson()
-	_, err := f.svc.Export(asPerson(ctxT(t), ghost), ghost)
+	raw, err := f.svc.Export(asPerson(ctxT(t), ghost), ghost) // a session implies an account
+	wantNoErr(t, err)
+	var doc map[string]json.RawMessage
+	wantNoErr(t, json.Unmarshal(raw, &doc))
+	if _, has := doc["person"]; has {
+		t.Error("the document has a person part for someone with no profile row")
+	}
+	for _, key := range []string{"identity", "access", "modules"} {
+		if len(doc[key]) == 0 {
+			t.Errorf("the document lacks %q", key)
+		}
+	}
+	if f.count("people.person.exported") != 1 {
+		t.Error("the export was not recorded")
+	}
+	// No row and no account: NotFound, and nothing recorded.
+	_, actx := f.admin(permExport)
+	_, err = f.svc.Export(actx, newPerson())
 	wantKind(t, err, errs.NotFound)
-	if f.count("people.person.exported") != 0 {
+	if f.count("people.person.exported") != 1 {
 		t.Error("an export that found nothing was recorded")
 	}
 }
@@ -883,4 +900,35 @@ func TestSections_NotLinked_PageCarriesNone(t *testing.T) {
 	if len(prof.Sections) != 0 {
 		t.Errorf("sections before Link: %+v", prof.Sections)
 	}
+}
+
+// F58
+func TestDelete_AccountWithoutPersonRow_RunsIdentityAndAuthz(t *testing.T) {
+	f := newDelFixture(t, false)
+	ghost := newPerson()
+	f.accts.mu.Lock()
+	f.accts.byPerson[ghost] = fakeAccount{acct: model.NewID[model.AccountID](), email: "ghost.holder@example.org"}
+	f.accts.mu.Unlock()
+	before := len(f.published(sigDeleted))
+	rep, err := f.svc.Delete(f.ctx, ghost)
+	wantNoErr(t, err)
+	if rep.Person != ghost || rep.People != 0 {
+		t.Errorf("report = %+v, want people's own parts empty", rep)
+	}
+	if rep.Identity != 1 || rep.Access != 2 {
+		t.Errorf("Identity/Access = %d/%d, want the seams' counts 1/2", rep.Identity, rep.Access)
+	}
+	want := []string{"module.alpha.delete", "module.beta.delete", "access.delete", "accounts.delete"}
+	if got := f.log.all(); strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("calls = %v, want %v", got, want)
+	}
+	if len(f.published(sigDeleted)) != before {
+		t.Error("people.person-deleted was published for a person who had no row")
+	}
+	if e := f.only("people.person.deleted"); e.Subject != ghost {
+		t.Errorf("entry = %+v", e)
+	}
+	// Idempotent: the account is gone now, so a second call is NotFound.
+	_, err = f.svc.Delete(f.ctx, ghost)
+	wantKind(t, err, errs.NotFound)
 }

@@ -397,6 +397,7 @@ func TestRoles_CancelledContext_ReturnsCanceled(t *testing.T) {
 func TestUpdateRole_ReplacesNameDescriptionAndPermissions(t *testing.T) {
 	r := newRig(t)
 	ro := r.mkRole(authz.ScopeSite, pMedRead, pPayAudit)
+	seeded := len(r.entries("access.role.changed")) // Seed records one per starter permission (D37)
 	wantNoErr(t, r.clk.Advance(time.Hour))
 	got, err := r.svc.UpdateRole(r.sctx(), ro.ID, authz.RoleInput{Name: "Renamed", Description: "New", Permissions: []authz.Permission{pPayApprove}})
 	wantNoErr(t, err)
@@ -406,8 +407,8 @@ func TestUpdateRole_ReplacesNameDescriptionAndPermissions(t *testing.T) {
 	if got.Scope != authz.ScopeSite || got.ID != ro.ID || !got.CreatedAt.Equal(ro.CreatedAt) || !got.UpdatedAt.Equal(r.clk.Now()) {
 		t.Fatalf("immutable or time fields wrong: %+v", got)
 	}
-	if len(r.entries("access.role.changed")) != 1 {
-		t.Errorf("actions = %v, want one access.role.changed", r.actions())
+	if len(r.entries("access.role.changed")) != seeded+1 {
+		t.Errorf("actions = %v, want one new access.role.changed", r.actions())
 	}
 }
 
@@ -505,6 +506,21 @@ func TestUpdateRole_RemovesLastAccessAdmin_ReturnsConflict(t *testing.T) {
 		t.Fatal("the permission was removed despite the conflict")
 	}
 	// The superuser is not exempt from the invariant on role edits.
+	_, err = r.svc.UpdateRole(r.sctx(), ro.ID, authz.RoleInput{Name: "Access", Permissions: keep})
+	wantCode(t, err, errs.Conflict, "last_access_admin")
+}
+
+// F27 (D37): another holder a separation-of-duties rule denies the permission does not count.
+func TestUpdateRole_RemovesLastAdminDeniedByRule_ReturnsConflict(t *testing.T) {
+	r := newRig(t)
+	r.admin()
+	other := r.holder(pGrantsMgmt)
+	barred := r.mkRole(authz.ScopeSite, pMedRead)
+	r.give(other, barred, model.DepartmentID{}, time.Time{})
+	_, err := r.svc.CreateRule(r.sctx(), authz.RuleInput{Role: barred.ID, Permission: pGrantsMgmt})
+	wantNoErr(t, err) // the first admin remains effective
+	ro := r.roleKey(authz.RoleAccessAdmin)
+	keep := slices.DeleteFunc(permNames(ro), func(p authz.Permission) bool { return p == pGrantsMgmt })
 	_, err = r.svc.UpdateRole(r.sctx(), ro.ID, authz.RoleInput{Name: "Access", Permissions: keep})
 	wantCode(t, err, errs.Conflict, "last_access_admin")
 }

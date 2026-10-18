@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/zedgama3/bms/internal/core/authz"
+	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/model"
 )
@@ -150,6 +151,22 @@ func TestDeletePerson_LastAccessAdmin_ReturnsConflict(t *testing.T) {
 	_ = other
 }
 
+// F60 (D37): another holder a separation-of-duties rule denies the permission does not count.
+func TestDeletePerson_LastAdminDeniedByRule_ReturnsConflict(t *testing.T) {
+	r := newRig(t)
+	admin := r.admin()
+	other := r.holder(pGrantsMgmt)
+	barred := r.mkRole(authz.ScopeSite, pMedRead)
+	r.give(other, barred, noDept, time.Time{})
+	_, err := r.svc.CreateRule(r.sctx(), authz.RuleInput{Role: barred.ID, Permission: pGrantsMgmt})
+	wantNoErr(t, err)
+	_, err = r.svc.DeletePerson(ctxT(t), admin)
+	wantCode(t, err, errs.Conflict, "last_access_admin")
+	if len(r.grantsOf(admin)) != 1 {
+		t.Error("grants were deleted despite the conflict")
+	}
+}
+
 // F61
 func TestDeletePerson_ReadOnly_ReturnsReadOnly(t *testing.T) {
 	r := newRig(t)
@@ -166,4 +183,43 @@ func TestPersonData_StoreFails_ReturnsStoreKind(t *testing.T) {
 	wantKind(t, err, errs.Unavailable)
 	_, err = r.svc.DeletePerson(ctxT(t), p)
 	wantKind(t, err, errs.Unavailable)
+}
+
+// F66
+func TestDeletePerson_PublishesGrantRevokedPerGrant(t *testing.T) {
+	r := newRig(t)
+	r.admin() // another admin, so deleting the person is allowed
+	p := r.person()
+	g1 := r.give(p, r.mkRole(authz.ScopeSite, pMedRead), noDept, time.Time{})
+	g2 := r.give(p, r.mkRole(authz.ScopeDepartment, pShiftRead), r.d1, time.Time{})
+	g3 := r.give(p, r.mkRole(authz.ScopeSite, pPayAudit), noDept, r.clk.Now().Add(time.Hour))
+	wantNoErr(t, r.clk.Advance(2*time.Hour)) // g3 has ended; it is deleted and announced too
+	before := len(r.sigsOf(sigRevoked))
+	n, err := r.svc.DeletePerson(ctxT(t), p)
+	wantNoErr(t, err)
+	if n != 3 {
+		t.Fatalf("deleted %d grants, want 3", n)
+	}
+	sigs := r.sigsOf(sigRevoked)[before:]
+	if len(sigs) != 3 {
+		t.Fatalf("%d grant-revoked signals, want one per removed grant", len(sigs))
+	}
+	seen := map[authz.GrantID]bool{}
+	for _, s := range sigs {
+		gid, err := signals.Get[authz.GrantID](s.Payload, "grant")
+		wantNoErr(t, err)
+		seen[gid] = true
+	}
+	for _, g := range []authz.Grant{g1, g2, g3} {
+		if !seen[g.ID] {
+			t.Errorf("no signal for grant %v", g.ID)
+		}
+	}
+	// A person with no grants announces nothing.
+	before = len(r.sigsOf(sigRevoked))
+	_, err = r.svc.DeletePerson(ctxT(t), r.person())
+	wantNoErr(t, err)
+	if len(r.sigsOf(sigRevoked)) != before {
+		t.Error("a person without grants published a signal")
+	}
 }

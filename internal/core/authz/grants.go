@@ -322,7 +322,8 @@ func (s *Service) checkSeparation(ctx context.Context, op string, person model.P
 // Permission, so a department admin learns nothing of grants elsewhere (F49), unless they
 // hold no granting permission at all (errs.Permission). Fails errs.Invalid (field person,
 // code self) for one's own grant (F50), errs.Conflict (last_access_admin) when it is the
-// last active site-wide holder of access.grants.manage (F51) and errs.Unavailable wrapping
+// last effective access admin: an active site-wide holder of access.grants.manage no
+// separation-of-duties rule denies it (F51) and errs.Unavailable wrapping
 // db.ErrReadOnly.
 func (s *Service) Revoke(ctx context.Context, id GrantID) (err error) {
 	const op = "authz.Service.Revoke"

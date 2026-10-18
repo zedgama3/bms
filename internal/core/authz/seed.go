@@ -3,12 +3,18 @@ package authz
 import (
 	"context"
 	"errors"
+	"slices"
 	"strconv"
 
+	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/telemetry"
 	"github.com/zedgama3/bms/internal/lib/validate"
 )
+
+// seedReasonPrefix starts the Reason of the access.role.changed entry Seed records; the
+// rest is the permission name added (a declared name, never personal data).
+const seedReasonPrefix = "seed:"
 
 var errRuleReadBack = errors.New("the rule just inserted cannot be read back")
 
@@ -19,8 +25,9 @@ var errRuleReadBack = errors.New("the rule just inserted cannot be read back")
 // department starter role (department-admin) and is retried at the next call. It runs in
 // one Write transaction under the invariants lock and is idempotent. Consumer: app's
 // migrate command, after db.Migrate, on the writing copy. Fails errs.Invalid for a bad
-// declaration and errs.Unavailable wrapping db.ErrReadOnly on a read-only copy. Not audited
-// and needs no actor.
+// declaration and errs.Unavailable wrapping db.ErrReadOnly on a read-only copy. It needs no
+// actor; each permission it adds to an existing role is recorded as access.role.changed
+// (actor: the operator, Reason "seed:<permission>") in the same transaction.
 func (s *Service) Seed(ctx context.Context, declared []PermissionDecl) (_ SeedResult, err error) {
 	const op = "authz.Service.Seed"
 	ctx, span := s.start(ctx, "seed")
@@ -49,9 +56,26 @@ func (s *Service) Seed(ctx context.Context, declared []PermissionDecl) (_ SeedRe
 		if len(keys) == 0 {
 			return nil
 		}
-		var err error
-		added, err = s.store.SeedStarterPermissions(ctx, keys, perms, s.now())
-		return wrap(op, err)
+		seeded, err := s.store.SeedStarterPermissions(ctx, keys, perms, s.now())
+		if err != nil {
+			return wrap(op, err)
+		}
+		added = len(seeded)
+		// An upgrade that gives a starter role a permission leaves a trace in the log, in the
+		// same transaction, so the log shows why the role gained access (D37).
+		for chunk := range slices.Chunk(seeded, audit.MaxBatch) {
+			entries := make([]audit.Entry, len(chunk))
+			for i, sp := range chunk {
+				entries[i] = audit.Entry{
+					Action: actionRoleChanged, Outcome: audit.Succeeded, Actor: audit.Actor{Kind: audit.ActorOperator},
+					Record: audit.RefOf(kindRole, sp.Role), Reason: seedReasonPrefix + sp.Permission,
+				}
+			}
+			if err := s.record(ctx, entries...); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		return SeedResult{}, err

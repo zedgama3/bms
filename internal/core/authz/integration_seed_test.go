@@ -4,8 +4,10 @@ package authz_test
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
+	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/model"
@@ -183,4 +185,25 @@ func TestSeed_StoreFails_ReturnsStoreKind(t *testing.T) {
 	r.fdb.set(func(f *faultDB) { f.txErr, f.readErr = errDown, errDown })
 	_, err := r.svc.Seed(r.sctx(), r.opts.Declared)
 	wantKind(t, err, errs.Unavailable)
+}
+
+func TestSeed_AddsPermissions_RecordsOneRoleChangePerPermission(t *testing.T) {
+	r := newRigNoSeed(t)
+	res, err := r.svc.Seed(r.sctx(), r.opts.Declared)
+	wantNoErr(t, err)
+	es := r.entries("access.role.changed")
+	if res.Added == 0 || len(es) != res.Added {
+		t.Fatalf("Added = %d, role.changed entries = %d; want one per added permission", res.Added, len(es))
+	}
+	for _, e := range es {
+		if e.Actor.Kind != audit.ActorOperator || e.Record.Kind != "access.role" || !strings.HasPrefix(e.Reason, "seed:") {
+			t.Fatalf("entry = %+v", e)
+		}
+	}
+	// A second run adds nothing and records nothing.
+	res, err = r.svc.Seed(r.sctx(), r.opts.Declared)
+	wantNoErr(t, err)
+	if res.Added != 0 || len(r.entries("access.role.changed")) != len(es) {
+		t.Errorf("repeat Added = %d, entries = %d", res.Added, len(r.entries("access.role.changed")))
+	}
 }

@@ -3,12 +3,14 @@ package audittest
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
 	"sync"
 
 	"github.com/zedgama3/bms/internal/core/audit"
+	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/lib/validate"
 )
@@ -41,7 +43,8 @@ func checkBatch(area string, entries []audit.Entry) error {
 
 // Fake is a Recorder for tests: it validates entries like the real one (grammar, area,
 // limits), keeps them in memory, and never touches a database or a file. Safe for
-// concurrent use.
+// concurrent use. Like the real recorder it fails errs.Internal on a Record inside a
+// db.Read transaction (F45).
 type Fake struct {
 	area string
 
@@ -70,6 +73,9 @@ func (f *Fake) Record(ctx context.Context, entries ...audit.Entry) error {
 	}
 	if err := checkBatch(f.area, entries); err != nil {
 		return err
+	}
+	if mode, ok := db.TxMode(ctx); ok && mode == db.Read {
+		return errs.E("audittest.Fake.Record", errs.Internal, errors.New("Record called inside a read transaction; record outside it"))
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()

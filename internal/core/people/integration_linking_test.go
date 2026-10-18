@@ -4,9 +4,11 @@ package people_test
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/zedgama3/bms/internal/core/people"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/model"
 )
@@ -265,4 +267,28 @@ func TestLinkAccount_AlreadyLinkedPerson_ReturnsConflictWithoutCallingIdentity(t
 			t.Error("identity's LinkAccount was called for a person who already has an account")
 		}
 	}
+}
+
+// F56
+func TestLinkAccount_ClearsContactEmail(t *testing.T) {
+	r := newIRig(t, true)
+	r.link()
+	_, ctx := r.admin(permManage, permDirectory)
+	walkOn := r.create(ctx, "Walk On").Person.ID
+	_, err := r.svc.Update(ctx, walkOn, people.ProfileInput{ContactEmail: str(mContactEmail)})
+	wantNoErr(t, err)
+	if n := r.scalarInt("SELECT count(*) FROM core.person WHERE id = $1 AND contact_email IS NOT NULL", [16]byte(walkOn)); n != 1 {
+		t.Fatal("setup: the walk-on has no contact address")
+	}
+	u := r.signUp("link.clears", true)
+	_, err = r.svc.LinkAccount(ctx, walkOn, u.email)
+	wantNoErr(t, err)
+	if n := r.scalarInt("SELECT count(*) FROM core.person WHERE id = $1 AND contact_email IS NOT NULL", [16]byte(walkOn)); n != 0 {
+		t.Error("the contact address survived the link")
+	}
+	e := r.only("people.person.linked")
+	if !slices.Equal(e.Fields, []string{"contact_email"}) || e.Level != model.SensitivityPersonal {
+		t.Errorf("linked entry = %+v, want Fields [contact_email] at personal level", e)
+	}
+	r.noLeak(mContactEmail)
 }

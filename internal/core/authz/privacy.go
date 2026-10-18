@@ -60,10 +60,12 @@ func (s *Service) ExportPerson(ctx context.Context, person model.PersonID) (_ js
 
 // DeletePerson deletes every grant of the person (ended ones too), clears granted_by on the
 // grants they made and returns how many it deleted, recording access.grants.deleted
-// (Subject: the person) when there were any. It runs in one Write transaction under the
+// (Subject: the person) when there were any, and publishing access.grant-revoked for each
+// grant it deleted (inside the transaction, so a rollback delivers none). It runs in one Write transaction under the
 // invariants lock; inside people's transaction it joins it. Idempotent: no grants, no
 // entry, 0. Fails errs.Invalid for a zero ID, errs.Conflict (last_access_admin) when the
-// person is the last active site-wide holder of access.grants.manage, and
+// person is the last effective access admin (an active site-wide holder of
+// access.grants.manage no separation-of-duties rule denies it), and
 // errs.Unavailable wrapping db.ErrReadOnly.
 func (s *Service) DeletePerson(ctx context.Context, person model.PersonID) (_ int, err error) {
 	const op = "authz.Service.DeletePerson"
@@ -80,17 +82,28 @@ func (s *Service) DeletePerson(ctx context.Context, person model.PersonID) (_ in
 		if err := s.lastAdmin(ctx, op, rows.Holders{Permission: string(PermissionGrantsManage), Now: s.now(), Person: person}); err != nil {
 			return err
 		}
-		var err error
-		if n, err = s.store.DeleteGrantsByPerson(ctx, person); err != nil {
+		gone, err := s.store.DeleteGrantsByPerson(ctx, person)
+		if err != nil {
 			return wrap(op, err)
 		}
+		n = len(gone)
 		if err := s.store.ClearGrantedBy(ctx, person); err != nil {
 			return wrap(op, err)
 		}
 		if n == 0 {
 			return nil
 		}
-		return s.record(ctx, audit.Entry{Action: actionGrantsGone, Outcome: audit.Succeeded, Subject: person})
+		if err := s.record(ctx, audit.Entry{Action: actionGrantsGone, Outcome: audit.Succeeded, Subject: person}); err != nil {
+			return err
+		}
+		// One access.grant-revoked per removed grant, so subscribers that mirror grants
+		// stay right when a person is deleted (D37, F66).
+		for _, g := range gone {
+			if err := s.signals.Publish(ctx, SignalGrantRevoked, grantPayload(g)); err != nil {
+				return wrap(op, err)
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		return 0, err

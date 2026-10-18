@@ -16,7 +16,8 @@ import (
 
 // handleAccountCreated is the identity.account-created subscriber: it creates the empty
 // person row behind a new account, idempotently, and publishes people.person-created only
-// when it inserted one. It runs as the system (no actor). Fails errs.Invalid for a payload
+// when it inserted one, and only while the account still exists (it takes the person's
+// deletion lock first). It runs as the system (no actor). Fails errs.Invalid for a payload
 // without person (F47), errs.Unavailable wrapping db.ErrReadOnly (F46) and store kinds;
 // signals logs and counts the failure, and the person's first UpdateMe repairs the gap.
 func (s *Service) handleAccountCreated(ctx context.Context, sig signals.Signal) (err error) {
@@ -29,6 +30,18 @@ func (s *Service) handleAccountCreated(ctx context.Context, sig signals.Signal) 
 	}
 	span.SetAttrs(telemetry.ID("person_id", person))
 	err = s.inTx(ctx, db.Write, func(ctx context.Context) error {
+		// A deletion of this person in flight finishes first, and the row is made only while
+		// the account is still there: a late delivery must not leave an orphan row behind a
+		// deletion that succeeded without one (D37, the same rule as UpdateMe's repair).
+		if err := s.store.LockDeletion(ctx, person); err != nil {
+			return wrap(op, err)
+		}
+		if _, err := s.accounts.EmailOf(ctx, person); err != nil {
+			if errs.Is(err, errs.NotFound) {
+				return nil
+			}
+			return wrap(op, err)
+		}
 		_, inserted, err := s.store.InsertPerson(ctx, rows.Person{ID: person}, s.now())
 		if err != nil {
 			return wrap(op, err)
@@ -43,7 +56,8 @@ func (s *Service) handleAccountCreated(ctx context.Context, sig signals.Signal) 
 
 // LinkAccount joins the account with the given login address to a person who has none (a
 // walk-on a manager created). Needs people.profiles.manage. Transaction 1 re-points the
-// account through identity and records people.person.linked; transaction 2, best effort,
+// account through identity and clears the walk-on's contact_email (the account's address replaces it) and records
+// people.person.linked; transaction 2, best effort,
 // deletes the empty row sign-up minted for the account (OrphanDeleted) and publishes
 // people.person-deleted for it. A non-empty or referenced orphan is kept. Fails
 // errs.Permission (F14), errs.NotFound (F11; field email, code unknown when no account has
@@ -72,7 +86,8 @@ func (s *Service) LinkAccount(ctx context.Context, person model.PersonID, email 
 		if err := s.store.LockDeletion(ctx, person); err != nil {
 			return wrap(op, err)
 		}
-		if _, err := s.store.GetPerson(ctx, person); err != nil {
+		cur, err := s.store.GetPerson(ctx, person)
+		if err != nil {
 			return wrap(op, err)
 		}
 		switch _, err := s.accounts.EmailOf(ctx, person); {
@@ -86,9 +101,18 @@ func (s *Service) LinkAccount(ctx context.Context, person model.PersonID, email 
 			return wrap(op, err)
 		}
 		res = LinkResult{Account: acct, Orphan: orphan}
-		return s.record(ctx, audit.Entry{
+		entry := audit.Entry{
 			Action: actionLinked, Outcome: audit.Succeeded, Subject: person, Record: audit.RefOf(kindPerson, person),
-		})
+		}
+		// The account's address replaces the walk-on's contact address (D37, F56).
+		if cur.ContactEmail != "" {
+			empty := ""
+			if _, err := s.store.UpdatePerson(ctx, rows.PersonPatch{ID: person, ContactEmail: &empty}, s.now()); err != nil {
+				return wrap(op, err)
+			}
+			entry.Fields, entry.Level = []string{FieldContactEmail}, model.SensitivityPersonal
+		}
+		return s.record(ctx, entry)
 	})
 	if err != nil {
 		return LinkResult{}, wrap(op, err)

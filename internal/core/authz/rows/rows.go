@@ -113,6 +113,18 @@ type Holders struct {
 	Role       RoleID         // UpdateRole: every grant of the role losing the permission
 }
 
+// AdminGrant is one active, site-wide grant of a role holding the permission Holders names.
+type AdminGrant struct {
+	Person  model.PersonID
+	Removes bool // the change removes this grant
+}
+
+// SeededPermission is a role_permission row Seed inserted.
+type SeededPermission struct {
+	Role       RoleID
+	Permission string
+}
+
 // ExportGrant is one grant as ExportPerson shows it, with its role's key and name.
 type ExportGrant struct {
 	Grant     GrantID

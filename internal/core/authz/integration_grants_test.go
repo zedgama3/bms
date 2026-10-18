@@ -950,3 +950,18 @@ func TestListGrants_StoreFails_ReturnsStoreKind(t *testing.T) {
 	_, err := r.svc.ListGrants(r.sctx(), authz.GrantQuery{})
 	wantKind(t, err, errs.Unavailable)
 }
+
+// F51 (D37): an admin a separation-of-duties rule denies the permission is not an effective
+// access admin, so revoking the last effective one is refused.
+func TestRevoke_LastAdminDeniedByRule_ReturnsConflict(t *testing.T) {
+	r := newRig(t)
+	first, second := r.admin(), r.admin()
+	ro := r.mkRole(authz.ScopeSite, pMedRead)
+	r.give(second, ro, noDept, time.Time{})
+	_, err := r.svc.CreateRule(r.sctx(), authz.RuleInput{Role: ro.ID, Permission: authz.PermissionGrantsManage})
+	wantNoErr(t, err) // the first admin remains effective
+	wantCode(t, r.svc.Revoke(r.sctx(), r.grantsOf(first)[0].ID), errs.Conflict, "last_access_admin")
+	if len(r.grantsOf(first)) != 1 {
+		t.Error("the last effective admin's grant was deleted")
+	}
+}

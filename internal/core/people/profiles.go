@@ -524,8 +524,8 @@ func (s *Service) checkContactEmail(ctx context.Context, op string, person model
 }
 
 // UpdateMe changes the actor's own profile. Nil fields are left alone. The playa name and
-// every field the policy requires must be non-empty after the update; a hidden field in the
-// input is refused. A missing row is created (the repair of decision 2). Records
+// every field the policy requires must be non-empty after the update (not checked when the
+// body sets only the language); a hidden field in the input is refused. A missing row is created (the repair of decision 2). Records
 // people.person.changed (people.person.created and the people.person-created signal when
 // the row was missing) in the transaction. The repair takes the person's deletion lock and
 // fails errs.Unauthenticated when the account no longer exists. Fails errs.Unauthenticated, errs.Invalid (F5 to
@@ -578,8 +578,12 @@ func (s *Service) UpdateMe(ctx context.Context, in ProfileInput) (_ Profile, err
 				return wrap(op, err)
 			}
 		}
-		if err := requiredAfter(op, pol, merged(cur, patch)); err != nil {
-			return wrap(op, err)
+		// A save that sets only the language is exempt: the shell stores the language before
+		// the person has filled in the rest (D37, F54).
+		if !f.languageOnly() {
+			if err := requiredAfter(op, pol, merged(cur, patch)); err != nil {
+				return wrap(op, err)
+			}
 		}
 		if !missing && len(changed) == 0 {
 			row = cur

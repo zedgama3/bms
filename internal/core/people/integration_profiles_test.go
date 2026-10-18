@@ -893,3 +893,22 @@ func TestUseCases_CancelledAndExpiredContext(t *testing.T) {
 		})
 	}
 }
+
+// F54
+func TestUpdateMe_LanguageOnly_SkipsRequiredCheck(t *testing.T) {
+	r := newIRig(t, false)
+	r.pol.set(func(p *people.Policy) { p.LegalName = people.FieldRequired; p.Phone = people.FieldRequired })
+	me := newPerson()
+	ctx := asPerson(ctxT(t), me)
+	prof, err := r.svc.UpdateMe(ctx, people.ProfileInput{Language: str("es")})
+	wantNoErr(t, err)
+	if prof.Person.Language != "es" || prof.Person.Complete {
+		t.Errorf("profile = %+v, want language saved and the profile still incomplete", prof.Person)
+	}
+	if !r.rowExists(me) {
+		t.Error("the language save made no row")
+	}
+	// Any other field in the body brings the check back.
+	_, err = r.svc.UpdateMe(ctx, people.ProfileInput{Language: str("fr"), Pronouns: str("they/them")})
+	wantField(t, err, "playa_name", "required")
+}

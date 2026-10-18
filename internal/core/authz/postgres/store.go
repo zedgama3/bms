@@ -40,7 +40,7 @@ func init() {
 // build.
 var (
 	sqlClearGrantedBy    = mustSQL("clear_granted_by.sql")
-	sqlCountHolders      = mustSQL("count_access_admins.sql")
+	sqlAdminGrants       = mustSQL("list_access_admin_grants.sql")
 	sqlDeleteGrant       = mustSQL("delete_grant.sql")
 	sqlDeleteByPerson    = mustSQL("delete_grants_by_person.sql")
 	sqlDeleteRole        = mustSQL("delete_role.sql")
@@ -434,17 +434,32 @@ func inUse(op string, err error) error {
 	return wrapped
 }
 
-// CountHolders counts the active, site-wide grants of roles holding q.Permission: removed
-// are those the change removes, remaining the others.
-func (s *Store) CountHolders(ctx context.Context, q rows.Holders) (removed, remaining int, err error) {
-	const op = "authz.postgres.CountHolders"
-	var r, m int32
-	err = s.db.QueryRow(ctx, sqlCountHolders, q.Permission, q.Now.UTC(),
-		uuidOrNil(q.Grant), uuidOrNil(q.Person), uuidOrNil(q.Role)).Scan(&r, &m)
+// AdminGrants lists the active, site-wide grants of roles holding q.Permission, one row
+// per grant with the person and whether the change q describes removes it.
+func (s *Store) AdminGrants(ctx context.Context, q rows.Holders) ([]rows.AdminGrant, error) {
+	const op = "authz.postgres.AdminGrants"
+	rs, err := s.db.Query(ctx, sqlAdminGrants, q.Permission, q.Now.UTC(),
+		uuidOrNil(q.Grant), uuidOrNil(q.Person), uuidOrNil(q.Role))
 	if err != nil {
-		return 0, 0, db.Wrap(op, err)
+		return nil, db.Wrap(op, err)
 	}
-	return int(r), int(m), nil
+	defer rs.Close()
+	out := []rows.AdminGrant{}
+	for rs.Next() {
+		var (
+			g      rows.AdminGrant
+			person [16]byte
+		)
+		if err := rs.Scan(&person, &g.Removes); err != nil {
+			return nil, db.Wrap(op, err)
+		}
+		g.Person = model.PersonID(person)
+		out = append(out, g)
+	}
+	if err := rs.Err(); err != nil {
+		return nil, db.Wrap(op, err)
+	}
+	return out, nil
 }
 
 // ---- grants -----------------------------------------------------------------------------
@@ -534,23 +549,15 @@ func collectGrants(op string, rs pgx.Rows) ([]rows.Grant, error) {
 	return out, nil
 }
 
-// DeleteGrantsByPerson deletes every grant of the person, ended ones too, and returns how
-// many. Idempotent.
-func (s *Store) DeleteGrantsByPerson(ctx context.Context, person model.PersonID) (int, error) {
+// DeleteGrantsByPerson deletes every grant of the person, ended ones too, and returns them.
+// Idempotent.
+func (s *Store) DeleteGrantsByPerson(ctx context.Context, person model.PersonID) ([]rows.Grant, error) {
 	const op = "authz.postgres.DeleteGrantsByPerson"
 	rs, err := s.db.Query(ctx, sqlDeleteByPerson, [16]byte(person))
 	if err != nil {
-		return 0, db.Wrap(op, err)
+		return nil, db.Wrap(op, err)
 	}
-	defer rs.Close()
-	n := 0
-	for rs.Next() {
-		n++
-	}
-	if err := rs.Err(); err != nil {
-		return 0, db.Wrap(op, err)
-	}
-	return n, nil
+	return collectGrants(op, rs)
 }
 
 // ClearGrantedBy clears the granter of every grant the person made. Idempotent.
@@ -672,16 +679,32 @@ func (s *Store) DeleteRule(ctx context.Context, id rows.RuleID) error {
 
 // ---- seed -------------------------------------------------------------------------------
 
-// SeedStarterPermissions applies parallel (role key, permission) pairs once each and returns
-// the number of role_permission rows inserted.
-func (s *Store) SeedStarterPermissions(ctx context.Context, keys, perms []string, at time.Time) (int, error) {
+// SeedStarterPermissions applies parallel (role key, permission) pairs once each and
+// returns the role_permission rows inserted, sorted by role then permission.
+func (s *Store) SeedStarterPermissions(ctx context.Context, keys, perms []string, at time.Time) ([]rows.SeededPermission, error) {
 	const op = "authz.postgres.SeedStarterPermissions"
 	if len(keys) != len(perms) {
-		return 0, errs.E(op, errs.Internal, errors.New("role keys and permissions differ in length"))
+		return nil, errs.E(op, errs.Internal, errors.New("role keys and permissions differ in length"))
 	}
-	var added int32
-	if err := s.db.QueryRow(ctx, sqlSeedStarterPerms, keys, perms, at.UTC()).Scan(&added); err != nil {
-		return 0, db.Wrap(op, err)
+	rs, err := s.db.Query(ctx, sqlSeedStarterPerms, keys, perms, at.UTC())
+	if err != nil {
+		return nil, db.Wrap(op, err)
 	}
-	return int(added), nil
+	defer rs.Close()
+	out := []rows.SeededPermission{}
+	for rs.Next() {
+		var (
+			sp   rows.SeededPermission
+			role [16]byte
+		)
+		if err := rs.Scan(&role, &sp.Permission); err != nil {
+			return nil, db.Wrap(op, err)
+		}
+		sp.Role = rows.RoleID(role)
+		out = append(out, sp)
+	}
+	if err := rs.Err(); err != nil {
+		return nil, db.Wrap(op, err)
+	}
+	return out, nil
 }

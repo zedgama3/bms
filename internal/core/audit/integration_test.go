@@ -223,6 +223,27 @@ func TestRecord_InsideWriteTx_CommitsAndRollsBackWithTheCaller(t *testing.T) {
 	}
 }
 
+func TestRecord_InsideWriteTx_InsertRefused_ReturnsErrReadOnly_NotSpooled(t *testing.T) {
+	f := newIfx(t)
+	rec := f.scoped(t, "identity")
+	err := f.pool.Transact(ctxT(t), db.Write, func(ctx context.Context) error {
+		if _, err := f.pool.Exec(ctx, "SET LOCAL transaction_read_only = on"); err != nil {
+			return err //nolint:wrapcheck // test
+		}
+		return rec.Record(ctx, loginEntry())
+	})
+	wantKind(t, err, errs.Unavailable)
+	if !errors.Is(err, db.ErrReadOnly) {
+		t.Errorf("err does not wrap db.ErrReadOnly (kind %v)", errs.KindOf(err))
+	}
+	if n := f.count(t, ""); n != 0 {
+		t.Errorf("rows = %d, want 0", n)
+	}
+	if entries, derr := os.ReadDir(f.spoolDir()); derr == nil && len(entries) != 0 {
+		t.Errorf("spool files = %d, want none", len(entries))
+	}
+}
+
 func TestRecord_InsideReadTx_ReturnsInternal(t *testing.T) {
 	f := newIfx(t)
 	rec := f.scoped(t, "identity")

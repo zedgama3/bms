@@ -272,13 +272,50 @@ func (s *Service) UpdateRole(ctx context.Context, id RoleID, in RoleInput) (_ Ro
 	return out, nil
 }
 
-// lastAdmin fails errs.Conflict (field role, code last_access_admin) when the change q
-// describes would remove every active site-wide holder of access.grants.manage. Call it
-// under the invariants lock, before the change.
-func (s *Service) lastAdmin(ctx context.Context, op string, q rows.Holders) error {
-	removed, remaining, err := s.store.CountHolders(ctx, q)
+// effectiveAdmins counts the active, site-wide grants of roles holding access.grants.manage
+// that q removes and that it leaves, ignoring the grants of people a separation-of-duties
+// rule denies the permission (they are not effective access admins). Call it under the
+// invariants lock.
+func (s *Service) effectiveAdmins(ctx context.Context, op string, q rows.Holders) (removed, remaining int, err error) {
+	gs, err := s.store.AdminGrants(ctx, q)
 	if err != nil {
-		return wrap(op, err)
+		return 0, 0, wrap(op, err)
+	}
+	now := s.now()
+	denied := map[model.PersonID]bool{}
+	for _, g := range gs {
+		d, ok := denied[g.Person]
+		if !ok {
+			rules, err := s.store.RulesHeldBy(ctx, g.Person, now)
+			if err != nil {
+				return 0, 0, wrap(op, err)
+			}
+			forbidden, err := s.forbiddenSet(rules)
+			if err != nil {
+				return 0, 0, wrap(op, err)
+			}
+			_, d = forbidden[q.Permission]
+			denied[g.Person] = d
+		}
+		switch {
+		case d:
+		case g.Removes:
+			removed++
+		default:
+			remaining++
+		}
+	}
+	return removed, remaining, nil
+}
+
+// lastAdmin fails errs.Conflict (field role, code last_access_admin) when the change q
+// describes would remove every effective access admin: an active site-wide holder of
+// access.grants.manage whom no separation-of-duties rule denies it. Call it under the
+// invariants lock, before the change.
+func (s *Service) lastAdmin(ctx context.Context, op string, q rows.Holders) error {
+	removed, remaining, err := s.effectiveAdmins(ctx, op, q)
+	if err != nil {
+		return err
 	}
 	if removed > 0 && remaining == 0 {
 		return fieldConflict(op, "role", codeLastAdmin, nil, "another person must hold access management first")

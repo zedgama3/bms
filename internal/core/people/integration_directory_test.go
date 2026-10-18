@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"strings"
 	"testing"
 	"time"
 
@@ -388,8 +387,8 @@ func TestSetConsent_Self_GrantsAndRevokes(t *testing.T) {
 	if e.Subject != me || !slices.Equal(e.Fields, []string{"purpose"}) || e.Level != model.SensitivityInternal {
 		t.Errorf("entry = %+v", e)
 	}
-	if got := fmt.Sprintf("%+v", e); strings.Contains(got, string(purpose)) {
-		t.Errorf("the purpose value is in the audit entry: %s", got)
+	if e.Reason != "granted:"+string(purpose) {
+		t.Errorf("Reason = %q, want the direction and the purpose (D37)", e.Reason)
 	}
 
 	wantNoErr(t, r.clk.Advance(5*time.Second))
@@ -405,6 +404,9 @@ func TestSetConsent_Self_GrantsAndRevokes(t *testing.T) {
 	}
 	if r.count("people.consent.changed") != 2 {
 		t.Errorf("%d consent entries, want 2", r.count("people.consent.changed"))
+	}
+	if got := r.entries("people.consent.changed")[1]; got.Reason != "withdrawn:"+string(purpose) || !slices.Equal(got.Fields, []string{"purpose"}) {
+		t.Errorf("withdrawal entry = %+v, want Reason withdrawn:<purpose>", got)
 	}
 	if n := r.consentRows(me); n != 1 {
 		t.Errorf("%d consent rows, want one per purpose", n)
@@ -744,6 +746,25 @@ func TestSearch_ContactAddress_ExactOnly(t *testing.T) {
 		}
 		if len(f.entries("people.search.read")) <= before {
 			t.Errorf("Search(%q): the match was not audited", q)
+		}
+	}
+}
+
+// F55
+func TestSetConsent_RecordsPurposeAndDirection(t *testing.T) {
+	r := newIRig(t, false)
+	target := r.insertPerson(seed{Playa: "Dusty Ember"})
+	_, ctx := r.admin(permManage)
+	for _, tc := range []struct {
+		granted bool
+		reason  string
+	}{{true, "granted:volunteers.share-contact"}, {false, "withdrawn:volunteers.share-contact"}} {
+		_, err := r.svc.SetConsent(ctx, target, "volunteers.share-contact", tc.granted)
+		wantNoErr(t, err)
+		es := r.entries("people.consent.changed")
+		e := es[len(es)-1]
+		if e.Reason != tc.reason || !slices.Equal(e.Fields, []string{"purpose"}) || e.Subject != target {
+			t.Errorf("granted=%v: entry = %+v, want Reason %q", tc.granted, e, tc.reason)
 		}
 	}
 }

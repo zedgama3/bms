@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/zedgama3/bms/internal/core/audit/postgres"
+	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/telemetry"
 	"github.com/zedgama3/bms/internal/lib/errs"
@@ -42,11 +43,18 @@ func (l *Log) record(ctx context.Context, area string, entries []Entry) (err err
 		return errs.E(op, errs.KindOf(err), err)
 	}
 
+	// A Record inside a Read transaction is a caller bug, decided before any statement
+	// on a writable and a read-only copy alike (decision 12, F15).
+	mode, inTx := db.TxMode(ctx)
+	if inTx && mode == db.Read {
+		return errs.E(op, errs.Internal, errors.New("Record called inside a read transaction; record outside it"))
+	}
+
 	recs, err := l.stamp(ctx, traceID, entries)
 	if err != nil {
 		return err
 	}
-	if err := l.write(ctx, span, recs); err != nil {
+	if err := l.write(ctx, span, recs, inTx); err != nil {
 		return err
 	}
 	return nil
@@ -181,10 +189,14 @@ func capBytes(s string, n int) string {
 	return s[:n]
 }
 
-// write sends the batch to the table, or to the spool when this copy cannot write.
-func (l *Log) write(ctx context.Context, span telemetry.Span, recs []Record) error {
+// write sends the batch to the table, or to the spool when this copy cannot write and
+// ctx carries no transaction. Inside a Write transaction (inTx) the insert runs on the
+// transaction, DB.ReadOnly() is not consulted, and any failure, ErrReadOnly included, is
+// returned and never spooled, so the caller's change rolls back with it (decisions 2, 4;
+// F17b).
+func (l *Log) write(ctx context.Context, span telemetry.Span, recs []Record, inTx bool) error {
 	const op = "audit.Log.Record"
-	if l.opts.DB.ReadOnly() {
+	if !inTx && l.opts.DB.ReadOnly() {
 		return l.toSpool(ctx, span, recs)
 	}
 	rows := make([]postgres.Row, len(recs))
@@ -192,7 +204,7 @@ func (l *Log) write(ctx context.Context, span telemetry.Span, recs []Record) err
 		rows[i] = toRow(r)
 	}
 	if err := l.store.Insert(ctx, rows); err != nil {
-		if readOnlyErr(err) {
+		if !inTx && readOnlyErr(err) {
 			return l.toSpool(ctx, span, recs)
 		}
 		return fmt.Errorf("%s: insert: %w", op, err)

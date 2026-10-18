@@ -9,6 +9,7 @@ import (
 
 	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/audit/audittest"
+	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/db/dbtest"
 	"github.com/zedgama3/bms/internal/core/telemetry/telemetrytest"
 	"github.com/zedgama3/bms/internal/lib/clock"
@@ -200,3 +201,28 @@ func TestFake_ConcurrentUse(t *testing.T) {
 }
 
 var _ audit.Recorder = (*audittest.Fake)(nil)
+
+func TestFake_InsideReadTx_ReturnsInternal(t *testing.T) {
+	d := dbtest.NewFake()
+	f := audittest.NewFake("identity")
+	realRec := realRecorder(t, "identity")
+	err := d.Transact(t.Context(), db.Read, func(ctx context.Context) error {
+		if rerr := realRec.Record(ctx, login()); !errs.Is(rerr, errs.Internal) {
+			t.Errorf("real recorder kind = %v, want Internal", errs.KindOf(rerr))
+		}
+		return f.Record(ctx, login())
+	})
+	if !errs.Is(err, errs.Internal) {
+		t.Fatalf("kind = %v, want Internal", errs.KindOf(err))
+	}
+	if n := len(f.Recorded()); n != 0 {
+		t.Errorf("Recorded = %d inside a read transaction", n)
+	}
+	err = d.Transact(t.Context(), db.Write, func(ctx context.Context) error { return f.Record(ctx, login()) })
+	if err != nil {
+		t.Fatalf("Write transaction: %v", err)
+	}
+	if n := len(f.Recorded()); n != 1 {
+		t.Errorf("Recorded = %d after a write transaction, want 1", n)
+	}
+}

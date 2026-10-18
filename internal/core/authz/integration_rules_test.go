@@ -208,3 +208,46 @@ func TestRules_StoreFails_ReturnsStoreKind(t *testing.T) {
 	_, err = r.svc.CreateRule(r.sctx(), authz.RuleInput{Role: ro.ID, Permission: pMedRead})
 	wantKind(t, err, errs.Timeout)
 }
+
+// F65
+func TestCreateRule_LeavesNoAccessAdmin_ReturnsConflict(t *testing.T) {
+	r := newRig(t)
+	admin := r.admin()
+	ro := r.mkRole(authz.ScopeSite, pMedRead)
+	r.give(admin, ro, noDept, time.Time{})
+	in := authz.RuleInput{Role: ro.ID, Permission: authz.PermissionGrantsManage}
+	_, err := r.svc.CreateRule(r.sctx(), in)
+	wantCode(t, err, errs.Conflict, "last_access_admin")
+	rules, err := r.svc.ListRules(r.sctx())
+	wantNoErr(t, err)
+	if len(rules) != 0 {
+		t.Errorf("a refused rule was written: %+v", rules)
+	}
+	if n := len(r.entries("access.rule.created")); n != 0 {
+		t.Errorf("a refused rule was audited %d times", n)
+	}
+	// A second admin the rule does not reach keeps someone able to manage access.
+	r.admin()
+	_, err = r.svc.CreateRule(r.sctx(), in)
+	wantNoErr(t, err)
+}
+
+func TestCreateRule_NoAccessAdminBefore_IsAllowed(t *testing.T) {
+	r := newRig(t) // only the superuser: nobody to leave without access
+	ro := r.mkRole(authz.ScopeSite, pMedRead)
+	_, err := r.svc.CreateRule(r.sctx(), authz.RuleInput{Role: ro.ID, Permission: authz.PermissionGrantsManage})
+	wantNoErr(t, err)
+}
+
+func TestCreateRule_OtherPermission_SkipsTheAdminCheck(t *testing.T) {
+	r := newRig(t)
+	admin := r.admin()
+	ro := r.mkRole(authz.ScopeSite, pMedRead)
+	r.give(admin, ro, noDept, time.Time{})
+	// A rule that cannot forbid access.grants.manage never refuses, whoever holds the role.
+	_, err := r.svc.CreateRule(r.sctx(), authz.RuleInput{Role: ro.ID, Permission: pMedRead})
+	wantNoErr(t, err)
+	// A level rule counts when access.grants.manage reaches that level: the admin is refused.
+	_, err = r.svc.CreateRule(r.sctx(), authz.RuleInput{Role: ro.ID, Reaches: model.SensitivityInternal})
+	wantCode(t, err, errs.Conflict, "last_access_admin")
+}

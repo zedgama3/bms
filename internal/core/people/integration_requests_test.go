@@ -3,6 +3,7 @@
 package people_test
 
 import (
+	"errors"
 	"slices"
 	"sync"
 	"testing"
@@ -387,6 +388,7 @@ func TestFulfilRequest_NotOpen_ReturnsConflict(t *testing.T) {
 func TestHandleAccountCreated_Twice_InsertsOnce(t *testing.T) {
 	r := newIRig(t, false)
 	acct, p := model.NewID[model.AccountID](), newPerson()
+	signedIn.Store(p, true) // the account exists, as sign-up committed before the delivery
 	sig := accountCreatedSignal(acct, p)
 	wantNoErr(t, r.bus.Deliver(ctxT(t), sig))
 	if !r.rowExists(p) {
@@ -420,6 +422,26 @@ func TestHandleAccountCreated_Twice_InsertsOnce(t *testing.T) {
 	}
 }
 
+// A delivery that arrives after the account was deleted (a deletion that succeeded without a
+// row, D37) must not bring the person row back.
+func TestHandleAccountCreated_AccountGone_MakesNoRow(t *testing.T) {
+	f := newDelFixture(t, false)
+	ghost := newPerson()
+	f.accts.mu.Lock()
+	f.accts.byPerson[ghost] = fakeAccount{acct: model.NewID[model.AccountID](), email: "late.delivery@example.org"}
+	f.accts.mu.Unlock()
+	_, err := f.svc.Delete(f.ctx, ghost)
+	wantNoErr(t, err)
+	before := len(f.published(sigCreated))
+	wantNoErr(t, f.bus.Deliver(ctxT(t), accountCreatedSignal(model.NewID[model.AccountID](), ghost)))
+	if f.rowExists(ghost) {
+		t.Error("a late account-created delivery left an orphan row")
+	}
+	if len(f.published(sigCreated)) != before || f.count("people.person.created") != 0 {
+		t.Error("the late delivery announced or recorded a person")
+	}
+}
+
 func TestHandleAccountCreated_ExistingRow_Untouched(t *testing.T) {
 	r := newIRig(t, false)
 	p := r.insertPerson(seed{Playa: "Dusty Ember", Legal: mLegal})
@@ -436,7 +458,9 @@ func TestHandleAccountCreated_ExistingRow_Untouched(t *testing.T) {
 
 func TestHandleAccountCreated_Concurrent_PublishesOnce(t *testing.T) {
 	r := newIRig(t, false)
-	sig := accountCreatedSignal(model.NewID[model.AccountID](), newPerson())
+	p := newPerson()
+	signedIn.Store(p, true) // the account exists, as sign-up committed before the delivery
+	sig := accountCreatedSignal(model.NewID[model.AccountID](), p)
 	var wg sync.WaitGroup
 	errc := make(chan error, 8)
 	for range 8 {
@@ -511,4 +535,52 @@ func TestSignUp_MissedSignal_FirstSaveRepairs(t *testing.T) {
 	if name != "Late Bloomer" {
 		t.Errorf("name = %q after a late delivery", name)
 	}
+}
+
+// F57
+func TestListRequests_WithNote_RecordsRead(t *testing.T) {
+	r := newIRig(t, false)
+	withNote := r.insertPerson(seed{Playa: "Alpha"})
+	without := r.insertPerson(seed{Playa: "Bravo"})
+	_, err := r.svc.RequestDeletion(asPerson(ctxT(t), withNote), mNote)
+	wantNoErr(t, err)
+	_, err = r.svc.RequestDeletion(asPerson(ctxT(t), without), "")
+	wantNoErr(t, err)
+	_, ctx := r.admin(permDelete)
+
+	got, err := r.svc.ListRequests(ctx, people.RequestQuery{})
+	wantNoErr(t, err)
+	if len(got) != 2 {
+		t.Fatalf("%d requests, want 2", len(got))
+	}
+	e := r.only("people.request.read")
+	if e.Subject != withNote || e.Level != model.SensitivityPersonal || !slices.Equal(e.Fields, []string{"note"}) || e.Record.Kind != "people.request" {
+		t.Errorf("entry = %+v, want one read of the note, about the person who wrote it", e)
+	}
+	r.noLeak(mNote)
+
+	// A list with no notes records nothing; so does the requester reading their own.
+	before := r.count("people.request.read")
+	_, err = r.svc.ListRequests(ctx, people.RequestQuery{Person: without})
+	wantNoErr(t, err)
+	if r.count("people.request.read") != before {
+		t.Error("a list without notes was recorded")
+	}
+
+	// The requester reading their own request (they may also hold the permission) records nothing.
+	selfie := r.insertPerson(seed{Playa: "Charlie"})
+	_, err = r.svc.RequestDeletion(asPerson(ctxT(t), selfie), "my own words")
+	wantNoErr(t, err)
+	r.grant(selfie, permDelete)
+	before = r.count("people.request.read")
+	_, err = r.svc.ListRequests(asPerson(ctxT(t), selfie), people.RequestQuery{Person: selfie})
+	wantNoErr(t, err)
+	if r.count("people.request.read") != before {
+		t.Error("a requester reading their own request was recorded")
+	}
+
+	// A recorder failure fails the read: no audit, no data.
+	r.rec.Fail(errs.E("test", errs.Unavailable, errors.New("audit down")))
+	_, err = r.svc.ListRequests(ctx, people.RequestQuery{})
+	wantKind(t, err, errs.Unavailable)
 }
