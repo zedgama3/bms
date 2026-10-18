@@ -45,12 +45,13 @@ type reservation struct {
 	kept  bool
 }
 
-// reserve counts an attempt for the client address and the canonical address, or fails
-// errs.Unavailable wrapping httpx.ErrRateLimited when either bucket is full (F14, F18).
+// reserve counts an attempt for the client address (limit Policy.ClientFailureLimit) and the
+// canonical address (limit Policy.LoginFailureLimit), or fails errs.Unavailable wrapping
+// httpx.ErrRateLimited when either bucket is full (F14, F18).
 func (s *Service) reserve(ctx context.Context, op string, pol Policy, email model.Email) (*reservation, error) {
 	addr, _ := httpx.ClientAddrFrom(ctx)
 	rv := &reservation{l: s.limiter, addr: addr, email: string(email.Canonical())}
-	at, bucket, ok := s.limiter.reserve(rv.addr, rv.email, s.now, pol.LoginFailureLimit, pol.LoginFailureWindow)
+	at, bucket, ok := s.limiter.reserve(rv.addr, rv.email, s.now, pol.ClientFailureLimit, pol.LoginFailureLimit, pol.LoginFailureWindow)
 	if !ok {
 		s.metrics.limit(ctx, bucket)
 		return nil, errs.E(op, errs.Unavailable, httpx.ErrRateLimited)

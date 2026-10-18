@@ -207,6 +207,43 @@ func TestFail_WithoutFailer_InvalidCarriesFieldsInOrder(t *testing.T) {
 	}
 }
 
+// api D31: the fallback also names the fields of a Conflict, and only when it carries some.
+func TestFail_WithoutFailer_ConflictFields(t *testing.T) {
+	acc := validate.Errors{Op: "test"}
+	acc.Addf("email", "taken", "already in use")
+	tests := []struct {
+		name string
+		err  error
+		want int
+	}{
+		{"with a field error", errs.E("test.signup", errs.Conflict, acc.Err()), 1},
+		{"plain", errs.E("test.signup", errs.Conflict, errors.New(marker)), 0},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			httpx.Fail(rec, newReq(t, http.MethodGet, nil), tc.err)
+			p := decodeProblem(t, rec)
+			if rec.Code != 409 || p.Code != "conflict" || len(p.Fields) != tc.want {
+				t.Fatalf("status %d, problem = %+v", rec.Code, p)
+			}
+			var raw map[string]json.RawMessage
+			if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
+				t.Fatal(err)
+			}
+			if _, has := raw["fields"]; has != (tc.want > 0) {
+				t.Errorf("fields key present = %v", has)
+			}
+			if tc.want == 1 && (p.Fields[0].Field != "email" || p.Fields[0].Code != "taken") {
+				t.Errorf("field = %+v", p.Fields[0])
+			}
+			if strings.Contains(rec.Body.String(), marker) {
+				t.Error("error text in the body")
+			}
+		})
+	}
+}
+
 func TestFail_WithoutFailer_NeverCarriesErrorText(t *testing.T) {
 	for _, k := range []errs.Kind{errs.Internal, errs.Unavailable, errs.Permission, errs.NotFound} {
 		rec := httptest.NewRecorder()

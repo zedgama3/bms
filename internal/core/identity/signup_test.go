@@ -1,6 +1,7 @@
 package identity_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -119,11 +120,11 @@ func TestPassword_Boundaries_Accepted(t *testing.T) {
 // F14
 func TestSignUp_RateLimitedByAddress_429(t *testing.T) {
 	ps := newPolicySource()
-	ps.set(func(p *identity.Policy) { p.LoginFailureLimit = 3 })
+	ps.set(func(p *identity.Policy) { p.ClientFailureLimit = 10 })
 	r := newRig(t, dbtest.NewFake(), withPolicy(ps))
 	ctx := from(ctxT(t), "203.0.113.50")
-	for i := range 3 {
-		_, err := r.svc.SignIn(ctx, identity.Credentials{Email: mail(t, "guess"+string(rune('a'+i))+"@example.org"), Password: pwOther})
+	for i := range 10 {
+		_, err := r.svc.SignIn(ctx, identity.Credentials{Email: mail(t, fmt.Sprintf("guess%d@example.org", i)), Password: pwOther})
 		wantKind(t, err, errs.Unauthenticated)
 	}
 	_, err := r.svc.SignUp(ctx, identity.Credentials{Email: mail(t, "fresh.face@example.org"), Password: pwGood})

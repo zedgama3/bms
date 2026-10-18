@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -155,8 +156,13 @@ func (l *Log) importAndLog(ctx context.Context) {
 // ON CONFLICT (id) DO NOTHING, deleting a file once all its lines are in. Serialized: a
 // concurrent call waits. Returns errs.Unavailable wrapping db.ErrReadOnly without touching
 // a file when the copy cannot write (F32); errs.Unavailable when the directory or a file
-// cannot be read or an insert fails (the file is kept, F36); errs.Invalid, after the other
-// files are done, when a file had an unparseable line (F34). A missing directory is not an
+// cannot be read or an insert fails (the file is kept, F36; a deadline or a cancel is
+// returned as errs.Timeout or errs.Canceled);
+// errs.Invalid, after the other files are done, when a file had an unparseable line (F34) or
+// the database refused a record for what it holds (a CHECK violation or another data
+// condition; not an authentication or connection failure): the records before it are
+// inserted, the file is renamed .failed and the warning names the file and the 1-based line
+// (F36b). A missing directory is not an
 // error (nothing to import).
 func (l *Log) ImportOnce(ctx context.Context) (out Imported, err error) {
 	const op = "audit.Log.ImportOnce"
@@ -247,16 +253,31 @@ func (l *Log) insertFile(ctx context.Context, path, name string, out *Imported) 
 
 	r := bufio.NewReaderSize(f, maxLineBytes)
 	batch := make([]Record, 0, MaxBatch)
-	flush := func() error {
+	lines := make([]int, 0, MaxBatch) // lines[i] is the 1-based line of batch[i]
+	// flush inserts the batch, bisecting when the database refuses a record for what the record
+	// holds (dataRefusal), so every record before the first refused one is in. It reports
+	// aside true then, after warning with the file name and the 1-based line of the refused
+	// record, never a value. Any other failure is returned and the file is kept for the next
+	// try (F36).
+	flush := func() (aside bool, err error) {
 		if len(batch) == 0 {
-			return nil
+			return false, nil
 		}
-		defer func() { batch = batch[:0] }()
-		return l.insertBatch(ctx, batch, out)
+		defer func() { batch, lines = batch[:0], lines[:0] }()
+		refused, ierr := l.insertRows(ctx, batch, out)
+		switch {
+		case ierr != nil:
+			return false, ierr
+		case refused >= 0:
+			l.logger.WarnContext(ctx, "audit spool file failed to import and was set aside",
+				slog.String("file", name), slog.Int("line", lines[refused]), slog.String("problem", reasonInsertInvalid))
+			return true, nil
+		}
+		return false, nil
 	}
 	setAside := func(lineNo int, reason string) (bool, error) {
-		if ferr := flush(); ferr != nil {
-			return false, ferr
+		if aside, ferr := flush(); ferr != nil || aside {
+			return aside, ferr // the insert refusal was warned about where it happened
 		}
 		l.logger.WarnContext(ctx, "audit spool file failed to import and was set aside",
 			slog.String("file", name), slog.Int("line", lineNo), slog.String("problem", reason))
@@ -275,7 +296,7 @@ func (l *Log) insertFile(ctx context.Context, path, name string, out *Imported) 
 				l.metrics.importedN(ctx, 1, outcomeTruncated)
 				l.logger.WarnContext(ctx, "audit spool file ends in an incomplete line, which was dropped", slog.String("file", name))
 			}
-			return false, flush()
+			return flush()
 		case rerr != nil:
 			return false, errs.E(op, errs.Unavailable, fmt.Errorf("read %s: %w", name, rerr))
 		}
@@ -284,9 +305,10 @@ func (l *Log) insertFile(ctx context.Context, path, name string, out *Imported) 
 			return setAside(lineNo, badLineReason(derr))
 		}
 		batch = append(batch, rec)
+		lines = append(lines, lineNo)
 		if len(batch) == MaxBatch {
-			if ferr := flush(); ferr != nil {
-				return false, ferr
+			if aside, ferr := flush(); ferr != nil || aside {
+				return aside, ferr
 			}
 		}
 		if cerr := ctx.Err(); cerr != nil {
@@ -294,6 +316,10 @@ func (l *Log) insertFile(ctx context.Context, path, name string, out *Imported) 
 		}
 	}
 }
+
+// reasonInsertInvalid is the reason class logged when the database refuses a batch as
+// errs.Invalid; it names no value.
+const reasonInsertInvalid = "the database refused a record as invalid"
 
 // badLineReason says why a line was refused without repeating any of it: the name of the
 // first field that failed validation, or the class of the structural problem.
@@ -304,7 +330,48 @@ func badLineReason(err error) string {
 	return "not a valid record"
 }
 
-// insertBatch inserts one batch in a Write transaction, dropping IDs already present.
+// dataRefusal reports whether the database refused a record for what the record holds: a
+// *db.Error whose SQLSTATE is a data exception (class 22) or a not-null, foreign-key,
+// unique or check violation (23502, 23503, 23505, 23514). Retrying cannot help. An
+// errs.Invalid from anything else (a failed login after a rotated password, a missing
+// database) says nothing about the record and is transient for the importer.
+func dataRefusal(err error) bool {
+	var de *db.Error
+	if !errors.As(err, &de) {
+		return false
+	}
+	return strings.HasPrefix(de.Code, "22") || slices.Contains([]string{"23502", "23503", "23505", "23514"}, de.Code)
+}
+
+// insertRows inserts batch and returns -1, or, when the database refuses a record for what
+// it holds, the index of the first refused record after inserting every record before it
+// (bisecting the batch; inserts are idempotent through ON CONFLICT). Any other failure is
+// returned unchanged as an error.
+func (l *Log) insertRows(ctx context.Context, batch []Record, out *Imported) (int, error) {
+	err := l.insertBatch(ctx, batch, out)
+	switch {
+	case err == nil:
+		return -1, nil
+	case !errs.Is(err, errs.Invalid):
+		return -1, err
+	case len(batch) == 1:
+		return 0, nil
+	}
+	mid := len(batch) / 2
+	first, err := l.insertRows(ctx, batch[:mid], out)
+	if err != nil || first >= 0 {
+		return first, err
+	}
+	second, err := l.insertRows(ctx, batch[mid:], out)
+	if err != nil || second < 0 {
+		return -1, err
+	}
+	return mid + second, nil
+}
+
+// insertBatch inserts one batch in a Write transaction, dropping IDs already present. It
+// fails Invalid when the database refuses a record for what it holds (dataRefusal), Timeout
+// or Canceled as the context says, and Unavailable otherwise.
 func (l *Log) insertBatch(ctx context.Context, batch []Record, out *Imported) error {
 	const op = "audit.Log.insertBatch"
 	rows := make([]postgres.Row, len(batch))
@@ -322,8 +389,11 @@ func (l *Log) insertBatch(ctx context.Context, batch []Record, out *Imported) er
 	})
 	if err != nil {
 		kind := errs.Unavailable
-		if k := errs.KindOf(err); k == errs.Canceled || k == errs.Timeout {
+		switch k := errs.KindOf(err); {
+		case k == errs.Canceled || k == errs.Timeout:
 			kind = k
+		case k == errs.Invalid && dataRefusal(err):
+			kind = errs.Invalid
 		}
 		return errs.E(op, kind, err)
 	}

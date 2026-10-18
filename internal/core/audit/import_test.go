@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/zedgama3/bms/internal/core/audit"
+	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/model"
 )
@@ -213,6 +214,145 @@ func TestImportOnce_InsertFails_KeepsFile_RerunIdempotent(t *testing.T) {
 	wantNoErr(t, err)
 	if got.Files != 2 || exists(a) || exists(b) {
 		t.Errorf("rerun: %+v", got)
+	}
+}
+
+// insertFailsFor fails every insert whose arguments mention marker with err.
+func insertFailsFor(flaky *flakyDB, marker string, err error) {
+	flaky.setExecHook(func(_ string, args []any) error {
+		for _, a := range args {
+			var text string
+			switch v := a.(type) {
+			case []byte:
+				text = string(v)
+			case string:
+				text = v
+			default:
+				text = fmt.Sprint(v)
+			}
+			if strings.Contains(text, marker) {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// F36b: an insert failing Invalid (a CHECK violation) sets that file aside; the others import.
+func TestImportOnce_InsertInvalid_RenamesFailed_ContinuesOthers(t *testing.T) {
+	flaky := &flakyDB{}
+	f := newFx(t, func(o *audit.Options) { o.DB = flaky })
+	flaky.Fake = f.db
+	a := f.putSpool(t, "0001-1-aaaaaaaa.jsonl", goodLines(2))
+	b := f.putSpool(t, "0002-1-bbbbbbbb.jsonl", spoolLine("identity.poisoned"))
+	c := f.putSpool(t, "0003-1-cccccccc.jsonl", goodLines(2))
+	insertFailsFor(flaky, "identity.poisoned", errs.E("test", errs.Invalid, &db.Error{Code: "23514"}))
+	got, err := f.log.ImportOnce(ctxT(t))
+	wantKind(t, err, errs.Invalid)
+	noMarker(t, err)
+	if len(got.Failed) != 1 || got.Failed[0] != "0002-1-bbbbbbbb.jsonl" {
+		t.Fatalf("Failed = %v, want the one poisoned file's name", got.Failed)
+	}
+	if exists(a) || exists(c) {
+		t.Error("the files around the poisoned one were not imported and deleted")
+	}
+	if exists(b) || !exists(b+".failed") {
+		t.Error("the poisoned file was not renamed to .failed")
+	}
+	if got.Files != 2 {
+		t.Errorf("Files = %d, want exactly the two good files", got.Files)
+	}
+	insertFailsFor(flaky, "never-matches", nil)
+	again, err := f.log.ImportOnce(ctxT(t))
+	wantNoErr(t, err)
+	if again.Files != 0 || len(again.Failed) != 0 {
+		t.Errorf("second run = %+v; a .failed file must not be retried", again)
+	}
+}
+
+// F36: Unavailable or Timeout on one file's insert keeps that file (no rename).
+func TestImportOnce_InsertTransient_OneFile_KeepsIt_NotFailed(t *testing.T) {
+	for _, kind := range []errs.Kind{errs.Unavailable, errs.Timeout, errs.Canceled} {
+		t.Run(kind.String(), func(t *testing.T) {
+			flaky := &flakyDB{}
+			f := newFx(t, func(o *audit.Options) { o.DB = flaky })
+			flaky.Fake = f.db
+			b := f.putSpool(t, "0001-1-bbbbbbbb.jsonl", spoolLine("identity.poisoned"))
+			insertFailsFor(flaky, "identity.poisoned", errs.E("test", kind, errors.New("down")))
+			got, err := f.log.ImportOnce(ctxT(t))
+			wantKind(t, err, kind)
+			if !exists(b) || len(f.failedFiles(t)) != 0 || len(got.Failed) != 0 {
+				t.Errorf("%v must keep the file as is: failed=%v got=%+v", kind, f.failedFiles(t), got)
+			}
+		})
+	}
+}
+
+// F36b: a refused batch is split; every row before the first refused one is inserted.
+func TestImportOnce_InsertInvalid_InsertsRowsBeforeTheRefusedOne(t *testing.T) {
+	t.Run("a full batch of good lines then one bad", func(t *testing.T) {
+		flaky := &flakyDB{}
+		f := newFx(t, func(o *audit.Options) { o.DB = flaky })
+		flaky.Fake = f.db
+		p := f.putSpool(t, "0001-1-aaaaaaaa.jsonl", goodLines(audit.MaxBatch)+spoolLine("identity.poisoned"))
+		insertFailsFor(flaky, "identity.poisoned", errs.E("test", errs.Invalid, &db.Error{Code: "23514"}))
+		got, err := f.log.ImportOnce(ctxT(t))
+		wantKind(t, err, errs.Invalid)
+		if got.Entries+got.Duplicates != audit.MaxBatch {
+			t.Errorf("Entries = %d, want the %d lines before the refused one", got.Entries, audit.MaxBatch)
+		}
+		if len(got.Failed) != 1 || exists(p) || !exists(p+".failed") {
+			t.Errorf("Failed = %v, file kept = %v", got.Failed, exists(p))
+		}
+	})
+	t.Run("a valid line and a refused line in the same batch", func(t *testing.T) {
+		flaky := &flakyDB{}
+		f := newFx(t, func(o *audit.Options) { o.DB = flaky })
+		flaky.Fake = f.db
+		p := f.putSpool(t, "0001-1-aaaaaaaa.jsonl", spoolLine("identity.login")+spoolLine("identity.poisoned"))
+		insertFailsFor(flaky, "identity.poisoned", errs.E("test", errs.Invalid, &db.Error{Code: "23514"}))
+		got, err := f.log.ImportOnce(ctxT(t))
+		wantKind(t, err, errs.Invalid)
+		if got.Entries+got.Duplicates != 1 {
+			t.Errorf("Entries = %d, want the valid line inserted", got.Entries)
+		}
+		if exists(p) || !exists(p+".failed") {
+			t.Error("the file was not set aside")
+		}
+	})
+}
+
+// F36b: only data errors set a file aside (class 22, 23502, 23514, 23503).
+func TestImportOnce_InsertInvalid_ByCode_SetsAsideOnlyDataErrors(t *testing.T) {
+	tests := []struct {
+		code  string
+		aside bool
+	}{
+		{"22001", true}, {"22P02", true}, {"23502", true}, {"23514", true}, {"23503", true},
+		{"28P01", false}, {"28000", false}, {"3D000", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.code, func(t *testing.T) {
+			flaky := &flakyDB{}
+			f := newFx(t, func(o *audit.Options) { o.DB = flaky })
+			flaky.Fake = f.db
+			p := f.putSpool(t, "0001-1-aaaaaaaa.jsonl", spoolLine("identity.poisoned"))
+			insertFailsFor(flaky, "identity.poisoned", errs.E("test", errs.Invalid, &db.Error{Code: tc.code}))
+			got, err := f.log.ImportOnce(ctxT(t))
+			if tc.aside {
+				wantKind(t, err, errs.Invalid)
+				if len(got.Failed) != 1 || exists(p) || !exists(p+".failed") {
+					t.Errorf("code %s: file not set aside (Failed=%v)", tc.code, got.Failed)
+				}
+				return
+			}
+			if err == nil {
+				t.Errorf("code %s: no error", tc.code)
+			}
+			if !exists(p) || len(f.failedFiles(t)) != 0 || len(got.Failed) != 0 {
+				t.Errorf("code %s is transient: the file must be kept, not renamed (Failed=%v)", tc.code, got.Failed)
+			}
+		})
 	}
 }
 

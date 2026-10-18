@@ -80,6 +80,27 @@ func TestSignUp_Taken_Conflict(t *testing.T) {
 	}
 }
 
+// F15, api D31: through the sign-up handler a taken address is a 409 whose error carries the
+// email/taken field error for the shell's mapper to put in `fields`.
+func TestSignUp_Taken_Handler_409WithEmailTaken(t *testing.T) {
+	p := newPoolRig(t)
+	p.signUpAs("Dune.Walker@example.org", pwGood)
+	rt := handlerFor(t, p.svc, "POST", "/sign-up")
+	w, f := call(t, rt, from(ctxT(t), nextIP()), credsJSON("dune.walker@EXAMPLE.ORG", pwOther))
+	if w.Code != 409 {
+		t.Fatalf("status = %d, want 409", w.Code)
+	}
+	if f.count() != 1 {
+		t.Fatalf("%d errors handed to Fail, want 1", f.count())
+	}
+	err := f.last()
+	wantKind(t, err, errs.Conflict)
+	hasFieldCode(t, err, "email", "taken")
+	if len(setCookies(w)) != 0 {
+		t.Error("a refused sign-up set a cookie")
+	}
+}
+
 func TestSignUp_ConcurrentSameAddress_OneWins(t *testing.T) {
 	p := newPoolRig(t)
 	const n = 8

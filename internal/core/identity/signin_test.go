@@ -21,6 +21,26 @@ func limitPolicy(limit int) *policySource {
 	return ps
 }
 
+// clientPolicy sets the per-client-address limit (decision 12), leaving the per-account limit
+// at its default of 10. n must be inside the policy range, 10..1000.
+func clientPolicy(n int) *policySource {
+	ps := newPolicySource()
+	ps.set(func(p *identity.Policy) { p.ClientFailureLimit = n })
+	return ps
+}
+
+// distinctGuesses makes n failed sign-ins from one client address, each for a different
+// submitted address, and returns the first error that is not Unauthenticated (nil if none).
+func distinctGuesses(t *testing.T, r *rig, ip, prefix string, n int) error {
+	t.Helper()
+	for i := range n {
+		if err := guess(t, r, ip, fmt.Sprintf("%s%d@example.org", prefix, i)); !errs.Is(err, errs.Unauthenticated) {
+			return err
+		}
+	}
+	return nil
+}
+
 // guess makes one failed sign-in for email from ip against a store with no accounts.
 func guess(t *testing.T, r *rig, ip, email string) error {
 	t.Helper()
@@ -104,10 +124,8 @@ func TestSignIn_Failed_EntryHasNoAddress(t *testing.T) {
 // F18
 func TestSignIn_RateLimited_Table(t *testing.T) {
 	t.Run("per client address across different e-mail addresses", func(t *testing.T) {
-		r := newRig(t, dbtest.NewFake(), withPolicy(limitPolicy(3)))
-		for i := range 3 {
-			wantKind(t, guess(t, r, "203.0.113.20", fmt.Sprintf("person%d@example.org", i)), errs.Unauthenticated)
-		}
+		r := newRig(t, dbtest.NewFake(), withPolicy(clientPolicy(10)))
+		wantNoErr(t, distinctGuesses(t, r, "203.0.113.20", "person", 10))
 		wantRateLimited(t, guess(t, r, "203.0.113.20", "someone.new@example.org"))
 		if got := r.measured(metricRateLimit, map[string]string{"bucket": "address"}); got < 1 {
 			t.Errorf("rate_limited{address} = %v", got)
@@ -295,4 +313,41 @@ func TestSignIn_Limiter_KeysOnSubmittedAddress_NotOnExistence(t *testing.T) {
 
 func containsFold(s, sub string) bool {
 	return strings.Contains(strings.ToLower(s), strings.ToLower(sub))
+}
+
+// Decision 12: many different submitted addresses from one client are limited at the client
+// limit, not at the per-account limit of 10.
+func TestSignIn_ClientLimit_NotTheAccountLimit(t *testing.T) {
+	r := newRig(t, dbtest.NewFake(), withPolicy(clientPolicy(20)))
+	// 15 distinct addresses: past ten, still below the client limit
+	wantNoErr(t, distinctGuesses(t, r, "203.0.113.110", "wide", 15))
+	wantNoErr(t, distinctGuesses(t, r, "203.0.113.110", "wider", 5))
+	wantRateLimited(t, guess(t, r, "203.0.113.110", "wide.fresh@example.org"))
+	if got := r.measured(metricRateLimit, map[string]string{"bucket": "address"}); got < 1 {
+		t.Errorf("rate_limited{address} = %v", got)
+	}
+}
+
+// Decision 12: the per-account bucket stays at LoginFailureLimit even when the client limit
+// is far higher: ten failures for one submitted address from different clients lock it.
+func TestSignIn_AccountLimit_StaysAtTen_WithDefaultClientLimit(t *testing.T) {
+	r := newRig(t, dbtest.NewFake())
+	for i := range 10 {
+		wantKind(t, guess(t, r, fmt.Sprintf("198.18.0.%d", i+1), "one.target@example.org"), errs.Unauthenticated)
+	}
+	wantRateLimited(t, guess(t, r, "198.18.0.200", "one.target@example.org"))
+	if got := r.measured(metricRateLimit, map[string]string{"bucket": "email"}); got < 1 {
+		t.Errorf("rate_limited{email} = %v", got)
+	}
+}
+
+// Decision 12: the client default is 100 failures, so ten (and eleven) different addresses
+// from one client are not limited, and the 101st failure is.
+func TestSignIn_ClientLimit_DefaultsTo100(t *testing.T) {
+	if testing.Short() {
+		t.Skip("makes 100 failed password hashes")
+	}
+	r := newRig(t, dbtest.NewFake())
+	wantNoErr(t, distinctGuesses(t, r, "203.0.113.120", "dflt", 100))
+	wantRateLimited(t, guess(t, r, "203.0.113.120", "dflt.fresh@example.org"))
 }

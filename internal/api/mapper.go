@@ -76,10 +76,10 @@ func (s *Server) classify(err error) outcome {
 }
 
 // problemFor builds the body for o: the reference when the ctx has a trace, and the field
-// errors for an Invalid.
+// errors for an Invalid or a Conflict (a duplicate names its field, api D31).
 func problemFor(o outcome, err error, ref string) httpx.Problem {
 	p := httpx.Problem{Status: o.status, Code: o.code, Ref: ref}
-	if o.code == errs.Invalid.String() {
+	if o.code == errs.Invalid.String() || o.code == errs.Conflict.String() {
 		for _, fe := range validate.Fields(err) {
 			p.Fields = append(p.Fields, httpx.Field{Field: fe.Field, Code: fe.Code, Params: fe.Params, Reason: fe.Reason})
 		}

@@ -170,7 +170,7 @@ func TestMapper_FieldsFromValidateErrors(t *testing.T) {
 	}
 }
 
-func TestMapper_FieldsOnlyForInvalid(t *testing.T) {
+func TestMapper_FieldsOnlyForInvalidAndConflict(t *testing.T) {
 	acc := validate.Errors{}
 	acc.Addf("x", "required", "r")
 	// A permission error that happens to carry a FieldError must not leak it.
@@ -178,6 +178,55 @@ func TestMapper_FieldsOnlyForInvalid(t *testing.T) {
 	r := errRig(t, &cur, module.AccessPublic)
 	if p := wantProblem(t, r.do("GET", "/api/alpha/e"), 403, "permission"); len(p.Fields) != 0 {
 		t.Fatalf("fields on a non-invalid problem: %+v", p.Fields)
+	}
+}
+
+// F40, D31: a Conflict carrying field errors names its fields, as Invalid does.
+func TestMapper_Conflict_WithFieldErrors_EmitsFields(t *testing.T) {
+	acc := validate.Errors{Op: "alpha.signup"}
+	acc.Addf("email", "taken", "already in use")
+	cur := error(errs.E("alpha.signup", errs.Conflict, acc.Err()))
+	r := errRig(t, &cur, module.AccessPublic)
+	rec := r.do("GET", "/api/alpha/e")
+	p := wantProblem(t, rec, 409, "conflict")
+	if len(p.Fields) != 1 || p.Fields[0].Field != "email" || p.Fields[0].Code != "taken" {
+		t.Fatalf("fields = %+v", p.Fields)
+	}
+	if _, has := decodeMap(t, rec.Body.Bytes())["fields"]; !has {
+		t.Error("no fields key in the body")
+	}
+}
+
+// A Conflict without field errors has no fields key, and wrapping with %w keeps them.
+func TestMapper_Conflict_Table(t *testing.T) {
+	acc := validate.Errors{}
+	acc.Addf("email", "taken", "r")
+	tests := []struct {
+		name string
+		err  error
+		want int
+	}{
+		{"plain conflict", errs.E("op", errs.Conflict, errors.New("dup")), 0},
+		{"fields", errs.E("op", errs.Conflict, acc.Err()), 1},
+		{"fields wrapped with %w", fmt.Errorf("ctx: %w", errs.E("op", errs.Conflict, acc.Err())), 1},
+	}
+	var cur error
+	r := errRig(t, &cur, module.AccessPublic)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cur = tc.err
+			rec := r.do("GET", "/api/alpha/e")
+			p := wantProblem(t, rec, 409, "conflict")
+			if len(p.Fields) != tc.want {
+				t.Fatalf("fields = %+v, want %d", p.Fields, tc.want)
+			}
+			if _, has := decodeMap(t, rec.Body.Bytes())["fields"]; has != (tc.want > 0) {
+				t.Errorf("fields key present = %v", has)
+			}
+			if strings.Contains(rec.Body.String(), "dup") {
+				t.Error("error text in the body")
+			}
+		})
 	}
 }
 

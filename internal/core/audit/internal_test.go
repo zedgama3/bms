@@ -3,6 +3,7 @@ package audit
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"os"
@@ -12,6 +13,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgconn" //nolint:depguard // refusingDB must implement db.DB, whose Exec returns pgconn.CommandTag
 
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/db/dbtest"
@@ -435,4 +438,139 @@ func TestSpoolCounts_PathProblems_ReturnInvalid(t *testing.T) {
 			t.Fatalf("err = %v, want Invalid", err)
 		}
 	})
+}
+
+// ---- F36b: set aside by cause, insert what precedes the refused record ----
+
+// refusingDB fails every insert whose rows include the poison action with err, and records
+// the rows of every insert that went through.
+type refusingDB struct {
+	*dbtest.Fake
+	poison string
+	err    error
+	mu     sync.Mutex
+	rows   int
+}
+
+func (d *refusingDB) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+	for _, a := range args {
+		body, ok := a.([]byte)
+		if !ok {
+			continue
+		}
+		if bytes.Contains(body, []byte(d.poison)) {
+			return pgconn.CommandTag{}, d.err
+		}
+		var rows []json.RawMessage
+		if json.Unmarshal(body, &rows) == nil {
+			d.mu.Lock()
+			d.rows += len(rows)
+			d.mu.Unlock()
+		}
+	}
+	return d.Fake.Exec(ctx, sql, args...) //nolint:wrapcheck // test double
+}
+
+func (d *refusingDB) inserted() int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.rows
+}
+
+func poisonedLine(t *testing.T) []byte {
+	t.Helper()
+	return bytes.Replace(goodLine(t), []byte("identity.login"), []byte("identity.poisoned"), 1)
+}
+
+func TestImport_DataRefusal_InsertsRecordsBeforeIt_SetsFileAside(t *testing.T) {
+	d := &refusingDB{Fake: dbtest.NewFake(), poison: "identity.poisoned",
+		err: errs.E("test", errs.Invalid, &db.Error{Code: "23514", Constraint: "entry_check"})}
+	l, c := newLogOn(t, d, t.TempDir())
+	var parts [][]byte
+	for range 5 {
+		parts = append(parts, goodLine(t))
+	}
+	parts = append(parts, poisonedLine(t), goodLine(t), goodLine(t))
+	writeSpoolFile(t, l, "0001-1-aaaaaaaa.jsonl", parts...)
+	writeSpoolFile(t, l, "0002-1-bbbbbbbb.jsonl", goodLine(t), goodLine(t))
+	out, err := l.ImportOnce(t.Context())
+	if !errs.Is(err, errs.Invalid) {
+		t.Fatalf("ImportOnce kind = %v, want Invalid", errs.KindOf(err))
+	}
+	if got := d.inserted(); got != 7 {
+		t.Errorf("%d rows inserted, want 7 (the five before the refused record and the second file)", got)
+	}
+	if len(out.Failed) != 1 || out.Files != 1 {
+		t.Errorf("result = %+v, want one failed file and one imported", out)
+	}
+	if _, serr := os.Stat(filepath.Join(l.spoolDir, "0001-1-aaaaaaaa.jsonl"+failedSuffix)); serr != nil {
+		t.Errorf("file not set aside: %v", serr)
+	}
+	warned := false
+	for _, r := range c.Records() {
+		if r.Level == slog.LevelWarn && r.Attrs["line"] == "6" && r.Attrs["file"] == "0001-1-aaaaaaaa.jsonl" {
+			warned = true
+		}
+	}
+	if !warned {
+		t.Error("no warning naming the file and line 6")
+	}
+	if c.Contains("poisoned") {
+		t.Error("a value from the refused record leaked into telemetry")
+	}
+}
+
+func TestImport_DataRefusal_BeforeAParseError_InsertsThePrecedingRecords(t *testing.T) {
+	d := &refusingDB{Fake: dbtest.NewFake(), poison: "identity.poisoned",
+		err: errs.E("test", errs.Invalid, &db.Error{Code: "22001"})}
+	l, _ := newLogOn(t, d, t.TempDir())
+	writeSpoolFile(t, l, "0001-1-aaaaaaaa.jsonl", goodLine(t), goodLine(t), poisonedLine(t), []byte("not json\n"))
+	out, err := l.ImportOnce(t.Context())
+	if !errs.Is(err, errs.Invalid) || len(out.Failed) != 1 {
+		t.Fatalf("ImportOnce = %+v, %v; want the file set aside", out, err)
+	}
+	if got := d.inserted(); got != 2 {
+		t.Errorf("%d rows inserted, want 2", got)
+	}
+}
+
+func TestImport_InvalidWithoutADataCondition_KeepsTheFile(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{
+		{"authentication failure", errs.E("test", errs.Invalid, &db.Error{Code: "28P01"})},
+		{"database missing", errs.E("test", errs.Invalid, &db.Error{Code: "3D000"})},
+		{"no database error at all", errs.E("test", errs.Invalid, errors.New("refused"))},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d := &refusingDB{Fake: dbtest.NewFake(), poison: "identity.login", err: tc.err}
+			l, _ := newLogOn(t, d, t.TempDir())
+			path := writeSpoolFile(t, l, "0001-1-aaaaaaaa.jsonl", goodLine(t), goodLine(t))
+			out, err := l.ImportOnce(t.Context())
+			if err == nil || errs.Is(err, errs.Invalid) {
+				t.Fatalf("ImportOnce kind = %v, want a transient failure", errs.KindOf(err))
+			}
+			if len(out.Failed) != 0 {
+				t.Errorf("Failed = %v, want none", out.Failed)
+			}
+			if _, serr := os.Stat(path); serr != nil {
+				t.Errorf("the file must be kept for retry: %v", serr)
+			}
+		})
+	}
+}
+
+func TestDataRefusal_Table(t *testing.T) {
+	for code, want := range map[string]bool{
+		"22001": true, "22P02": true, "23502": true, "23503": true, "23505": true, "23514": true,
+		"28P01": false, "3D000": false, "08006": false, "40001": false, "53300": false, "": false,
+	} {
+		if got := dataRefusal(errs.E("test", errs.Invalid, &db.Error{Code: code})); got != want {
+			t.Errorf("dataRefusal(%q) = %v, want %v", code, got, want)
+		}
+	}
+	if dataRefusal(errors.New("plain")) {
+		t.Error("dataRefusal(plain error) = true")
+	}
 }

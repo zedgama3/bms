@@ -56,8 +56,8 @@ func ExampleSessionFrom_restricted() {
 func ExampleDefaultPolicy() {
 	p := identity.DefaultPolicy()
 	fmt.Println(p.SignupMode, p.SessionLifetime, p.SuperuserSessionLifetime, p.PasswordMinLength)
-	fmt.Println(p.LoginFailureLimit, p.LoginFailureWindow, p.Validate() == nil)
+	fmt.Println(p.LoginFailureLimit, p.ClientFailureLimit, p.LoginFailureWindow, p.Validate() == nil)
 	// Output:
 	// open 720h0m0s 1h0m0s 12
-	// 10 15m0s true
+	// 10 100 15m0s true
 }

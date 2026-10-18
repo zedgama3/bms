@@ -28,7 +28,7 @@ type Problem struct {
 	Status int     `json:"status"`           // the HTTP status, repeated for clients that lose it
 	Code   string  `json:"code"`             // an errs.Kind name, or one of the shell codes
 	Ref    string  `json:"ref,omitempty"`    // telemetry.Ref "XXXX-XXXX"; absent when no trace
-	Fields []Field `json:"fields,omitempty"` // for code "invalid": one per validate.FieldError, in order
+	Fields []Field `json:"fields,omitempty"` // for codes "invalid" and "conflict": one per validate.FieldError, in order
 }
 
 // Field is one validation problem, from validate.FieldError.
@@ -111,8 +111,9 @@ func WithFailer(ctx context.Context, f Failer) context.Context {
 // Fail answers r with the error response for err and returns; the handler returns right
 // after it. With a Failer in r.Context() (every request through the api shell) it
 // delegates to it. Without one (a handler under test) it writes a Problem with
-// StatusOf(errs.KindOf(err)), the kind's name as code, Fields from validate.Fields, no
-// ref, plus 413 for a *http.MaxBytesError and 415 for ErrUnsupportedMediaType, so a
+// StatusOf(errs.KindOf(err)), the kind's name as code, Fields from validate.Fields (for an
+// Invalid or a Conflict), no ref, plus 413 for a *http.MaxBytesError and 415 for
+// ErrUnsupportedMediaType, so a
 // module's unit test sees the same status the shell would send. A nil err is a caller bug
 // and is written as 500 internal. Call it before writing anything to w. Cannot fail.
 func Fail(w http.ResponseWriter, r *http.Request, err error) {
@@ -148,7 +149,7 @@ func fallbackProblem(err error) Problem {
 	}
 	kind := errs.KindOf(err)
 	p := Problem{Status: StatusOf(kind), Code: kind.String()}
-	if kind == errs.Invalid {
+	if kind == errs.Invalid || kind == errs.Conflict {
 		for _, fe := range validate.Fields(err) {
 			p.Fields = append(p.Fields, Field{Field: fe.Field, Code: fe.Code, Params: fe.Params, Reason: fe.Reason})
 		}

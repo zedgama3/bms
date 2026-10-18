@@ -59,12 +59,13 @@ func TestSignIn_ConcurrentWrongGuesses_AtMostLimitVerifications(t *testing.T) {
 }
 
 func TestSignIn_IPv6_SameSlash64_SharesBucket(t *testing.T) {
-	r := newRig(t, dbtest.NewFake(), withPolicy(limitPolicy(3)))
-	// three failures from three addresses inside 2001:db8:1:2::/64
-	for i, ip := range []string{"2001:db8:1:2::1", "2001:db8:1:2:aaaa::2", "2001:db8:1:2:ffff:ffff:ffff:ffff"} {
+	r := newRig(t, dbtest.NewFake(), withPolicy(clientPolicy(10)))
+	// ten failures from ten addresses inside 2001:db8:1:2::/64
+	for i := range 10 {
+		ip := fmt.Sprintf("2001:db8:1:2:%x::%x", i+1, i+1)
 		wantKind(t, guess(t, r, ip, fmt.Sprintf("v6person%d@example.org", i)), errs.Unauthenticated)
 	}
-	// a fourth address in the same /64, a fresh e-mail address: limited by the shared bucket
+	// another address in the same /64, a fresh e-mail address: limited by the shared bucket
 	wantRateLimited(t, guess(t, r, "2001:db8:1:2:1234:5678:9abc:def0", "v6fresh@example.org"))
 	if got := r.measured(metricRateLimit, map[string]string{"bucket": "address"}); got < 1 {
 		t.Errorf("rate_limited{address} = %v", got)
@@ -74,10 +75,8 @@ func TestSignIn_IPv6_SameSlash64_SharesBucket(t *testing.T) {
 }
 
 func TestSignIn_IPv4_AddressesStaySeparate(t *testing.T) {
-	r := newRig(t, dbtest.NewFake(), withPolicy(limitPolicy(3)))
-	for i := range 3 {
-		wantKind(t, guess(t, r, "192.0.2.1", fmt.Sprintf("v4person%d@example.org", i)), errs.Unauthenticated)
-	}
+	r := newRig(t, dbtest.NewFake(), withPolicy(clientPolicy(10)))
+	wantNoErr(t, distinctGuesses(t, r, "192.0.2.1", "v4person", 10))
 	wantRateLimited(t, guess(t, r, "192.0.2.1", "v4fresh@example.org"))
 	wantKind(t, guess(t, r, "192.0.2.2", "v4fresh@example.org"), errs.Unauthenticated) // a neighbour is not the same client
 }

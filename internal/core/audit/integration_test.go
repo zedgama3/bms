@@ -534,6 +534,71 @@ func TestImportOnce_BatchesLargeFile(t *testing.T) {
 	}
 }
 
+// refuseDB refuses, as a CHECK violation (23514), every insert whose body mentions marker.
+type refuseDB struct {
+	db.DB
+	marker string
+}
+
+func (r refuseDB) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+	for _, a := range args {
+		if b, ok := a.([]byte); ok && strings.Contains(string(b), r.marker) {
+			return pgconn.CommandTag{}, errs.E("test.refuseDB.Exec", errs.Invalid, &db.Error{Code: "23514"})
+		}
+	}
+	return r.DB.Exec(ctx, sql, args...) //nolint:wrapcheck // test double
+}
+
+// F36b against the real database: the rows before the refused one are stored, the file is
+// set aside, and the files around it import.
+func TestImportOnce_InsertInvalid_StoresRowsBeforeRefused_SetsFileAside(t *testing.T) {
+	const marker = "identity.poisoned"
+	tests := []struct {
+		name    string
+		before  int
+		wantRow int
+	}{
+		{"refused row first", 0, 0},
+		{"one good line before it", 1, 1},
+		{"a full batch before it", audit.MaxBatch, audit.MaxBatch},
+		{"more than a batch before it", audit.MaxBatch + 5, audit.MaxBatch + 5},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newIfx(t, func(p *db.Pool) db.DB { return refuseDB{DB: p, marker: marker} })
+			line := func(action string) string {
+				return fmt.Sprintf(`{"v":1,"id":%q,"at":"2026-10-17T12:00:00Z","instance":"other-copy","action":%q,"outcome":"succeeded","actor":{"kind":"system"}}`+"\n",
+					model.NewID[audit.RecordID]().String(), action)
+			}
+			wantNoErr(t, os.MkdirAll(f.spoolDir(), 0o700))
+			write := func(name, content string) string {
+				p := filepath.Join(f.spoolDir(), name)
+				wantNoErr(t, os.WriteFile(p, []byte(content), 0o600))
+				return p
+			}
+			write("0001-1-aaaaaaaa.jsonl", line("identity.login"))
+			var b strings.Builder
+			for range tc.before {
+				b.WriteString(line("identity.login"))
+			}
+			b.WriteString(line(marker))
+			bad := write("0002-1-bbbbbbbb.jsonl", b.String())
+			write("0003-1-cccccccc.jsonl", line("identity.login"))
+			got, err := f.log.ImportOnce(ctxT(t))
+			wantKind(t, err, errs.Invalid)
+			if len(got.Failed) != 1 {
+				t.Fatalf("Imported = %+v", got)
+			}
+			if got.Entries != tc.wantRow+2 || f.count(t, "") != tc.wantRow+2 {
+				t.Errorf("Entries = %d, rows = %d, want %d", got.Entries, f.count(t, ""), tc.wantRow+2)
+			}
+			if exists(bad) || !exists(bad+".failed") {
+				t.Error("the refused file was not set aside")
+			}
+		})
+	}
+}
+
 // --- Export ---------------------------------------------------------------------------------
 
 type failAfter struct {

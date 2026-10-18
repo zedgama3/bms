@@ -190,28 +190,29 @@ func addrKey(a netip.Addr) (string, bool) {
 
 // reserve counts one attempt in both buckets, atomically with the check, so concurrent
 // requests cannot all pass a check made before any of them is counted. It reports which
-// bucket, if any, already holds limit attempts inside the window; then nothing is counted.
+// bucket, if any, already holds its limit of attempts inside the window (addrLimit for the
+// client address, emailLimit for the submitted address); then nothing is counted.
 // The time is read from clock inside the lock and returned as at, so concurrent reservations
 // append their times in order; a caller that learns the attempt was not a failure calls
 // forgive with the same at. It sweeps first, so a fake clock drives the expiry.
-func (l *limiter) reserve(a netip.Addr, email string, clock func() time.Time, limit int, window time.Duration) (at time.Time, bucket string, ok bool) {
+func (l *limiter) reserve(a netip.Addr, email string, clock func() time.Time, addrLimit, emailLimit int, window time.Duration) (at time.Time, bucket string, ok bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := clock()
 	l.addr.sweep(now, window)
 	l.email.sweep(now, window)
 	ak, haveAddr := addrKey(a)
-	if haveAddr && l.addr.count(ak, now, window) >= limit {
+	if haveAddr && l.addr.count(ak, now, window) >= addrLimit {
 		return now, bucketAddress, false
 	}
-	if email != "" && l.email.count(email, now, window) >= limit {
+	if email != "" && l.email.count(email, now, window) >= emailLimit {
 		return now, bucketEmail, false
 	}
 	if haveAddr {
-		l.addr.add(ak, now, window, limit, l.maxKeys)
+		l.addr.add(ak, now, window, addrLimit, l.maxKeys)
 	}
 	if email != "" {
-		l.email.add(email, now, window, limit, l.maxKeys)
+		l.email.add(email, now, window, emailLimit, l.maxKeys)
 	}
 	return now, "", true
 }

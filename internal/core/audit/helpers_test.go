@@ -124,6 +124,8 @@ type flakyDB struct {
 	failExec  error
 	failQuery error
 	queries   int
+	// execHook, when set, decides per statement: a non-nil result fails that Exec.
+	execHook func(sql string, args []any) error
 	// entered, when set, is signalled by the first Exec, which then blocks until ctx is done.
 	entered chan struct{}
 }
@@ -132,6 +134,12 @@ func (f *flakyDB) setFailExec(err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.failExec = err
+}
+
+func (f *flakyDB) setExecHook(h func(sql string, args []any) error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.execHook = h
 }
 
 func (f *flakyDB) queryCount() int {
@@ -144,9 +152,15 @@ func (f *flakyDB) Exec(ctx context.Context, sql string, args ...any) (pgconn.Com
 	f.mu.Lock()
 	err := f.failExec
 	entered := f.entered
+	hook := f.execHook
 	f.mu.Unlock()
 	if err != nil {
 		return pgconn.CommandTag{}, err
+	}
+	if hook != nil {
+		if herr := hook(sql, args); herr != nil {
+			return pgconn.CommandTag{}, herr
+		}
 	}
 	if entered != nil {
 		select {

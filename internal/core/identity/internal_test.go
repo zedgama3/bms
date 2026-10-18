@@ -129,18 +129,18 @@ func TestLimiter_ReserveSweepsAndEvictsOldest(t *testing.T) {
 	window := 15 * time.Minute
 	a := netip.MustParseAddr("192.0.2.1")
 	for range 3 {
-		if _, _, ok := l.reserve(a, "who@example.org", nowFn(now), 3, window); !ok {
+		if _, _, ok := l.reserve(a, "who@example.org", nowFn(now), 3, 3, window); !ok {
 			t.Fatal("refused before the limit")
 		}
 	}
-	if _, b, ok := l.reserve(a, "", nowFn(now), 3, window); ok || b != bucketAddress {
+	if _, b, ok := l.reserve(a, "", nowFn(now), 3, 3, window); ok || b != bucketAddress {
 		t.Fatalf("reserve = %v %q, want the address bucket full", ok, b)
 	}
-	if _, b, ok := l.reserve(netip.MustParseAddr("192.0.2.2"), "who@example.org", nowFn(now), 3, window); ok || b != bucketEmail {
+	if _, b, ok := l.reserve(netip.MustParseAddr("192.0.2.2"), "who@example.org", nowFn(now), 3, 3, window); ok || b != bucketEmail {
 		t.Fatalf("reserve = %v %q, want the email bucket full", ok, b)
 	}
 	later := now.Add(window)
-	at, _, ok := l.reserve(a, "who@example.org", nowFn(later), 3, window)
+	at, _, ok := l.reserve(a, "who@example.org", nowFn(later), 3, 3, window)
 	if !ok || !at.Equal(later) {
 		t.Fatalf("after the window: ok=%v at=%v", ok, at)
 	}
@@ -150,7 +150,7 @@ func TestLimiter_ReserveSweepsAndEvictsOldest(t *testing.T) {
 		t.Errorf("forgiven attempt left keys behind: %d, %d", len(l.addr.keys), len(l.email.keys))
 	}
 	for _, k := range []string{"a", "b", "c", "d"} {
-		if _, _, ok := l.reserve(netip.Addr{}, k, nowFn(now), 3, window); !ok {
+		if _, _, ok := l.reserve(netip.Addr{}, k, nowFn(now), 3, 3, window); !ok {
 			t.Fatal("refused")
 		}
 	}
@@ -159,6 +159,32 @@ func TestLimiter_ReserveSweepsAndEvictsOldest(t *testing.T) {
 	}
 	if _, ok := l.email.keys["a"]; ok {
 		t.Error("the oldest key was not evicted")
+	}
+}
+
+// The client address and the submitted address have their own limits (decision 12): a
+// venue shares one address, so its bucket holds more.
+func TestLimiter_ReserveUsesEachBucketsOwnLimit(t *testing.T) {
+	l := newLimiter()
+	now := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
+	a := netip.MustParseAddr("192.0.2.1")
+	const addrLimit, emailLimit = 5, 2
+	for i := range emailLimit {
+		if _, _, ok := l.reserve(a, "one@example.org", nowFn(now), addrLimit, emailLimit, time.Hour); !ok {
+			t.Fatalf("attempt %d refused before the submitted-address limit", i)
+		}
+	}
+	if _, b, ok := l.reserve(a, "one@example.org", nowFn(now), addrLimit, emailLimit, time.Hour); ok || b != bucketEmail {
+		t.Fatalf("reserve = %v %q, want the submitted-address bucket full at %d", ok, b, emailLimit)
+	}
+	// Other submitted addresses from the same client keep going until the client limit.
+	for i := emailLimit; i < addrLimit; i++ {
+		if _, _, ok := l.reserve(a, "other"+string(rune('a'+i))+"@example.org", nowFn(now), addrLimit, emailLimit, time.Hour); !ok {
+			t.Fatalf("attempt %d refused before the client-address limit", i)
+		}
+	}
+	if _, b, ok := l.reserve(a, "last@example.org", nowFn(now), addrLimit, emailLimit, time.Hour); ok || b != bucketAddress {
+		t.Fatalf("reserve = %v %q, want the client-address bucket full at %d", ok, b, addrLimit)
 	}
 }
 
@@ -171,7 +197,7 @@ func TestLimiter_ForgiveKeepsTheListOrdered(t *testing.T) {
 	at := func(m int) time.Time { return t0.Add(time.Duration(m) * time.Minute) }
 	reserve := func(key string, m int) time.Time {
 		t.Helper()
-		got, _, ok := l.reserve(netip.Addr{}, key, nowFn(at(m)), 5, window)
+		got, _, ok := l.reserve(netip.Addr{}, key, nowFn(at(m)), 5, 5, window)
 		if !ok {
 			t.Fatalf("refused %s", key)
 		}
@@ -190,7 +216,7 @@ func TestLimiter_ForgiveKeepsTheListOrdered(t *testing.T) {
 		t.Fatalf("order = %v, want [x y]", order)
 	}
 	// At minute 65 the window (60) has passed x's newest failure (1) but not y's (10)... y expires at 70.
-	if _, _, ok := l.reserve(netip.Addr{}, "z", nowFn(at(65)), 5, window); !ok {
+	if _, _, ok := l.reserve(netip.Addr{}, "z", nowFn(at(65)), 5, 5, window); !ok {
 		t.Fatal("refused z")
 	}
 	if _, ok := l.email.keys["x"]; ok {
@@ -210,7 +236,7 @@ func TestLimiter_ConcurrentReservationsNeverExceedTheLimit(t *testing.T) {
 	var granted atomic.Int64
 	for range tries {
 		wg.Go(func() {
-			if _, _, ok := l.reserve(a, "target@example.org", nowFn(now), limit, time.Hour); ok {
+			if _, _, ok := l.reserve(a, "target@example.org", nowFn(now), limit, limit, time.Hour); ok {
 				granted.Add(1)
 			}
 		})

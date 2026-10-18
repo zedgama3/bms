@@ -139,6 +139,7 @@ func TestDefaultPolicy_Values(t *testing.T) {
 		SuperuserSessionLifetime: time.Hour,
 		PasswordMinLength:        12,
 		LoginFailureLimit:        10,
+		ClientFailureLimit:       100,
 		LoginFailureWindow:       15 * time.Minute,
 	}
 	if p != want {
@@ -177,6 +178,15 @@ func TestPolicy_Validate_Table(t *testing.T) {
 		{"limit below 3", func(p *identity.Policy) { p.LoginFailureLimit = 2 }, "accounts.login_failure_limit"},
 		{"limit 100", func(p *identity.Policy) { p.LoginFailureLimit = 100 }, ""},
 		{"limit above 100", func(p *identity.Policy) { p.LoginFailureLimit = 101 }, "accounts.login_failure_limit"},
+		{"client limit 10", func(p *identity.Policy) { p.ClientFailureLimit = 10 }, ""},
+		{"client limit below 10", func(p *identity.Policy) { p.ClientFailureLimit = 9 }, "accounts.client_failure_limit"},
+		{"client limit 1000", func(p *identity.Policy) { p.ClientFailureLimit = 1000 }, ""},
+		{"client limit above 1000", func(p *identity.Policy) { p.ClientFailureLimit = 1001 }, "accounts.client_failure_limit"},
+		{"client limit zero", func(p *identity.Policy) { p.ClientFailureLimit = 0 }, "accounts.client_failure_limit"},
+		{"client limit negative", func(p *identity.Policy) { p.ClientFailureLimit = -1 }, "accounts.client_failure_limit"},
+		{"client limit equals account limit", func(p *identity.Policy) { p.LoginFailureLimit, p.ClientFailureLimit = 50, 50 }, ""},
+		{"client limit one below account limit", func(p *identity.Policy) { p.LoginFailureLimit, p.ClientFailureLimit = 50, 49 }, "accounts.client_failure_limit"},
+		{"client limit far below account limit", func(p *identity.Policy) { p.LoginFailureLimit, p.ClientFailureLimit = 100, 10 }, "accounts.client_failure_limit"},
 		{"window 1m", func(p *identity.Policy) { p.LoginFailureWindow = time.Minute }, ""},
 		{"window below 1m", func(p *identity.Policy) { p.LoginFailureWindow = 59 * time.Second }, "accounts.login_failure_window"},
 		{"window 24h", func(p *identity.Policy) { p.LoginFailureWindow = 24 * time.Hour }, ""},
@@ -199,7 +209,7 @@ func TestPolicy_Validate_Table(t *testing.T) {
 func TestPolicy_Validate_ReportsEveryKey(t *testing.T) {
 	err := identity.Policy{}.Validate()
 	for _, f := range []string{"accounts.signup", "accounts.session_lifetime", "accounts.superuser_session_lifetime",
-		"accounts.password_min_length", "accounts.login_failure_limit", "accounts.login_failure_window"} {
+		"accounts.password_min_length", "accounts.login_failure_limit", "accounts.client_failure_limit", "accounts.login_failure_window"} {
 		wantField(t, err, f, "")
 	}
 }

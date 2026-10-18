@@ -26,7 +26,8 @@ type Policy struct {
 	SessionLifetime          time.Duration // accounts.session_lifetime
 	SuperuserSessionLifetime time.Duration // accounts.superuser_session_lifetime
 	PasswordMinLength        int           // accounts.password_min_length (characters, counted as runes)
-	LoginFailureLimit        int           // accounts.login_failure_limit
+	LoginFailureLimit        int           // accounts.login_failure_limit (per submitted address; default 10)
+	ClientFailureLimit       int           // accounts.client_failure_limit (per client address; default 100)
 	LoginFailureWindow       time.Duration // accounts.login_failure_window
 }
 
@@ -38,12 +39,14 @@ func DefaultPolicy() Policy {
 		SuperuserSessionLifetime: time.Hour,
 		PasswordMinLength:        PasswordMinLengthFloor,
 		LoginFailureLimit:        10,
+		ClientFailureLimit:       100,
 		LoginFailureWindow:       15 * time.Minute,
 	}
 }
 
 // Validate fails errs.Invalid with a validate.FieldError per key out of its range; the
-// field is the settings key ("accounts.signup", ...).
+// field is the settings key ("accounts.signup", ...). accounts.client_failure_limit must be
+// 10..1000 and at least accounts.login_failure_limit.
 func (p Policy) Validate() error {
 	v := validate.Errors{Op: "identity.Policy.Validate"}
 	if p.SignupMode != SignupOpen && p.SignupMode != SignupInvitation {
@@ -53,6 +56,9 @@ func (p Policy) Validate() error {
 	v.Add(validate.Range("accounts.superuser_session_lifetime", p.SuperuserSessionLifetime, 10*time.Minute, 24*time.Hour))
 	v.Add(validate.Range("accounts.password_min_length", p.PasswordMinLength, PasswordMinLengthFloor, 128))
 	v.Add(validate.Range("accounts.login_failure_limit", p.LoginFailureLimit, 3, 100))
+	// Many people share one client address at a venue, so its limit is the larger one: never
+	// below the per-submitted-address limit.
+	v.Add(validate.Range("accounts.client_failure_limit", p.ClientFailureLimit, min(max(10, p.LoginFailureLimit), 1000), 1000))
 	v.Add(validate.Range("accounts.login_failure_window", p.LoginFailureWindow, time.Minute, 24*time.Hour))
 	return v.Err() //nolint:wrapcheck // Err already carries Op and errs.Invalid
 }

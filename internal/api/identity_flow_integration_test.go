@@ -213,3 +213,26 @@ func TestFlow_TemporaryPassword_RestrictedThenNormal(t *testing.T) {
 		t.Error("the restricted session survived the password change")
 	}
 }
+
+// api D31, identity F15: a taken sign-up address reaches the browser as 409 with a field
+// error naming email/taken, through the real shell and mapper, in any letter case.
+func TestFlow_SignUp_TakenAddress_409NamesEmailField(t *testing.T) {
+	f := newFlowRig(t)
+	rec, c := f.send("POST", "/api/accounts/sign-up", creds(t, "Dune.Walker@example.org", flowPass), nil)
+	if rec.Code/100 != 2 || c == nil {
+		t.Fatalf("first sign-up = %d: %s", rec.Code, rec.Body.String())
+	}
+	for _, addr := range []string{"Dune.Walker@example.org", "dune.walker@EXAMPLE.ORG"} {
+		rec, c := f.send("POST", "/api/accounts/sign-up", creds(t, addr, flowNew), nil)
+		p := wantProblem(t, rec, 409, "conflict")
+		if c != nil {
+			t.Error("a refused sign-up set a session cookie")
+		}
+		if len(p.Fields) != 1 || p.Fields[0].Field != "email" || p.Fields[0].Code != "taken" {
+			t.Fatalf("fields = %+v", p.Fields)
+		}
+		if strings.Contains(strings.ToLower(rec.Body.String()), "dune.walker") {
+			t.Error("the body echoes the address")
+		}
+	}
+}
