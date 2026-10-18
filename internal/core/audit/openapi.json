@@ -1,0 +1,110 @@
+{
+  "tags": [
+    {
+      "name": "audit",
+      "description": "The audit log: who did what and who saw what."
+    }
+  ],
+  "paths": {
+    "/entries": {
+      "get": {
+        "tags": ["audit"],
+        "operationId": "auditSearch",
+        "summary": "Search the audit log, newest first. Needs audit.search. The search is itself recorded.",
+        "parameters": [
+          {"name": "actor", "in": "query", "schema": {"$ref": "#/components/schemas/ID"}, "description": "The person who acted."},
+          {"name": "subject", "in": "query", "schema": {"$ref": "#/components/schemas/ID"}, "description": "The person the record is about."},
+          {"name": "record_kind", "in": "query", "schema": {"type": "string"}, "description": "The kind of the record acted on; needs record_id."},
+          {"name": "record_id", "in": "query", "schema": {"$ref": "#/components/schemas/ID"}, "description": "The record acted on; needs record_kind."},
+          {"name": "area", "in": "query", "schema": {"type": "string"}, "description": "The area of the action: the text before its first dot."},
+          {"name": "action", "in": "query", "schema": {"type": "string"}, "description": "One action, exactly."},
+          {"name": "from", "in": "query", "schema": {"type": "string", "format": "date-time"}, "description": "Start of the time range (inclusive); needs to."},
+          {"name": "to", "in": "query", "schema": {"type": "string", "format": "date-time"}, "description": "End of the time range (exclusive); needs from."},
+          {"name": "superuser", "in": "query", "schema": {"type": "boolean"}, "description": "Only entries made by the superuser account."},
+          {"name": "after", "in": "query", "schema": {"type": "string"}, "description": "The next value of the previous page."},
+          {"name": "limit", "in": "query", "schema": {"type": "integer", "minimum": 0, "maximum": 200}, "description": "Page size; 0 or absent means 50."}
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of entries.",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/AuditPage"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/people/{person}/views": {
+      "get": {
+        "tags": ["audit"],
+        "operationId": "auditExportViews",
+        "summary": "Export every entry about one person, oldest first, as JSON Lines. Needs audit.export. The export is itself recorded.",
+        "parameters": [
+          {"name": "person", "in": "path", "required": true, "schema": {"$ref": "#/components/schemas/ID"}}
+        ],
+        "responses": {
+          "200": {
+            "description": "One audit record per line.",
+            "content": {
+              "application/x-ndjson": {
+                "schema": {"$ref": "#/components/schemas/AuditRecord"}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AuditPage": {
+        "type": "object",
+        "required": ["records"],
+        "properties": {
+          "records": {"type": "array", "items": {"$ref": "#/components/schemas/AuditRecord"}},
+          "next": {"type": "string", "description": "Pass as after to get the next page; absent on the last page."}
+        }
+      },
+      "AuditRecord": {
+        "type": "object",
+        "required": ["v", "id", "at", "instance", "action", "outcome", "actor"],
+        "properties": {
+          "v": {"type": "integer"},
+          "id": {"$ref": "#/components/schemas/ID"},
+          "at": {"type": "string", "format": "date-time"},
+          "instance": {"type": "string"},
+          "trace_id": {"type": "string"},
+          "spooled": {"type": "boolean"},
+          "action": {"type": "string"},
+          "outcome": {"type": "string", "enum": ["succeeded", "denied", "failed"]},
+          "actor": {"$ref": "#/components/schemas/AuditActor"},
+          "subject": {"$ref": "#/components/schemas/ID"},
+          "record": {"$ref": "#/components/schemas/AuditRef"},
+          "fields": {"type": "array", "items": {"type": "string"}},
+          "level": {"$ref": "#/components/schemas/Sensitivity"},
+          "reason": {"type": "string"}
+        }
+      },
+      "AuditActor": {
+        "type": "object",
+        "required": ["kind"],
+        "properties": {
+          "kind": {"type": "string", "enum": ["person", "anonymous", "operator", "system"]},
+          "person": {"$ref": "#/components/schemas/ID"},
+          "superuser": {"type": "boolean"},
+          "titles": {"type": "array", "items": {"type": "string"}}
+        }
+      },
+      "AuditRef": {
+        "type": "object",
+        "required": ["kind", "id"],
+        "properties": {
+          "kind": {"type": "string"},
+          "id": {"$ref": "#/components/schemas/ID"}
+        }
+      }
+    }
+  }
+}
