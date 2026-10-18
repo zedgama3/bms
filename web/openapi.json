@@ -1,6 +1,166 @@
 {
   "components": {
     "schemas": {
+      "AccountsAccount": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "disabled_at": {
+            "description": "Absent when the account is enabled.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "email": {
+            "description": "As entered.",
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "last_login_at": {
+            "description": "Absent when the person never signed in.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "password_change_required": {
+            "type": "boolean"
+          },
+          "password_changed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "person_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "superuser": {
+            "type": "boolean"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "person_id",
+          "email",
+          "superuser",
+          "password_change_required",
+          "password_changed_at",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "AccountsAccountPage": {
+        "properties": {
+          "accounts": {
+            "items": {
+              "$ref": "#/components/schemas/AccountsAccount"
+            },
+            "type": "array"
+          },
+          "next": {
+            "description": "Pass as after to get the next page; absent on the last page.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "accounts"
+        ],
+        "type": "object"
+      },
+      "AccountsCredentials": {
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ],
+        "type": "object"
+      },
+      "AccountsPasswordChange": {
+        "properties": {
+          "current_password": {
+            "type": "string"
+          },
+          "new_password": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "current_password",
+          "new_password"
+        ],
+        "type": "object"
+      },
+      "AccountsSession": {
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "password_change_required": {
+            "description": "The password is temporary: only the accounts routes work until it is changed.",
+            "type": "boolean"
+          },
+          "permissions": {
+            "description": "The site-wide permissions the person holds; never null.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "person_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "playa_name": {
+            "description": "Absent until the person has a profile.",
+            "type": "string"
+          },
+          "signed_in": {
+            "type": "boolean"
+          },
+          "signup_open": {
+            "description": "Whether anyone may create an account; true also when signed out.",
+            "type": "boolean"
+          },
+          "superuser": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "signed_in",
+          "superuser",
+          "password_change_required",
+          "signup_open",
+          "permissions"
+        ],
+        "type": "object"
+      },
+      "AccountsTemporaryPassword": {
+        "properties": {
+          "password": {
+            "description": "Shown once; never retrievable again.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "password"
+        ],
+        "type": "object"
+      },
       "AdminModulesResponse": {
         "properties": {
           "graph": {
@@ -152,6 +312,133 @@
           "version",
           "graph",
           "schema"
+        ],
+        "type": "object"
+      },
+      "AuditActor": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "person",
+              "anonymous",
+              "operator",
+              "system"
+            ],
+            "type": "string"
+          },
+          "person": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "superuser": {
+            "type": "boolean"
+          },
+          "titles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "type": "object"
+      },
+      "AuditPage": {
+        "properties": {
+          "next": {
+            "description": "Pass as after to get the next page; absent on the last page.",
+            "type": "string"
+          },
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/AuditRecord"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "records"
+        ],
+        "type": "object"
+      },
+      "AuditRecord": {
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "actor": {
+            "$ref": "#/components/schemas/AuditActor"
+          },
+          "at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "instance": {
+            "type": "string"
+          },
+          "level": {
+            "$ref": "#/components/schemas/Sensitivity"
+          },
+          "outcome": {
+            "enum": [
+              "succeeded",
+              "denied",
+              "failed"
+            ],
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "record": {
+            "$ref": "#/components/schemas/AuditRef"
+          },
+          "spooled": {
+            "type": "boolean"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "trace_id": {
+            "type": "string"
+          },
+          "v": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "v",
+          "id",
+          "at",
+          "instance",
+          "action",
+          "outcome",
+          "actor"
+        ],
+        "type": "object"
+      },
+      "AuditRef": {
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "kind": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id"
         ],
         "type": "object"
       },
@@ -423,6 +710,396 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/accounts/": {
+      "get": {
+        "operationId": "accountsList",
+        "parameters": [
+          {
+            "description": "Find the account at exactly this address (ignoring case); after and limit are ignored.",
+            "in": "query",
+            "name": "email",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The next value of the previous page.",
+            "in": "query",
+            "name": "after",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size; 0 or absent means 50.",
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountsAccountPage"
+                }
+              }
+            },
+            "description": "One page of accounts."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "List accounts, newest first, or find the one at an exact address. Needs accounts.read. Each account but your own is recorded as a read.",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/accounts/password": {
+      "post": {
+        "operationId": "accountsChangePassword",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountsPasswordChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Changed; a new session cookie is set."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Change your own password. Allowed for a session that must change its password. Ends every other session and sets a new cookie.",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/accounts/session": {
+      "get": {
+        "operationId": "accountsSession",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountsSession"
+                }
+              }
+            },
+            "description": "The session, or signed_in false."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Who is making this request. Public; never an error for a missing session. Not cached.",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/accounts/sessions/end-others": {
+      "post": {
+        "operationId": "accountsEndOtherSessions",
+        "responses": {
+          "204": {
+            "description": "Other sessions ended; a new session cookie is set."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Sign out everywhere else: ends every other session of your account and sets a new cookie.",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/accounts/sign-in": {
+      "post": {
+        "operationId": "accountsSignIn",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountsCredentials"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Signed in; the session cookie is set. Read GET /session for the session."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Sign in. 401 for an unknown address, a wrong password or a disabled account, without saying which; 429 when rate-limited.",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/accounts/sign-out": {
+      "post": {
+        "operationId": "accountsSignOut",
+        "responses": {
+          "204": {
+            "description": "Signed out; the session cookie is cleared."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Sign out. The cookie is cleared even when recording the sign-out fails.",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/accounts/sign-up": {
+      "post": {
+        "operationId": "accountsSignUp",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountsCredentials"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created and signed in; the session cookie is set. Read GET /session for the session."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Create an account and sign in. 409 with field email, code taken, when the address has an account; 501 when sign-ups are by invitation; rate-limited.",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/accounts/{account}": {
+      "get": {
+        "operationId": "accountsGet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountsAccount"
+                }
+              }
+            },
+            "description": "The account."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "One account. Needs accounts.read. Recorded as a read unless it is your own.",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/accounts/{account}/disable": {
+      "post": {
+        "operationId": "accountsDisable",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Disabled (or already disabled)."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Disable an account and end its sessions. Needs accounts.manage. Not the superuser account (403) and not your own (400, field account, code self). Idempotent.",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/accounts/{account}/enable": {
+      "post": {
+        "operationId": "accountsEnable",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Enabled (or already enabled)."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Enable a disabled account. Needs accounts.manage. Same refusals as disable. Idempotent.",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/accounts/{account}/temporary-password": {
+      "post": {
+        "operationId": "accountsSetTemporaryPassword",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountsTemporaryPassword"
+                }
+              }
+            },
+            "description": "The new password, shown once."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Set a generated password the person must change at their next sign-in, and end their sessions. Needs accounts.manage. Same refusals as disable. The password is shown once and not cached.",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
     "/api/admin/modules": {
       "get": {
         "operationId": "adminModules",
@@ -451,6 +1128,172 @@
         "summary": "The module graph and schema versions. Needs core.modules.read.",
         "tags": [
           "core"
+        ]
+      }
+    },
+    "/api/audit/entries": {
+      "get": {
+        "operationId": "auditSearch",
+        "parameters": [
+          {
+            "description": "The person who acted.",
+            "in": "query",
+            "name": "actor",
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          },
+          {
+            "description": "The person the record is about.",
+            "in": "query",
+            "name": "subject",
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          },
+          {
+            "description": "The kind of the record acted on; needs record_id.",
+            "in": "query",
+            "name": "record_kind",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The record acted on; needs record_kind.",
+            "in": "query",
+            "name": "record_id",
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          },
+          {
+            "description": "The area of the action: the text before its first dot.",
+            "in": "query",
+            "name": "area",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "One action, exactly.",
+            "in": "query",
+            "name": "action",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Start of the time range (inclusive); needs to.",
+            "in": "query",
+            "name": "from",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "End of the time range (exclusive); needs from.",
+            "in": "query",
+            "name": "to",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only entries made by the superuser account.",
+            "in": "query",
+            "name": "superuser",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "The next value of the previous page.",
+            "in": "query",
+            "name": "after",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size; 0 or absent means 50.",
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "maximum": 200,
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditPage"
+                }
+              }
+            },
+            "description": "One page of entries."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Search the audit log, newest first. Needs audit.search. The search is itself recorded.",
+        "tags": [
+          "audit"
+        ]
+      }
+    },
+    "/api/audit/people/{person}/views": {
+      "get": {
+        "operationId": "auditExportViews",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "person",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/x-ndjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditRecord"
+                }
+              }
+            },
+            "description": "One audit record per line."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Export every entry about one person, oldest first, as JSON Lines. Needs audit.export. The export is itself recorded.",
+        "tags": [
+          "audit"
         ]
       }
     },
@@ -699,6 +1542,14 @@
     {
       "description": "The reference module.",
       "name": "hello"
+    },
+    {
+      "description": "The audit log: who did what and who saw what.",
+      "name": "audit"
+    },
+    {
+      "description": "Who is signed in, and the local accounts: sign-up, sign-in, passwords and the account admin.",
+      "name": "accounts"
     }
   ]
 }

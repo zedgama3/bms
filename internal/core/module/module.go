@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 
+	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/telemetry"
@@ -123,11 +124,16 @@ type Deps struct {
 	DB      db.DB       // the module's schema is its own responsibility; db reports read-only
 	Signals signals.Bus // Provision sets disp.Scope(m.Name, m.Publishes, m.Subscribes)
 
+	// Audit records what the module audits (audit.md): scoped to the module by Provision
+	// with Scoped(m.Name), so an action outside "<name>." fails errs.Invalid. Nil only in
+	// tests that do not audit; moduletest.Conformance fills a nil one with an
+	// audittest.Fake.
+	Audit audit.Recorder
+
 	// Added by later specs, named here so modules know where to look:
 	// Settings settings.Reader   settings.md
 	// Authz    authz.Authorizer  authz.md
 	// People   people.Directory  people.md
-	// Audit    audit.Recorder    audit.md
 	// Jobs     jobs.Registrar    jobs.md
 	// Notify   notify.Notifier   notify.md
 	// Files    files.Store       files.md

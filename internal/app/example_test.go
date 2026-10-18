@@ -15,12 +15,13 @@ func ExampleMain_help() {
 	fmt.Println("exit status:", code)
 	// Output:
 	// usage: bms <command>
-	//   serve    run the server until SIGINT or SIGTERM
-	//   migrate  create the secrets file on a new installation and apply migrations
-	//   check    report configuration, modules, database and schema; exit as serve would
-	//   openapi  print the OpenAPI document (needs no configuration)
-	//   version  print the build version
-	//   help     print this usage
+	//   serve             run the server until SIGINT or SIGTERM
+	//   migrate           create the secrets file on a new installation and apply migrations
+	//   check             report configuration, modules, database and schema; exit as serve would
+	//   openapi           print the OpenAPI document (needs no configuration)
+	//   version           print the build version
+	//   help              print this usage
+	//   create-superuser  create or reset the superuser account; its password is shown once  <email>
 	// Configuration comes from `BMS_*` environment variables; run `bms check` to see it.
 	// exit status: 0
 }

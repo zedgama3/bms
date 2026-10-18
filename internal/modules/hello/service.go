@@ -27,8 +27,8 @@ type store interface {
 	DeleteByPerson(ctx context.Context, person model.PersonID) (int, error)
 }
 
-// actorFunc reads the signed-in person from ctx. M0: always (zero, false). M1: identity's
-// accessor.
+// actorFunc reads the signed-in person from ctx: identity.PersonFrom (M1), which is false
+// with no session, for a restricted session and inside a signal delivery.
 type actorFunc func(ctx context.Context) (model.PersonID, bool)
 
 // permissionChecker decides one permission for the actor in ctx; the same shape as

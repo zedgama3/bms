@@ -137,6 +137,9 @@ type Seams struct {
 	Greeting func(ctx context.Context) (string, error)
 }
 
+// noActor is an actorFunc for nobody signed in: NewWithSeams uses it when a test gives none.
+func noActor(context.Context) (model.PersonID, bool) { return model.PersonID{}, false }
+
 // NewWithSeams is New over injected seams (the production New cannot be given a fake
 // store). It fails as newModule does, with errs.Invalid for a nil dependency in deps.
 func NewWithSeams(deps module.Deps, s Seams) (*Module, error) {

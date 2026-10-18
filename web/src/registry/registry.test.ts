@@ -142,7 +142,7 @@ describe("enabledSets and the router", () => {
     expect(paths(enabledSets(moduleSets, new Set()))).not.toContain("hello");
     expect(paths(enabledSets(moduleSets, new Set(["hello"])))).toContain("hello");
     expect(paths(enabledSets(moduleSets, new Set()))).toContain("*");
-    const signedOut = { signedIn: false } as const;
+    const signedOut = { signedIn: false, signupOpen: false } as const;
     expect(navItems(enabledSets(moduleSets, new Set()), signedOut).map((i) => i.to)).toEqual([]);
     expect(
       navItems(enabledSets(moduleSets, new Set(["hello"])), signedOut).map((i) => i.to),
@@ -151,12 +151,16 @@ describe("enabledSets and the router", () => {
 });
 
 describe("access filtering of navigation (a convenience, never access control)", () => {
-  const out = { signedIn: false } as const;
+  const out = { signedIn: false, signupOpen: false } as const;
   const inNoPerms = {
     signedIn: true,
     personId: "p",
+    accountId: "a",
     playaName: "n",
     superuser: false,
+    passwordChangeRequired: false,
+    expiresAt: null,
+    signupOpen: false,
     permissions: [],
   } as const;
   const inPerms = { ...inNoPerms, permissions: ["core.modules.read"] } as const;

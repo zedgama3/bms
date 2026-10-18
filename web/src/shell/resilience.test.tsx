@@ -40,7 +40,7 @@ describe("a 401 keeps the page recoverable", () => {
       },
     });
     signedIn = false; // the server forgot us; the next session read says so
-    await waitFor(() => expect(router()!.state.location.pathname).toBe("/sign-in"));
+    await waitFor(() => expect(router()!.state.location.pathname).toBe("/accounts/sign-in"));
     expect(router()!.state.location.search).toBe("?returnTo=%2Fadmin%2Fmodules");
     await userEvent.type(await screen.findByLabelText(/E-mail address/), "pat@example.test");
     await userEvent.type(screen.getByLabelText(/Password/), "correct horse");

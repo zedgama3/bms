@@ -31,13 +31,7 @@ export function useBoot(): BootState {
   return useContext(BootContext);
 }
 
-/** `returnTo` must be a same-origin path: begins with `/`, not `//` or `/\` (F34). */
-export function safeReturnTo(raw: string | null): string {
-  if (!raw || !raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) return "/";
-  // eslint-disable-next-line no-control-regex
-  if (/[\u0000-\u001f\u007f]/.test(raw)) return "/";
-  return raw;
-}
+export { safeReturnTo } from "@/api";
 
 /** `/people/42` with params {id: "42"} becomes `/people/{id}` (the reporter's screen pattern). */
 export function patternOf(

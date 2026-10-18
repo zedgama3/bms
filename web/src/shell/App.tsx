@@ -4,6 +4,7 @@ import { createBrowserRouter } from "react-router";
 import { RouterProvider } from "react-router/dom";
 import type { DataRouter } from "react-router";
 import { api, ApiError } from "@/api";
+import { registerSessionRefresh, setSessionCheckFailed } from "@/api/internal";
 import { I18nProvider, useLanguage, useT } from "@/i18n";
 import type { ScreenSet } from "@/registry/types";
 import { enabledSets } from "@/registry/registry";
@@ -15,7 +16,6 @@ import type { SessionResult } from "./bootKeys";
 import { getReporter } from "./report";
 import type { BootState } from "./boot";
 import { loadCatalogues } from "./catalogues";
-import { identity } from "./identity";
 import { buildRoutes } from "./routes";
 import { parseSession, resetSession, setSession, SIGNED_OUT } from "./session";
 import { SetsContext } from "./sets";
@@ -59,7 +59,7 @@ function Boot({ sets, createRouter = browserRouter, onRouter, leave }: AppProps)
     queryKey: SESSION_KEY,
     queryFn: async ({ signal }): Promise<SessionResult> => {
       try {
-        const body = await identity.GET("/api/accounts/session", { signal });
+        const body = await api.GET("/api/accounts/session", { signal });
         return { identity: true, session: parseSession(body) };
       } catch (e) {
         // F28: M0 has no identity module; 404 means "signed out", not a failure.
@@ -109,6 +109,9 @@ function Boot({ sets, createRouter = browserRouter, onRouter, leave }: AppProps)
   const retryCatalogues = useCallback(() => setCatalogueAttempt((n) => n + 1), []);
 
   useEffect(() => {
+    setSessionCheckFailed(sessionQ.isError);
+  }, [sessionQ.isError]);
+  useEffect(() => {
     if (sessionQ.data) setSession(sessionQ.data.session);
     else if (sessionQ.isError) resetSession();
   }, [sessionQ.data, sessionQ.isError]);
@@ -134,6 +137,9 @@ function Boot({ sets, createRouter = browserRouter, onRouter, leave }: AppProps)
     const fresh = client.getQueryData<SessionResult>(SESSION_KEY);
     if (fresh) setSession(fresh.session);
   }, [client]);
+  useEffect(() => {
+    registerSessionRefresh(refreshSession);
+  }, [refreshSession]);
 
   const boot: BootState = {
     sessionFailed: sessionQ.isError,

@@ -23,6 +23,15 @@ export function pathFor(setName: string, to: string): string {
 /** The entries of the enabled sets the person may see before the server decides. */
 export function navItems(sets: readonly ScreenSet[], session: Session): NavItem[] {
   const items: NavItem[] = [];
+  // A restricted session (temporary password) sees only the password screen.
+  if (session.signedIn && session.passwordChangeRequired) {
+    for (const s of sets)
+      for (const e of s.nav) {
+        const to = pathFor(s.name, e.to);
+        if (to === "/accounts/password") items.push({ label: e.label, to, area: e.area });
+      }
+    return items;
+  }
   for (const s of sets) {
     for (const e of s.nav) {
       if (canSee(session, e.access))

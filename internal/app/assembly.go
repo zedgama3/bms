@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -12,8 +13,10 @@ import (
 
 	"github.com/zedgama3/bms/internal/api"
 	"github.com/zedgama3/bms/internal/config"
+	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/db"
+	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/module"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/telemetry"
@@ -92,12 +95,15 @@ type assembly struct {
 	routeSets     []module.ModuleRoutes       // one per core area with routes; Module is the area name
 	authenticator api.Authenticator           // identity (M1); nil until then
 	permissions   api.PermissionChecker       // authz (M2); nil until then
-	deps          coreDeps                    //nolint:unused // copied into every module's Deps by provision; filled by the first part with a field
+	titles        audit.TitleSource           // authz (M2); nil until then (audit reads it lazily)
+	deps          coreDeps                    // copied into every module's Deps by provision
 
 	runnables []runnable // started after Set.Start, stopped before it (jobs, M4)
 	commands  []command  // added by declare
 
-	// Beyond the spec's list: the parts and what the lifecycle has started.
+	// Beyond the spec's list: the parts, what they built that a command calls, and what the
+	// lifecycle has started.
+	identity  *identity.Service // the identity part's service (create-superuser); nil before its build
 	parts     []part
 	started   []runnable
 	srv       httpServer
@@ -279,13 +285,57 @@ func (a *assembly) provision(_ context.Context, m module.Manifest) (module.Deps,
 	if err != nil {
 		return module.Deps{}, fmt.Errorf("module %s: signals scope: %w", m.Name, err)
 	}
-	return module.Deps{
+	deps := module.Deps{
 		Logger:  a.tel.Logger().With(slog.String("module", m.Name)),
 		Tracer:  tr,
 		Clock:   a.clock,
 		DB:      a.dbc,
 		Signals: bus,
-	}, nil
+	}
+	if a.deps.audit != nil {
+		if deps.Audit, err = a.deps.audit.Scoped(m.Name); err != nil {
+			return module.Deps{}, fmt.Errorf("module %s: audit scope: %w", m.Name, err)
+		}
+	}
+	return deps, nil
+}
+
+// checkSchemas checks the core's migration sets the way Plan.Build checks a module's. When
+// they are all current it returns nil and leaves the modules to Plan.Build (F9), so no set
+// is checked twice on the way to a running server. When one is missing or differs, it also
+// checks manifests' sets (the enabled modules with migrations), because nothing is built
+// after this failure and the one error should name every set that is out of date. With
+// skipSchema nothing is checked. The kind is Conflict when every problem is one, else the
+// first other kind.
+func (a *assembly) checkSchemas(ctx context.Context, schema module.SchemaChecker, manifests []module.Manifest) error {
+	problems, kind := checkSets(ctx, schema, a.coreSets, errs.Conflict)
+	if len(problems) == 0 {
+		return nil
+	}
+	var sets []db.Set
+	for _, m := range manifests {
+		if m.Migrations != nil {
+			sets = append(sets, db.Set{Name: m.Name, Files: m.Migrations})
+		}
+	}
+	more, kind := checkSets(ctx, schema, sets, kind)
+	problems = append(problems, more...)
+	return errs.E("app.checkSchemas", kind, errors.Join(problems...))
+}
+
+// checkSets runs CheckSchema for each set and returns the problems and the kind: kind in,
+// unless it is still Conflict and a problem has another kind (the first such decides).
+func checkSets(ctx context.Context, schema module.SchemaChecker, sets []db.Set, kind errs.Kind) ([]error, errs.Kind) {
+	var problems []error
+	for _, s := range sets {
+		if err := schema.CheckSchema(ctx, s.Name, s.Files); err != nil {
+			problems = append(problems, err)
+			if k := errs.KindOf(err); kind == errs.Conflict && k != errs.Conflict {
+				kind = k
+			}
+		}
+	}
+	return problems, kind
 }
 
 // buildModules runs the parts' build, builds the modules under buildTimeout with schema
@@ -293,6 +343,11 @@ func (a *assembly) provision(_ context.Context, m module.Manifest) (module.Deps,
 func (a *assembly) buildModules(ctx context.Context, schema module.SchemaChecker) error {
 	bctx, cancel := context.WithTimeout(ctx, buildTimeout)
 	defer cancel()
+	// The core's sets are checked here, before the parts that use their tables are built;
+	// Plan.Build checks the modules' (F9).
+	if err := a.checkSchemas(bctx, schema, a.plan.Order()); err != nil {
+		return err
+	}
 	if err := a.buildParts(bctx); err != nil {
 		return err
 	}
@@ -395,7 +450,8 @@ func (a *assembly) apiOptions(version string, database api.Database, schema api.
 	}, nil
 }
 
-// closers are the six shutdown steps in the order of decision 10. Steps for things that
+// closers are the shutdown steps in the order of decision 10, with audit's Close after
+// Set.Stop (late work of a stopping module may still audit) and before db.Close. Steps for things that
 // were never started do nothing, so a failed start-up runs the same list.
 func (a *assembly) closers() []closer {
 	return []closer{
@@ -417,6 +473,12 @@ func (a *assembly) closers() []closer {
 				return nil
 			}
 			return a.set.Stop(ctx) //nolint:wrapcheck // shutdown names the step
+		}},
+		{name: "audit", close: func(ctx context.Context) error {
+			if a.deps.audit == nil {
+				return nil
+			}
+			return a.deps.audit.Close(ctx) //nolint:wrapcheck // shutdown names the step
 		}},
 		{name: "db", close: func(ctx context.Context) error {
 			if a.pool == nil {

@@ -379,3 +379,60 @@ func TestClose_CancelsARunningImport(t *testing.T) {
 		t.Errorf("the interrupted import must keep its file: %v", serr)
 	}
 }
+
+func TestSpoolCounts_Table(t *testing.T) {
+	dataDir := t.TempDir()
+	if w, f, err := SpoolCounts(dataDir); err != nil || w != 0 || f != 0 {
+		t.Fatalf("no spool directory: %d, %d, %v; want 0, 0, nil", w, f, err)
+	}
+	dir := filepath.Join(dataDir, filepath.FromSlash(SpoolDirName))
+	if err := os.MkdirAll(filepath.Join(dir, "sub.jsonl"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range []string{"1-1-aa.jsonl", "2-1-bb.jsonl", "3-1-cc.jsonl.failed", "notes.txt"} {
+		if err := os.WriteFile(filepath.Join(dir, n), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	w, f, err := SpoolCounts(dataDir)
+	if err != nil || w != 2 || f != 1 {
+		t.Errorf("SpoolCounts = %d waiting, %d failed, %v; want 2, 1, nil (a directory and a stray file are not spool files)", w, f, err)
+	}
+}
+
+func TestSpoolCounts_PathProblems_ReturnInvalid(t *testing.T) {
+	t.Run("a regular file where the directory should be", func(t *testing.T) {
+		blocker := filepath.Join(t.TempDir(), "file")
+		if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		_, _, err := SpoolCounts(blocker)
+		if !errs.Is(err, errs.Invalid) {
+			t.Fatalf("err = %v, want Invalid", err)
+		}
+		if strings.Contains(err.Error(), blocker) {
+			t.Errorf("the message carries the path: %v", err)
+		}
+	})
+	t.Run("a directory this user cannot read", func(t *testing.T) {
+		if os.Geteuid() == 0 {
+			t.Skip("root reads everything")
+		}
+		dataDir := t.TempDir()
+		dir := filepath.Join(dataDir, filepath.FromSlash(SpoolDirName))
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(dir, 0); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := os.Chmod(dir, 0o700); err != nil { //nolint:gosec // restore the 0700 spool mode so TempDir cleanup can remove it
+				t.Errorf("restore mode: %v", err)
+			}
+		})
+		if _, _, err := SpoolCounts(dataDir); !errs.Is(err, errs.Invalid) {
+			t.Fatalf("err = %v, want Invalid", err)
+		}
+	})
+}

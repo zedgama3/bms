@@ -13,6 +13,7 @@ import (
 	"github.com/zedgama3/bms/internal/api"
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/db/dbtest"
+	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/module"
 	"github.com/zedgama3/bms/internal/core/signals/signalstest"
 	"github.com/zedgama3/bms/internal/core/telemetry/intake"
@@ -38,7 +39,7 @@ func (a hsAuth) Authenticate(ctx context.Context, r *http.Request) (context.Cont
 	return a(ctx, r)
 }
 
-// hsServer builds the real shell over the production hello module (M0 wiring).
+// hsServer builds the real shell over the production hello module (M1 wiring).
 func hsServer(t *testing.T, auth api.Authenticator) *api.Server {
 	t.Helper()
 	c := telemetrytest.New(t)
@@ -165,20 +166,45 @@ func TestHelloShell_UnknownPath_Returns404Problem(t *testing.T) {
 	}
 }
 
-// The M0 production wiring has no actor and denies everything: a session reaches the
-// handler and the module still fails closed (401, never 2xx).
-func TestHelloShell_SignedInWithM0Wiring_FailsClosed(t *testing.T) {
+// The production wiring (M1) reads the actor with identity.PersonFrom and still denies every
+// permission until authz exists (M2): a signed-in request reaches the handler, the actor is
+// present and the permission is refused, so 403, never 2xx. Without a session in the context
+// (identity.WithSession is what Authenticate does) there is no actor: 401.
+func TestHelloShell_SignedIn_Returns403UntilAuthz(t *testing.T) {
 	person := model.NewID[model.PersonID]()
+	now := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
 	srv := hsServer(t, hsAuth(func(ctx context.Context, _ *http.Request) (context.Context, model.PersonID, error) {
-		return ctx, person, nil
+		return identity.WithSession(ctx, identity.Session{
+			ID:        model.NewID[identity.SessionID](),
+			Account:   model.NewID[model.AccountID](),
+			Person:    person,
+			IssuedAt:  now,
+			ExpiresAt: now.Add(time.Hour),
+		}), person, nil
 	}))
 	for _, tc := range []struct{ method, path string }{
 		{"GET", "/api/hello/greeting"},
 		{"POST", "/api/hello/greetings"},
 	} {
 		rec := hsDo(t, srv, tc.method, tc.path)
-		if rec.Code != 401 && rec.Code != 403 {
-			t.Errorf("%s %s = %d, want 401 or 403", tc.method, tc.path, rec.Code)
+		if rec.Code != 403 {
+			t.Fatalf("%s %s = %d, want 403 (actor present, permission denied)", tc.method, tc.path, rec.Code)
 		}
+		if p := hsProblem(t, rec); p.Code != "permission" || p.Status != 403 {
+			t.Errorf("%s %s problem = %+v", tc.method, tc.path, p)
+		}
+	}
+}
+
+// A person the shell authenticated but whose ctx carries no identity session (a seam that
+// returns only the person) is no actor for the module: it fails closed with 401.
+func TestHelloShell_PersonWithoutSessionInContext_FailsClosed(t *testing.T) {
+	person := model.NewID[model.PersonID]()
+	srv := hsServer(t, hsAuth(func(ctx context.Context, _ *http.Request) (context.Context, model.PersonID, error) {
+		return ctx, person, nil
+	}))
+	rec := hsDo(t, srv, "GET", "/api/hello/greeting")
+	if rec.Code != 401 {
+		t.Fatalf("status = %d, want 401", rec.Code)
 	}
 }

@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zedgama3/bms/internal/core/audit"
+	"github.com/zedgama3/bms/internal/core/audit/audittest"
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/db/dbtest"
 	"github.com/zedgama3/bms/internal/core/module"
@@ -203,9 +205,11 @@ func resolveOptions(m module.Manifest, opts []Option) (options, []string) {
 // signalstest.Fake in Signals scoped to the manifest, and the later fields); it is called
 // once per rule, so each rule gets fresh fakes; nil is allowed. Conformance replaces Logger
 // and Tracer with telemetrytest.New(t)'s (any policy violation fails the rule), fills a nil
-// Clock, DB or Signals with a fake, and sets Links through Plan.Build. A DB or Signals that
-// is not a dbtest.Fake or signalstest.Fake fails t (t.Fatalf), naming the module, because
-// the rules need to make the database read-only and to read back the subscriptions.
+// Clock, DB, Signals or Audit with a fake (an audittest.NewFake scoped to the module), and
+// sets Links through Plan.Build. A DB, Signals or Audit that is not a dbtest.Fake,
+// signalstest.Fake or audittest.Fake fails t (t.Fatalf), naming the module, because the
+// rules need to make the database read-only, to read back the subscriptions and to scan
+// the audit entries the module recorded for personal data (no_personal_data_in_logs).
 //
 // opts supply what the rules cannot learn from the manifest: the value behind each
 // capability the module requires or uses (WithCapability), and how to put a known person's
@@ -311,6 +315,7 @@ type harness struct {
 	mod     module.Module
 	db      *dbtest.Fake
 	sig     *signalstest.Fake
+	audit   *audittest.Fake // the module under test's recorder
 	capture *telemetrytest.Capture
 	started bool
 	stopped bool
@@ -398,9 +403,17 @@ func (h *harness) provisioner(readOnly bool) module.Provision {
 			}
 		}
 		d.Signals = bus
+		rec, ok := d.Audit.(*audittest.Fake)
+		if d.Audit != nil && !ok {
+			h.t.Fatalf("the provision for %q returned an Audit of type %T; Conformance needs an *audittest.Fake (or nil) to scan what was recorded", m.Name, d.Audit)
+		}
+		if !ok {
+			rec = audittest.NewFake(m.Name)
+		}
+		d.Audit = rec
 		if m.Name == r.m.Name {
 			fake.SetReadOnly(readOnly)
-			h.db, h.sig = fake, bus
+			h.db, h.sig, h.audit = fake, bus, rec
 		}
 		return d, nil
 	}
@@ -809,6 +822,27 @@ func ruleNoPersonalDataInLogs(t *testing.T, r *rig) {
 	}
 	// telemetrytest fails the test at cleanup on any policy violation, which covers a denied
 	// key such as email or legal_name.
+	if err := auditLeak(h.audit.Recorded()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// auditLeak returns an error when an audit entry's Reason or Fields hold a seed marker or
+// "[email]": an entry names fields and IDs, never a value (audit.md; module-contract rule
+// no_personal_data_in_logs).
+func auditLeak(entries []audit.Entry) error {
+	markers := []string{subject.LegalName, subject.Phone, subject.Note, subject.Email, scrubbedEmail}
+	for i, e := range entries {
+		for _, text := range append([]string{e.Reason}, e.Fields...) {
+			for _, marker := range markers {
+				if strings.Contains(text, marker) {
+					// The marker is invented, so quoting it leaks nothing.
+					return fmt.Errorf("audit entry %d (%s) holds personal data (%q) in its Reason or Fields; record field names, never values", i, e.Action, marker)
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // emptyObject reports an error unless data is empty or a JSON object whose values are all

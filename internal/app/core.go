@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
+	"github.com/zedgama3/bms/internal/core/audit"
+	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/lib/errs"
 )
 
@@ -15,11 +18,41 @@ import (
 //	Settings settings.Reader   (scoped per module by provision)   settings.md
 //	Authz    authz.Authorizer                                      authz.md
 //	People   people.Directory                                      people.md
-//	Audit    audit.Recorder                                        audit.md
 //	Jobs     jobs.Registrar    (scoped per module by provision)    jobs.md
 //	Notify   notify.Notifier   (scoped per module by provision)    notify.md
 //	Files    files.Store                                           files.md
-type coreDeps struct{} //nolint:unused // the first part with a Deps field adds it
+//
+// Audit (audit.md, M1) is held unscoped: provision scopes it per module with Scoped(m.Name).
+type coreDeps struct {
+	audit *audit.Log // set by the audit part's build; nil when no part builds one (tests)
+}
+
+// coreSetOrder is the order of the core's migration sets (db.md Proposed change 10),
+// whatever the order of the parts that declare them: a later set may hold a foreign key to
+// an earlier one.
+var coreSetOrder = []string{"identity", "people", "authz", "departments", "events", "audit", "settings", "jobs", "files"}
+
+// addCoreSet inserts s into a.coreSets at its place in coreSetOrder. It fails with
+// errs.Internal for a set that is not in the order or is declared twice (F28: a programming
+// error).
+func (a *assembly) addCoreSet(s db.Set) error {
+	const op = "app.addCoreSet"
+	rank := slices.Index(coreSetOrder, s.Name)
+	if rank < 0 {
+		return errs.E(op, errs.Internal, fmt.Errorf("core migration set %q is not in the fixed order", s.Name))
+	}
+	at := len(a.coreSets)
+	for i, have := range a.coreSets {
+		switch r := slices.Index(coreSetOrder, have.Name); {
+		case r == rank:
+			return errs.E(op, errs.Internal, fmt.Errorf("core migration set %q is declared twice", s.Name))
+		case r > rank:
+			at = min(at, i)
+		}
+	}
+	a.coreSets = slices.Insert(a.coreSets, at, s)
+	return nil
+}
 
 // part is how one core service plugs in. Every func is optional (nil means nothing to
 // do). The order of coreParts is fixed (app.md "How later core services plug in") and a
@@ -48,10 +81,10 @@ type runnable struct {
 	stop  func(ctx context.Context) error
 }
 
-// coreParts are the core services that plug in, in dependency order (identity, audit,
-// settings, authz, people, departments-events, jobs, notify, files). M0 has none: each
-// later core spec adds one file core_<name>.go and one line here.
-var coreParts = []part{}
+// coreParts are the core services that plug in, in dependency order (audit, identity,
+// settings, authz, people, departments-events, jobs, notify, files; app.md "How later core
+// services plug in"). Each later core spec adds one file core_<name>.go and one line here.
+var coreParts = []part{auditPart, identityPart}
 
 // declare runs every part's declare, in order (F28).
 func (a *assembly) declare() error {

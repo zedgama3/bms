@@ -5,11 +5,12 @@ import type { DataRouter } from "react-router";
 import { vi } from "vitest";
 import { createQueryClient } from "@/api/internal";
 import { addCatalogue, configureLanguages } from "@/i18n/internal";
+import { coreSets } from "@/core";
 import { moduleSets } from "@/modules";
 import type { ScreenSet } from "@/registry/types";
 import { App } from "@/shell/App";
 import shellEn from "@/shell/messages/en.json";
-import { resetSession } from "@/shell/session";
+import { setSession, SIGNED_OUT } from "@/shell/session";
 import { setReadOnly } from "@/shell/readonly";
 import { wireClient } from "@/shell/wire";
 import { installFetch, json, problem } from "./fakeFetch";
@@ -28,7 +29,7 @@ export interface Mount {
 }
 
 export function mountApp(opts: Mount = {}) {
-  resetSession();
+  setSession(SIGNED_OUT);
   setReadOnly(false);
   configureLanguages(["en"], "en");
   addCatalogue("shell", "en", shellEn);
@@ -66,7 +67,7 @@ export function mountApp(opts: Mount = {}) {
   const view = render(
     <QueryClientProvider client={client}>
       <App
-        sets={opts.sets ?? moduleSets}
+        sets={opts.sets ?? [...coreSets, ...moduleSets]}
         leave={leave}
         onRouter={(r) => {
           router = r;

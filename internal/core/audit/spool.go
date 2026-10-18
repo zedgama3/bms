@@ -9,7 +9,9 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
+	"syscall"
 
 	"github.com/zedgama3/bms/internal/lib/clock"
 	"github.com/zedgama3/bms/internal/lib/errs"
@@ -24,6 +26,40 @@ const (
 	spoolFilePerm = 0o600
 	openAttempts  = 4
 )
+
+// SpoolCounts counts the spool files under dataDir (SpoolDirName): waiting are complete
+// files the importer has not yet imported (".jsonl", including the one this process may
+// have open), failed are files it set aside (".failed"). It only reads the directory: it
+// never rotates, imports or creates anything, so `bms check` can call it on a read-only
+// copy. A missing directory is (0, 0, nil). It fails errs.Invalid when the path cannot be a
+// spool directory (a component is a regular file) or is not readable by this user, which are
+// the operator's to fix under data.dir; errs.Unavailable for any other read failure. The
+// message never carries a file name.
+func SpoolCounts(dataDir string) (waiting, failed int, err error) {
+	const op = "audit.SpoolCounts"
+	dir := filepath.Join(dataDir, filepath.FromSlash(SpoolDirName))
+	entries, err := os.ReadDir(dir)
+	switch {
+	case err == nil:
+	case errors.Is(err, fs.ErrNotExist):
+		return 0, 0, nil
+	case errors.Is(err, syscall.ENOTDIR) || errors.Is(err, fs.ErrPermission):
+		return 0, 0, errs.E(op, errs.Invalid, fmt.Errorf("the audit spool directory cannot be read under data.dir: %s", scrubPathError(err)))
+	default:
+		return 0, 0, errs.E(op, errs.Unavailable, fmt.Errorf("read the audit spool directory: %s", scrubPathError(err)))
+	}
+	for _, e := range entries {
+		name := e.Name()
+		switch {
+		case e.IsDir():
+		case strings.HasSuffix(name, spoolSuffix):
+			waiting++
+		case strings.HasSuffix(name, failedSuffix):
+			failed++
+		}
+	}
+	return waiting, failed, nil
+}
 
 // spoolFile is the part of *os.File the spool uses; tests wrap it to count syncs or to fail.
 type spoolFile interface {

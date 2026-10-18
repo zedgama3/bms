@@ -9,6 +9,8 @@ import { RouteAnnouncer } from "./RouteAnnouncer";
 import { useRegionalName } from "./regional";
 import { getSessionEnded, useSession } from "./session";
 
+const PASSWORD_PATH = "/accounts/password";
+
 /** The page: skip link, header and navigation, banners, `<main id="content">`, footer. It
  *  is also the gate: a signed-in route visited signed out redirects to sign-in before any call (F35). */
 export function Frame() {
@@ -21,6 +23,13 @@ export function Frame() {
 
   const handle = matches[matches.length - 1]?.handle as RouteHandle | undefined;
   const needsSignIn = handle !== undefined && handle.access !== "public" && !session.signedIn;
+  // A temporary password (identity decision 9): the server answers 401 to everything else, so
+  // the only screen that works is the one that changes it.
+  const needsPassword =
+    session.signedIn &&
+    session.passwordChangeRequired &&
+    location.pathname !== PASSWORD_PATH &&
+    !location.pathname.startsWith(`${PASSWORD_PATH}/`);
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -51,9 +60,14 @@ export function Frame() {
       >
         {needsSignIn ? (
           <Navigate
-            to={`/sign-in?returnTo=${encodeURIComponent(location.pathname + location.search)}`}
+            to={`/accounts/sign-in?returnTo=${encodeURIComponent(location.pathname + location.search)}`}
             replace
             state={{ ended: getSessionEnded() }}
+          />
+        ) : needsPassword ? (
+          <Navigate
+            to={`${PASSWORD_PATH}?returnTo=${encodeURIComponent(location.pathname + location.search)}`}
+            replace
           />
         ) : (
           <Suspense fallback={<Loading />}>

@@ -3,20 +3,15 @@ import type { Session } from "@/api";
 export {
   SIGNED_OUT,
   getSession,
+  getSessionEnded,
   parseSession,
   resetSession,
   setSession,
+  signedOutLike,
   subscribeSession,
 } from "@/api/internal";
-export { useSession } from "@/api";
+export { setSessionEnded, useSession } from "@/api";
 export type { Session } from "@/api";
-
-import { createStore } from "@/api/store";
-
-/** Set when a 401 ended the session, so the sign-in page can say so once (a toast). */
-const ended = createStore(false);
-export const getSessionEnded = ended.get;
-export const setSessionEnded = ended.set;
 
 /** Whether a nav entry or route is shown before the server decides (a convenience, never access control). */
 export function canSee(

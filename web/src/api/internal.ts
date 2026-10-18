@@ -5,9 +5,14 @@ export type { Api, ClientHooks } from "./client";
 export { createQueryClient, retryDelay, shouldRetry } from "./query";
 export {
   getSession,
+  getSessionEnded,
   parseSession,
+  registerSessionRefresh,
   resetSession,
   setSession,
+  setSessionCheckFailed,
+  signedOutLike,
   SIGNED_OUT,
   subscribeSession,
 } from "./session";
+export { getReadOnly, setReadOnlyState } from "./readonly";

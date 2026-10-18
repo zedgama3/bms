@@ -17,6 +17,7 @@ import (
 
 	"github.com/zedgama3/bms/internal/contracts/greeter"
 	"github.com/zedgama3/bms/internal/core/authz"
+	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/module"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/lib/errs"
@@ -106,8 +107,9 @@ func acceptsBanner(v any) bool {
 	return ok
 }
 
-// seams are the three M0 seams and the store (module-hello decision 2). New wires them to
-// the postgres store, "no actor", "deny" and "the declared default"; tests inject fakes.
+// seams are the three seams and the store (module-hello decision 2). New wires them to the
+// postgres store, identity.PersonFrom (M1), "deny" (until authz, M2) and "the declared
+// default" (until settings, M2); tests inject fakes.
 type seams struct {
 	store    store
 	actor    actorFunc
@@ -122,9 +124,6 @@ type denyAll struct{}
 func (denyAll) Allow(context.Context, authz.Permission) error {
 	return errs.E("hello.allow", errs.Permission, errDenied)
 }
-
-// noActor is the M0 actorFunc: nobody is signed in.
-func noActor(context.Context) (model.PersonID, bool) { return model.PersonID{}, false }
 
 // declaredDefault is the M0 greetingSource: the setting's declared default.
 func declaredDefault(ctx context.Context) (string, error) {
@@ -168,7 +167,7 @@ func New(_ context.Context, deps module.Deps) (module.Module, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
-	return newModule(deps, seams{store: st, actor: noActor, allow: denyAll{}, greeting: declaredDefault})
+	return newModule(deps, seams{store: st, actor: identity.PersonFrom, allow: denyAll{}, greeting: declaredDefault})
 }
 
 // checkDeps fails with errs.Invalid naming every nil dependency.

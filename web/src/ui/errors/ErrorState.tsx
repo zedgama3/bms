@@ -9,7 +9,16 @@ import { notifyUntranslated } from "./untranslated";
 
 /** A screen's error state: the sentence, the reference line when `showsRef(error)`
  *  (decision 9), a retry button when `onRetry` is given. */
-export function ErrorState({ error, onRetry }: { error: ApiError; onRetry?: () => void }) {
+export function ErrorState({
+  error,
+  onRetry,
+  message,
+}: {
+  error: ApiError;
+  onRetry?: () => void;
+  /** Replaces the sentence for the error's code (the accounts list says what it needs permission for). */
+  message?: string;
+}) {
   const t = useT();
   const untranslated = isUntranslatedCode(error);
   useEffect(() => {
@@ -22,7 +31,7 @@ export function ErrorState({ error, onRetry }: { error: ApiError; onRetry?: () =
     >
       <p className="flex items-start gap-2 font-semibold text-danger">
         <TriangleAlert aria-hidden="true" className="mt-1 size-5 shrink-0" />
-        <span>{messageFor(t, error)}</span>
+        <span>{message ?? messageFor(t, error)}</span>
       </p>
       {showsRef(error) && error.ref ? <ReferenceLine reference={error.ref} /> : null}
       {onRetry ? (

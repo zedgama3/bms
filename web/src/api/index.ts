@@ -17,7 +17,15 @@ export type {
   TimeRange,
 } from "./errors";
 export type { paths, components } from "./schema";
-export { useSession } from "./session";
+export { useReadOnly } from "./readonly";
+export type { ReadOnlyState } from "./readonly";
+export {
+  refreshSession,
+  safeReturnTo,
+  setSessionEnded,
+  useSession,
+  useSessionCheckFailed,
+} from "./session";
 export type { Session } from "./session";
 
 export const api = makeApi<paths>();

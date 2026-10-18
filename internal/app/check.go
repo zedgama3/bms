@@ -7,13 +7,16 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/zedgama3/bms/internal/config"
+	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/lib/errs"
+	"github.com/zedgama3/bms/internal/lib/secret"
 	"github.com/zedgama3/bms/internal/lib/validate"
 )
 
@@ -100,6 +103,7 @@ func runCheck(ctx context.Context, p *process) int {
 			r.printf("api: skipped (the modules did not resolve)\n")
 		}
 	}
+	r.auditSpool(cfg)
 	r.ui()
 
 	if err := a.closeQuiet(ctx); err != nil {
@@ -150,6 +154,10 @@ func (r *checkReport) config(ctx context.Context, p *process) (config.Config, bo
 	}
 	if debugLogging(cfg) {
 		r.printf("log level: debug (logs may contain personal data)\n")
+	}
+	if cfg.Session.Key.IsSet() && requireSessionKey(cfg) != nil {
+		r.printf("session key: the documentation placeholder; unset it and run `bms migrate`, or set one of your own\n")
+		r.record(ExitUsage)
 	}
 	if !cfg.Session.Key.IsSet() {
 		r.printf("session key: not set; run `bms migrate` on a new installation, or restore %s from your backup\n", cfg.Secrets.File)
@@ -348,6 +356,10 @@ func (r *checkReport) setLine(st db.Status, disabled bool) {
 // them, and prints the operation count (step 6).
 func (r *checkReport) api(ctx context.Context, a *assembly) {
 	a.ui = nil
+	if !a.cfg.Session.Key.IsSet() {
+		// Already recorded as a problem (step 1); the build still runs to count the API.
+		a.cfg.Session.Key = secret.New(placeholderSessionKey)
+	}
 	if err := a.newDispatcher(); err != nil {
 		r.printf("api: %s\n", indent(err.Error()))
 		r.record(ExitFailure)
@@ -378,6 +390,29 @@ func (r *checkReport) api(ctx context.Context, a *assembly) {
 		return
 	}
 	r.printf("api: %d operations\n", n)
+}
+
+// auditSpool prints how many audit spool files wait to be imported and how many the
+// importer set aside (audit.md: bms check may report the spool). It only counts: a read-only
+// copy holds waiting files until it can write, and importing would write. A spool path that
+// cannot be read is the operator's to fix under BMS_DATA_DIR (ExitUsage), as serve's
+// importer start would find (audit F33).
+func (r *checkReport) auditSpool(cfg config.Config) {
+	waiting, failed, err := audit.SpoolCounts(cfg.Data.Dir)
+	if err != nil {
+		r.printf("audit spool: %s\n", indent(err.Error()))
+		r.record(statusOf(err, ExitFailure))
+		return
+	}
+	if waiting == 0 && failed == 0 {
+		r.printf("audit spool: empty\n")
+		return
+	}
+	r.printf("audit spool: %d waiting, %d failed\n", waiting, failed)
+	if failed > 0 {
+		dir := filepath.Join(cfg.Data.Dir, filepath.FromSlash(audit.SpoolDirName))
+		r.printf("  %d spool file(s) hold a line the importer could not read and were set aside as .failed in %s; keep them until you have looked at them\n", failed, dir)
+	}
 }
 
 // ui prints whether a web build is embedded and its version (step 7).

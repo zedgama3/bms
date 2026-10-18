@@ -6,7 +6,7 @@ import { Loading } from "@/ui";
 import { AdminModules } from "./screens/AdminModules";
 import { Home } from "./screens/Home";
 import { NotFound } from "./screens/NotFound";
-import { SignIn } from "./screens/SignIn";
+import { SignInRedirect } from "./screens/SignInRedirect";
 
 /** The router's routes: the shell's own screens, then each enabled set under `/<name>`, then not found. */
 export function buildRoutes(sets: readonly ScreenSet[]): RouteObject[] {
@@ -26,8 +26,8 @@ export function buildRoutes(sets: readonly ScreenSet[]): RouteObject[] {
             },
             {
               path: "sign-in",
-              element: <SignIn />,
-              handle: { title: "shell.signin.title", access: "public" },
+              element: <SignInRedirect />,
+              handle: { title: "shell.signin", access: "public" },
             },
             {
               path: "admin/modules",

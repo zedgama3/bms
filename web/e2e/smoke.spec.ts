@@ -63,6 +63,19 @@ async function openMenu(page: Page, isPhone: boolean): Promise<Locator> {
   return page.getByRole("navigation", { name: "Main" });
 }
 
+/** The session answer for a signed-out visitor on a copy where sign-up is open. */
+async function signedOut(page: Page) {
+  await page.route("**/api/accounts/session", (r) =>
+    r.fulfill({ json: { signed_in: false, signup_open: true, superuser: false, permissions: [] } }),
+  );
+}
+
+/** A tap on a phone, a click on the desktop: every flow must work with touch alone. */
+async function press(target: Locator, isPhone: boolean) {
+  if (isPhone) await target.tap();
+  else await target.click();
+}
+
 test.describe("the frame", () => {
   test("renders with a skip link and landmarks; on a phone the Menu disclosure opens and closes on navigation", async ({
     page,
@@ -103,7 +116,7 @@ test.describe("the frame", () => {
     const csp = watchCsp(page);
     const res = await page.goto("/");
     expect(res?.headers()["content-security-policy"]).toMatch(/default-src 'self'/);
-    for (const path of ["/hello", "/sign-in", "/admin/modules", "/nowhere"]) {
+    for (const path of ["/hello", "/sign-in", "/accounts/sign-up", "/admin/modules", "/nowhere"]) {
       await page.goto(path);
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     }
@@ -135,7 +148,7 @@ test.describe("hello", () => {
     await expect(page.getByRole("heading", { level: 1, name: "Not found" })).toBeVisible();
   });
 
-  test("a 401 lands on /sign-in?returnTo=/hello and, in M0, says sign-in isn't available", async ({
+  test("a 401 lands on /accounts/sign-in?returnTo=/hello and shows the sign-in form", async ({
     page,
   }) => {
     only("default");
@@ -148,9 +161,9 @@ test.describe("hello", () => {
       }),
     );
     await page.goto("/hello");
-    await expect(page).toHaveURL(/\/sign-in\?returnTo=%2Fhello$/);
+    await expect(page).toHaveURL(/\/accounts\/sign-in\?returnTo=%2Fhello$/);
     await expect(page.getByRole("heading", { level: 1, name: "Sign in" })).toBeVisible();
-    await expect(page.getByText("Sign-in isn't available in this build yet.")).toBeVisible();
+    await expect(page.getByLabel(/E-mail address/)).toBeVisible();
   });
 });
 
@@ -169,6 +182,7 @@ test.describe("read-only copy", () => {
 const screens: [string, string][] = [
   ["home", "/"],
   ["sign-in", "/sign-in"],
+  ["sign-up", "/accounts/sign-up"],
   ["hello", "/hello"],
   ["not found", "/nowhere"],
 ];
@@ -179,6 +193,7 @@ test.describe("accessibility and the phone layout", () => {
       test(`${name} has no axe violations (${scheme})`, async ({ page }) => {
         only("default");
         await page.emulateMedia({ colorScheme: scheme });
+        await signedOut(page);
         await page.goto(path);
         await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
         await axe(page);
@@ -192,6 +207,7 @@ test.describe("accessibility and the phone layout", () => {
     }, info) => {
       only("default");
       test.skip(info.project.name !== "phone", "the phone project only");
+      await signedOut(page);
       await page.goto(path);
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
       await noHorizontalScroll(page);
@@ -209,6 +225,7 @@ test.describe("accessibility and the phone layout", () => {
       only("default");
       test.skip(info.project.name !== "phone", "the phone project only");
       await page.setViewportSize({ width: 320, height: 568 });
+      await signedOut(page);
       await page.goto(path);
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
       await noHorizontalScroll(page);
@@ -295,4 +312,345 @@ test.describe("/admin/modules (signed in, mocked at the network)", () => {
       await axe(page);
     });
   }
+});
+
+// ---- accounts (identity.md "UI"): the server is mocked at the network, as for /admin/modules ----
+
+const ME = "0b6f1c3e-0000-4000-8000-000000000002";
+const OTHER = "0b6f1c3e-0000-4000-8000-000000000003";
+const me = {
+  signed_in: true,
+  person_id: "7d2c2f0e-0000-4000-8000-000000000001",
+  account_id: ME,
+  playa_name: "",
+  superuser: false,
+  password_change_required: false,
+  expires_at: "2099-01-01T00:00:00Z",
+  signup_open: true,
+  permissions: ["accounts.read", "accounts.manage"],
+};
+const account = {
+  id: OTHER,
+  person_id: "7d2c2f0e-0000-4000-8000-000000000009",
+  email: "pat@example.test",
+  superuser: false,
+  password_change_required: false,
+  password_changed_at: "2026-10-01T10:00:00Z",
+  created_at: "2026-10-01T10:00:00Z",
+  updated_at: "2026-10-01T10:00:00Z",
+};
+
+/** The session endpoint, signed out until `signIn()` is called. Returns the bodies it saw. */
+async function mockIdentity(page: Page, signedInAs: Record<string, unknown> = me) {
+  let signedIn = false;
+  const seen: Record<string, unknown[]> = {};
+  const record = (path: string, body: unknown) => (seen[path] ??= []).push(body);
+  await page.route("**/api/accounts/session", (r) =>
+    r.fulfill({
+      json: signedIn
+        ? signedInAs
+        : { signed_in: false, signup_open: true, superuser: false, permissions: [] },
+    }),
+  );
+  for (const path of ["sign-in", "sign-up"]) {
+    await page.route(`**/api/accounts/${path}`, (r) => {
+      record(path, r.request().postDataJSON());
+      signedIn = true;
+      return r.fulfill({ status: path === "sign-up" ? 201 : 204 });
+    });
+  }
+  await page.route("**/api/accounts/password", (r) => {
+    record("password", r.request().postDataJSON());
+    return r.fulfill({ status: 204 });
+  });
+  await page.route("**/api/accounts/sessions/end-others", (r) => {
+    record("end-others", null);
+    return r.fulfill({ status: 204 });
+  });
+  return { seen };
+}
+
+test.describe("accounts: sign up, sign in and change a password", () => {
+  test("sign-up, with touch alone, lands signed in on the phone", async ({ page }, info) => {
+    only("default");
+    const isPhone = info.project.name === "phone";
+    const { seen } = await mockIdentity(page);
+    await page.goto("/accounts/sign-up");
+    await expect(page.getByRole("heading", { level: 1, name: "Create an account" })).toBeVisible();
+    await page.getByLabel(/E-mail address/).fill("new@example.test");
+    await page.getByLabel(/^Password/).fill("a long enough password");
+    if (isPhone) {
+      await noHorizontalScroll(page);
+      await touchTargets(page);
+    }
+    await axe(page);
+    await press(page.getByRole("button", { name: "Create account" }), isPhone);
+    await expect(page).toHaveURL(/\/$/);
+    expect(seen["sign-up"]).toEqual([
+      { email: "new@example.test", password: "a long enough password" },
+    ]);
+    // no playa name yet: the header shows the neutral label
+    await openMenu(page, isPhone);
+    await expect(
+      page.locator("header").getByText("Account", { exact: true }).first(),
+    ).toBeVisible();
+  });
+
+  test("sign-up errors land on their inputs (taken), accessibly", async ({ page }, info) => {
+    only("default");
+    await mockIdentity(page);
+    await page.route("**/api/accounts/sign-up", (r) =>
+      r.fulfill({
+        status: 409,
+        contentType: "application/problem+json",
+        body: JSON.stringify({ status: 409, code: "conflict", ref: "AB12-CD34" }),
+      }),
+    );
+    await page.goto("/accounts/sign-up");
+    await page.getByLabel(/E-mail address/).fill("pat@example.test");
+    await page.getByLabel(/^Password/).fill("a long enough password");
+    await press(
+      page.getByRole("button", { name: "Create account" }),
+      info.project.name === "phone",
+    );
+    await expect(page.getByRole("alert")).toContainText("already has an account");
+    await expect(page.getByRole("alert")).not.toContainText("AB12-CD34");
+    await expect(page.getByLabel(/E-mail address/)).toHaveAttribute("aria-invalid", "true");
+    await axe(page);
+  });
+
+  test("sign-in follows returnTo and works with the show-password button", async ({
+    page,
+  }, info) => {
+    only("default");
+    const isPhone = info.project.name === "phone";
+    const { seen } = await mockIdentity(page);
+    await page.goto("/sign-in?returnTo=%2Faccounts%2Fpassword");
+    await expect(page).toHaveURL(/\/accounts\/sign-in\?returnTo=%2Faccounts%2Fpassword$/);
+    await page.getByLabel(/E-mail address/).fill("pat@example.test");
+    await page.getByLabel(/^Password/).fill("correct horse");
+    await press(page.getByRole("button", { name: "Show password" }), isPhone);
+    await expect(page.getByLabel(/^Password/)).toHaveAttribute("type", "text");
+    await press(page.getByRole("button", { name: "Sign in" }), isPhone);
+    await expect(page).toHaveURL(/\/accounts\/password$/);
+    expect(seen["sign-in"]).toEqual([{ email: "pat@example.test", password: "correct horse" }]);
+  });
+
+  test("change password and sign out everywhere else, at the phone viewport", async ({
+    page,
+  }, info) => {
+    only("default");
+    const isPhone = info.project.name === "phone";
+    const { seen } = await mockIdentity(page);
+    await page.route("**/api/accounts/session", (r) => r.fulfill({ json: me }));
+    await page.goto("/accounts/password");
+    await expect(page.getByRole("heading", { level: 1, name: "Change password" })).toBeVisible();
+    await page.getByLabel(/^Current password/).fill("old password 11");
+    await page.getByLabel(/^New password/).fill("new password 22");
+    if (isPhone) {
+      await noHorizontalScroll(page);
+      await touchTargets(page);
+    }
+    await axe(page);
+    await press(page.getByRole("button", { name: "Change password" }), isPhone);
+    await expect(page.getByText("Password changed")).toBeVisible();
+    expect(seen["password"]).toEqual([
+      { current_password: "old password 11", new_password: "new password 22" },
+    ]);
+
+    await press(page.getByRole("button", { name: "Sign out everywhere else" }), isPhone);
+    const dialog = page.getByRole("dialog", { name: "Sign out everywhere else?" });
+    await expect(dialog).toBeVisible();
+    if (isPhone) await touchTargets(page);
+    await axe(page);
+    await press(dialog.getByRole("button", { name: "Sign out other sessions" }), isPhone);
+    await expect(page.getByText("Signed out everywhere else")).toBeVisible();
+    expect(seen["end-others"]).toHaveLength(1);
+  });
+
+  test("a restricted session is held on the password screen from any route", async ({
+    page,
+  }, info) => {
+    only("default");
+    const isPhone = info.project.name === "phone";
+    await page.route("**/api/accounts/session", (r) =>
+      r.fulfill({ json: { ...me, password_change_required: true } }),
+    );
+    await page.goto("/hello");
+    await expect(page).toHaveURL(/\/accounts\/password\?returnTo=%2Fhello$/);
+    await expect(
+      page.getByText("You must choose a new password before you continue."),
+    ).toBeVisible();
+    if (isPhone) {
+      await noHorizontalScroll(page);
+      await touchTargets(page);
+    }
+    await axe(page);
+  });
+});
+
+test.describe("accounts: the admin screens", () => {
+  for (const scheme of ["light", "dark"] as const) {
+    test(`list and detail lay out at phone width, 44 px targets, axe clean (${scheme})`, async ({
+      page,
+    }, info) => {
+      only("default");
+      const isPhone = info.project.name === "phone";
+      await page.emulateMedia({ colorScheme: scheme });
+      await page.route("**/api/accounts/session", (r) => r.fulfill({ json: me }));
+      await page.route("**/api/accounts/?**", (r) =>
+        r.fulfill({
+          json: {
+            accounts: [
+              account,
+              {
+                ...account,
+                id: "0b6f1c3e-0000-4000-8000-000000000005",
+                email: "a-rather-long-address-for-narrow-screens@example.test",
+                disabled_at: "2026-10-11T10:00:00Z",
+              },
+            ],
+            next: "cursor-1",
+          },
+        }),
+      );
+      await page.route("**/api/accounts/", (r) => r.fulfill({ json: { accounts: [account] } }));
+      await page.route(`**/api/accounts/${OTHER}`, (r) => r.fulfill({ json: account }));
+      await page.route(`**/api/accounts/${OTHER}/temporary-password`, (r) =>
+        r.fulfill({ json: { password: "abcd2345efgh6789jkmn2345" } }),
+      );
+      await page.goto("/accounts/admin");
+      await expect(page.getByRole("heading", { level: 1, name: "Accounts" })).toBeVisible();
+      await expect(page.getByRole("link", { name: "pat@example.test" })).toBeVisible();
+      if (isPhone) {
+        await page.setViewportSize({ width: 320, height: 568 });
+        await noHorizontalScroll(page);
+        await touchTargets(page);
+      }
+      await axe(page);
+
+      await press(page.getByRole("link", { name: "pat@example.test" }), isPhone);
+      await expect(page).toHaveURL(new RegExp(`/accounts/admin/${OTHER}$`));
+      await expect(page.getByRole("button", { name: "Disable account" })).toBeVisible();
+      if (isPhone) {
+        await noHorizontalScroll(page);
+        await touchTargets(page);
+      }
+      await axe(page);
+
+      await press(page.getByRole("button", { name: "Set a temporary password" }), isPhone);
+      const confirm = page.getByRole("dialog", { name: "Set a temporary password?" });
+      await press(confirm.getByRole("button", { name: "Set temporary password" }), isPhone);
+      const shown = page.getByRole("dialog", { name: "Temporary password" });
+      await expect(shown.locator("code")).toHaveText("abcd2345efgh6789jkmn2345");
+      if (isPhone) {
+        await noHorizontalScroll(page);
+        await touchTargets(page);
+      }
+      await axe(page);
+    });
+  }
+
+  test("403 on the list shows the forbidden state", async ({ page }) => {
+    only("default");
+    await page.route("**/api/accounts/session", (r) =>
+      r.fulfill({ json: { ...me, permissions: [] } }),
+    );
+    await page.route("**/api/accounts/?**", (r) =>
+      r.fulfill({
+        status: 403,
+        contentType: "application/problem+json",
+        body: JSON.stringify({ status: 403, code: "permission" }),
+      }),
+    );
+    await page.route("**/api/accounts/", (r) =>
+      r.fulfill({
+        status: 403,
+        contentType: "application/problem+json",
+        body: JSON.stringify({ status: 403, code: "permission" }),
+      }),
+    );
+    await page.goto("/accounts/admin");
+    await expect(page.getByRole("alert")).toContainText(
+      "You don't have permission to see accounts.",
+    );
+    await axe(page);
+  });
+});
+
+// ---- one real flow, nothing mocked: the server has no seeded accounts, so it signs up first ----
+
+test.describe("a real account (no mocks)", () => {
+  test("sign up, forbidden hello, change password, sign out, sign in, taken", async ({
+    page,
+  }, info) => {
+    only("default");
+    const isPhone = info.project.name === "phone";
+    const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+    const email = `e2e-${suffix}@example.test`;
+    const first = `first ${suffix} zebra quartz`;
+    const second = `second ${suffix} walrus ember`;
+
+    // sign up: lands on / with the neutral label (no playa name yet)
+    await page.goto("/accounts/sign-up");
+    await page.getByLabel(/E-mail address/).fill(email);
+    await page.getByLabel(/^Password/).fill(first);
+    await press(page.getByRole("button", { name: "Create account" }), isPhone);
+    await expect(page).toHaveURL(/\/$/);
+    await expect(
+      page.locator("header span.font-semibold", { hasText: /^Account$/ }),
+    ).toBeAttached();
+
+    // hello's signed-in part is forbidden until roles exist (M2); the person stays signed in
+    await page.goto("/hello");
+    await expect(page.getByRole("alert")).toContainText("You don't have permission");
+    await expect(page.locator("header span.font-semibold")).toBeAttached();
+
+    // change the password
+    await page.goto("/accounts/password");
+    await page.getByLabel(/^Current password/).fill(first);
+    await page.getByLabel(/^New password/).fill(second);
+    await press(page.getByRole("button", { name: "Change password" }), isPhone);
+    await expect(page.getByText("Password changed")).toBeVisible();
+
+    // sign out (on a phone the button is in the menu)
+    await openMenu(page, isPhone);
+    await press(page.getByRole("button", { name: "Sign out", exact: true }), isPhone);
+    await expect(page.getByRole("link", { name: "Sign in" }).first()).toBeVisible();
+
+    // one wrong password, then the new one
+    await page.goto("/accounts/sign-in");
+    await page.getByLabel(/E-mail address/).fill(email);
+    await page.getByLabel(/^Password/).fill(first);
+    await press(page.getByRole("button", { name: "Sign in", exact: true }), isPhone);
+    await expect(page.getByRole("alert")).toContainText("isn't right");
+    await page.getByLabel(/^Password/).fill(second);
+    await press(page.getByRole("button", { name: "Sign in", exact: true }), isPhone);
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.locator("header span.font-semibold")).toBeAttached();
+
+    // the same address again: signed out first, then the taken sentence on the e-mail input
+    await openMenu(page, isPhone);
+    await press(page.getByRole("button", { name: "Sign out", exact: true }), isPhone);
+    await page.goto("/accounts/sign-up");
+    await page.getByLabel(/E-mail address/).fill(email);
+    await page.getByLabel(/^Password/).fill(`third ${suffix} otter lantern`);
+    await press(page.getByRole("button", { name: "Create account" }), isPhone);
+    await expect(page.getByRole("alert")).toContainText("already has an account");
+    await expect(page.getByRole("alert")).not.toContainText(/[0-9A-F]{4}-[0-9A-F]{4}/);
+    await expect(page.getByLabel(/E-mail address/)).toHaveAttribute("aria-invalid", "true");
+    await axe(page);
+  });
+});
+
+test.describe("read-only copy: accounts", () => {
+  test("sign-up is disabled and says why", async ({ page }) => {
+    only("readonly");
+    await page.goto("/accounts/sign-up");
+    const button = page.getByRole("button", { name: "Create account" });
+    await expect(button).toBeDisabled();
+    await expect(
+      page.getByText("This copy is read-only, so this can't be saved right now."),
+    ).toBeVisible();
+  });
 });

@@ -33,6 +33,18 @@ const setImportBan = {
   ],
 };
 
+// Only the accounts area may end or refresh the session (it signs people in and out).
+const sessionOnlyAccounts = {
+  ...setImportBan,
+  paths: [
+    {
+      name: "@/api",
+      importNames: ["setSessionEnded", "refreshSession"],
+      message: "Only core/accounts may end or refresh the session.",
+    },
+  ],
+};
+
 const restrictedGlobals = [
   "fetch",
   "XMLHttpRequest",
@@ -157,6 +169,11 @@ export default tseslint.config(
     files: ["src/modules/**/*.{ts,tsx}", "src/core/**/*.{ts,tsx}"],
     ignores: ["src/modules/index.ts", "src/core/index.ts"],
     rules: { "no-restricted-imports": ["error", setImportBan] },
+  },
+  {
+    files: ["src/modules/**/*.{ts,tsx}", "src/core/**/*.{ts,tsx}"],
+    ignores: ["src/modules/index.ts", "src/core/index.ts", "src/core/accounts/**"],
+    rules: { "no-restricted-imports": ["error", sessionOnlyAccounts] },
   },
   {
     files: ["src/shell/**/*.{ts,tsx}"],

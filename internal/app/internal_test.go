@@ -6,23 +6,28 @@ import (
 	"encoding/json"
 	"errors"
 	"io/fs"
+	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/zedgama3/bms/internal/api"
 	"github.com/zedgama3/bms/internal/config"
+	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/db"
+	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/module"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/telemetry/telemetrytest"
 	"github.com/zedgama3/bms/internal/lib/clock"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/lib/secret"
+	"github.com/zedgama3/bms/internal/lib/validate"
 	"github.com/zedgama3/bms/internal/model"
 )
 
@@ -206,7 +211,7 @@ func TestAssembly_CorePermsStartWithModulesRead(t *testing.T) {
 
 // coreOrder is the order in which the core's services plug in (app.md "How later core
 // services plug in"); coreParts must be a subsequence of it.
-var coreOrder = []string{"identity", "audit", "settings", "authz", "people", "departments-events", "jobs", "notify", "files"}
+var coreOrder = []string{"audit", "identity", "settings", "authz", "people", "departments-events", "jobs", "notify", "files"}
 
 func TestParts_OrderAndNames_Pinned(t *testing.T) {
 	pos := -1
@@ -586,4 +591,435 @@ func TestDebugLogging_EveryCommandSaysSo(t *testing.T) {
 			}
 		}
 	})
+}
+
+// ---- audit (part 1) and identity (part 2) ----
+
+// declared runs the declare hooks of the real coreParts over a fresh assembly.
+func declared(t *testing.T) *assembly {
+	t.Helper()
+	a := newAssembly(&process{clock: clock.Real(), parts: coreParts, version: "dev"}, config.Default())
+	if err := a.declare(); err != nil {
+		t.Fatalf("declare: %v", err)
+	}
+	return a
+}
+
+func TestCoreParts_Declare_SetsPermissionsSignalAndCommand(t *testing.T) {
+	a := declared(t)
+	var sets []string
+	for _, s := range a.coreSets {
+		sets = append(sets, s.Name)
+	}
+	if got := strings.Join(sets, ","); got != "identity,audit" {
+		t.Errorf("core migration sets = %s, want identity,audit (db.md order, not part order)", got)
+	}
+	var perms []string
+	for _, d := range a.corePerms {
+		perms = append(perms, string(d.Name))
+	}
+	want := "core.modules.read,audit.search,audit.export,accounts.read,accounts.manage"
+	if got := strings.Join(perms, ","); got != want {
+		t.Errorf("corePerms = %s, want %s (api first, then each part's in part order)", got, want)
+	}
+	if !slices.Contains(a.coreSignals, "identity.account-created") {
+		t.Errorf("coreSignals = %v lacks identity.account-created", a.coreSignals)
+	}
+	var found bool
+	for _, c := range a.commands {
+		if c.name == "create-superuser" {
+			found = c.usage == "<email>"
+		}
+	}
+	if !found {
+		t.Errorf("commands = %v lack create-superuser <email>", a.commands)
+	}
+}
+
+func TestAddCoreSet_Table(t *testing.T) {
+	set := func(name string) db.Set { return db.Set{Name: name, Schema: "core", Files: fstest.MapFS{}} }
+	for _, tc := range []struct {
+		name string
+		add  []string
+		want string
+		fail bool // errs.Internal, whose value is the zero Kind
+	}{
+		{"audit then identity is sorted", []string{"audit", "identity"}, "identity,audit", false},
+		{"identity then audit stays", []string{"identity", "audit"}, "identity,audit", false},
+		{"a later set goes last", []string{"identity", "files", "audit"}, "identity,audit,files", false},
+		{"unknown set is internal", []string{"zq"}, "", true},
+		{"duplicate set is internal", []string{"audit", "audit"}, "", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := &assembly{}
+			var err error
+			for _, n := range tc.add {
+				if err = a.addCoreSet(set(n)); err != nil {
+					break
+				}
+			}
+			if tc.fail {
+				if err == nil || !errs.Is(err, errs.Internal) {
+					t.Fatalf("err = %v, want Internal", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("addCoreSet: %v", err)
+			}
+			var got []string
+			for _, s := range a.coreSets {
+				got = append(got, s.Name)
+			}
+			if strings.Join(got, ",") != tc.want {
+				t.Errorf("sets = %v, want %s", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestActorFromSession_Table(t *testing.T) {
+	person := model.NewID[model.PersonID]()
+	now := time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)
+	session := func(super, restricted bool) identity.Session {
+		return identity.Session{
+			ID: model.NewID[identity.SessionID](), Account: model.NewID[model.AccountID](), Person: person,
+			Superuser: super, PasswordChangeRequired: restricted, IssuedAt: now, ExpiresAt: now.Add(time.Hour),
+		}
+	}
+	for _, tc := range []struct {
+		name string
+		ctx  context.Context
+		want audit.Actor
+		ok   bool
+	}{
+		{"no session", context.Background(), audit.Actor{}, false},
+		{"participant", identity.WithSession(context.Background(), session(false, false)), audit.Actor{Kind: audit.ActorPerson, Person: person}, true},
+		{"superuser is marked", identity.WithSession(context.Background(), session(true, false)), audit.Actor{Kind: audit.ActorPerson, Person: person, Superuser: true}, true},
+		{"a restricted session is still the person", identity.WithSession(context.Background(), session(false, true)), audit.Actor{Kind: audit.ActorPerson, Person: person}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := actorFromSession(tc.ctx)
+			if ok != tc.ok || got.Kind != tc.want.Kind || got.Person != tc.want.Person || got.Superuser != tc.want.Superuser {
+				t.Errorf("actorFromSession = %+v, %v; want %+v, %v", got, ok, tc.want, tc.ok)
+			}
+		})
+	}
+}
+
+type allowOnly authz.Permission
+
+func (a allowOnly) Allow(_ context.Context, p authz.Permission) error {
+	if authz.Permission(a) == p {
+		return nil
+	}
+	return errs.E("test.Allow", errs.Permission, errors.New("no"))
+}
+
+func TestLazyPermissions_DeniesUntilAuthzSetsTheChecker(t *testing.T) {
+	a := &assembly{}
+	l := lazyPermissions{a: a}
+	if err := l.Allow(context.Background(), audit.PermissionSearch); !errs.Is(err, errs.Permission) {
+		t.Fatalf("with no authorizer: err = %v, want Permission", err)
+	}
+	a.permissions = allowOnly(audit.PermissionSearch)
+	if err := l.Allow(context.Background(), audit.PermissionSearch); err != nil {
+		t.Errorf("after authz is wired the adapter must ask it: %v", err)
+	}
+	if err := l.Allow(context.Background(), audit.PermissionExport); !errs.Is(err, errs.Permission) {
+		t.Errorf("another permission: err = %v, want Permission", err)
+	}
+}
+
+func TestAccountRoutes_PublicMapsToAccessPublic(t *testing.T) {
+	h := http.NotFoundHandler()
+	got := accountRoutes([]identity.Route{
+		{Method: "GET", Pattern: "/session", Public: true, Handler: h},
+		{Method: "GET", Pattern: "/", Handler: h},
+	})
+	if len(got) != 2 || got[0].Access != module.AccessPublic || got[1].Access != module.AccessSignedIn {
+		t.Errorf("routes = %+v, want public then signed-in", got)
+	}
+	for _, r := range auditRoutes([]audit.Route{{Method: "GET", Pattern: "/entries", Handler: h}}) {
+		if r.Access != module.AccessSignedIn {
+			t.Errorf("audit route %s is %v, want signed-in", r.Pattern, r.Access)
+		}
+	}
+}
+
+// builtCore builds the real parts over a database that refuses everything (the openapi path).
+func builtCore(t *testing.T) *assembly {
+	t.Helper()
+	a, _ := provisionAssembly(t)
+	a.cfg = config.Default()
+	a.cfg.Instance.Name = "zqtest"
+	a.cfg.Data.Dir = t.TempDir()
+	a.cfg.Session.Key = secret.New(placeholderSessionKey)
+	a.corePerms, a.parts = nil, coreParts
+	if err := a.buildParts(context.Background()); err != nil {
+		t.Fatalf("buildParts over db.None(): %v", err)
+	}
+	return a
+}
+
+func TestBuildParts_AgainstNoDatabase_SetsAuthenticatorRoutesAndRunnable(t *testing.T) {
+	a := builtCore(t)
+	if a.authenticator == nil || a.identity == nil || a.deps.audit == nil {
+		t.Fatalf("authenticator=%v identity=%v audit=%v, want all set", a.authenticator, a.identity, a.deps.audit)
+	}
+	var areas []string
+	for _, rs := range a.routeSets {
+		areas = append(areas, rs.Module)
+		if len(rs.Routes) == 0 || len(rs.OpenAPI) == 0 {
+			t.Errorf("route set %s has %d routes and %d bytes of fragment", rs.Module, len(rs.Routes), len(rs.OpenAPI))
+		}
+	}
+	if strings.Join(areas, ",") != "audit,accounts" {
+		t.Errorf("route sets = %v, want audit then accounts", areas)
+	}
+	if len(a.runnables) != 1 || a.runnables[0].name != "audit" {
+		t.Errorf("runnables = %+v, want the audit importer", a.runnables)
+	}
+}
+
+func TestProvision_ScopesAuditPerModule(t *testing.T) {
+	a := builtCore(t)
+	deps, err := a.provision(context.Background(), module.Manifest{Name: "zqalpha"})
+	if err != nil {
+		t.Fatalf("provision: %v", err)
+	}
+	if deps.Audit == nil {
+		t.Fatal("Deps.Audit is nil")
+	}
+	// An action outside the module's area is refused before anything is written.
+	err = deps.Audit.Record(context.Background(), audit.Entry{Action: "zqbeta.thing.read", Outcome: audit.Succeeded})
+	if !errs.Is(err, errs.Invalid) {
+		t.Errorf("a foreign action: err = %v, want Invalid", err)
+	}
+}
+
+func TestClosers_AuditCloseIsAfterModulesAndBeforeDB(t *testing.T) {
+	a := builtCore(t)
+	var names []string
+	for _, c := range a.closers() {
+		names = append(names, c.name)
+	}
+	if got, want := strings.Join(names, ","), "http,runnables,signals,modules,audit,db,telemetry"; got != want {
+		t.Errorf("closers = %s, want %s", got, want)
+	}
+}
+
+func TestCheckSchemas_CoreAndModuleSets_ReportedTogether(t *testing.T) {
+	a := declared(t)
+	boom := errs.E("test.CheckSchema", errs.Conflict, errors.New("behind"))
+	var checked []string
+	schema := schemaFunc(func(_ context.Context, name string, _ fs.FS) error {
+		checked = append(checked, name)
+		return boom
+	})
+	err := a.checkSchemas(context.Background(), schema, []module.Manifest{{Name: "zqmod", Migrations: fstest.MapFS{}}, {Name: "zqplain"}})
+	if !errs.Is(err, errs.Conflict) {
+		t.Fatalf("err = %v, want Conflict", err)
+	}
+	if got := strings.Join(checked, ","); got != "identity,audit,zqmod" {
+		t.Errorf("checked = %s, want identity,audit,zqmod (every set, none stopped the rest, no schema-less module)", got)
+	}
+	// The first problem that is not a Conflict decides the kind, not the last.
+	mixed := schemaFunc(func(_ context.Context, name string, _ fs.FS) error {
+		switch name {
+		case "identity":
+			return errs.E("test.CheckSchema", errs.Unavailable, errors.New("down"))
+		case "audit":
+			return errs.E("test.CheckSchema", errs.Invalid, errors.New("bad"))
+		}
+		return boom
+	})
+	if err := a.checkSchemas(context.Background(), mixed, nil); !errs.Is(err, errs.Unavailable) {
+		t.Errorf("mixed kinds: err = %v, want the first non-Conflict kind (Unavailable)", err)
+	}
+	// Current core sets leave the modules to Plan.Build: they are not checked twice.
+	checked = nil
+	core := schemaFunc(func(_ context.Context, name string, _ fs.FS) error {
+		checked = append(checked, name)
+		return nil
+	})
+	if err := a.checkSchemas(context.Background(), core, []module.Manifest{{Name: "zqmod", Migrations: fstest.MapFS{}}}); err != nil {
+		t.Errorf("current core sets: %v", err)
+	}
+	if got := strings.Join(checked, ","); got != "identity,audit" {
+		t.Errorf("checked = %s, want only the core sets when they are current", got)
+	}
+	unavailable := schemaFunc(func(context.Context, string, fs.FS) error {
+		return errs.E("test.CheckSchema", errs.Unavailable, errors.New("down"))
+	})
+	if err := a.checkSchemas(context.Background(), unavailable, nil); !errs.Is(err, errs.Unavailable) {
+		t.Errorf("a non-conflict problem: err = %v, want Unavailable", err)
+	}
+	if err := a.checkSchemas(context.Background(), skipSchema{}, nil); err != nil {
+		t.Errorf("skipSchema: %v", err)
+	}
+}
+
+type schemaFunc func(ctx context.Context, name string, files fs.FS) error
+
+func (f schemaFunc) CheckSchema(ctx context.Context, name string, files fs.FS) error {
+	return f(ctx, name, files)
+}
+
+func TestImporter_StartCreatesSpoolDirAndStopWaits(t *testing.T) {
+	a := builtCore(t)
+	r := a.runnables[0]
+	ctx := context.Background()
+	if err := r.stop(ctx); err != nil {
+		t.Fatalf("stop before start: %v", err)
+	}
+	// Run needs a database that answers; db.None() refuses, so the importer only logs and
+	// retries; start and stop still hold.
+	if err := r.start(ctx); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	if st, err := os.Stat(filepath.Join(a.cfg.Data.Dir, filepath.FromSlash(audit.SpoolDirName))); err != nil || !st.IsDir() {
+		t.Errorf("the spool directory was not created: %v", err)
+	}
+	sctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	if err := r.stop(sctx); err != nil {
+		t.Errorf("stop: %v", err)
+	}
+}
+
+func TestImporter_StartWithUnusableDataDir_ReturnsInvalid(t *testing.T) {
+	a := builtCore(t)
+	blocker := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	im := &importer{log: a.deps.audit, logger: a.logger, dir: filepath.Join(blocker, "audit", "spool")}
+	if err := im.start(context.Background()); !errs.Is(err, errs.Invalid) {
+		t.Fatalf("start under a regular file: err = %v, want Invalid", err)
+	}
+}
+
+func TestCheck_AuditSpool_CountsWaitingAndFailedFiles(t *testing.T) {
+	cfg := config.Default()
+	cfg.Data.Dir = t.TempDir()
+	var out bytes.Buffer
+	r := &checkReport{out: &out}
+	r.auditSpool(cfg)
+	if !strings.Contains(out.String(), "audit spool: empty") {
+		t.Errorf("no spool directory: %q", out.String())
+	}
+	dir := filepath.Join(cfg.Data.Dir, filepath.FromSlash(audit.SpoolDirName))
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range []string{"1-1-aa.jsonl", "2-1-bb.jsonl", "3-1-cc.jsonl.failed", "notes.txt"} {
+		if err := os.WriteFile(filepath.Join(dir, n), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out.Reset()
+	r.auditSpool(cfg)
+	if !strings.Contains(out.String(), "audit spool: 2 waiting, 1 failed") {
+		t.Errorf("spool report = %q", out.String())
+	}
+	if r.problems != 0 {
+		t.Errorf("a spool is not a problem (serve would not refuse): %d problems", r.problems)
+	}
+}
+
+func TestCreateSuperuser_UsageAndSessionKey_ExitUsage(t *testing.T) {
+	var out, errOut bytes.Buffer
+	if code := Main(context.Background(), []string{"create-superuser"}, quietEnv(t), &out, &errOut); code != ExitUsage {
+		t.Errorf("no address: status = %d, want ExitUsage", code)
+	}
+	env := slices.DeleteFunc(quietEnv(t), func(e string) bool { return strings.HasPrefix(e, "BMS_SESSION_KEY=") })
+	out.Reset()
+	errOut.Reset()
+	code := Main(context.Background(), []string{"create-superuser", "admin@example.org"}, env, &out, &errOut)
+	if code != ExitUsage || !strings.Contains(errOut.String(), "BMS_SESSION_KEY") {
+		t.Errorf("no session key: status = %d, stderr %q; want ExitUsage naming BMS_SESSION_KEY (F6)", code, &errOut)
+	}
+	if strings.Contains(out.String()+errOut.String(), "admin@example.org") {
+		t.Error("the address was echoed")
+	}
+}
+
+func TestRequireSessionKey_Table(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		key  string
+		ok   bool
+	}{
+		{"unset", "", false},
+		{"a real key", strings.Repeat("k", 40), true},
+		{"the documentation placeholder", placeholderSessionKey, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := config.Default()
+			if tc.key != "" {
+				cfg.Session.Key = secret.New(tc.key)
+			}
+			err := requireSessionKey(cfg)
+			if tc.ok {
+				if err != nil {
+					t.Fatalf("err = %v, want nil", err)
+				}
+				return
+			}
+			if !errs.Is(err, errs.Invalid) {
+				t.Fatalf("err = %v, want Invalid", err)
+			}
+			if tc.key != "" {
+				fe := validate.Fields(err)
+				if len(fe) != 1 || fe[0].Field != "session.key" {
+					t.Errorf("fields = %+v, want one on session.key", fe)
+				}
+			}
+		})
+	}
+}
+
+func TestLazyTitles_NoneUntilAuthzSetsTheSource(t *testing.T) {
+	a := &assembly{}
+	l := lazyTitles{a: a}
+	person := model.NewID[model.PersonID]()
+	if got, err := l.TitlesOf(context.Background(), person); err != nil || got != nil {
+		t.Fatalf("with no source: %v, %v; want nil, nil", got, err)
+	}
+	a.titles = titlesStub{"Gate lead"}
+	if got, err := l.TitlesOf(context.Background(), person); err != nil || len(got) != 1 || got[0] != "Gate lead" {
+		t.Errorf("after authz is wired: %v, %v", got, err)
+	}
+}
+
+type titlesStub []string
+
+func (s titlesStub) TitlesOf(context.Context, model.PersonID) ([]string, error) { return s, nil }
+
+func TestCheck_AuditSpoolUnreadable_ExitUsage(t *testing.T) {
+	blocker := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Default()
+	cfg.Data.Dir = blocker
+	var out bytes.Buffer
+	r := &checkReport{out: &out}
+	r.auditSpool(cfg)
+	if r.status != ExitUsage || r.problems != 1 || !strings.Contains(out.String(), "audit spool:") {
+		t.Errorf("status = %d, problems = %d, output %q; want ExitUsage and one problem", r.status, r.problems, out.String())
+	}
+}
+
+func TestCreateSuperuser_UnknownDisabledModule_ExitUsageBeforeTheDatabase(t *testing.T) {
+	var out, errOut bytes.Buffer
+	env := quietEnv(t, "BMS_MODULES_DISABLED=zqnope")
+	code := Main(context.Background(), []string{"create-superuser", "admin@example.org"}, env, &out, &errOut)
+	if code != ExitUsage || !strings.Contains(errOut.String(), "BMS_MODULES_DISABLED") {
+		t.Errorf("status = %d, stderr %q; want ExitUsage naming BMS_MODULES_DISABLED", code, &errOut)
+	}
+	if strings.Contains(out.String()+errOut.String(), "admin@example.org") {
+		t.Error("the address was echoed")
+	}
 }

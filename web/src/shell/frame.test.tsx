@@ -188,7 +188,7 @@ describe("navigation", () => {
   it("F35: a signed-in route visited signed out redirects to sign-in before any call", async () => {
     const { fetchMock, router } = mountApp({ path: "/admin/modules" });
     await screen.findByRole("heading", { name: "Sign in" });
-    expect(router()!.state.location.pathname).toBe("/sign-in");
+    expect(router()!.state.location.pathname).toBe("/accounts/sign-in");
     expect(router()!.state.location.search).toBe("?returnTo=%2Fadmin%2Fmodules");
     expect(
       fetchMock.mock.calls.some(([r]) => new URL(r.url).pathname === "/api/admin/modules"),

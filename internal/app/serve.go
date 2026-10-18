@@ -18,6 +18,12 @@ import (
 // configured and the secrets file lacks one (F6; config.md F22b).
 func requireSessionKey(cfg config.Config) error {
 	if cfg.Session.Key.IsSet() {
+		if cfg.Session.Key.Value() == placeholderSessionKey {
+			return errs.E("app.requireSessionKey", errs.Invalid, &validate.FieldError{
+				Field: "session.key", Code: "placeholder",
+				Reason: "BMS_SESSION_KEY holds the documentation placeholder, which anyone can read in the source; unset it and run `bms migrate` to generate a key, or set one of your own",
+			})
+		}
 		return nil
 	}
 	acc := validate.Errors{Op: "app.requireSessionKey"}
@@ -112,14 +118,19 @@ func runServe(ctx context.Context, p *process) int {
 	}
 	a.srv = srv
 
+	// A module that fails to start is a runtime failure (F11); a runnable that finds the
+	// operator's input unusable (the audit spool under BMS_DATA_DIR, F33) is exit 2.
 	sctx, cancel := context.WithTimeout(ctx, startTimeout)
+	status := ExitFailure
 	err = a.set.Start(sctx)
 	if err == nil {
-		err = a.startRunnables(sctx)
+		if err = a.startRunnables(sctx); err != nil {
+			status = statusOf(err, ExitFailure)
+		}
 	}
 	cancel()
 	if err != nil {
-		return bail(err, ExitFailure)
+		return bail(err, status)
 	}
 
 	lctx, cancel := context.WithTimeout(ctx, listenTimeout)

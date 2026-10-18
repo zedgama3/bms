@@ -4,6 +4,193 @@
  */
 
 export interface paths {
+    "/api/accounts/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List accounts, newest first, or find the one at an exact address. Needs accounts.read. Each account but your own is recorded as a read. */
+        get: operations["accountsList"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Change your own password. Allowed for a session that must change its password. Ends every other session and sets a new cookie. */
+        post: operations["accountsChangePassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Who is making this request. Public; never an error for a missing session. Not cached. */
+        get: operations["accountsSession"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/sessions/end-others": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sign out everywhere else: ends every other session of your account and sets a new cookie. */
+        post: operations["accountsEndOtherSessions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/sign-in": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sign in. 401 for an unknown address, a wrong password or a disabled account, without saying which; 429 when rate-limited. */
+        post: operations["accountsSignIn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/sign-out": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sign out. The cookie is cleared even when recording the sign-out fails. */
+        post: operations["accountsSignOut"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/sign-up": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create an account and sign in. 409 with field email, code taken, when the address has an account; 501 when sign-ups are by invitation; rate-limited. */
+        post: operations["accountsSignUp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/{account}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One account. Needs accounts.read. Recorded as a read unless it is your own. */
+        get: operations["accountsGet"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/{account}/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Disable an account and end its sessions. Needs accounts.manage. Not the superuser account (403) and not your own (400, field account, code self). Idempotent. */
+        post: operations["accountsDisable"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/{account}/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Enable a disabled account. Needs accounts.manage. Same refusals as disable. Idempotent. */
+        post: operations["accountsEnable"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/{account}/temporary-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set a generated password the person must change at their next sign-in, and end their sessions. Needs accounts.manage. Same refusals as disable. The password is shown once and not cached. */
+        post: operations["accountsSetTemporaryPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/modules": {
         parameters: {
             query?: never;
@@ -13,6 +200,40 @@ export interface paths {
         };
         /** The module graph and schema versions. Needs core.modules.read. */
         get: operations["adminModules"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/audit/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search the audit log, newest first. Needs audit.search. The search is itself recorded. */
+        get: operations["auditSearch"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/audit/people/{person}/views": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export every entry about one person, oldest first, as JSON Lines. Needs audit.export. The export is itself recorded. */
+        get: operations["auditExportViews"];
         put?: never;
         post?: never;
         delete?: never;
@@ -127,6 +348,63 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AccountsAccount: {
+            /** Format: date-time */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description Absent when the account is enabled.
+             */
+            disabled_at?: string;
+            /** @description As entered. */
+            email: string;
+            id: components["schemas"]["ID"];
+            /**
+             * Format: date-time
+             * @description Absent when the person never signed in.
+             */
+            last_login_at?: string;
+            password_change_required: boolean;
+            /** Format: date-time */
+            password_changed_at: string;
+            person_id: components["schemas"]["ID"];
+            superuser: boolean;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        AccountsAccountPage: {
+            accounts: components["schemas"]["AccountsAccount"][];
+            /** @description Pass as after to get the next page; absent on the last page. */
+            next?: string;
+        };
+        AccountsCredentials: {
+            email: string;
+            password: string;
+        };
+        AccountsPasswordChange: {
+            current_password: string;
+            new_password: string;
+        };
+        AccountsSession: {
+            account_id?: components["schemas"]["ID"];
+            /** Format: date-time */
+            expires_at?: string;
+            /** @description The password is temporary: only the accounts routes work until it is changed. */
+            password_change_required: boolean;
+            /** @description The site-wide permissions the person holds; never null. */
+            permissions: string[];
+            person_id?: components["schemas"]["ID"];
+            /** @description Absent until the person has a profile. */
+            playa_name?: string;
+            signed_in: boolean;
+            /** @description Whether anyone may create an account; true also when signed out. */
+            signup_open: boolean;
+            superuser: boolean;
+        };
+        AccountsTemporaryPassword: {
+            /** @description Shown once; never retrievable again. */
+            password: string;
+        };
         AdminModulesResponse: {
             graph: {
                 edges: {
@@ -162,6 +440,40 @@ export interface components {
                 set?: string;
             }[];
             version: string;
+        };
+        AuditActor: {
+            /** @enum {string} */
+            kind: "person" | "anonymous" | "operator" | "system";
+            person?: components["schemas"]["ID"];
+            superuser?: boolean;
+            titles?: string[];
+        };
+        AuditPage: {
+            /** @description Pass as after to get the next page; absent on the last page. */
+            next?: string;
+            records: components["schemas"]["AuditRecord"][];
+        };
+        AuditRecord: {
+            action: string;
+            actor: components["schemas"]["AuditActor"];
+            /** Format: date-time */
+            at: string;
+            fields?: string[];
+            id: components["schemas"]["ID"];
+            instance: string;
+            level?: components["schemas"]["Sensitivity"];
+            /** @enum {string} */
+            outcome: "succeeded" | "denied" | "failed";
+            reason?: string;
+            record?: components["schemas"]["AuditRef"];
+            spooled?: boolean;
+            subject?: components["schemas"]["ID"];
+            trace_id?: string;
+            v: number;
+        };
+        AuditRef: {
+            id: components["schemas"]["ID"];
+            kind: string;
         };
         ClientErrorBatch: {
             reports: {
@@ -253,6 +565,338 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    accountsList: {
+        parameters: {
+            query?: {
+                /** @description Find the account at exactly this address (ignoring case); after and limit are ignored. */
+                email?: string;
+                /** @description The next value of the previous page. */
+                after?: string;
+                /** @description Page size; 0 or absent means 50. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of accounts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountsAccountPage"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    accountsChangePassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountsPasswordChange"];
+            };
+        };
+        responses: {
+            /** @description Changed; a new session cookie is set. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    accountsSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The session, or signed_in false. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountsSession"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    accountsEndOtherSessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Other sessions ended; a new session cookie is set. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    accountsSignIn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountsCredentials"];
+            };
+        };
+        responses: {
+            /** @description Signed in; the session cookie is set. Read GET /session for the session. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    accountsSignOut: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Signed out; the session cookie is cleared. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    accountsSignUp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountsCredentials"];
+            };
+        };
+        responses: {
+            /** @description Created and signed in; the session cookie is set. Read GET /session for the session. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    accountsGet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The account. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountsAccount"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    accountsDisable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Disabled (or already disabled). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    accountsEnable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Enabled (or already enabled). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    accountsSetTemporaryPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The new password, shown once. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountsTemporaryPassword"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     adminModules: {
         parameters: {
             query?: never;
@@ -269,6 +913,89 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminModulesResponse"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    auditSearch: {
+        parameters: {
+            query?: {
+                /** @description The person who acted. */
+                actor?: components["schemas"]["ID"];
+                /** @description The person the record is about. */
+                subject?: components["schemas"]["ID"];
+                /** @description The kind of the record acted on; needs record_id. */
+                record_kind?: string;
+                /** @description The record acted on; needs record_kind. */
+                record_id?: components["schemas"]["ID"];
+                /** @description The area of the action: the text before its first dot. */
+                area?: string;
+                /** @description One action, exactly. */
+                action?: string;
+                /** @description Start of the time range (inclusive); needs to. */
+                from?: string;
+                /** @description End of the time range (exclusive); needs from. */
+                to?: string;
+                /** @description Only entries made by the superuser account. */
+                superuser?: boolean;
+                /** @description The next value of the previous page. */
+                after?: string;
+                /** @description Page size; 0 or absent means 50. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of entries. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditPage"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    auditExportViews: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                person: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One audit record per line. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/x-ndjson": components["schemas"]["AuditRecord"];
                 };
             };
             /** @description An error. The body is a Problem. */
