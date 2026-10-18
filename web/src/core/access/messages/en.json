@@ -140,5 +140,11 @@
   "core.access.picker.found": "{count, plural, =0 {No one found} one {# person found} other {# people found}}",
   "core.access.grants.self_title": "My roles",
   "core.access.new_grant.no_profile": "Save your profile first, then try again.",
-  "core.access.grants.self_empty": "You don't hold any roles."
+  "core.access.grants.self_empty": "You don't hold any roles.",
+  "core.access.grants.department_filter": "In one {term_department}",
+  "core.access.grants.any_department": "Any {term_department}, or the whole site",
+  "core.access.grants.department_archived": "an archived {term_department}",
+  "core.access.grants.department_unknown": "a {term_department}",
+  "core.access.new_grant.department": "In which {term_department}",
+  "core.access.new_grant.choose_department": "Choose a {term_department}"
 }

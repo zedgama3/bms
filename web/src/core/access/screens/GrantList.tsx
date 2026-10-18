@@ -27,7 +27,7 @@ import { useAction } from "../useAction";
 import { useNames } from "../useNames";
 
 /** `/access/grants`: who holds which role. Filters live in the query string as IDs only
- *  (`person`, `role`, `permission`, `include_ended`); the name typed to find a person stays in
+ *  (`person`, `role`, `department`, `permission`, `include_ended`); the name typed to find a person stays in
  *  the picker. */
 export function GrantList() {
   const t = useT();
@@ -43,6 +43,7 @@ export function GrantList() {
   const selfOnly = !canRead && session.signedIn;
   const person = selfOnly && session.signedIn ? session.personId : (params.get("person") ?? "");
   const role = params.get("role") ?? "";
+  const department = params.get("department") ?? "";
   const permission = params.get("permission") ?? "";
   const includeEnded = params.get("include_ended") === "true";
   const [revoking, setRevoking] = useState<Grant | null>(null);
@@ -71,8 +72,13 @@ export function GrantList() {
     queryFn: ({ signal }) => api.GET("/api/access/permissions", { signal }),
   });
 
+  const departmentsQ = useQuery({
+    queryKey: ["departments", "list", { archived: false }],
+    queryFn: ({ signal }) => api.GET("/api/departments/", { signal }),
+  });
+
   const q = useInfiniteQuery({
-    queryKey: ["access", "grants", { person, role, permission, includeEnded }],
+    queryKey: ["access", "grants", { person, role, department, permission, includeEnded }],
     initialPageParam: "",
     queryFn: ({ signal, pageParam }) =>
       api.GET("/api/access/grants", {
@@ -81,6 +87,7 @@ export function GrantList() {
           query: {
             ...(person ? { person } : {}),
             ...(role ? { role } : {}),
+            ...(department ? { department } : {}),
             ...(permission ? { permission } : {}),
             ...(includeEnded ? { include_ended: true } : {}),
             ...(pageParam ? { after: pageParam } : {}),
@@ -94,9 +101,17 @@ export function GrantList() {
   const nameOf = useNames([person, ...grants.flatMap((g) => [g.person_id, g.granted_by ?? ""])]);
   // The server names each grant's role: its name, or the starter role's key (never the ID).
   const roleTitle = (g: Grant) => titles.role({ name: g.role_name, key: g.role_key });
+  const departments = departmentsQ.data?.departments ?? [];
+  // A department that is not among the active ones is archived, once the list has arrived.
+  const departmentTitle = (id: string) =>
+    departments.find((d) => d.id === id)?.name ??
+    (departmentsQ.data
+      ? t("core.access.grants.department_archived")
+      : t("core.access.grants.department_unknown"));
   const loadError =
     (rolesQ.error instanceof ApiError ? rolesQ.error : null) ??
-    (catQ.error instanceof ApiError ? catQ.error : null);
+    (catQ.error instanceof ApiError ? catQ.error : null) ??
+    (!selfOnly && departmentsQ.error instanceof ApiError ? departmentsQ.error : null);
   const error = q.error instanceof ApiError ? q.error : null;
   const canManage = !selfOnly && holds(session, "access.grants.manage");
 
@@ -171,6 +186,23 @@ export function GrantList() {
               </select>
             )}
           </Field>
+          <Field label={t("core.access.grants.department_filter")} name="department">
+            {(control) => (
+              <select
+                {...control}
+                className={controlClass}
+                value={department}
+                onChange={(e) => setParam("department", e.target.value)}
+              >
+                <option value="">{t("core.access.grants.any_department")}</option>
+                {departments.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </Field>
           <Field
             label={t("core.access.grants.permission")}
             name="permission"
@@ -206,6 +238,7 @@ export function GrantList() {
           onRetry={() => {
             void rolesQ.refetch();
             void catQ.refetch();
+            void departmentsQ.refetch();
           }}
         />
       ) : null}
@@ -226,7 +259,11 @@ export function GrantList() {
               <h2 className="break-words text-lg font-bold">{nameOf(g.person_id)}</h2>
               <p className="font-semibold">{roleTitle(g)}</p>
               {g.department_id ? (
-                <p>{t("core.access.grants.department", { department: g.department_id })}</p>
+                <p>
+                  {t("core.access.grants.department", {
+                    department: departmentTitle(g.department_id),
+                  })}
+                </p>
               ) : null}
               <p>
                 {g.ended

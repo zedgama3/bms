@@ -4,7 +4,7 @@ export function focusSoon(selector: string): void {
   setTimeout(() => {
     const el = document.querySelector<HTMLElement>(selector);
     if (!el) return;
-    if (!el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1");
+    if (el.tabIndex < 0 && !el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1");
     el.focus();
   }, 0);
 }

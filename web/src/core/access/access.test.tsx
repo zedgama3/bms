@@ -10,9 +10,22 @@ const PAT = "7d2c2f0e-0000-4000-8000-000000000009";
 const R_BASE = "0b6f1c3e-0000-4000-8000-0000000000a1";
 const R_ADMIN = "0b6f1c3e-0000-4000-8000-0000000000a2";
 const R_DEPT = "0b6f1c3e-0000-4000-8000-0000000000a3";
+const R_LEAD = "0b6f1c3e-0000-4000-8000-0000000000a5";
 const R_CUSTOM = "0b6f1c3e-0000-4000-8000-0000000000a4";
 const GRANT = "0b6f1c3e-0000-4000-8000-0000000000b1";
 const RULE = "0b6f1c3e-0000-4000-8000-0000000000c1";
+const D_A = "5c1a0000-0000-4000-8000-0000000000d1";
+const D_B = "5c1a0000-0000-4000-8000-0000000000d2";
+const dept = (id: string, name: string) => ({
+  id,
+  name,
+  description: "",
+  archived: false,
+  created_at: "2026-10-01T10:00:00Z",
+  updated_at: "2026-10-01T10:00:00Z",
+});
+const DEPT_A = dept(D_A, "Gate");
+const DEPT_B = dept(D_B, "Rangers");
 
 const ident = (permissions: string[]) => ({
   person_id: ME,
@@ -126,6 +139,7 @@ const base = (over: Routes = {}): Routes => ({
   "GET /api/access/permissions": () => json({ permissions: catalogue }),
   "GET /api/access/rules": () => json({ rules: [] }),
   "GET /api/access/grants": () => json({ grants: [] }),
+  "GET /api/departments/": () => json({ departments: [DEPT_A, DEPT_B] }),
   "GET /api/people/names": () => json({ names: { [PAT]: "Pat Dust", [ME]: "Dusty" } }),
   "GET /api/people/me": () => problem(404, { code: "not_found" }),
   ...over,
@@ -500,6 +514,47 @@ describe("/access/grants", () => {
     expect(router()!.state.location.search).not.toMatch(/Pat|Dust/);
   });
 
+  it("filters by department, listing active departments by name, and names them on the cards", async () => {
+    const { fetchMock, router } = mountApp({
+      path: "/access/grants",
+      session: ident(ALL),
+      routes: withGrants({
+        "GET /api/access/grants": () =>
+          json({
+            grants: [
+              grant({ department_id: D_A, role_id: R_DEPT, role_name: "Shift lead" }),
+              grant({
+                id: "0b6f1c3e-0000-4000-8000-0000000000b3",
+                department_id: "5c1a0000-0000-4000-8000-0000000000d9",
+                role_id: R_DEPT,
+                role_name: "Shift lead",
+              }),
+            ],
+          }),
+      }),
+    });
+    await screen.findAllByRole("heading", { name: "Pat Dust" });
+    expect(screen.getByText("In the department: Gate")).toBeInTheDocument();
+    expect(screen.getByText("In the department: an archived department")).toBeInTheDocument();
+    const filter = screen.getByLabelText("In one department");
+    expect(
+      within(filter)
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual(["Any department, or the whole site", "Gate", "Rangers"]);
+    await userEvent.selectOptions(filter, D_B);
+    await waitFor(() => expect(router()!.state.location.search).toBe(`?department=${D_B}`));
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([r]) =>
+            new URL(r.url).pathname === "/api/access/grants" &&
+            new URL(r.url).search === `?department=${D_B}`,
+        ),
+      ).toBe(true),
+    );
+  });
+
   it("finds a person by searching a name that stays out of the address", async () => {
     const { router } = mountApp({
       path: "/access/grants",
@@ -611,8 +666,8 @@ describe("/access/grants/new", () => {
     });
     expect(await screen.findByText("Pat Dust")).toBeInTheDocument();
     const role = screen.getByLabelText(/^Role\s*\(required\)/);
-    // only site roles that are not the base role can be granted here
-    expect(within(role).queryByRole("option", { name: "Shift lead" })).not.toBeInTheDocument();
+    // every role but the base role can be granted; a site role asks for no department
+    expect(within(role).getByRole("option", { name: "Shift lead" })).toBeInTheDocument();
     expect(within(role).queryByRole("option", { name: "Participant" })).not.toBeInTheDocument();
     await userEvent.selectOptions(role, R_ADMIN);
     const date = screen.getByLabelText("Ends on");
@@ -629,6 +684,59 @@ describe("/access/grants/new", () => {
       role_id: R_ADMIN,
       ends_at: new Date(2100, 0, 1).toISOString(),
     });
+  });
+
+  it("a department role asks for an active department and sends its ID", async () => {
+    const { fetchMock } = mountApp({
+      path: `/access/grants/new?person=${PAT}`,
+      session: ident(ALL),
+      routes: base({ "POST /api/access/grants": () => json(grant(), { status: 201 }) }),
+    });
+    await screen.findByText("Pat Dust");
+    expect(screen.queryByLabelText(/^In which department/)).not.toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText(/^Role\s*\(required\)/), R_DEPT);
+    const picker = screen.getByLabelText(/^In which department\s*\(required\)/);
+    expect(
+      within(picker)
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual(["Choose a department", "Gate", "Rangers"]);
+    await userEvent.selectOptions(picker, D_B);
+    await userEvent.click(screen.getByRole("button", { name: "Grant role" }));
+    await waitFor(async () =>
+      expect(await bodyOf(fetchMock, "POST", "/api/access/grants")).toEqual({
+        person_id: PAT,
+        role_id: R_DEPT,
+        department_id: D_B,
+      }),
+    );
+  });
+
+  it("coming from a department page preselects the lead's role and the department", async () => {
+    mountApp({
+      path: `/access/grants/new?person=${PAT}&department=${D_A}`,
+      session: ident(ALL),
+      routes: base({
+        "GET /api/access/roles": () =>
+          json({
+            roles: [...roles, { ...roles[2], id: R_LEAD, key: "department-admin", name: "" }],
+          }),
+      }),
+    });
+    await screen.findByText("Pat Dust");
+    expect(screen.getByLabelText(/^Role\s*\(required\)/)).toHaveValue(R_LEAD);
+    expect(screen.getByLabelText(/^In which department\s*\(required\)/)).toHaveValue(D_A);
+  });
+
+  it("a failed department list shows its error", async () => {
+    mountApp({
+      path: `/access/grants/new?person=${PAT}`,
+      session: ident(ALL),
+      routes: base({
+        "GET /api/departments/": () => problem(500, { code: "internal", ref: "AAAA-0000" }),
+      }),
+    });
+    expect(await screen.findByRole("alert")).toHaveTextContent("Something went wrong.");
   });
 
   it("will not submit without a person and says so", async () => {

@@ -25,8 +25,9 @@ import { useAction } from "../useAction";
 import { useNames } from "../useNames";
 
 /** `/access/grants/new`: give a person a role, with an optional end date. The person may come
- *  prefilled from a person page (`?person=<id>`). Roles offered are the site roles that can be
- *  granted; department roles wait for departments (M3). */
+ *  prefilled from a person page (`?person=<id>`). Every role that can be granted is offered; a
+ *  department role also asks for one of the active departments (`GET /api/departments`), which a
+ *  department page can prefill (`?department=<id>`, choosing the `department-admin` role). */
 export function GrantNew() {
   const t = useT();
   const titles = useTitles();
@@ -37,6 +38,8 @@ export function GrantNew() {
   const [params] = useSearchParams();
   const [person, setPerson] = useState(params.get("person") ?? "");
   const [picked, setPicked] = useState("");
+  const departmentParam = params.get("department") ?? "";
+  const [roleChoice, setRoleChoice] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const act = useAction();
   const fieldErrors = useFieldErrors(act.error);
@@ -45,23 +48,38 @@ export function GrantNew() {
     queryKey: ["access", "roles"],
     queryFn: ({ signal }) => api.GET("/api/access/roles", { signal }),
   });
+  const departmentsQ = useQuery({
+    queryKey: ["departments", "list", { archived: false }],
+    queryFn: ({ signal }) => api.GET("/api/departments/", { signal }),
+  });
   const nameOf = useNames([person]);
-  const loadError = rolesQ.error instanceof ApiError ? rolesQ.error : null;
-  const grantable = (rolesQ.data?.roles ?? []).filter((r) => !r.base && r.scope === "site");
+  const loadError =
+    (rolesQ.error instanceof ApiError ? rolesQ.error : null) ??
+    (departmentsQ.error instanceof ApiError ? departmentsQ.error : null);
+  const grantable = (rolesQ.data?.roles ?? []).filter((r) => !r.base);
+  // Coming from a department page, the lead's role is the one to give.
+  const suggested =
+    departmentParam !== "" ? (grantable.find((r) => r.key === "department-admin")?.id ?? "") : "";
+  const roleId = roleChoice ?? suggested;
+  const chosenRole = grantable.find((r) => r.id === roleId);
+  const needsDepartment = chosenRole?.scope === "department";
+  const departments = departmentsQ.data?.departments ?? [];
 
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const data = new FormData(e.currentTarget);
-    const roleId = text(data.get("role"));
+    const role = text(data.get("role"));
+    const department = text(data.get("department"));
     const endsAt = endOfDayInstant(text(data.get("ends_at")));
     void act.run(async () => {
       // An empty role is left out, so the server's `required` lands on the role select.
       await api.POST("/api/access/grants", {
         body: {
           person_id: person,
-          ...(roleId ? { role_id: roleId } : {}),
+          ...(role ? { role_id: role } : {}),
+          ...(needsDepartment && department ? { department_id: department } : {}),
           ...(endsAt ? { ends_at: endsAt } : {}),
-        } as { person_id: string; role_id: string; ends_at?: string },
+        } as { person_id: string; role_id: string; department_id?: string; ends_at?: string },
       });
       void client.invalidateQueries({ queryKey: ["access", "grants"] });
       toast.show(t("core.access.new_grant.done"));
@@ -77,9 +95,17 @@ export function GrantNew() {
           {t("core.access.new_grant.back")}
         </Link>
       </div>
-      {rolesQ.isPending ? <Loading /> : null}
-      {loadError ? <ScreenError error={loadError} onRetry={() => void rolesQ.refetch()} /> : null}
-      {rolesQ.data ? (
+      {rolesQ.isPending || departmentsQ.isPending ? <Loading /> : null}
+      {loadError ? (
+        <ScreenError
+          error={loadError}
+          onRetry={() => {
+            void rolesQ.refetch();
+            void departmentsQ.refetch();
+          }}
+        />
+      ) : null}
+      {rolesQ.data && departmentsQ.data ? (
         <form ref={formRef} onSubmit={submit} className="flex flex-col gap-5" noValidate>
           <ErrorSummary
             error={act.error}
@@ -107,7 +133,12 @@ export function GrantNew() {
             error={fieldErrors["role"]}
           >
             {(control) => (
-              <select {...control} className={controlClass} defaultValue="">
+              <select
+                {...control}
+                className={controlClass}
+                value={roleId}
+                onChange={(e) => setRoleChoice(e.target.value)}
+              >
                 <option value="" disabled>
                   {t("core.access.new_grant.choose_role")}
                 </option>
@@ -119,6 +150,27 @@ export function GrantNew() {
               </select>
             )}
           </Field>
+          {needsDepartment ? (
+            <Field
+              label={t("core.access.new_grant.department")}
+              name="department"
+              required
+              error={fieldErrors["department"]}
+            >
+              {(control) => (
+                <select {...control} className={controlClass} defaultValue={departmentParam}>
+                  <option value="" disabled>
+                    {t("core.access.new_grant.choose_department")}
+                  </option>
+                  {departments.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </Field>
+          ) : null}
           <DateField
             label={t("core.access.new_grant.ends")}
             name="ends_at"
