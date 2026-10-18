@@ -5,6 +5,7 @@
   "shell.nav.admin": "Administration",
   "shell.language": "Language",
   "shell.language.en": "English",
+  "shell.language.unsaved": "Your language is changed here, but it couldn't be saved to your profile.",
   "shell.signin": "Sign in",
   "shell.signout": "Sign out",
   "shell.signed_in_as": "Signed in as {playa_name}",

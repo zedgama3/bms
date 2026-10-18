@@ -5,10 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -17,6 +19,7 @@ import (
 
 	"github.com/zedgama3/bms/internal/api"
 	"github.com/zedgama3/bms/internal/config"
+	"github.com/zedgama3/bms/internal/contracts/personpage"
 	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/db"
@@ -611,28 +614,41 @@ func TestCoreParts_Declare_SetsPermissionsSignalAndCommand(t *testing.T) {
 	for _, s := range a.coreSets {
 		sets = append(sets, s.Name)
 	}
-	if got := strings.Join(sets, ","); got != "identity,audit" {
-		t.Errorf("core migration sets = %s, want identity,audit (db.md order, not part order)", got)
+	if got := strings.Join(sets, ","); got != "identity,people,authz,audit" {
+		t.Errorf("core migration sets = %s, want identity,people,authz,audit (db.md order, not part order)", got)
 	}
 	var perms []string
 	for _, d := range a.corePerms {
 		perms = append(perms, string(d.Name))
 	}
-	want := "core.modules.read,audit.search,audit.export,accounts.read,accounts.manage"
+	want := "core.modules.read,audit.search,audit.export,accounts.read,accounts.manage," +
+		"access.roles.read,access.roles.manage,access.rules.manage,access.grants.read,access.grants.manage,access.department-grants.manage," +
+		"people.directory.read,people.contacts.read,people.profiles.manage,people.data.export,people.data.delete"
 	if got := strings.Join(perms, ","); got != want {
 		t.Errorf("corePerms = %s, want %s (api first, then each part's in part order)", got, want)
 	}
-	if !slices.Contains(a.coreSignals, "identity.account-created") {
-		t.Errorf("coreSignals = %v lacks identity.account-created", a.coreSignals)
-	}
-	var found bool
-	for _, c := range a.commands {
-		if c.name == "create-superuser" {
-			found = c.usage == "<email>"
+	for _, want := range []signals.Name{
+		"identity.account-created", "access.grant-created", "access.grant-revoked",
+		"people.person-created", "people.person-deleted", "people.deletion-requested",
+	} {
+		if !slices.Contains(a.coreSignals, want) {
+			t.Errorf("coreSignals = %v lacks %s", a.coreSignals, want)
 		}
 	}
-	if !found {
-		t.Errorf("commands = %v lack create-superuser <email>", a.commands)
+	if len(a.corePoints) != 1 || a.corePoints[0].Name != personpage.Point {
+		t.Errorf("corePoints = %v, want only %s", a.corePoints, personpage.Point)
+	}
+	if a.corePoints[0].Accepts(struct{}{}) {
+		t.Errorf("the %s point accepts a value that is not a personpage.Provider", personpage.Point)
+	}
+	usage := map[string]string{}
+	for _, c := range a.commands {
+		usage[c.name] = c.usage
+	}
+	for name, want := range map[string]string{"create-superuser": "<email>", "export": "<person-id>", "delete": "<person-id>"} {
+		if got, ok := usage[name]; !ok || got != want {
+			t.Errorf("command %s usage = %q (declared %v), want %q", name, got, ok, want)
+		}
 	}
 }
 
@@ -774,8 +790,8 @@ func TestBuildParts_AgainstNoDatabase_SetsAuthenticatorRoutesAndRunnable(t *test
 			t.Errorf("route set %s has %d routes and %d bytes of fragment", rs.Module, len(rs.Routes), len(rs.OpenAPI))
 		}
 	}
-	if strings.Join(areas, ",") != "audit,accounts" {
-		t.Errorf("route sets = %v, want audit then accounts", areas)
+	if strings.Join(areas, ",") != "audit,accounts,access,people" {
+		t.Errorf("route sets = %v, want audit, accounts, access, people", areas)
 	}
 	if len(a.runnables) != 1 || a.runnables[0].name != "audit" {
 		t.Errorf("runnables = %+v, want the audit importer", a.runnables)
@@ -821,8 +837,8 @@ func TestCheckSchemas_CoreAndModuleSets_ReportedTogether(t *testing.T) {
 	if !errs.Is(err, errs.Conflict) {
 		t.Fatalf("err = %v, want Conflict", err)
 	}
-	if got := strings.Join(checked, ","); got != "identity,audit,zqmod" {
-		t.Errorf("checked = %s, want identity,audit,zqmod (every set, none stopped the rest, no schema-less module)", got)
+	if got := strings.Join(checked, ","); got != "identity,people,authz,audit,zqmod" {
+		t.Errorf("checked = %s, want identity,people,authz,audit,zqmod (every set, none stopped the rest, no schema-less module)", got)
 	}
 	// The first problem that is not a Conflict decides the kind, not the last.
 	mixed := schemaFunc(func(_ context.Context, name string, _ fs.FS) error {
@@ -846,7 +862,7 @@ func TestCheckSchemas_CoreAndModuleSets_ReportedTogether(t *testing.T) {
 	if err := a.checkSchemas(context.Background(), core, []module.Manifest{{Name: "zqmod", Migrations: fstest.MapFS{}}}); err != nil {
 		t.Errorf("current core sets: %v", err)
 	}
-	if got := strings.Join(checked, ","); got != "identity,audit" {
+	if got := strings.Join(checked, ","); got != "identity,people,authz,audit" {
 		t.Errorf("checked = %s, want only the core sets when they are current", got)
 	}
 	unavailable := schemaFunc(func(context.Context, string, fs.FS) error {
@@ -1021,5 +1037,114 @@ func TestCreateSuperuser_UnknownDisabledModule_ExitUsageBeforeTheDatabase(t *tes
 	}
 	if strings.Contains(out.String()+errOut.String(), "admin@example.org") {
 		t.Error("the address was echoed")
+	}
+}
+
+// ---- authz (part 4) and people (part 5) ----
+
+func TestCoreParts_StarterRoles_AreAuthzKeys(t *testing.T) {
+	a := declared(t)
+	want := map[string][]string{
+		"core.modules.read": authz.SiteAdminRoles,
+		"audit.search":      {authz.RoleAuditReviewer},
+		"audit.export":      {authz.RoleAuditReviewer},
+		"accounts.read":     {authz.RoleAccountAdmin},
+		"accounts.manage":   {authz.RoleAccountAdmin},
+	}
+	for _, d := range a.corePerms {
+		w, ok := want[string(d.Name)]
+		if !ok {
+			continue
+		}
+		if !slices.Equal(d.StarterRoles, w) {
+			t.Errorf("%s StarterRoles = %v, want %v", d.Name, d.StarterRoles, w)
+		}
+		delete(want, string(d.Name))
+	}
+	if len(want) > 0 {
+		t.Errorf("declarations missing from corePerms: %v", want)
+	}
+}
+
+func TestBuildParts_AuthzAndPeople_FillTheLazySeams(t *testing.T) {
+	a := builtCore(t)
+	if a.authz == nil || a.people == nil || a.deps.authz == nil || a.deps.people == nil {
+		t.Fatalf("authz=%v people=%v deps.authz=%v deps.people=%v, want all set", a.authz, a.people, a.deps.authz, a.deps.people)
+	}
+	if a.permissions == nil || a.titles == nil || a.lister == nil || a.names == nil {
+		t.Errorf("permissions=%v titles=%v lister=%v names=%v, want all set", a.permissions, a.titles, a.lister, a.names)
+	}
+	deps, err := a.provision(context.Background(), module.Manifest{Name: "zqalpha"})
+	if err != nil {
+		t.Fatalf("provision: %v", err)
+	}
+	if deps.Authz == nil || deps.People == nil {
+		t.Errorf("provision: Authz=%v People=%v, want both set", deps.Authz, deps.People)
+	}
+}
+
+func TestLazyAdapters_BeforeTheirPartsAreBuilt_AnswerNothing(t *testing.T) {
+	a := &assembly{}
+	ctx := context.Background()
+	if err := (lazyPermissions{a: a}).Allow(ctx, "x.y"); !errs.Is(err, errs.Permission) {
+		t.Errorf("Allow = %v, want Permission", err)
+	}
+	if got, err := (lazyLister{a: a}).PermissionsOf(ctx, model.PersonID{}); err != nil || got == nil || len(got) != 0 {
+		t.Errorf("PermissionsOf = %v, %v, want an empty non-nil list", got, err)
+	}
+	if got, err := (lazyNames{a: a}).PlayaNameOf(ctx, model.PersonID{}); err != nil || got != "" {
+		t.Errorf("PlayaNameOf = %q, %v, want empty", got, err)
+	}
+	if got, err := (lazyTitles{a: a}).TitlesOf(ctx, model.PersonID{}); err != nil || got != nil {
+		t.Errorf("TitlesOf = %v, %v, want nil", got, err)
+	}
+}
+
+func TestAuditActor_Command_IsTheOperatorOnlyWithoutASession(t *testing.T) {
+	a := &assembly{}
+	person := model.NewID[model.PersonID]()
+	withSession := identity.WithSession(context.Background(), identity.Session{Person: person})
+	for _, tc := range []struct {
+		name     string
+		operator bool
+		ctx      context.Context
+		want     audit.Actor
+		ok       bool
+	}{
+		{"not a command, no session", false, context.Background(), audit.Actor{}, false},
+		{"a command, no session", true, context.Background(), audit.Actor{Kind: audit.ActorOperator}, true},
+		{"a command, a session", true, withSession, audit.Actor{Kind: audit.ActorPerson, Person: person}, true},
+		{"not a command, a session", false, withSession, audit.Actor{Kind: audit.ActorPerson, Person: person}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a.operator = tc.operator
+			got, ok := a.auditActor(tc.ctx)
+			if ok != tc.ok || !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("auditActor = %+v, %v; want %+v, %v", got, ok, tc.want, tc.ok)
+			}
+		})
+	}
+}
+
+func TestMigrateStatus_FailingFileIsExit1_MigratorConflictIsExit3(t *testing.T) {
+	driver := func(kind errs.Kind) error {
+		return errs.E("test.Migrate", kind, fmt.Errorf("zqprobe 0002_x: %w", &db.Error{Code: "23503", Constraint: "x_fkey"}))
+	}
+	for _, tc := range []struct {
+		name string
+		err  error
+		want int
+	}{
+		{"a changed applied file", errs.E("test.Migrate", errs.Conflict, errors.New("changed")), ExitSchema},
+		{"another run holds the lock", errs.E("test.Migrate", errs.Conflict, errors.New("locked")), ExitSchema},
+		{"a statement fails Invalid (a foreign key preflight)", driver(errs.Invalid), ExitFailure},
+		{"a statement fails Conflict (a unique violation)", driver(errs.Conflict), ExitFailure},
+		{"the database is down", errs.E("test.Migrate", errs.Unavailable, errors.New("down")), ExitFailure},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := migrateStatus(tc.err); got != tc.want {
+				t.Errorf("migrateStatus = %d, want %d", got, tc.want)
+			}
+		})
 	}
 }

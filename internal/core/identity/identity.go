@@ -69,8 +69,8 @@ const (
 
 // Permissions lists the declarations of PermissionAccountsRead and PermissionAccountsManage.
 var Permissions = []authz.PermissionDecl{
-	{Name: PermissionAccountsRead, Scope: authz.ScopeSite, Reaches: model.SensitivityPersonal},
-	{Name: PermissionAccountsManage, Scope: authz.ScopeSite, Reaches: model.SensitivityPersonal},
+	{Name: PermissionAccountsRead, Scope: authz.ScopeSite, Reaches: model.SensitivityPersonal, StarterRoles: []string{authz.RoleAccountAdmin}},
+	{Name: PermissionAccountsManage, Scope: authz.ScopeSite, Reaches: model.SensitivityPersonal, StarterRoles: []string{authz.RoleAccountAdmin}},
 }
 
 // Set is the migration set app adds to coreSets (db.md Proposed change 10).

@@ -35,13 +35,15 @@ export function RouteAnnouncer() {
   useEffect(() => {
     titleRef.current = title;
   }, [title]);
-  const prevKey = useRef<string | null>(null);
+  // Only a change of path moves focus: a filter that rewrites the query string must leave the
+  // person on the control they are using (WCAG 3.2.2).
+  const prevPath = useRef<string | null>(null);
   useEffect(() => {
-    if (prevKey.current === null || prevKey.current === location.key) {
-      prevKey.current = location.key; // first render: no focus move
+    if (prevPath.current === null || prevPath.current === pathname) {
+      prevPath.current = pathname; // first render: no focus move
       return;
     }
-    prevKey.current = location.key;
+    prevPath.current = pathname;
     const target =
       document.querySelector<HTMLElement>("main h1") ?? document.getElementById("content");
     if (target) {
@@ -49,7 +51,7 @@ export function RouteAnnouncer() {
       target.focus();
     }
     setAnnouncement(titleRef.current);
-  }, [location.key]);
+  }, [pathname]);
 
   return (
     <div role="status" aria-live="polite" className="sr-only">

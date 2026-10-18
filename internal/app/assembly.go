@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net"
+	"slices"
 	"strings"
 	"time"
 
@@ -18,13 +19,13 @@ import (
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/module"
+	"github.com/zedgama3/bms/internal/core/people"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/telemetry"
 	"github.com/zedgama3/bms/internal/core/telemetry/intake"
 	"github.com/zedgama3/bms/internal/lib/clock"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/lib/validate"
-	"github.com/zedgama3/bms/internal/model"
 	"github.com/zedgama3/bms/web"
 )
 
@@ -96,6 +97,8 @@ type assembly struct {
 	authenticator api.Authenticator           // identity (M1); nil until then
 	permissions   api.PermissionChecker       // authz (M2); nil until then
 	titles        audit.TitleSource           // authz (M2); nil until then (audit reads it lazily)
+	lister        identity.PermissionLister   // authz (M2); nil until then (identity reads it lazily)
+	names         identity.NameSource         // people (M2); nil until then (identity reads it lazily)
 	deps          coreDeps                    // copied into every module's Deps by provision
 
 	runnables []runnable // started after Set.Start, stopped before it (jobs, M4)
@@ -104,6 +107,10 @@ type assembly struct {
 	// Beyond the spec's list: the parts, what they built that a command calls, and what the
 	// lifecycle has started.
 	identity  *identity.Service // the identity part's service (create-superuser); nil before its build
+	authz     *authz.Service    // the authz part's service (migrate's seed, people's Access); nil before its build
+	people    *people.Service   // the people part's service (export, delete); nil before its build
+	stdout    io.Writer         // the command's standard output (migrate's seed line)
+	operator  bool              // a command that acts as the operator is running (auditActor)
 	parts     []part
 	started   []runnable
 	srv       httpServer
@@ -114,14 +121,13 @@ type assembly struct {
 // after it are set by the steps below.
 func newAssembly(p *process, cfg config.Config) *assembly {
 	return &assembly{
-		cfg:     cfg,
-		version: p.version,
-		clock:   p.clock,
-		logger:  slog.New(slog.DiscardHandler),
-		parts:   p.parts,
-		corePerms: []authz.PermissionDecl{
-			{Name: api.PermissionModulesRead, Scope: authz.ScopeSite, Reaches: model.SensitivityInternal},
-		},
+		cfg:       cfg,
+		version:   p.version,
+		clock:     p.clock,
+		logger:    slog.New(slog.DiscardHandler),
+		parts:     p.parts,
+		stdout:    p.stdout,
+		corePerms: slices.Clone(api.Permissions),
 	}
 }
 
@@ -297,6 +303,8 @@ func (a *assembly) provision(_ context.Context, m module.Manifest) (module.Deps,
 			return module.Deps{}, fmt.Errorf("module %s: audit scope: %w", m.Name, err)
 		}
 	}
+	deps.Authz = a.deps.authz
+	deps.People = a.deps.people
 	return deps, nil
 }
 

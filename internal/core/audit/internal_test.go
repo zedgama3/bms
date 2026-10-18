@@ -18,6 +18,8 @@ import (
 
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/db/dbtest"
+	"github.com/zedgama3/bms/internal/core/signals"
+	"github.com/zedgama3/bms/internal/core/signals/signalstest"
 	"github.com/zedgama3/bms/internal/core/telemetry/telemetrytest"
 	"github.com/zedgama3/bms/internal/lib/clock"
 	"github.com/zedgama3/bms/internal/lib/errs"
@@ -572,5 +574,82 @@ func TestDataRefusal_Table(t *testing.T) {
 	}
 	if dataRefusal(errors.New("plain")) {
 		t.Error("dataRefusal(plain error) = true")
+	}
+}
+
+// ---- the ActorFunc may name the operator ----
+
+func TestResolveActor_ActorFuncReturnsOperator_IsTheOperator(t *testing.T) {
+	l := readOnlyLog(t)
+	l.opts.Actor = func(context.Context) (Actor, bool) {
+		return Actor{Kind: ActorOperator, Titles: []string{"ignored"}}, true
+	}
+	got, err := l.resolveActor(t.Context(), Actor{})
+	if err != nil {
+		t.Fatalf("resolveActor: %v", err)
+	}
+	if got.Kind != ActorOperator || len(got.Titles) != 0 || !got.Person.IsZero() {
+		t.Errorf("actor = %+v, want the operator with no person and no titles", got)
+	}
+}
+
+// deliveryCtx returns a ctx for which signals.InDelivery is true, as a handler receives it.
+func deliveryCtx(t *testing.T) context.Context {
+	t.Helper()
+	bus, err := signalstest.NewFake("hello", nil, []signals.Name{"people.person-created"})
+	if err != nil {
+		t.Fatalf("signalstest.NewFake: %v", err)
+	}
+	var got context.Context
+	if err := bus.Subscribe("people.person-created", func(ctx context.Context, _ signals.Signal) error {
+		got = ctx
+		return nil
+	}); err != nil {
+		t.Fatalf("Subscribe: %v", err)
+	}
+	sig := signals.Signal{ID: model.NewID[signals.SignalID](), Name: "people.person-created", At: time.Now(), Payload: signals.Payload{}}
+	if err := bus.Deliver(t.Context(), sig); err != nil {
+		t.Fatalf("Deliver: %v", err)
+	}
+	if got == nil || !signals.InDelivery(got) {
+		t.Fatal("the handler's ctx is not InDelivery")
+	}
+	return got
+}
+
+func TestResolveActor_Order_GivenThenDeliveryThenActorFuncThenAnonymous(t *testing.T) {
+	l := readOnlyLog(t)
+	operator := func(context.Context) (Actor, bool) { return Actor{Kind: ActorOperator}, true }
+	none := func(context.Context) (Actor, bool) { return Actor{}, false }
+	person := model.NewID[model.PersonID]()
+	for _, tc := range []struct {
+		name  string
+		fn    ActorFunc
+		given Actor
+		ctx   context.Context
+		want  ActorKind
+	}{
+		{"given wins", operator, Actor{Kind: ActorAnonymous}, t.Context(), ActorAnonymous},
+		{"delivery beats the function", operator, Actor{}, deliveryCtx(t), ActorSystem},
+		{"the function answers", operator, Actor{}, t.Context(), ActorOperator},
+		{"no answer is anonymous", none, Actor{}, t.Context(), ActorAnonymous},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			l.opts.Actor = tc.fn
+			got, err := l.resolveActor(tc.ctx, tc.given)
+			if err != nil || got.Kind != tc.want {
+				t.Errorf("resolveActor = %+v, %v; want kind %v", got, err, tc.want)
+			}
+		})
+	}
+	// Anything other than a person or the operator is a bug in the function.
+	for _, bad := range []Actor{
+		{Kind: ActorSystem}, {Kind: ActorAnonymous},
+		{Kind: ActorOperator, Person: person}, {Kind: ActorOperator, Superuser: true}, {},
+	} {
+		l.opts.Actor = func(context.Context) (Actor, bool) { return bad, true }
+		if _, err := l.resolveActor(t.Context(), Actor{}); !errs.Is(err, errs.Internal) {
+			t.Errorf("ActorFunc returning %+v: err = %v, want Internal", bad, err)
+		}
 	}
 }

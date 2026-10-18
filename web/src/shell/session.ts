@@ -21,8 +21,9 @@ export function canSee(
   if (access === "public") return true;
   if (!session.signedIn) return false;
   if (access === undefined || access === "signed-in") return true;
-  // Before authz fills `permissions` (M2) a permission requirement shows the entry to every
-  // signed-in person and the screen shows its forbidden state.
-  if (session.permissions.length === 0) return true;
-  return access.some((p) => session.permissions.includes(p));
+  // The session holds `p` (site-wide) and `p@<department-id>`: an entry matches when the
+  // session holds `p` exactly or any `p@...`. An empty list means none (M2).
+  return access.some((p) =>
+    session.permissions.some((held) => held === p || held.startsWith(`${p}@`)),
+  );
 }

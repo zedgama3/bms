@@ -42,11 +42,14 @@ export function SignUp() {
   // with or without `fields`; either way it lands on the e-mail input, without a reference line.
   const error = useMemo(() => {
     const e = action.error;
-    if (e?.code !== "conflict" || e.fields.some((f) => f.field === "email")) return e;
+    if (e?.code !== "conflict") return e;
+    // Rebuilt without the reference: a taken address is not a fault to report.
     return new ApiError({
       status: e.status,
       code: "conflict",
-      fields: [{ field: "email", code: "taken", reason: "" }],
+      fields: e.fields.some((f) => f.field === "email")
+        ? e.fields
+        : [{ field: "email", code: "taken", reason: "" }],
       method: e.method,
       route: e.route,
       module: e.module,

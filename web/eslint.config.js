@@ -33,17 +33,21 @@ const setImportBan = {
   ],
 };
 
-// Only the accounts area may end or refresh the session (it signs people in and out).
-const sessionOnlyAccounts = {
-  ...setImportBan,
-  paths: [
-    {
-      name: "@/api",
-      importNames: ["setSessionEnded", "refreshSession"],
-      message: "Only core/accounts may end or refresh the session.",
-    },
-  ],
+// Only the accounts area may end or refresh the session (it signs people in and out); only the
+// people area (and the frame) may read or write the own profile cache.
+const sessionBan = {
+  name: "@/api",
+  importNames: ["setSessionEnded", "refreshSession"],
+  message: "Only core/accounts may end or refresh the session.",
 };
+const meBan = {
+  name: "@/api",
+  importNames: ["useMe", "useSetMe"],
+  message: "Only core/people (and the frame) read the own profile.",
+};
+const sessionOnlyAccounts = { ...setImportBan, paths: [sessionBan, meBan] };
+const accountsBan = { ...setImportBan, paths: [meBan] };
+const peopleBan = { ...setImportBan, paths: [sessionBan] };
 
 const restrictedGlobals = [
   "fetch",
@@ -172,8 +176,21 @@ export default tseslint.config(
   },
   {
     files: ["src/modules/**/*.{ts,tsx}", "src/core/**/*.{ts,tsx}"],
-    ignores: ["src/modules/index.ts", "src/core/index.ts", "src/core/accounts/**"],
+    ignores: [
+      "src/modules/index.ts",
+      "src/core/index.ts",
+      "src/core/accounts/**",
+      "src/core/people/**",
+    ],
     rules: { "no-restricted-imports": ["error", sessionOnlyAccounts] },
+  },
+  {
+    files: ["src/core/accounts/**/*.{ts,tsx}"],
+    rules: { "no-restricted-imports": ["error", accountsBan] },
+  },
+  {
+    files: ["src/core/people/**/*.{ts,tsx}"],
+    rules: { "no-restricted-imports": ["error", peopleBan] },
   },
   {
     files: ["src/shell/**/*.{ts,tsx}"],

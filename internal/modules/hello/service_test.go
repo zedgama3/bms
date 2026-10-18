@@ -3,16 +3,20 @@ package hello_test
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/zedgama3/bms/internal/core/db/dbtest"
+	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/module"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/signals/signalstest"
 	"github.com/zedgama3/bms/internal/core/telemetry/telemetrytest"
 	"github.com/zedgama3/bms/internal/lib/clock"
 	"github.com/zedgama3/bms/internal/lib/errs"
+	"github.com/zedgama3/bms/internal/model"
 	"github.com/zedgama3/bms/internal/modules/hello"
 )
 
@@ -83,6 +87,42 @@ func TestNew_AllDependencies_BuildsWithoutTouchingTheDatabase(t *testing.T) {
 	}
 	if hs := sig.Handlers(); len(hs) != 0 {
 		t.Errorf("New subscribed %v; only Start may", hs)
+	}
+}
+
+// Deps.Authz is nil when Provision leaves it out (a test, a half-built assembly): New still
+// builds and the module fails closed, so every permissioned route answers 403 for a
+// signed-in person, and nothing is written.
+func TestNew_NilAuthz_DeniesEverything(t *testing.T) {
+	d, fdb, _ := rawFakes(t)
+	if d.Authz != nil {
+		t.Fatal("the fixture sets Authz; this test needs it nil")
+	}
+	built, err := hello.New(ctxT(t), d)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	m, ok := built.(*hello.Module)
+	if !ok {
+		t.Fatalf("New returned a %T, want *hello.Module", built)
+	}
+	mux := bareMux(t, m)
+	person := model.NewID[model.PersonID]()
+	for _, rt := range []struct{ method, path string }{
+		{"GET", "/api/hello/greeting"},
+		{"POST", "/api/hello/greetings"},
+	} {
+		t.Run(rt.method+" "+rt.path, func(t *testing.T) {
+			req := httptest.NewRequestWithContext(identity.WithSession(t.Context(), identity.Session{Person: person}), rt.method, rt.path, nil)
+			rec := httptest.NewRecorder()
+			mux.ServeHTTP(rec, req)
+			if rec.Code != http.StatusForbidden {
+				t.Errorf("status = %d (%s), want 403", rec.Code, rec.Body.String())
+			}
+		})
+	}
+	for _, c := range fdb.Calls() {
+		t.Errorf("a denied request reached the database: %v", c)
 	}
 }
 

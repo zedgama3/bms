@@ -4,6 +4,130 @@
  */
 
 export interface paths {
+    "/api/access/grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List grants, newest first. Needs access.grants.read in some extent (results are limited to it), or person set to your own ID. */
+        get: operations["accessListGrants"];
+        put?: never;
+        /** Grant a role to a person. 403 outside what you may grant; 400 self, base, mismatch, range; 409 duplicate or separation_of_duties (params rule, note); 501 when departments are not available. */
+        post: operations["accessGrant"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/access/grants/{grant}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke a grant. 404 for a grant outside what you may grant; 400 (field person, code self) for your own; 409 last_access_admin for the last site-wide holder of access.grants.manage. */
+        delete: operations["accessRevoke"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/access/permissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The catalogue of declared permissions, sorted by name. Needs access.roles.read, or a grants permission in any extent (then only the permissions a department role may hold). */
+        get: operations["accessListPermissions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/access/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List roles with their permissions. Same permission rule as the catalogue; a department-only caller sees department roles only. */
+        get: operations["accessListRoles"];
+        put?: never;
+        /** Create a role. Needs access.roles.manage. 409 with field name, code taken, when another role has the name. */
+        post: operations["accessCreateRole"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/access/roles/{role}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One role. 404 for an unknown role, or a site role for a department-only caller. */
+        get: operations["accessGetRole"];
+        /** Replace a role's name, description and permissions. Needs access.roles.manage. Scope is immutable (400, field scope, code immutable). 409 last_access_admin when the change would leave nobody holding access.grants.manage site-wide. */
+        put: operations["accessUpdateRole"];
+        post?: never;
+        /** Delete a role. Needs access.roles.manage. 400 (field role, code base) for the base role; 409 in_use while a grant or rule references it. */
+        delete: operations["accessDeleteRole"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/access/rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List separation-of-duties rules with how many people each affects now. Needs access.roles.read. */
+        get: operations["accessListRules"];
+        put?: never;
+        /** Create a rule: holding the role forbids a permission, or every permission reaching a level. Needs access.rules.manage. Takes effect at once. 409 duplicate. */
+        post: operations["accessCreateRule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/access/rules/{rule}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a rule. Needs access.rules.manage. */
+        delete: operations["accessDeleteRule"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/accounts/": {
         parameters: {
             query?: never;
@@ -344,10 +468,434 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/people/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a person without an account. Needs people.profiles.manage. 400 playa_name required. */
+        post: operations["peopleCreate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Your own profile, every field group, contacts, consents and the modules' sections. A person with no row yet gets an empty, incomplete profile (nothing is written). Read once per session by the frame. */
+        get: operations["peopleMe"];
+        /** Change your own profile; absent or null fields are unchanged and an empty string clears one. 400 playa_name required, legal_name or phone required when the regional requires them, hidden for a field the regional turned off, has_account for contact_email, malformed, too_long, control_chars. */
+        put: operations["peopleUpdateMe"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people/me/consents/{purpose}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Grant or revoke your consent to a purpose. 400 purpose malformed. */
+        put: operations["peopleSetMyConsent"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people/me/contacts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add an emergency contact. 400 contacts too_many {max} at ten, hidden when the regional turned contacts off. */
+        post: operations["peopleAddMyContact"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people/me/contacts/{contact}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Replace one of your emergency contacts. 404 when it is not yours. */
+        put: operations["peopleUpdateMyContact"];
+        post?: never;
+        /** Remove one of your emergency contacts. 404 when it is not yours. */
+        delete: operations["peopleRemoveMyContact"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people/me/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download everything bms holds about you as one JSON attachment (bms-export-<person>.json). Audited; once every ten minutes (429 with Retry-After). */
+        get: operations["peopleExportMe"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people/me/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Your own deletion requests, newest first. */
+        get: operations["peopleMyRequests"];
+        put?: never;
+        /** Ask for your data to be deleted. A holder of people.data.delete fulfils or declines it. 409 (field request, code duplicate) while one is open; 400 note too_long. */
+        post: operations["peopleRequestDeletion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people/me/requests/{request}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw your own open request. 404 when it is not yours; 409 (field request, code status) when it is not open. */
+        post: operations["peopleWithdrawRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people/names": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Playa names of the given people, for the access and audit screens. Any signed-in person. Unknown IDs are omitted. 400 ids too_many {max} over 200. */
+        get: operations["peopleNames"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Deletion requests by status (default open), oldest first. Needs people.data.delete. */
+        get: operations["peopleListRequests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people/requests/{request}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decline an open request with a note for the person. Needs people.data.delete. 409 (field request, code status) when it is not open. */
+        post: operations["peopleDeclineRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people/requests/{request}/fulfil": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Delete the request's person as DELETE /{person} does. Needs people.data.delete. 409 last_access_admin, in_use, status; 400 self. */
+        post: operations["peopleFulfilRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search people by playa name (case-insensitive substring); holders of people.contacts.read also match legal name, phone and contact address, and each such match is audited. Needs people.directory.read. 400 q too_short {min} or too_long {max}, limit range. */
+        get: operations["peopleSearch"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people/{person}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A person's profile as you may see it: internal fields with people.directory.read; personal fields and contacts with people.contacts.read (audited); consents with people.profiles.manage. Your own ID behaves as /me. 403 without people.directory.read; 404 for an unknown person. */
+        get: operations["peopleGet"];
+        /** Change another person's profile. Needs people.profiles.manage; the regional's required modes are not enforced. Your own ID behaves as PUT /me. 404 for an unknown person. */
+        put: operations["peopleUpdate"];
+        post?: never;
+        /** Delete a person and everything about them across identity, access and every module, in one transaction. Needs people.data.delete. 400 self; 403 for a superuser account; 404; 409 last_access_admin or in_use. Audit rows stay and are counted. */
+        delete: operations["peopleDelete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people/{person}/consents/{purpose}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Record a person's consent, for example from a paper form. Needs people.profiles.manage (or your own ID). */
+        put: operations["peopleSetConsent"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people/{person}/contacts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add an emergency contact for a person. Needs people.profiles.manage (or your own ID). */
+        post: operations["peopleAddContact"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people/{person}/contacts/{contact}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Replace a person's emergency contact. Needs people.profiles.manage (or your own ID). 404 when it is not theirs. */
+        put: operations["peopleUpdateContact"];
+        post?: never;
+        /** Remove a person's emergency contact. Needs people.profiles.manage (or your own ID). 404 when it is not theirs. */
+        delete: operations["peopleRemoveContact"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people/{person}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download everything bms holds about a person as one JSON attachment. Needs people.data.export. Audited. */
+        get: operations["peopleExport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people/{person}/link-account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Join the account with this login address to a person who has none. Needs people.profiles.manage. 404 (field email, code unknown) when no account has the address; 409 has_account or superuser. The empty profile sign-up made is removed when nothing refers to it. */
+        post: operations["peopleLinkAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AccessGrant: {
+            /** Format: date-time */
+            created_at: string;
+            department_id?: components["schemas"]["ID"];
+            /** @description The end date has passed. */
+            ended: boolean;
+            /**
+             * Format: date-time
+             * @description Absent when the grant has no end.
+             */
+            ends_at?: string;
+            granted_by?: components["schemas"]["ID"];
+            id: components["schemas"]["ID"];
+            person_id: components["schemas"]["ID"];
+            role_id: components["schemas"]["ID"];
+            /** @description The role's starter key (for example account-admin), null for a role the regional made. The shell titles a starter role from core.access.role.<key>.title. */
+            role_key: string | null;
+            /** @description The role's name; empty while a starter role has not been renamed (then use role_key). */
+            role_name: string;
+        };
+        AccessGrantInput: {
+            department_id?: components["schemas"]["ID"];
+            /**
+             * Format: date-time
+             * @description Optional; must be in the future.
+             */
+            ends_at?: string;
+            person_id: components["schemas"]["ID"];
+            role_id: components["schemas"]["ID"];
+        };
+        AccessGrantPage: {
+            grants: components["schemas"]["AccessGrant"][];
+            /** @description Pass as after to get the next page; absent on the last page. */
+            next?: string;
+        };
+        AccessPermission: {
+            /** @description The first segment of the name. */
+            module: string;
+            name: string;
+            reaches: components["schemas"]["Sensitivity"];
+            /** @enum {string} */
+            scope: "site" | "department";
+            /** @description Starter role keys the permission is seeded into. */
+            starter_roles: string[];
+        };
+        AccessRole: {
+            /** @description The one role every signed-in person holds. */
+            base: boolean;
+            /** Format: date-time */
+            created_at: string;
+            description: string;
+            id: components["schemas"]["ID"];
+            /** @description Starter roles only. */
+            key?: string;
+            /** @description Empty while an unrenamed starter role; show the translated title for its key. */
+            name: string;
+            permissions: {
+                /** @description False: not available in this installation. */
+                declared: boolean;
+                name: string;
+            }[];
+            /** @enum {string} */
+            scope: "site" | "department";
+            /** Format: date-time */
+            updated_at: string;
+        };
+        AccessRoleInput: {
+            description?: string;
+            name: string;
+            permissions: string[];
+            /**
+             * @description Required on create; on change absent or the role's own scope.
+             * @enum {string}
+             */
+            scope?: "site" | "department";
+        };
+        AccessRule: {
+            /** @description People holding the role and a forbidden permission now. */
+            affected: number;
+            /** Format: date-time */
+            created_at: string;
+            id: components["schemas"]["ID"];
+            note: string;
+            /** @description Set for a permission rule. */
+            permission?: string;
+            reaches?: components["schemas"]["Sensitivity"];
+            role_id: components["schemas"]["ID"];
+        };
+        /** @description Set exactly one of permission and reaches. */
+        AccessRuleInput: {
+            note?: string;
+            permission?: string;
+            reaches?: components["schemas"]["Sensitivity"];
+            role_id: components["schemas"]["ID"];
+        };
         AccountsAccount: {
             /** Format: date-time */
             created_at: string;
@@ -538,6 +1086,168 @@ export interface components {
                 name: string;
             }[];
         };
+        PeopleCan: {
+            delete: boolean;
+            edit: boolean;
+            export: boolean;
+            link: boolean;
+            read_contacts: boolean;
+            view_audit: boolean;
+            view_roles: boolean;
+        };
+        PeopleConsent: {
+            /** Format: date-time */
+            changed_at: string;
+            granted: boolean;
+            person_id: components["schemas"]["ID"];
+            purpose: string;
+            recorded_by?: components["schemas"]["ID"];
+        };
+        PeopleConsentInput: {
+            granted: boolean;
+        };
+        PeopleContact: {
+            /** Format: date-time */
+            created_at: string;
+            id: components["schemas"]["ID"];
+            name: string;
+            person_id: components["schemas"]["ID"];
+            phone: string;
+            position: number;
+            relationship: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        PeopleContactInput: {
+            name: string;
+            phone: string;
+            relationship?: string;
+        };
+        PeopleDecisionInput: {
+            note?: string;
+        };
+        PeopleDeletionReport: {
+            access: number;
+            identity: number;
+            kept: components["schemas"]["PeopleKept"][];
+            modules: {
+                [key: string]: {
+                    anonymized: number;
+                    deleted: number;
+                    kept: components["schemas"]["PeopleKept"][];
+                };
+            };
+            people: number;
+            person: components["schemas"]["ID"];
+        };
+        PeopleKept: {
+            count: number;
+            kind: string;
+        };
+        PeopleLinkInput: {
+            email: string;
+        };
+        PeopleLinkResult: {
+            account_id: components["schemas"]["ID"];
+            /** @description The empty profile sign-up made was removed; false means it was kept. */
+            orphan_deleted: boolean;
+            orphan_id?: components["schemas"]["ID"];
+        };
+        PeopleMatchList: {
+            matches: {
+                id: components["schemas"]["ID"];
+                playa_name: string;
+                pronouns: string;
+            }[];
+        };
+        PeopleNames: {
+            names: {
+                [key: string]: string;
+            };
+        };
+        PeoplePerson: {
+            complete: boolean;
+            contact_email?: string;
+            /** Format: date-time */
+            created_at?: string;
+            /** @description The login address. */
+            email?: string;
+            has_account: boolean;
+            id: components["schemas"]["ID"];
+            language: string;
+            /** @description Only when the viewer may see personal fields (see fields). */
+            legal_name?: string;
+            phone?: string;
+            playa_name: string;
+            pronouns: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        PeoplePolicy: {
+            /** @enum {string} */
+            emergency_contacts: "hidden" | "optional" | "required";
+            /** @enum {string} */
+            legal_name: "hidden" | "optional" | "required";
+            /** @enum {string} */
+            phone: "hidden" | "optional" | "required";
+        };
+        PeopleProfile: {
+            can: components["schemas"]["PeopleCan"];
+            consents: components["schemas"]["PeopleConsent"][];
+            contacts: components["schemas"]["PeopleContact"][];
+            /** @description Which field groups were included: playa_name, pronouns, language, legal_name, phone, contact_email, email, emergency_contacts, consents. */
+            fields: string[];
+            person: components["schemas"]["PeoplePerson"];
+            policy: components["schemas"]["PeoplePolicy"];
+            sections: components["schemas"]["PeopleSection"][];
+        };
+        PeopleProfileInput: {
+            /** @description Absent or null leaves the field unchanged; an empty string clears it. */
+            contact_email?: string | null;
+            /** @description Absent or null leaves the field unchanged; an empty string clears it. */
+            language?: string | null;
+            /** @description Absent or null leaves the field unchanged; an empty string clears it. */
+            legal_name?: string | null;
+            /** @description Absent or null leaves the field unchanged; an empty string clears it. */
+            phone?: string | null;
+            /** @description Absent or null leaves the field unchanged; an empty string clears it. */
+            playa_name?: string | null;
+            /** @description Absent or null leaves the field unchanged; an empty string clears it. */
+            pronouns?: string | null;
+        };
+        PeopleRequest: {
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            decided_at?: string;
+            decided_by?: components["schemas"]["ID"];
+            decision_note: string;
+            id: components["schemas"]["ID"];
+            /** @enum {string} */
+            kind: "delete";
+            note: string;
+            person_id: components["schemas"]["ID"];
+            /** @enum {string} */
+            status: "open" | "withdrawn" | "declined";
+        };
+        PeopleRequestInput: {
+            /** @enum {string} */
+            kind: "delete";
+            note?: string;
+        };
+        PeopleRequestList: {
+            requests: components["schemas"]["PeopleRequest"][];
+        };
+        PeopleSection: {
+            failed: boolean;
+            items: {
+                href?: string;
+                label: string;
+                value: string;
+            }[];
+            /** @description <module>.<ident>; the title is module.<module>.section.<ident>.title. */
+            key: string;
+        };
         /** @description The body of every error response (RFC 9457, application/problem+json). */
         Problem: {
             /** @description An errs.Kind name (invalid, unauthenticated, permission, not_found, conflict, unavailable, timeout, unsupported, internal) or a shell code (read_only, rate_limited, shutting_down, payload_too_large, unsupported_media_type, cross_origin, misdirected, method_not_allowed). */
@@ -565,6 +1275,395 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    accessListGrants: {
+        parameters: {
+            query?: {
+                /** @description Only this person's grants. */
+                person?: components["schemas"]["ID"];
+                /** @description Only grants of this role. */
+                role?: components["schemas"]["ID"];
+                /** @description Only grants for this department. */
+                department?: components["schemas"]["ID"];
+                /** @description Only grants of roles that hold this permission. */
+                permission?: string;
+                /** @description Include grants whose end date has passed. */
+                include_ended?: boolean;
+                /** @description The next value of the previous page. */
+                after?: string;
+                /** @description Page size; 0 or absent means 50. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of grants. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessGrantPage"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    accessGrant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccessGrantInput"];
+            };
+        };
+        responses: {
+            /** @description Granted. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessGrant"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    accessRevoke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                grant: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    accessListPermissions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The catalogue. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        permissions: components["schemas"]["AccessPermission"][];
+                    };
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    accessListRoles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The roles. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        roles: components["schemas"]["AccessRole"][];
+                    };
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    accessCreateRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccessRoleInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessRole"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    accessGetRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The role. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessRole"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    accessUpdateRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccessRoleInput"];
+            };
+        };
+        responses: {
+            /** @description The changed role. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessRole"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    accessDeleteRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    accessListRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The rules. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        rules: components["schemas"]["AccessRule"][];
+                    };
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    accessCreateRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccessRuleInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessRule"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    accessDeleteRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     accountsList: {
         parameters: {
             query?: {
@@ -1216,6 +2315,823 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    peopleCreate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PeopleProfileInput"];
+            };
+        };
+        responses: {
+            /** @description The new profile. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeopleProfile"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    peopleMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Your profile. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeopleProfile"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    peopleUpdateMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PeopleProfileInput"];
+            };
+        };
+        responses: {
+            /** @description Your profile after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeopleProfile"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    peopleSetMyConsent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A consent purpose, <owner>.<ident>. */
+                purpose: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PeopleConsentInput"];
+            };
+        };
+        responses: {
+            /** @description The consent now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeopleConsent"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    peopleAddMyContact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PeopleContactInput"];
+            };
+        };
+        responses: {
+            /** @description Added. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeopleContact"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    peopleUpdateMyContact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contact: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PeopleContactInput"];
+            };
+        };
+        responses: {
+            /** @description Changed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeopleContact"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    peopleRemoveMyContact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                contact: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    peopleExportMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The export document, format 1. */
+            200: {
+                headers: {
+                    "Content-Disposition"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    peopleMyRequests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Requests. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeopleRequestList"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    peopleRequestDeletion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PeopleRequestInput"];
+            };
+        };
+        responses: {
+            /** @description Filed. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeopleRequest"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    peopleWithdrawRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Withdrawn. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    peopleNames: {
+        parameters: {
+            query?: {
+                /** @description Comma-separated person IDs. */
+                ids?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Names by person ID. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeopleNames"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    peopleListRequests: {
+        parameters: {
+            query?: {
+                /** @description Default open. */
+                status?: "open" | "withdrawn" | "declined";
+                /** @description Only this person's requests. */
+                person?: components["schemas"]["ID"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Requests. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeopleRequestList"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    peopleDeclineRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PeopleDecisionInput"];
+            };
+        };
+        responses: {
+            /** @description Declined. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeopleRequest"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    peopleFulfilRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What was deleted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeopleDeletionReport"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    peopleSearch: {
+        parameters: {
+            query?: {
+                /** @description At least 2 bytes, at most 100. */
+                q?: string;
+                /** @description 0 or absent means 20. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Matches ordered by playa name. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeopleMatchList"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    peopleGet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                person: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The profile. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeopleProfile"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    peopleUpdate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                person: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PeopleProfileInput"];
+            };
+        };
+        responses: {
+            /** @description The profile after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeopleProfile"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    peopleDelete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                person: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What was deleted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeopleDeletionReport"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    peopleSetConsent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                person: components["schemas"]["ID"];
+                /** @description A consent purpose, <owner>.<ident>. */
+                purpose: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PeopleConsentInput"];
+            };
+        };
+        responses: {
+            /** @description The consent now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeopleConsent"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    peopleAddContact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                person: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PeopleContactInput"];
+            };
+        };
+        responses: {
+            /** @description Added. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeopleContact"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    peopleUpdateContact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                person: components["schemas"]["ID"];
+                contact: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PeopleContactInput"];
+            };
+        };
+        responses: {
+            /** @description Changed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeopleContact"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    peopleRemoveContact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                person: components["schemas"]["ID"];
+                contact: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    peopleExport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                person: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The export document, format 1. */
+            200: {
+                headers: {
+                    "Content-Disposition"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    peopleLinkAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                person: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PeopleLinkInput"];
+            };
+        };
+        responses: {
+            /** @description Linked. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeopleLinkResult"];
+                };
             };
             /** @description An error. The body is a Problem. */
             default: {

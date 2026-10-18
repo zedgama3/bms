@@ -503,7 +503,6 @@ func TestGrant_CancelledContext_ReturnsCanceled(t *testing.T) {
 
 // Foreign key (decision 14): authz does not look up the person, the database does.
 func TestGrant_UnknownPerson_IsRefusedByTheDatabase(t *testing.T) {
-	t.Skip("needs authz migration 0002 (FK core.role_grant.person_id -> core.person), which lands with the people set (authz.md decision 14)")
 	r := newRig(t)
 	ro := r.mkRole(authz.ScopeSite, pMedRead)
 	_, err := r.grantAs(r.sctx(), newPerson(), ro, noDept) // never inserted
@@ -704,6 +703,36 @@ func TestListGrants_OwnPerson_Allowed(t *testing.T) {
 	wantNoErr(t, err)
 	if len(page.Grants) != 1 || page.Grants[0].Person != p {
 		t.Fatalf("own grants = %+v", page.Grants)
+	}
+}
+
+// A person may list their own grants without the role catalogue; each grant names its role by
+// key (a starter role) or name, so the shell need not show an ID.
+func TestListGrants_CarriesTheRoleKeyAndName(t *testing.T) {
+	r := newRig(t)
+	p := r.person()
+	starter := r.roleKey(authz.RoleAccountAdmin)
+	custom := r.mkRole(authz.ScopeSite, pMedRead)
+	r.give(p, starter, noDept, time.Time{})
+	r.give(p, custom, noDept, time.Time{})
+	page, err := r.svc.ListGrants(r.pctx(p), authz.GrantQuery{Person: p})
+	wantNoErr(t, err)
+	if len(page.Grants) != 2 {
+		t.Fatalf("own grants = %+v", page.Grants)
+	}
+	for _, g := range page.Grants {
+		switch g.Role {
+		case starter.ID:
+			if g.RoleKey != authz.RoleAccountAdmin {
+				t.Errorf("starter grant role key = %q, want %q", g.RoleKey, authz.RoleAccountAdmin)
+			}
+		case custom.ID:
+			if g.RoleKey != "" || g.RoleName != custom.Name || g.RoleName == "" {
+				t.Errorf("custom grant role = %q %q, want no key and the role's name %q", g.RoleKey, g.RoleName, custom.Name)
+			}
+		default:
+			t.Errorf("unexpected role %v", g.Role)
+		}
 	}
 }
 

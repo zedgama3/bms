@@ -14,7 +14,7 @@ const signedIn = {
   person_id: "7d2c2f0e-0000-4000-8000-000000000001",
   playa_name: "Dusty",
   superuser: false,
-  permissions: [],
+  permissions: ["core.modules.read"],
 };
 
 describe("boot", () => {
@@ -206,6 +206,12 @@ describe("sign out", () => {
     expect(client.getQueryCache().getAll().length).toBeGreaterThan(0);
     await userEvent.click(screen.getByRole("button", { name: "Sign out" }));
     await waitFor(() => expect(leave).toHaveBeenCalledWith("/"));
-    expect(client.getQueryCache().getAll()).toHaveLength(0);
+    // Nothing the old session fetched stays: a disabled, empty query may remain, data may not.
+    expect(
+      client
+        .getQueryCache()
+        .getAll()
+        .filter((q) => q.state.data !== undefined),
+    ).toHaveLength(0);
   });
 });

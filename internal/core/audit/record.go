@@ -108,7 +108,8 @@ func (l *Log) stamp(ctx context.Context, traceID string, entries []Entry) ([]Rec
 }
 
 // resolveActor applies decision 6: a set Kind is taken as given; otherwise a signal
-// delivery is the system, a session is its person, and no session is anonymous.
+// delivery is the system; otherwise the ActorFunc answers (a session is its person, and
+// while a bms command runs the operator); with no answer the actor is anonymous.
 func (l *Log) resolveActor(ctx context.Context, given Actor) (Actor, error) {
 	const op = "audit.Log.Record"
 	if given.Kind != 0 {
@@ -122,8 +123,9 @@ func (l *Log) resolveActor(ctx context.Context, given Actor) (Actor, error) {
 		return Actor{Kind: ActorAnonymous}, nil
 	}
 	a.Titles = nil
-	if a.Kind != ActorPerson || a.Validate() != nil {
-		return Actor{}, errs.E(op, errs.Internal, errors.New("the actor function returned an actor that is not a valid person"))
+	// The function returns a person, or the operator while a bms command runs (app).
+	if (a.Kind != ActorPerson && a.Kind != ActorOperator) || a.Validate() != nil {
+		return Actor{}, errs.E(op, errs.Internal, errors.New("the actor function returned an actor that is not a valid person or the operator"))
 	}
 	return a, nil
 }

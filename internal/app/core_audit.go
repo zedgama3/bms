@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -10,11 +9,9 @@ import (
 
 	"github.com/zedgama3/bms/internal/config"
 	"github.com/zedgama3/bms/internal/core/audit"
-	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/module"
 	"github.com/zedgama3/bms/internal/lib/errs"
-	"github.com/zedgama3/bms/internal/model"
 )
 
 // auditPart is core part 1 (app.md "How later core services plug in"): the audit log. It
@@ -52,7 +49,7 @@ func buildAudit(_ context.Context, a *assembly) error {
 		Meter:       m,
 		Instance:    a.cfg.Instance.Name,
 		DataDir:     a.cfg.Data.Dir,
-		Actor:       actorFromSession,
+		Actor:       a.auditActor,
 		Titles:      lazyTitles{a: a},
 		Permissions: lazyPermissions{a: a},
 	})
@@ -74,6 +71,20 @@ func buildAudit(_ context.Context, a *assembly) error {
 	return nil
 }
 
+// auditActor is audit's ActorFunc: the session's person, or while a command that acts as the
+// operator runs (a.operator: create-superuser, export, delete, migrate) and there is no
+// session, the operator. Audit asks it only outside a signal delivery and only for an entry
+// that names no actor. It does no I/O.
+func (a *assembly) auditActor(ctx context.Context) (audit.Actor, bool) {
+	if act, ok := actorFromSession(ctx); ok {
+		return act, true
+	}
+	if a.operator {
+		return audit.Actor{Kind: audit.ActorOperator}, true
+	}
+	return audit.Actor{}, false
+}
+
 // actorFromSession is audit's ActorFunc over identity's ctx accessor. A restricted session
 // is still the person for audit. It does no I/O and is called per request only.
 func actorFromSession(ctx context.Context) (audit.Actor, bool) {
@@ -82,31 +93,6 @@ func actorFromSession(ctx context.Context) (audit.Actor, bool) {
 		return audit.Actor{}, false
 	}
 	return audit.Actor{Kind: audit.ActorPerson, Person: s.Person, Superuser: s.Superuser}, true
-}
-
-// lazyPermissions is audit's PermissionChecker over a.permissions, which authz's part sets
-// in M2: until then it denies, as audit does when it is given none, and the day authz
-// arrives nothing here changes.
-type lazyPermissions struct{ a *assembly }
-
-// Allow asks the authorizer when there is one, else fails errs.Permission.
-func (l lazyPermissions) Allow(ctx context.Context, p authz.Permission) error {
-	if l.a.permissions == nil {
-		return errs.E("app.audit.Allow", errs.Permission, errors.New("no authorizer is wired yet, so audit access is denied"))
-	}
-	return l.a.permissions.Allow(ctx, p) //nolint:wrapcheck // the authorizer's own error
-}
-
-// lazyTitles is audit's TitleSource over a.titles, which authz's part sets in M2: until then
-// nobody has titles, and the day authz arrives nothing here changes.
-type lazyTitles struct{ a *assembly }
-
-// TitlesOf asks the source when there is one, else returns nil, nil.
-func (l lazyTitles) TitlesOf(ctx context.Context, person model.PersonID) ([]string, error) {
-	if l.a.titles == nil {
-		return nil, nil
-	}
-	return l.a.titles.TitlesOf(ctx, person) //nolint:wrapcheck // the source's own error
 }
 
 // auditRoutes converts audit's routes (audit cannot import core/module) to module routes:

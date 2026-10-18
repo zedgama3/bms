@@ -69,6 +69,13 @@ type SchemaStatus func(ctx context.Context) ([]db.Status, error)
 // internal.
 const PermissionModulesRead authz.Permission = "core.modules.read"
 
+// Permissions lists the declaration of PermissionModulesRead: site scope, reaching
+// internal, seeded into the six site-wide administrative starter roles (authz.md Proposed
+// change 6). app puts it first in the core's permissions.
+var Permissions = []authz.PermissionDecl{
+	{Name: PermissionModulesRead, Scope: authz.ScopeSite, Reaches: model.SensitivityInternal, StarterRoles: authz.SiteAdminRoles},
+}
+
 // Options is what New needs. app copies config.HTTP into the first five fields and
 // supplies the rest.
 type Options struct {

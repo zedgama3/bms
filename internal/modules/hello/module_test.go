@@ -138,13 +138,13 @@ func TestManifest_BannerPointAcceptsOnlyBanners(t *testing.T) {
 	}
 }
 
-func TestManifest_Migrations_HoldOneFile(t *testing.T) {
+func TestManifest_Migrations_HoldTwoFiles(t *testing.T) {
 	v, err := db.Version(hello.Manifest.Migrations)
 	if err != nil {
 		t.Fatalf("db.Version: %v", err)
 	}
-	if v != 1 {
-		t.Errorf("Version = %d, want 1", v)
+	if v != 2 {
+		t.Errorf("Version = %d, want 2", v)
 	}
 }
 

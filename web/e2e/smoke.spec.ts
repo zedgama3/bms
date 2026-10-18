@@ -70,6 +70,48 @@ async function signedOut(page: Page) {
   );
 }
 
+const NOBODY = {
+  edit: false,
+  read_contacts: false,
+  export: false,
+  delete: false,
+  link: false,
+  view_roles: false,
+  view_audit: false,
+};
+const OPTIONAL = { legal_name: "optional", phone: "optional", emergency_contacts: "optional" };
+
+/** The own-profile answer (`GET /api/people/me`) the frame reads once per session. */
+function profileOf(playa: string, over: Record<string, unknown> = {}) {
+  return {
+    person: {
+      id: "7d2c2f0e-0000-4000-8000-000000000001",
+      playa_name: playa,
+      pronouns: "",
+      language: "en",
+      has_account: true,
+      email: "dusty@example.test",
+      complete: playa !== "",
+      created_at: "2026-10-01T10:00:00Z",
+      updated_at: "2026-10-02T10:00:00Z",
+    },
+    fields: ["playa_name", "pronouns", "language", "legal_name", "phone", "email", "consents"],
+    contacts: [],
+    consents: [],
+    sections: [],
+    can: NOBODY,
+    policy: OPTIONAL,
+    ...over,
+  };
+}
+
+/** Mocks the own profile for a mocked session (an unmocked call would reach the real server
+ *  with a cookie it never issued and sign the page out). */
+async function mockMe(page: Page, playa = "Dusty", over: Record<string, unknown> = {}) {
+  await page.route("**/api/people/me", (r) => r.fulfill({ json: profileOf(playa, over) }));
+  await page.route("**/api/people/me/requests", (r) => r.fulfill({ json: { requests: [] } }));
+}
+
 /** A tap on a phone, a click on the desktop: every flow must work with touch alone. */
 async function press(target: Locator, isPhone: boolean) {
   if (isPhone) await target.tap();
@@ -300,6 +342,7 @@ test.describe("/admin/modules (signed in, mocked at the network)", () => {
       only("default");
       await page.emulateMedia({ colorScheme: scheme });
       await page.route("**/api/accounts/session", (r) => r.fulfill({ json: person }));
+      await mockMe(page);
       await page.route("**/api/admin/modules", (r) => r.fulfill({ json: body }));
       await page.goto("/admin/modules");
       await expect(page.getByRole("heading", { level: 1, name: "Modules" })).toBeVisible();
@@ -322,7 +365,7 @@ const me = {
   signed_in: true,
   person_id: "7d2c2f0e-0000-4000-8000-000000000001",
   account_id: ME,
-  playa_name: "",
+  playa_name: "Dusty",
   superuser: false,
   password_change_required: false,
   expires_at: "2099-01-01T00:00:00Z",
@@ -341,7 +384,8 @@ const account = {
 };
 
 /** The session endpoint, signed out until `signIn()` is called. Returns the bodies it saw. */
-async function mockIdentity(page: Page, signedInAs: Record<string, unknown> = me) {
+async function mockIdentity(page: Page, signedInAs: Record<string, unknown> = me, playa = "Dusty") {
+  await mockMe(page, playa);
   let signedIn = false;
   const seen: Record<string, unknown[]> = {};
   const record = (path: string, body: unknown) => (seen[path] ??= []).push(body);
@@ -374,7 +418,7 @@ test.describe("accounts: sign up, sign in and change a password", () => {
   test("sign-up, with touch alone, lands signed in on the phone", async ({ page }, info) => {
     only("default");
     const isPhone = info.project.name === "phone";
-    const { seen } = await mockIdentity(page);
+    const { seen } = await mockIdentity(page, { ...me, playa_name: "" }, "");
     await page.goto("/accounts/sign-up");
     await expect(page.getByRole("heading", { level: 1, name: "Create an account" })).toBeVisible();
     await page.getByLabel(/E-mail address/).fill("new@example.test");
@@ -385,11 +429,12 @@ test.describe("accounts: sign up, sign in and change a password", () => {
     }
     await axe(page);
     await press(page.getByRole("button", { name: "Create account" }), isPhone);
-    await expect(page).toHaveURL(/\/$/);
+    // no playa name yet: the frame sends the person to the profile prompt, once
+    await expect(page).toHaveURL(/\/people\/me\?first=1$/);
     expect(seen["sign-up"]).toEqual([
       { email: "new@example.test", password: "a long enough password" },
     ]);
-    // no playa name yet: the header shows the neutral label
+    // the header shows the neutral label until there is a name
     await openMenu(page, isPhone);
     await expect(
       page.locator("header").getByText("Account", { exact: true }).first(),
@@ -498,6 +543,7 @@ test.describe("accounts: the admin screens", () => {
       const isPhone = info.project.name === "phone";
       await page.emulateMedia({ colorScheme: scheme });
       await page.route("**/api/accounts/session", (r) => r.fulfill({ json: me }));
+      await mockMe(page);
       await page.route("**/api/accounts/?**", (r) =>
         r.fulfill({
           json: {
@@ -556,6 +602,7 @@ test.describe("accounts: the admin screens", () => {
     await page.route("**/api/accounts/session", (r) =>
       r.fulfill({ json: { ...me, permissions: [] } }),
     );
+    await mockMe(page);
     await page.route("**/api/accounts/?**", (r) =>
       r.fulfill({
         status: 403,
@@ -581,7 +628,7 @@ test.describe("accounts: the admin screens", () => {
 // ---- one real flow, nothing mocked: the server has no seeded accounts, so it signs up first ----
 
 test.describe("a real account (no mocks)", () => {
-  test("sign up, forbidden hello, change password, sign out, sign in, taken", async ({
+  test("sign up, set the playa name, see it in the profile, greeting 200, change password, sign out, sign in, taken", async ({
     page,
   }, info) => {
     only("default");
@@ -590,21 +637,44 @@ test.describe("a real account (no mocks)", () => {
     const email = `e2e-${suffix}@example.test`;
     const first = `first ${suffix} zebra quartz`;
     const second = `second ${suffix} walrus ember`;
+    const playa = `Dusty ${suffix}`;
 
-    // sign up: lands on / with the neutral label (no playa name yet)
+    // sign up: the frame sends a person with no playa name to the prompt, once
     await page.goto("/accounts/sign-up");
     await page.getByLabel(/E-mail address/).fill(email);
     await page.getByLabel(/^Password/).fill(first);
     await press(page.getByRole("button", { name: "Create account" }), isPhone);
-    await expect(page).toHaveURL(/\/$/);
+    await expect(page).toHaveURL(/\/people\/me\?first=1$/);
+    await expect(page.getByText(/Tell us your playa name/)).toBeVisible();
     await expect(
       page.locator("header span.font-semibold", { hasText: /^Account$/ }),
     ).toBeAttached();
 
-    // hello's signed-in part is forbidden until roles exist (M2); the person stays signed in
+    // set the playa name: the profile shows it and so does the header
+    await page.getByLabel(/^Playa name/).fill(playa);
+    if (isPhone) {
+      await noHorizontalScroll(page);
+      await touchTargets(page);
+    }
+    await axe(page);
+    await press(page.getByRole("button", { name: "Save", exact: true }), isPhone);
+    await expect(page.getByText("Saved")).toBeVisible();
+    await expect(page).toHaveURL(/\/people\/me$/);
+    await expect(page.getByLabel(/^Playa name/)).toHaveValue(playa);
+    await expect(page.locator("header span.font-semibold", { hasText: playa })).toBeAttached();
+
+    // a reload does not ask again, and the profile still shows the name
+    await page.reload();
+    await expect(page).toHaveURL(/\/people\/me$/);
+    await expect(page.getByLabel(/^Playa name/)).toHaveValue(playa);
+
+    // hello's signed-in part: the participant role holds hello.greetings.read, so 200
+    const greeting = page.waitForResponse(
+      (r) => new URL(r.url()).pathname === "/api/hello/greeting" && r.request().method() === "GET",
+    );
     await page.goto("/hello");
-    await expect(page.getByRole("alert")).toContainText("You don't have permission");
-    await expect(page.locator("header span.font-semibold")).toBeAttached();
+    expect((await greeting).status()).toBe(200);
+    await expect(page.getByRole("button", { name: "Say hello" })).toBeVisible();
 
     // change the password
     await page.goto("/accounts/password");
@@ -617,6 +687,7 @@ test.describe("a real account (no mocks)", () => {
     await openMenu(page, isPhone);
     await press(page.getByRole("button", { name: "Sign out", exact: true }), isPhone);
     await expect(page.getByRole("link", { name: "Sign in" }).first()).toBeVisible();
+    await page.waitForURL(/\/$/); // sign-out replaces the page; let it finish before navigating
 
     // one wrong password, then the new one
     await page.goto("/accounts/sign-in");
@@ -627,11 +698,13 @@ test.describe("a real account (no mocks)", () => {
     await page.getByLabel(/^Password/).fill(second);
     await press(page.getByRole("button", { name: "Sign in", exact: true }), isPhone);
     await expect(page).toHaveURL(/\/$/);
-    await expect(page.locator("header span.font-semibold")).toBeAttached();
+    await expect(page.locator("header span.font-semibold", { hasText: playa })).toBeAttached();
 
     // the same address again: signed out first, then the taken sentence on the e-mail input
     await openMenu(page, isPhone);
+    const reloaded = page.waitForEvent("load"); // sign-out replaces the page
     await press(page.getByRole("button", { name: "Sign out", exact: true }), isPhone);
+    await reloaded;
     await page.goto("/accounts/sign-up");
     await page.getByLabel(/E-mail address/).fill(email);
     await page.getByLabel(/^Password/).fill(`third ${suffix} otter lantern`);
@@ -653,4 +726,585 @@ test.describe("read-only copy: accounts", () => {
       page.getByText("This copy is read-only, so this can't be saved right now."),
     ).toBeVisible();
   });
+});
+
+// ---- access (authz.md "UI"): roles, grants, rules; the server is mocked at the network ----
+
+const R_ADMIN = "0b6f1c3e-0000-4000-8000-0000000000a2";
+const R_CREW = "0b6f1c3e-0000-4000-8000-0000000000a4";
+const PAT = "7d2c2f0e-0000-4000-8000-000000000009";
+const ADMIN_PERMS = [
+  "access.roles.read",
+  "access.roles.manage",
+  "access.rules.manage",
+  "access.grants.read",
+  "access.grants.manage",
+];
+const adminSession = (permissions: string[]) => ({
+  ...me,
+  person_id: "7d2c2f0e-0000-4000-8000-000000000001",
+  permissions,
+});
+const accessRoles = [
+  {
+    id: R_ADMIN,
+    key: "access-admin",
+    name: "",
+    description: "Looks after roles and grants.",
+    scope: "site",
+    base: false,
+    permissions: [
+      { name: "access.grants.manage", declared: true },
+      { name: "old.thing.do", declared: false },
+    ],
+    created_at: "2026-10-01T10:00:00Z",
+    updated_at: "2026-10-01T10:00:00Z",
+  },
+  {
+    id: R_CREW,
+    name: "Gate crew with a rather long role name for a narrow screen",
+    description: "",
+    scope: "site",
+    base: false,
+    permissions: [],
+    created_at: "2026-10-01T10:00:00Z",
+    updated_at: "2026-10-01T10:00:00Z",
+  },
+];
+const accessCatalogue = [
+  {
+    name: "access.grants.manage",
+    scope: "site",
+    reaches: "internal",
+    module: "access",
+    starter_roles: [],
+  },
+  {
+    name: "people.data.delete",
+    scope: "site",
+    reaches: "sensitive",
+    module: "people",
+    starter_roles: [],
+  },
+];
+
+async function mockAccess(page: Page, permissions = ADMIN_PERMS) {
+  await page.route("**/api/accounts/session", (r) =>
+    r.fulfill({ json: adminSession(permissions) }),
+  );
+  await mockMe(page);
+  await page.route("**/api/access/roles", (r) =>
+    r.request().method() === "GET"
+      ? r.fulfill({ json: { roles: accessRoles } })
+      : r.fulfill({ status: 201, json: accessRoles[1] }),
+  );
+  await page.route(`**/api/access/roles/${R_ADMIN}`, (r) => r.fulfill({ json: accessRoles[0] }));
+  await page.route("**/api/access/permissions", (r) =>
+    r.fulfill({ json: { permissions: accessCatalogue } }),
+  );
+  await page.route("**/api/access/rules", (r) =>
+    r.request().method() === "GET"
+      ? r.fulfill({
+          json: {
+            rules: [
+              {
+                id: "0b6f1c3e-0000-4000-8000-0000000000c1",
+                role_id: R_ADMIN,
+                permission: "people.data.delete",
+                note: "Keep roles and deletion apart.",
+                affected: 1,
+                created_at: "2026-10-01T10:00:00Z",
+              },
+            ],
+          },
+        })
+      : r.fulfill({ status: 201, json: {} }),
+  );
+  await page.route(/\/api\/access\/grants(\?.*)?$/, (r) =>
+    r.fulfill({
+      json: {
+        grants: [
+          {
+            id: "0b6f1c3e-0000-4000-8000-0000000000b1",
+            person_id: PAT,
+            role_id: R_ADMIN,
+            role_key: "access-admin",
+            role_name: "",
+            ends_at: "2099-01-01T00:00:00Z",
+            created_at: "2026-10-02T10:00:00Z",
+            ended: false,
+          },
+        ],
+      },
+    }),
+  );
+  await page.route("**/api/people/names?**", (r) =>
+    r.fulfill({ json: { names: { [PAT]: "Pat Dust" } } }),
+  );
+  await page.route("**/api/people/search?**", (r) =>
+    r.fulfill({ json: { matches: [{ id: PAT, playa_name: "Pat Dust", pronouns: "they" }] } }),
+  );
+}
+
+test.describe("access: the admin screens", () => {
+  for (const scheme of ["light", "dark"] as const) {
+    test(`roles, editor, grants, new grant and rules at phone width, 44 px targets, axe clean (${scheme})`, async ({
+      page,
+    }, info) => {
+      only("default");
+      const isPhone = info.project.name === "phone";
+      await page.emulateMedia({ colorScheme: scheme });
+      await mockAccess(page);
+      if (isPhone) await page.setViewportSize({ width: 320, height: 568 });
+      const check = async () => {
+        if (isPhone) {
+          await noHorizontalScroll(page);
+          await touchTargets(page);
+        }
+        await axe(page);
+      };
+
+      await page.goto("/access/roles");
+      await expect(page.getByRole("heading", { level: 1, name: "Roles" })).toBeVisible();
+      await expect(page.getByRole("link", { name: "Access administrator" })).toBeVisible();
+      await check();
+
+      await press(page.getByRole("link", { name: "Access administrator" }), isPhone);
+      await expect(page).toHaveURL(new RegExp(`/access/roles/${R_ADMIN}$`));
+      await expect(page.getByRole("button", { name: "Save changes" })).toBeVisible();
+      await expect(page.getByText("Not available in this installation")).toBeVisible();
+      await check();
+
+      await page.goto("/access/grants");
+      await expect(page.getByRole("heading", { level: 1, name: "Grants" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Pat Dust" })).toBeVisible();
+      await check();
+
+      await press(page.getByRole("button", { name: "Revoke" }), isPhone);
+      await expect(page.getByRole("dialog", { name: "Revoke this role?" })).toBeVisible();
+      await check();
+      await press(
+        page
+          .getByRole("dialog", { name: "Revoke this role?" })
+          .getByRole("button", { name: "Cancel" }),
+        isPhone,
+      );
+
+      await page.goto(`/access/grants/new?person=${PAT}`);
+      await expect(page.getByRole("heading", { level: 1, name: "Grant a role" })).toBeVisible();
+      await expect(page.getByText("Pat Dust")).toBeVisible();
+      await check();
+
+      await page.goto("/access/rules");
+      await expect(
+        page.getByRole("heading", { level: 1, name: /Separation-of-duties/ }),
+      ).toBeVisible();
+      await expect(page.getByText(/may never hold/)).toBeVisible();
+      await check();
+    });
+  }
+
+  test("grant a role and see the menu change", async ({ page }, info) => {
+    only("default");
+    const isPhone = info.project.name === "phone";
+    // The granter holds the grant permissions; after the grant the session the page reads is
+    // the grantee's, who now holds roles.read, and the Administration menu gains Roles.
+    let granted = false;
+    await mockAccess(page);
+    await page.route("**/api/accounts/session", (r) =>
+      r.fulfill({
+        json: adminSession(
+          granted ? ["access.roles.read"] : ["access.grants.manage", "access.grants.read"],
+        ),
+      }),
+    );
+    let body: unknown;
+    await page.route("**/api/access/grants", (r) => {
+      body = r.request().postDataJSON();
+      granted = true;
+      return r.fulfill({
+        status: 201,
+        json: {
+          id: "0b6f1c3e-0000-4000-8000-0000000000b1",
+          person_id: PAT,
+          role_id: R_ADMIN,
+          created_at: "2026-10-02T10:00:00Z",
+          ended: false,
+        },
+      });
+    });
+    await page.goto(`/access/grants/new?person=${PAT}`);
+    await expect(page.getByText("Pat Dust")).toBeVisible();
+    await page.getByLabel(/^Role/).selectOption(R_ADMIN);
+    await press(page.getByRole("button", { name: "Grant role" }), isPhone);
+    await expect(page.getByText("Role granted")).toBeVisible();
+    expect(body).toEqual({ person_id: PAT, role_id: R_ADMIN });
+
+    // before: no Roles entry; after the next page load the entry is there
+    await page.reload();
+    await openMenu(page, isPhone);
+    const admin = page.getByRole("navigation", { name: "Administration" });
+    await expect(admin.getByRole("link", { name: "Roles" })).toBeVisible();
+  });
+
+  test("a 403 shows the forbidden state, accessibly", async ({ page }) => {
+    only("default");
+    await mockAccess(page, []);
+    await page.route("**/api/access/roles", (r) =>
+      r.fulfill({
+        status: 403,
+        contentType: "application/problem+json",
+        body: JSON.stringify({ status: 403, code: "permission" }),
+      }),
+    );
+    await page.goto("/access/roles");
+    await expect(page.getByRole("alert")).toContainText("You don't have access to this screen.");
+    await axe(page);
+  });
+});
+
+// ---- people (people.md "UI"): the server is mocked at the network ----
+
+const REQ = "0b6f1c3e-0000-4000-8000-0000000000e1";
+const contactCard = {
+  id: "0b6f1c3e-0000-4000-8000-0000000000d1",
+  person_id: "7d2c2f0e-0000-4000-8000-000000000001",
+  name: "Sam Friend",
+  phone: "555-0199",
+  relationship: "friend",
+  position: 1,
+  created_at: "2026-10-01T10:00:00Z",
+  updated_at: "2026-10-01T10:00:00Z",
+};
+
+test.describe("people: the signed-in person's screens", () => {
+  test("the first-sign-in prompt, then the profile, at the phone viewport", async ({
+    page,
+  }, info) => {
+    only("default");
+    const isPhone = info.project.name === "phone";
+    await page.route("**/api/accounts/session", (r) =>
+      r.fulfill({ json: { ...me, playa_name: "" } }),
+    );
+    let saved = "";
+    await page.route("**/api/people/me/requests", (r) => r.fulfill({ json: { requests: [] } }));
+    await page.route("**/api/people/me", (r) => {
+      if (r.request().method() === "PUT") {
+        saved = (r.request().postDataJSON() as { playa_name: string }).playa_name;
+      }
+      return r.fulfill({ json: profileOf(saved) });
+    });
+    await page.goto("/");
+    await expect(page).toHaveURL(/\/people\/me\?first=1$/);
+    await expect(page.getByText(/Tell us your playa name/)).toBeVisible();
+    await expect(page.getByLabel(/^Playa name/)).toBeFocused();
+    if (isPhone) {
+      await page.setViewportSize({ width: 320, height: 568 });
+      await noHorizontalScroll(page);
+      await touchTargets(page);
+    }
+    await axe(page);
+    await page.getByLabel(/^Playa name/).fill("Dusty D");
+    await press(page.getByRole("button", { name: "Save", exact: true }), isPhone);
+    await expect(page.getByText("Saved")).toBeVisible();
+    expect(saved).toBe("Dusty D");
+    await openMenu(page, isPhone);
+    await expect(page.locator("header span.font-semibold", { hasText: "Dusty D" })).toBeVisible();
+  });
+
+  for (const scheme of ["light", "dark"] as const) {
+    test(`contacts, consents and your data lay out at phone width, axe clean (${scheme})`, async ({
+      page,
+    }, info) => {
+      only("default");
+      const isPhone = info.project.name === "phone";
+      await page.emulateMedia({ colorScheme: scheme });
+      await page.route("**/api/accounts/session", (r) => r.fulfill({ json: me }));
+      await mockMe(page, "Dusty", {
+        contacts: [contactCard],
+        consents: [
+          {
+            person_id: "7d2c2f0e-0000-4000-8000-000000000001",
+            purpose: "hello.newsletter",
+            granted: true,
+            changed_at: "2026-10-01T10:00:00Z",
+          },
+        ],
+        sections: [{ key: "hello.unavailable", items: [], failed: true }],
+      });
+      await page.route("**/api/people/me/requests", (r) => r.fulfill({ json: { requests: [] } }));
+      await page.route("**/api/people/me/export", (r) =>
+        r.fulfill({
+          status: 429,
+          headers: { "Retry-After": "420" },
+          contentType: "application/problem+json",
+          body: JSON.stringify({ status: 429, code: "rate_limited" }),
+        }),
+      );
+      if (isPhone) await page.setViewportSize({ width: 320, height: 568 });
+      await page.goto("/people/me");
+      await expect(page.getByRole("heading", { level: 1, name: "My profile" })).toBeVisible();
+      await expect(page.getByText("Sam Friend")).toBeVisible();
+      if (isPhone) {
+        await noHorizontalScroll(page);
+        await touchTargets(page);
+      }
+      await axe(page);
+
+      await press(page.getByRole("button", { name: "Add a contact" }), isPhone);
+      const dialog = page.getByRole("dialog", { name: "Add an emergency contact" });
+      await expect(dialog).toBeVisible();
+      if (isPhone) await touchTargets(page);
+      await axe(page);
+      await press(dialog.getByRole("button", { name: "Cancel" }), isPhone);
+
+      await press(page.getByRole("button", { name: "Download my data" }), isPhone);
+      await expect(page.getByRole("alert")).toContainText("Try again in 7 minutes.");
+    });
+  }
+
+  test("download my data hands over a file", async ({ page }, info) => {
+    only("default");
+    const isPhone = info.project.name === "phone";
+    await page.route("**/api/accounts/session", (r) => r.fulfill({ json: me }));
+    await mockMe(page);
+    await page.route("**/api/people/me/requests", (r) => r.fulfill({ json: { requests: [] } }));
+    await page.route("**/api/people/me/export", (r) => r.fulfill({ json: { format: 1 } }));
+    await page.goto("/people/me");
+    const download = page.waitForEvent("download");
+    await press(page.getByRole("button", { name: "Download my data" }), isPhone);
+    expect((await download).suggestedFilename()).toBe("bms-export.json");
+  });
+
+  test("request deletion and withdraw it", async ({ page }, info) => {
+    only("default");
+    const isPhone = info.project.name === "phone";
+    await page.route("**/api/accounts/session", (r) => r.fulfill({ json: me }));
+    await mockMe(page);
+    let open = false;
+    await page.route("**/api/people/me/requests", (r) => {
+      if (r.request().method() === "POST") {
+        open = true;
+        return r.fulfill({ status: 201, json: {} });
+      }
+      return r.fulfill({
+        json: {
+          requests: open
+            ? [
+                {
+                  id: REQ,
+                  person_id: "7d2c2f0e-0000-4000-8000-000000000001",
+                  kind: "delete",
+                  status: "open",
+                  note: "",
+                  created_at: "2026-10-05T10:00:00Z",
+                  decision_note: "",
+                },
+              ]
+            : [],
+        },
+      });
+    });
+    await page.route(`**/api/people/me/requests/${REQ}/withdraw`, (r) => {
+      open = false;
+      return r.fulfill({ status: 204 });
+    });
+    await page.goto("/people/me");
+    await press(page.getByRole("button", { name: "Request deletion" }), isPhone);
+    const dialog = page.getByRole("dialog", { name: "Request deletion?" });
+    await expect(dialog).toBeVisible();
+    if (isPhone) await touchTargets(page);
+    await axe(page);
+    await press(dialog.getByRole("button", { name: "Request deletion" }), isPhone);
+    await expect(page.getByText(/You asked for deletion on/)).toBeVisible();
+    await press(page.getByRole("button", { name: "Withdraw request" }), isPhone);
+    await expect(page.getByText("Request withdrawn")).toBeVisible();
+  });
+});
+
+test.describe("people: directory, person page and deletion requests", () => {
+  const holder = {
+    ...me,
+    permissions: ["people.directory.read", "people.profiles.manage", "people.data.delete"],
+  };
+
+  test("search, open a person, see the audit link and the recorded note, at the phone viewport", async ({
+    page,
+  }, info) => {
+    only("default");
+    const isPhone = info.project.name === "phone";
+    await page.route("**/api/accounts/session", (r) => r.fulfill({ json: holder }));
+    await mockMe(page);
+    await page.route("**/api/people/search?**", (r) =>
+      r.fulfill({ json: { matches: [{ id: PAT, playa_name: "Pat Dust", pronouns: "she/her" }] } }),
+    );
+    await page.route(`**/api/people/${PAT}`, (r) =>
+      r.fulfill({
+        json: profileOf("Pat Dust", {
+          contacts: [contactCard],
+          fields: ["playa_name", "pronouns", "legal_name", "phone", "emergency_contacts"],
+          can: { ...NOBODY, read_contacts: true, view_audit: true, view_roles: true, delete: true },
+        }),
+      }),
+    );
+    if (isPhone) await page.setViewportSize({ width: 320, height: 568 });
+    await page.goto("/people");
+    await expect(page.getByRole("heading", { level: 1, name: "People" })).toBeVisible();
+    await page.getByLabel("Find a person").fill("Pat");
+    await press(page.getByRole("button", { name: "Search", exact: true }), isPhone);
+    await expect(page.getByRole("link", { name: /Pat Dust/ })).toBeVisible();
+    expect(new URL(page.url()).search).toBe("");
+    if (isPhone) {
+      await noHorizontalScroll(page);
+      await touchTargets(page);
+    }
+    await axe(page);
+
+    await press(page.getByRole("link", { name: /Pat Dust/ }), isPhone);
+    await expect(page.getByText("Viewing these details is recorded.")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Audit log" })).toHaveAttribute(
+      "href",
+      `/audit?subject=${PAT}`,
+    );
+    if (isPhone) {
+      await noHorizontalScroll(page);
+      await touchTargets(page);
+    }
+    await axe(page);
+
+    await press(page.getByRole("button", { name: "Delete person" }), isPhone);
+    const dialog = page.getByRole("dialog", { name: "Delete this person?" });
+    await expect(dialog).toContainText("You are about to delete Pat Dust.");
+    if (isPhone) await touchTargets(page);
+    await axe(page);
+  });
+
+  test("deletion requests: fulfil with a confirmation and read the report", async ({
+    page,
+  }, info) => {
+    only("default");
+    const isPhone = info.project.name === "phone";
+    await page.route("**/api/accounts/session", (r) => r.fulfill({ json: holder }));
+    await mockMe(page);
+    await page.route("**/api/people/requests?**", (r) =>
+      r.fulfill({
+        json: {
+          requests: [
+            {
+              id: REQ,
+              person_id: PAT,
+              kind: "delete",
+              status: "open",
+              note: "Please delete me",
+              created_at: "2026-10-05T10:00:00Z",
+              decision_note: "",
+            },
+          ],
+        },
+      }),
+    );
+    await page.route("**/api/people/names?**", (r) =>
+      r.fulfill({ json: { names: { [PAT]: "Pat Dust" } } }),
+    );
+    await page.route(`**/api/people/requests/${REQ}/fulfil`, (r) =>
+      r.fulfill({
+        json: {
+          person: PAT,
+          people: 1,
+          identity: 1,
+          access: 0,
+          modules: {},
+          kept: [{ kind: "audit.entry", count: 4 }],
+        },
+      }),
+    );
+    if (isPhone) await page.setViewportSize({ width: 320, height: 568 });
+    await page.goto("/people/admin/requests");
+    await expect(page.getByRole("heading", { level: 1, name: "Deletion requests" })).toBeVisible();
+    await expect(page.getByText("Please delete me")).toBeVisible();
+    if (isPhone) {
+      await noHorizontalScroll(page);
+      await touchTargets(page);
+    }
+    await axe(page);
+    await press(page.getByRole("button", { name: "Fulfil" }), isPhone);
+    const confirm = page.getByRole("dialog", { name: "Delete this person?" });
+    await expect(confirm).toBeVisible();
+    await press(confirm.getByRole("button", { name: "Delete person" }), isPhone);
+    const report = page.getByRole("dialog", { name: "Person deleted" });
+    await expect(report).toContainText("4 records of audit log entries kept");
+    if (isPhone) await touchTargets(page);
+    await axe(page);
+  });
+
+  test("without people.directory.read the directory shows the forbidden state up front", async ({
+    page,
+  }) => {
+    only("default");
+    await page.route("**/api/accounts/session", (r) =>
+      r.fulfill({ json: { ...me, permissions: [] } }),
+    );
+    await mockMe(page);
+    await page.goto("/people");
+    await expect(page.getByRole("alert")).toContainText("You don't have access to this screen.");
+    await expect(page.getByLabel("Find a person")).toHaveCount(0);
+    await axe(page);
+  });
+});
+
+// ---- audit (audit.md "UI"): the server is mocked at the network ----
+
+test.describe("audit: the log screen", () => {
+  for (const scheme of ["light", "dark"] as const) {
+    test(`filters, entries and export lay out at phone width, 44 px targets, axe clean (${scheme})`, async ({
+      page,
+    }, info) => {
+      only("default");
+      const isPhone = info.project.name === "phone";
+      await page.emulateMedia({ colorScheme: scheme });
+      await page.route("**/api/accounts/session", (r) =>
+        r.fulfill({ json: { ...me, permissions: ["audit.search", "audit.export"] } }),
+      );
+      await mockMe(page);
+      await page.route("**/api/people/names?**", (r) =>
+        r.fulfill({ json: { names: { [PAT]: "Pat Dust" } } }),
+      );
+      await page.route(/\/api\/audit\/entries(\?.*)?$/, (r) =>
+        r.fulfill({
+          json: {
+            records: [
+              {
+                v: 1,
+                id: "0b6f1c3e-0000-4000-8000-0000000000f1",
+                at: "2026-10-05T10:00:00Z",
+                instance: "i",
+                action: "people.person.read",
+                outcome: "succeeded",
+                actor: { kind: "person", person: PAT, titles: ["Access administrator"] },
+                subject: PAT,
+                level: "personal",
+                fields: ["phone", "legal_name"],
+                record: { kind: "people.person", id: PAT },
+              },
+            ],
+          },
+        }),
+      );
+      await page.route(`**/api/audit/people/${PAT}/views`, (r) =>
+        r.fulfill({ contentType: "application/x-ndjson", body: '{"id":"a"}\n{"id":"b"}\n' }),
+      );
+      if (isPhone) await page.setViewportSize({ width: 320, height: 568 });
+      await page.goto(`/audit?subject=${PAT}`);
+      await expect(page.getByRole("heading", { level: 1, name: "Audit log" })).toBeVisible();
+      await expect(page.getByText("people.person.read", { exact: true })).toBeVisible();
+      if (isPhone) {
+        await noHorizontalScroll(page);
+        await touchTargets(page);
+      }
+      await axe(page);
+      const download = page.waitForEvent("download");
+      await press(page.getByRole("button", { name: "Export views" }), isPhone);
+      expect((await download).suggestedFilename()).toBe(`views-${PAT}.jsonl`);
+    });
+  }
 });

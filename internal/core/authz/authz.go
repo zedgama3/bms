@@ -10,6 +10,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/zedgama3/bms/internal/core/authz/perm"
 	"github.com/zedgama3/bms/internal/core/authz/postgres"
 	"github.com/zedgama3/bms/internal/core/authz/rows"
 	"github.com/zedgama3/bms/internal/core/db"
@@ -29,26 +30,24 @@ const (
 	DefaultPageSize     = 50  // GrantQuery.Limit when 0
 )
 
-// The starter role keys migration 0001 creates (decision 12). RoleParticipant is the base
-// role: every signed-in person holds it without a grant. RoleDepartmentAdmin is
-// department-scoped; the rest are site roles.
+// The starter role keys migration 0001 creates (decision 12), re-exported from package perm,
+// where audit can name them without importing authz. RoleParticipant is the base role: every
+// signed-in person holds it without a grant. RoleDepartmentAdmin is department-scoped; the
+// rest are site roles.
 const (
-	RoleParticipant       = "participant"
-	RoleAccountAdmin      = "account-admin"
-	RoleAccessAdmin       = "access-admin"
-	RoleDepartmentSteward = "department-steward"
-	RoleEventAdmin        = "event-admin"
-	RoleSettingsAdmin     = "settings-admin"
-	RoleAuditReviewer     = "audit-reviewer"
-	RoleDepartmentAdmin   = "department-admin"
+	RoleParticipant       = perm.RoleParticipant
+	RoleAccountAdmin      = perm.RoleAccountAdmin
+	RoleAccessAdmin       = perm.RoleAccessAdmin
+	RoleDepartmentSteward = perm.RoleDepartmentSteward
+	RoleEventAdmin        = perm.RoleEventAdmin
+	RoleSettingsAdmin     = perm.RoleSettingsAdmin
+	RoleAuditReviewer     = perm.RoleAuditReviewer
+	RoleDepartmentAdmin   = perm.RoleDepartmentAdmin
 )
 
 // SiteAdminRoles are the six site-wide administrative starter roles: the starter roles of
-// api's core.modules.read. Callers must not modify it.
-var SiteAdminRoles = []string{
-	RoleAccountAdmin, RoleAccessAdmin, RoleDepartmentSteward,
-	RoleEventAdmin, RoleSettingsAdmin, RoleAuditReviewer,
-}
+// api's core.modules.read. It is perm.SiteAdminRoles; callers must not modify it.
+var SiteAdminRoles = perm.SiteAdminRoles
 
 // The permissions authz declares; app adds Permissions to corePerms.
 const (
@@ -265,6 +264,8 @@ type Grant struct {
 	ID         GrantID
 	Person     model.PersonID
 	Role       RoleID
+	RoleKey    string             // the role's starter key ("" for a role a regional made); filled by ListGrants and Grant
+	RoleName   string             // the role's name ("" while an unrenamed starter role); filled by ListGrants and Grant
 	Department model.DepartmentID // zero: site-wide
 	EndsAt     time.Time          // zero: no end
 	GrantedBy  model.PersonID     // zero: operator, seed or a deleted person

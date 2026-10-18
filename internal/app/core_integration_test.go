@@ -89,6 +89,32 @@ func itSend(t *testing.T, addr, method, path, cookie, body string) (status int, 
 	return resp.StatusCode, string(b), set
 }
 
+// itWaitPerson waits for the core.person row people's account-created handler makes for the
+// person in a session body (delivery happens after the sign-up commits).
+func itWaitPerson(t *testing.T, pool *db.Pool, sessionBody string) {
+	t.Helper()
+	var sess struct {
+		PersonID string `json:"person_id"`
+	}
+	if err := json.Unmarshal([]byte(sessionBody), &sess); err != nil || sess.PersonID == "" {
+		t.Fatalf("the session body has no person_id: %v %s", err, sessionBody)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	for {
+		var n int
+		if err := pool.QueryRow(ctx, `SELECT count(*) FROM core.person WHERE id = $1`, sess.PersonID).Scan(&n); err != nil {
+			t.Fatalf("look for the person row: %v", err)
+		}
+		if n == 1 {
+			return
+		}
+		if err := clock.Wait(ctx, clock.Real(), 20*time.Millisecond); err != nil {
+			t.Fatalf("the person row for the new account never appeared: %v", err)
+		}
+	}
+}
+
 func credentials(email, password string) string {
 	b, err := json.Marshal(map[string]string{"email": email, "password": password})
 	if err != nil {
@@ -186,7 +212,8 @@ func TestServe_Integration_AccountsAuditAndHelloEndToEnd(t *testing.T) {
 		t.Errorf("anonymous audit search = %d, want 401", code)
 	}
 
-	// A participant signs up (201, signed in), is somebody, and is denied hello (M1: 403).
+	// A participant signs up (201, signed in) and is somebody. The base role, seeded by
+	// migrate from hello's StarterRoles, lets them read and write hello (M2: 200, 201).
 	status, body, member := itSend(t, addr, http.MethodPost, "/api/accounts/sign-up", "", credentials(itMemberMail, itMemberPass))
 	if status != 201 || member == nil {
 		t.Fatalf("sign-up = %d %s (cookie %v)", status, body, member)
@@ -196,10 +223,12 @@ func TestServe_Integration_AccountsAuditAndHelloEndToEnd(t *testing.T) {
 	if status != 200 || !strings.Contains(body, `"signed_in":true`) || !strings.Contains(body, `"superuser":false`) {
 		t.Errorf("session = %d %s", status, body)
 	}
-	for _, rt := range []struct{ method, path string }{{http.MethodGet, "/api/hello/greeting"}, {http.MethodPost, "/api/hello/greetings"}} {
-		if status, body, _ = itSend(t, addr, rt.method, rt.path, cookie, ""); status != 403 {
-			t.Errorf("signed-in %s %s = %d %s, want 403 (actor present, permission denied until authz)", rt.method, rt.path, status, body)
-		}
+	itWaitPerson(t, pool, body)
+	if status, body, _ = itSend(t, addr, http.MethodGet, "/api/hello/greeting", cookie, ""); status != 200 {
+		t.Errorf("signed-in participant GET /api/hello/greeting = %d %s, want 200", status, body)
+	}
+	if status, body, _ = itSend(t, addr, http.MethodPost, "/api/hello/greetings", cookie, ""); status != 201 {
+		t.Errorf("signed-in participant POST /api/hello/greetings = %d %s, want 201", status, body)
 	}
 	// The participant has no accounts.read: 403, and no audit.search either.
 	for _, path := range []string{"/api/accounts/", "/api/audit/entries"} {
@@ -378,5 +407,157 @@ func TestServe_Integration_DataDirUnderARegularFile_Exit2(t *testing.T) {
 	}
 	if !strings.Contains(r.errOut, "BMS_DATA_DIR") {
 		t.Errorf("stderr does not name BMS_DATA_DIR:\n%s", r.errOut)
+	}
+}
+
+// jsonField returns the string at the dotted path of a JSON object, "" when absent.
+func jsonField(t *testing.T, doc, path string) string {
+	t.Helper()
+	var v any
+	if err := json.Unmarshal([]byte(doc), &v); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, doc)
+	}
+	for _, k := range strings.Split(path, ".") {
+		m, ok := v.(map[string]any)
+		if !ok {
+			return ""
+		}
+		v = m[k]
+	}
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return ""
+}
+
+// The people story through the real assembly: a participant is somebody, reads hello, fills
+// in a profile; the superuser reads the roles; `bms export` prints the document with hello
+// inside; `bms delete` removes the person from every part and says so, and refuses the
+// superuser's person.
+func TestPeople_Integration_ProfileExportAndDeleteEndToEnd(t *testing.T) {
+	u, pool, _ := itPool(t)
+	env, addr := itEnv(t, u.String())
+	env = append(env, "BMS_HTTP_ALLOW_PLAINTEXT=true")
+	ctx := t.Context()
+	migrate := itMain(ctx, env, "migrate")
+	if migrate.code != ExitOK || !strings.Contains(migrate.out, "access: ") || !strings.Contains(migrate.out, " starter permissions seeded") {
+		t.Fatalf("migrate = %d, want it to seed the starter roles\n%s\n%s", migrate.code, migrate.out, migrate.errOut)
+	}
+	if again := itMain(ctx, env, "migrate"); again.code != ExitOK || strings.Contains(again.out, "seeded") {
+		t.Errorf("a second migrate seeded again:\n%s", again.out)
+	}
+	create := itMain(ctx, env, "create-superuser", itSuperEmail)
+	pw := passwordLineRE.FindStringSubmatch(create.out)
+	if create.code != ExitOK || pw == nil {
+		t.Fatalf("create-superuser: %d\n%s\n%s", create.code, create.out, create.errOut)
+	}
+	s := itServe(t, env, addr)
+
+	status, body, member := itSend(t, addr, http.MethodPost, "/api/accounts/sign-up", "", credentials(itMemberMail, itMemberPass))
+	if status != 201 || member == nil {
+		t.Fatalf("sign-up = %d %s", status, body)
+	}
+	cookie := member.Name + "=" + member.Value
+	_, sessionBody, _ := itSend(t, addr, http.MethodGet, "/api/accounts/session", cookie, "")
+	itWaitPerson(t, pool, sessionBody)
+	personID := jsonField(t, sessionBody, "person_id")
+
+	// Somebody, not yet complete; then complete, and the session carries the name.
+	status, body, _ = itSend(t, addr, http.MethodGet, "/api/people/me", cookie, "")
+	if status != 200 || !strings.Contains(body, `"complete":false`) {
+		t.Errorf("GET /api/people/me = %d %s, want 200 and incomplete", status, body)
+	}
+	if status, body, _ = itSend(t, addr, http.MethodPut, "/api/people/me", cookie, `{"playa_name":"Dusty Fern"}`); status != 200 {
+		t.Fatalf("PUT /api/people/me = %d %s", status, body)
+	}
+	_, sessionBody, _ = itSend(t, addr, http.MethodGet, "/api/accounts/session", cookie, "")
+	if got := jsonField(t, sessionBody, "playa_name"); got != "Dusty Fern" {
+		t.Errorf("session playa_name = %q, want Dusty Fern: %s", got, sessionBody)
+	}
+	if status, body, _ = itSend(t, addr, http.MethodPost, "/api/hello/greetings", cookie, ""); status != 201 {
+		t.Fatalf("POST /api/hello/greetings = %d %s", status, body)
+	}
+
+	// The participant holds no admin permission; the superuser reads the roles.
+	if status, _, _ = itSend(t, addr, http.MethodGet, "/api/access/roles", cookie, ""); status != 403 {
+		t.Errorf("participant GET /api/access/roles = %d, want 403", status)
+	}
+	status, body, super := itSend(t, addr, http.MethodPost, "/api/accounts/sign-in", "", credentials(itSuperEmail, pw[1]))
+	if status != 204 || super == nil {
+		t.Fatalf("superuser sign-in = %d %s", status, body)
+	}
+	superCookie := super.Name + "=" + super.Value
+	status, body, _ = itSend(t, addr, http.MethodGet, "/api/access/roles", superCookie, "")
+	if status != 200 || !strings.Contains(body, `"key":"account-admin"`) || !strings.Contains(body, `"key":"participant"`) {
+		t.Errorf("superuser GET /api/access/roles = %d %s, want the starter roles", status, body)
+	}
+	_, superSession, _ := itSend(t, addr, http.MethodGet, "/api/accounts/session", superCookie, "")
+	superPerson := jsonField(t, superSession, "person_id")
+
+	// bms export: the document, with hello inside, on stdout; the log elsewhere.
+	exp := itMain(ctx, env, "export", personID)
+	if exp.code != ExitOK {
+		t.Fatalf("export = %d\n%s\n%s", exp.code, exp.out, exp.errOut)
+	}
+	if got := jsonField(t, exp.out, "person.playa_name"); got != "Dusty Fern" {
+		t.Errorf("the export's person.playa_name = %q\n%s", got, exp.out)
+	}
+	var doc struct {
+		Modules map[string]json.RawMessage `json:"modules"`
+	}
+	if err := json.Unmarshal([]byte(exp.out), &doc); err != nil || len(doc.Modules["hello"]) == 0 {
+		t.Errorf("the export lacks hello's data (%v):\n%s", err, exp.out)
+	}
+
+	// bms delete: the report counts hello's greeting; the superuser's person and a malformed
+	// or unknown id are refused with the documented statuses.
+	if r := itMain(ctx, env, "delete", "not-a-uuid"); r.code != ExitUsage {
+		t.Errorf("delete with a malformed id = %d, want ExitUsage", r.code)
+	}
+	if r := itMain(ctx, env, "delete", superPerson); r.code != ExitFailure {
+		t.Errorf("delete of the superuser's person = %d, want ExitFailure\n%s", r.code, r.errOut)
+	}
+	del := itMain(ctx, env, "delete", personID)
+	if del.code != ExitOK || !strings.Contains(del.out, "module hello deleted=1") || !strings.Contains(del.out, "person "+personID) {
+		t.Fatalf("delete = %d\n%s\n%s", del.code, del.out, del.errOut)
+	}
+	if r := itMain(ctx, env, "delete", personID); r.code != ExitFailure {
+		t.Errorf("a second delete = %d, want ExitFailure (not found)", r.code)
+	}
+	if status, _, _ = itSend(t, addr, http.MethodGet, "/api/people/me", cookie, ""); status != 401 {
+		t.Errorf("the deleted person's session: GET /api/people/me = %d, want 401", status)
+	}
+
+	r := s.stop(t)
+	if r.code != ExitOK {
+		t.Fatalf("serve stopped with %d\n%s\n%s", r.code, r.out, r.errOut)
+	}
+	for _, leak := range []string{itSuperEmail, itMemberMail, itMemberPass, "Dusty Fern", pw[1]} {
+		if strings.Contains(r.out+r.errOut+exp.errOut+del.out+del.errOut, leak) {
+			t.Errorf("a log or report carries %q", leak)
+		}
+	}
+
+	// The commands wrote as the operator.
+	rows, err := pool.Query(ctx, `SELECT action, actor_kind FROM core.audit_entry WHERE action IN ('people.person.exported','people.person.deleted','access.grants.deleted','identity.account.deleted') ORDER BY at`)
+	if err != nil {
+		t.Fatalf("read the audit table: %v", err)
+	}
+	defer rows.Close()
+	kinds := map[string]string{}
+	for rows.Next() {
+		var action, kind string
+		if err := rows.Scan(&action, &kind); err != nil {
+			t.Fatal(err)
+		}
+		kinds[action] = kind
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	for _, action := range []string{"people.person.exported", "people.person.deleted", "identity.account.deleted"} {
+		if kinds[action] != "operator" {
+			t.Errorf("%s was recorded by %q, want operator (all: %v)", action, kinds[action], kinds)
+		}
 	}
 }

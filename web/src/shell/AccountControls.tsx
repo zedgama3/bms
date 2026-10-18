@@ -5,6 +5,7 @@ import { api, isAbort } from "@/api";
 import { useT } from "@/i18n";
 import { Button, linkButtonClass } from "@/ui";
 import { useBoot } from "./boot";
+import { usePlayaName } from "./me";
 import { resetSession, useSession } from "./session";
 
 /** The person's playa name with "Sign out", or a "Sign in" link. */
@@ -13,6 +14,7 @@ export function AccountControls() {
   const session = useSession();
   const boot = useBoot();
   const client = useQueryClient();
+  const playaName = usePlayaName();
   const [busy, setBusy] = useState(false);
 
   if (!session.signedIn) {
@@ -38,7 +40,7 @@ export function AccountControls() {
   };
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="font-semibold">{session.playaName || t("shell.account.anonymous")}</span>
+      <span className="font-semibold">{playaName || t("shell.account.anonymous")}</span>
       <Button variant="secondary" busy={busy} onClick={() => void signOut()}>
         {t("shell.signout")}
       </Button>

@@ -2,7 +2,9 @@ package authz
 
 import (
 	"context"
+	"encoding/json"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -33,6 +35,7 @@ type fakeStore struct {
 	held    []rows.Held
 	rules   []rows.HeldRule
 	grants  []rows.Grant
+	roles   []rows.Role
 	filter  rows.GrantFilter
 	seedK   []string
 	seedP   []string
@@ -64,6 +67,8 @@ func (f *fakeStore) ListGrants(_ context.Context, q rows.GrantFilter) ([]rows.Gr
 	f.filter = q
 	return f.grants, nil
 }
+
+func (f *fakeStore) ListRoles(context.Context, string) ([]rows.Role, error) { return f.roles, nil }
 
 func (f *fakeStore) LockInvariants(context.Context) error { return nil }
 
@@ -272,7 +277,11 @@ func TestListGrants_PageSizeAndNextCursor(t *testing.T) {
 			CreatedAt: base.Add(-time.Duration(i) * time.Minute),
 		})
 	}
-	fs := &fakeStore{grants: gs}
+	fs := &fakeStore{grants: gs, roles: []rows.Role{
+		{ID: gs[0].Role, Key: RoleAccountAdmin},                 // an unrenamed starter role
+		{ID: gs[1].Role, Name: "Gate lead"},                     // a regional's own role
+		{ID: gs[2].Role, Key: RoleAuditReviewer, Name: "Audit"}, // a renamed starter role
+	}}
 	s := newTestService(t, fs)
 	page, err := s.ListGrants(context.WithValue(t.Context(), ctxActor{}, Actor{Person: model.NewID[model.PersonID](), Superuser: true}), GrantQuery{Limit: 3})
 	if err != nil {
@@ -284,9 +293,36 @@ func TestListGrants_PageSizeAndNextCursor(t *testing.T) {
 	if fs.filter.Limit != 4 || !fs.filter.WholeSite {
 		t.Errorf("filter = %+v, want limit 4 and the whole site", fs.filter)
 	}
+	for i, want := range []struct{ key, name string }{{RoleAccountAdmin, ""}, {"", "Gate lead"}, {RoleAuditReviewer, "Audit"}} {
+		if g := page.Grants[i]; g.RoleKey != want.key || g.RoleName != want.name {
+			t.Errorf("grant %d role = %q %q, want %q %q", i, g.RoleKey, g.RoleName, want.key, want.name)
+		}
+	}
 	at, id, err := page.Next.position()
 	if err != nil || id != gs[2].ID || !at.Equal(gs[2].CreatedAt) {
 		t.Errorf("cursor points at %v %v (%v), want the third grant", at, id, err)
+	}
+}
+
+func TestWireGrantOf_RoleKeyIsNullWithoutAStarterKey(t *testing.T) {
+	s := newTestService(t, &fakeStore{})
+	now := time.Date(2026, 10, 18, 9, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		name, key, name2 string
+		want             string
+	}{
+		{"starter role", RoleAccountAdmin, "", `"role_key":"account-admin","role_name":""`},
+		{"regional role", "", "Gate lead", `"role_key":null,"role_name":"Gate lead"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			b, err := json.Marshal(s.wireGrantOf(Grant{ID: model.NewID[GrantID](), RoleKey: tc.key, RoleName: tc.name2, CreatedAt: now}, now))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(b), tc.want) {
+				t.Errorf("wire grant = %s, want it to contain %s", b, tc.want)
+			}
+		})
 	}
 }
 

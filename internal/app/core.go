@@ -7,7 +7,9 @@ import (
 	"slices"
 
 	"github.com/zedgama3/bms/internal/core/audit"
+	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/db"
+	"github.com/zedgama3/bms/internal/core/people"
 	"github.com/zedgama3/bms/internal/lib/errs"
 )
 
@@ -16,15 +18,16 @@ import (
 // added here, and copied in provision, when its spec is Approved:
 //
 //	Settings settings.Reader   (scoped per module by provision)   settings.md
-//	Authz    authz.Authorizer                                      authz.md
-//	People   people.Directory                                      people.md
 //	Jobs     jobs.Registrar    (scoped per module by provision)    jobs.md
 //	Notify   notify.Notifier   (scoped per module by provision)    notify.md
 //	Files    files.Store                                           files.md
 //
 // Audit (audit.md, M1) is held unscoped: provision scopes it per module with Scoped(m.Name).
+// Authz and People (M2) are shared: provision copies them to every module's Deps as they are.
 type coreDeps struct {
-	audit *audit.Log // set by the audit part's build; nil when no part builds one (tests)
+	audit  *audit.Log       // set by the audit part's build; nil when no part builds one (tests)
+	authz  authz.Authorizer // set by the authz part's build; nil when no part builds one
+	people people.Directory // set by the people part's build; nil when no part builds one
 }
 
 // coreSetOrder is the order of the core's migration sets (db.md Proposed change 10),
@@ -71,6 +74,9 @@ type part struct {
 	// link runs after module Build, before api.New, in serve and openapi: it receives
 	// a.set (people: PersonData; definers: contributions) and may add route sets.
 	link func(ctx context.Context, a *assembly) error
+	// seed runs in `bms migrate`, after the migrations, on the writing copy, over parts that
+	// were built the way serve builds them: authz applies the declarations' StarterRoles.
+	seed func(ctx context.Context, a *assembly) error
 }
 
 // runnable is a core component with background work, started after the modules and
@@ -84,7 +90,7 @@ type runnable struct {
 // coreParts are the core services that plug in, in dependency order (audit, identity,
 // settings, authz, people, departments-events, jobs, notify, files; app.md "How later core
 // services plug in"). Each later core spec adds one file core_<name>.go and one line here.
-var coreParts = []part{auditPart, identityPart}
+var coreParts = []part{auditPart, identityPart, authzPart, peoplePart}
 
 // declare runs every part's declare, in order (F28).
 func (a *assembly) declare() error {
@@ -110,6 +116,24 @@ func (a *assembly) buildParts(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// seedParts runs every part's seed, in order.
+func (a *assembly) seedParts(ctx context.Context) error {
+	for _, pt := range a.parts {
+		if pt.seed == nil {
+			continue
+		}
+		if err := pt.seed(ctx, a); err != nil {
+			return fmt.Errorf("core part %s: seed: %w", pt.name, err)
+		}
+	}
+	return nil
+}
+
+// hasSeed reports whether any part has a seed step.
+func (a *assembly) hasSeed() bool {
+	return slices.ContainsFunc(a.parts, func(pt part) bool { return pt.seed != nil })
 }
 
 // linkParts runs every part's link, in order.

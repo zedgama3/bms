@@ -57,6 +57,7 @@
   "core.accounts.state.temporary": "Temporary password",
   "core.accounts.never": "Never",
   "core.accounts.detail.title": "Account",
+  "core.accounts.detail.profile": "See this person's profile",
   "core.accounts.detail.back": "Back to accounts",
   "core.accounts.detail.changed": "Password changed",
   "core.accounts.detail.disable": "Disable account",

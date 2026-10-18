@@ -5,14 +5,18 @@ package postgres_test
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/db/dbtest"
+	"github.com/zedgama3/bms/internal/core/identity"
+	"github.com/zedgama3/bms/internal/core/people"
 	"github.com/zedgama3/bms/internal/model"
 )
 
@@ -32,10 +36,18 @@ func migrated(t testing.TB) *db.Pool {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := mig.Migrate(ctxT(t), []db.Set{authz.Set}); err != nil {
+	if _, err := mig.Migrate(ctxT(t), []db.Set{identity.Set, people.Set, authz.Set}); err != nil {
 		t.Fatalf("migrating authz on an empty database: %v", err)
 	}
 	return pool
+}
+
+// person inserts a core.person row (an empty profile) and returns its ID.
+func person(t testing.TB, pool *db.Pool) [16]byte {
+	t.Helper()
+	id := uid()
+	mustExec(t, pool, "INSERT INTO core.person (id, created_at, updated_at) VALUES ($1, now(), now())", id)
+	return id
 }
 
 func uid() [16]byte { return model.NewID[model.PersonID]() }
@@ -121,7 +133,7 @@ func TestMigration_Twice_IsNoOp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := mig.Migrate(ctxT(t), []db.Set{authz.Set}); err != nil {
+	if _, err := mig.Migrate(ctxT(t), []db.Set{identity.Set, people.Set, authz.Set}); err != nil {
 		t.Fatalf("second migrate: %v", err)
 	}
 	if n := count(t, pool, "SELECT count(*) FROM core.role"); n != 8 {
@@ -173,25 +185,25 @@ func TestRolePermission_Constraints_AndCascade(t *testing.T) {
 func TestRoleGrant_UniqueIncludingSiteWide_AndRestrict(t *testing.T) {
 	pool := migrated(t)
 	r := newRole(t, pool, "R", "site")
-	person, dept := uid(), uid()
+	p1, dept := person(t, pool), uid()
 	ins := func(p [16]byte, d any) error {
 		return exec(t, pool, "INSERT INTO core.role_grant (id, person_id, role_id, department_id, created_at) VALUES ($1,$2,$3,$4,now())", uid(), p, r, d)
 	}
-	if err := ins(person, nil); err != nil {
+	if err := ins(p1, nil); err != nil {
 		t.Fatal(err)
 	}
-	wantRejected(t, ins(person, nil), "two site-wide grants of one role to one person (NULL department)")
-	if err := ins(person, dept); err != nil {
+	wantRejected(t, ins(p1, nil), "two site-wide grants of one role to one person (NULL department)")
+	if err := ins(p1, dept); err != nil {
 		t.Fatalf("same role in a department is a different grant: %v", err)
 	}
-	wantRejected(t, ins(person, dept), "a duplicate department grant")
-	if err := ins(uid(), nil); err != nil {
+	wantRejected(t, ins(p1, dept), "a duplicate department grant")
+	if err := ins(person(t, pool), nil); err != nil {
 		t.Fatalf("another person: %v", err)
 	}
 	wantRejected(t, exec(t, pool, "DELETE FROM core.role WHERE id = $1", r), "deleting a role that has grants (RESTRICT)")
 	wantRejected(t, exec(t, pool, "INSERT INTO core.role_grant (id, person_id, role_id, created_at) VALUES ($1,$2,$3,now())", uid(), nilUUID, r), "the nil person")
-	wantRejected(t, exec(t, pool, "INSERT INTO core.role_grant (id, person_id, role_id, department_id, created_at) VALUES ($1,$2,$3,$4,now())", uid(), uid(), r, nilUUID), "the nil department")
-	wantRejected(t, exec(t, pool, "INSERT INTO core.role_grant (id, person_id, role_id, created_at) VALUES ($1,$2,$3,now())", uid(), uid(), uid()), "a grant of an unknown role")
+	wantRejected(t, exec(t, pool, "INSERT INTO core.role_grant (id, person_id, role_id, department_id, created_at) VALUES ($1,$2,$3,$4,now())", uid(), person(t, pool), r, nilUUID), "the nil department")
+	wantRejected(t, exec(t, pool, "INSERT INTO core.role_grant (id, person_id, role_id, created_at) VALUES ($1,$2,$3,now())", uid(), person(t, pool), uid()), "a grant of an unknown role")
 }
 
 func TestSodRule_Constraints(t *testing.T) {
@@ -226,3 +238,99 @@ func TestRoleSeed_PrimaryKey(t *testing.T) {
 	mustExec(t, pool, "INSERT INTO core.role_seed (role_key, permission, seeded_at) VALUES ('event-admin','a.c',now())")
 	mustExec(t, pool, "INSERT INTO core.role_seed (role_key, permission, seeded_at) VALUES ('no-such-role','a.b',now())") // not a foreign key
 }
+
+func grantRow(t testing.TB, pool *db.Pool, p [16]byte, role [16]byte, grantedBy any) [16]byte {
+	t.Helper()
+	id := uid()
+	mustExec(t, pool, "INSERT INTO core.role_grant (id, person_id, role_id, granted_by, created_at) VALUES ($1,$2,$3,$4,now())", id, p, role, grantedBy)
+	return id
+}
+
+func TestMigration0002_GrantToUnknownPerson_IsRefused(t *testing.T) {
+	pool := migrated(t)
+	r := newRole(t, pool, "R", "site")
+	wantRejected(t, exec(t, pool, "INSERT INTO core.role_grant (id, person_id, role_id, created_at) VALUES ($1,$2,$3,now())", uid(), uid(), r), "a grant to a person with no core.person row")
+	wantRejected(t, exec(t, pool, "INSERT INTO core.role_grant (id, person_id, role_id, granted_by, created_at) VALUES ($1,$2,$3,$4,now())", uid(), person(t, pool), r, uid()), "a grant by a granter with no core.person row")
+}
+
+func TestMigration0002_PersonDelete_RestrictedByGrant_SetNullOnGrantedBy(t *testing.T) {
+	pool := migrated(t)
+	r := newRole(t, pool, "R", "site")
+	holder, granter := person(t, pool), person(t, pool)
+	g := grantRow(t, pool, holder, r, granter)
+
+	wantRejected(t, exec(t, pool, "DELETE FROM core.person WHERE id = $1", holder), "deleting a person who still holds a grant (RESTRICT)")
+
+	mustExec(t, pool, "DELETE FROM core.person WHERE id = $1", granter) // SET NULL
+	var by *[16]byte
+	if err := pool.QueryRow(ctxT(t), "SELECT granted_by FROM core.role_grant WHERE id = $1", g).Scan(&by); err != nil {
+		t.Fatal(err)
+	}
+	if by != nil {
+		t.Errorf("granted_by = %v after the granter was deleted, want NULL", *by)
+	}
+	if n := count(t, pool, "SELECT count(*) FROM core.role_grant WHERE id = $1", g); n != 1 {
+		t.Error("the grant did not outlive its granter")
+	}
+	// Once the grant is gone the holder can be deleted.
+	mustExec(t, pool, "DELETE FROM core.role_grant WHERE id = $1", g)
+	mustExec(t, pool, "DELETE FROM core.person WHERE id = $1", holder)
+}
+
+// firstOnly is the authz set with only 0001, to build the "M1 window" state.
+func firstOnly(t testing.TB) db.Set {
+	t.Helper()
+	data, err := fs.ReadFile(authz.Set.Files, "0001_init.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return db.Set{Name: authz.Set.Name, Schema: authz.Set.Schema, Files: fstest.MapFS{"0001_init.sql": &fstest.MapFile{Data: data}}}
+}
+
+func TestMigration0002_Preflight_RefusesOrphanGrants_AndRollsBack(t *testing.T) {
+	pool := dbtest.TempDB(t)
+	mig, err := db.NewMigrator(pool, slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := mig.Migrate(ctxT(t), []db.Set{identity.Set, people.Set, firstOnly(t)}); err != nil {
+		t.Fatalf("migrating up to authz 0001: %v", err)
+	}
+	r := newRole(t, pool, "R", "site")
+	ghost := uid() // a person with no core.person row
+	known, ghostGranter := person(t, pool), uid()
+	grantRow(t, pool, ghost, r, nil)
+	okGrant := grantRow(t, pool, known, r, ghostGranter) // orphan granted_by only
+
+	_, err = mig.Migrate(ctxT(t), []db.Set{identity.Set, people.Set, authz.Set})
+	if err == nil {
+		t.Fatal("migration 0002 ran over a grant to a person with no core.person row")
+	}
+	if strings.Contains(err.Error(), fmtID(ghost)) {
+		t.Errorf("the failure names a person ID: %v", err)
+	}
+	if n := count(t, pool, "SELECT count(*) FROM pg_constraint WHERE conname IN ('role_grant_person_id_fkey','role_grant_granted_by_fkey')"); n != 0 {
+		t.Errorf("%d constraints left after the failed migration; it must roll back whole", n)
+	}
+	if n := count(t, pool, "SELECT count(*) FROM core.role_grant WHERE person_id = $1", ghost); n != 1 {
+		t.Error("the orphan grant was deleted silently")
+	}
+
+	// The operator creates the person; migrate again succeeds, and the orphan granted_by is nulled.
+	mustExec(t, pool, "INSERT INTO core.person (id, created_at, updated_at) VALUES ($1, now(), now())", ghost)
+	if _, err := mig.Migrate(ctxT(t), []db.Set{identity.Set, people.Set, authz.Set}); err != nil {
+		t.Fatalf("migrate after fixing the orphan: %v", err)
+	}
+	var by *[16]byte
+	if err := pool.QueryRow(ctxT(t), "SELECT granted_by FROM core.role_grant WHERE id = $1", okGrant).Scan(&by); err != nil {
+		t.Fatal(err)
+	}
+	if by != nil {
+		t.Error("a granted_by with no person row was not set to NULL")
+	}
+	if n := count(t, pool, "SELECT count(*) FROM pg_constraint WHERE conname IN ('role_grant_person_id_fkey','role_grant_granted_by_fkey')"); n != 2 {
+		t.Errorf("%d constraints after 0002, want 2", n)
+	}
+}
+
+func fmtID(id [16]byte) string { return model.PersonID(id).String() }

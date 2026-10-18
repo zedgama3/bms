@@ -17,8 +17,8 @@ const (
 
 // Permissions lists the declarations of PermissionSearch and PermissionExport.
 var Permissions = []perm.PermissionDecl{
-	{Name: PermissionSearch, Scope: perm.ScopeSite, Reaches: model.SensitivitySensitive},
-	{Name: PermissionExport, Scope: perm.ScopeSite, Reaches: model.SensitivitySensitive},
+	{Name: PermissionSearch, Scope: perm.ScopeSite, Reaches: model.SensitivitySensitive, StarterRoles: []string{perm.RoleAuditReviewer}},
+	{Name: PermissionExport, Scope: perm.ScopeSite, Reaches: model.SensitivitySensitive, StarterRoles: []string{perm.RoleAuditReviewer}},
 }
 
 // Migrations is the embedded postgres/migrations: 0001_init.sql creates core.audit_entry,

@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/zedgama3/bms/internal/api"
+	"github.com/zedgama3/bms/internal/core/authz"
+	"github.com/zedgama3/bms/internal/core/authz/authztest"
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/db/dbtest"
 	"github.com/zedgama3/bms/internal/core/identity"
@@ -39,8 +41,15 @@ func (a hsAuth) Authenticate(ctx context.Context, r *http.Request) (context.Cont
 	return a(ctx, r)
 }
 
-// hsServer builds the real shell over the production hello module (M1 wiring).
+// hsServer builds the real shell over the production hello module with no Deps.Authz: the
+// module fails closed.
 func hsServer(t *testing.T, auth api.Authenticator) *api.Server {
+	t.Helper()
+	return hsServerWith(t, auth, nil)
+}
+
+// hsServerWith is hsServer with Deps.Authz set to az (M2 wiring).
+func hsServerWith(t *testing.T, auth api.Authenticator, az authz.Authorizer) *api.Server {
 	t.Helper()
 	c := telemetrytest.New(t)
 	clk := clock.NewFake(time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC))
@@ -57,7 +66,7 @@ func hsServer(t *testing.T, auth api.Authenticator) *api.Server {
 		if err != nil {
 			t.Fatalf("signalstest.NewFake: %v", err)
 		}
-		return module.Deps{Logger: c.Logger(), Tracer: c.Tracer("module." + m.Name), Clock: clk, DB: dbtest.NewFake(), Signals: sig}, nil
+		return module.Deps{Logger: c.Logger(), Tracer: c.Tracer("module." + m.Name), Clock: clk, DB: dbtest.NewFake(), Signals: sig, Authz: az}, nil
 	})
 	if err != nil {
 		t.Fatalf("Build: %v", err)
@@ -77,6 +86,17 @@ func hsServer(t *testing.T, auth api.Authenticator) *api.Server {
 		t.Fatalf("api.New (mounting and the fragment check): %v", err)
 	}
 	return srv
+}
+
+// hsAuthz is an authztest.Fake that reads the actor the way app's closure does, from the
+// identity session in ctx.
+func hsAuthz() *authztest.Fake {
+	az := authztest.NewFake()
+	az.SetActor(func(ctx context.Context) (authz.Actor, bool) {
+		p, ok := identity.PersonFrom(ctx)
+		return authz.Actor{Person: p}, ok
+	})
+	return az
 }
 
 func hsDo(t *testing.T, srv *api.Server, method, target string) *httptest.ResponseRecorder {
@@ -166,14 +186,15 @@ func TestHelloShell_UnknownPath_Returns404Problem(t *testing.T) {
 	}
 }
 
-// The production wiring (M1) reads the actor with identity.PersonFrom and still denies every
-// permission until authz exists (M2): a signed-in request reaches the handler, the actor is
-// present and the permission is refused, so 403, never 2xx. Without a session in the context
-// (identity.WithSession is what Authenticate does) there is no actor: 401.
-func TestHelloShell_SignedIn_Returns403UntilAuthz(t *testing.T) {
+// The production wiring reads the actor with identity.PersonFrom and asks Deps.Authz: a
+// signed-in request reaches the handler, the actor is present and, while the person holds
+// nothing (or Provision gave the module no authorizer), the permission is refused, so 403,
+// never 2xx. Without a session in the context (identity.WithSession is what Authenticate
+// does) there is no actor: 401.
+func TestHelloShell_SignedIn_WithoutTheGrant_Returns403(t *testing.T) {
 	person := model.NewID[model.PersonID]()
 	now := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
-	srv := hsServer(t, hsAuth(func(ctx context.Context, _ *http.Request) (context.Context, model.PersonID, error) {
+	auth := hsAuth(func(ctx context.Context, _ *http.Request) (context.Context, model.PersonID, error) {
 		return identity.WithSession(ctx, identity.Session{
 			ID:        model.NewID[identity.SessionID](),
 			Account:   model.NewID[model.AccountID](),
@@ -181,18 +202,52 @@ func TestHelloShell_SignedIn_Returns403UntilAuthz(t *testing.T) {
 			IssuedAt:  now,
 			ExpiresAt: now.Add(time.Hour),
 		}), person, nil
-	}))
-	for _, tc := range []struct{ method, path string }{
-		{"GET", "/api/hello/greeting"},
-		{"POST", "/api/hello/greetings"},
+	})
+	for _, tc := range []struct {
+		name string
+		srv  *api.Server
+	}{
+		{"no authorizer given", hsServer(t, auth)},
+		{"an authorizer that holds nothing", hsServerWith(t, auth, hsAuthz())},
 	} {
-		rec := hsDo(t, srv, tc.method, tc.path)
-		if rec.Code != 403 {
-			t.Fatalf("%s %s = %d, want 403 (actor present, permission denied)", tc.method, tc.path, rec.Code)
+		for _, rt := range []struct{ method, path string }{
+			{"GET", "/api/hello/greeting"},
+			{"POST", "/api/hello/greetings"},
+		} {
+			t.Run(tc.name+" "+rt.method+" "+rt.path, func(t *testing.T) {
+				rec := hsDo(t, tc.srv, rt.method, rt.path)
+				if rec.Code != 403 {
+					t.Fatalf("status = %d, want 403 (actor present, permission denied)", rec.Code)
+				}
+				if p := hsProblem(t, rec); p.Code != "permission" || p.Status != 403 {
+					t.Errorf("problem = %+v", p)
+				}
+			})
 		}
-		if p := hsProblem(t, rec); p.Code != "permission" || p.Status != 403 {
-			t.Errorf("%s %s problem = %+v", tc.method, tc.path, p)
-		}
+	}
+}
+
+// A signed-in person who holds hello.greetings.read through Deps.Authz (a participant, once
+// authz seeds the starter role) passes the permission check. The database here is
+// dbtest.Fake, whose QueryRow finds no row, so the count fails 404 after the check; the 200
+// is asserted against a real database in the integration test.
+func TestHelloShell_SignedIn_WithTheGrant_PassesThePermissionCheck(t *testing.T) {
+	person := model.NewID[model.PersonID]()
+	now := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
+	az := hsAuthz()
+	az.Grant(person, hello.PermissionGreetingsRead)
+	srv := hsServerWith(t, hsAuth(func(ctx context.Context, _ *http.Request) (context.Context, model.PersonID, error) {
+		return identity.WithSession(ctx, identity.Session{
+			ID:        model.NewID[identity.SessionID](),
+			Account:   model.NewID[model.AccountID](),
+			Person:    person,
+			IssuedAt:  now,
+			ExpiresAt: now.Add(time.Hour),
+		}), person, nil
+	}), az)
+	rec := hsDo(t, srv, "GET", "/api/hello/greeting")
+	if rec.Code == 401 || rec.Code == 403 {
+		t.Fatalf("status = %d (%s), want the request past authentication and the permission check", rec.Code, rec.Body.String())
 	}
 }
 

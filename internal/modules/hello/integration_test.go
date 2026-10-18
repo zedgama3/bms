@@ -13,7 +13,9 @@ import (
 
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/db/dbtest"
+	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/module"
+	"github.com/zedgama3/bms/internal/core/people"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/telemetry/telemetrytest"
 	"github.com/zedgama3/bms/internal/lib/clock"
@@ -38,8 +40,12 @@ func newRealFx(t *testing.T, wrap func(signals.Bus) signals.Bus) *realFx {
 	if err != nil {
 		t.Fatalf("NewMigrator: %v", err)
 	}
-	if _, err := mig.Migrate(ctxT(t), []db.Set{{Name: "hello", Schema: "hello", Files: postgres.Migrations}}); err != nil {
+	// hello's foreign key needs core.person: migrate the core sets first, in db.md order.
+	if _, err := mig.Migrate(ctxT(t), []db.Set{identity.Set, people.Set, {Name: "hello", Schema: "hello", Files: postgres.Migrations}}); err != nil {
 		t.Fatalf("Migrate: %v", err)
+	}
+	if _, err := pool.Exec(ctxT(t), "INSERT INTO core.person (id, created_at, updated_at) VALUES ($1, now(), now())", [16]byte(alice)); err != nil {
+		t.Fatalf("inserting the person: %v", err)
 	}
 	c := telemetrytest.New(t)
 	disp, err := signals.New(signals.Options{

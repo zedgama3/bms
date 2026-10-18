@@ -46,6 +46,8 @@ type wireGrant struct {
 	ID           GrantID            `json:"id"`
 	PersonID     model.PersonID     `json:"person_id"`
 	RoleID       RoleID             `json:"role_id"`
+	RoleKey      *string            `json:"role_key"`
+	RoleName     string             `json:"role_name"`
 	DepartmentID model.DepartmentID `json:"department_id,omitzero"`
 	EndsAt       time.Time          `json:"ends_at,omitzero"`
 	GrantedBy    model.PersonID     `json:"granted_by,omitzero"`
@@ -126,8 +128,12 @@ func (w wireRoleInput) input(op string) (RoleInput, error) {
 }
 
 func (s *Service) wireGrantOf(g Grant, now time.Time) wireGrant {
+	var key *string
+	if g.RoleKey != "" {
+		key = &g.RoleKey
+	}
 	return wireGrant{
-		ID: g.ID, PersonID: g.Person, RoleID: g.Role, DepartmentID: g.Department, EndsAt: g.EndsAt,
+		ID: g.ID, PersonID: g.Person, RoleID: g.Role, RoleKey: key, RoleName: g.RoleName, DepartmentID: g.Department, EndsAt: g.EndsAt,
 		GrantedBy: g.GrantedBy, CreatedAt: g.CreatedAt, Ended: !g.EndsAt.IsZero() && !g.EndsAt.After(now),
 	}
 }

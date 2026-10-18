@@ -31,7 +31,8 @@ export interface FieldProps {
   children?: (control: ControlProps) => ReactNode;
 }
 
-const inputClass =
+/** The class every text-like control carries (input, select, textarea): 44 px tall, bordered. */
+export const controlClass =
   "block min-h-11 w-full rounded-md border border-border bg-bg px-3 py-2 text-base text-fg aria-[invalid=true]:border-danger";
 
 /** A label, an optional hint, the control and its error, tied together (WCAG 1.3.1, 3.3.1,
@@ -69,7 +70,7 @@ export function Field(props: FieldProps) {
       ) : (
         <input
           {...control}
-          className={inputClass}
+          className={controlClass}
           type={props.type ?? "text"}
           {...(props.inputMode ? { inputMode: props.inputMode } : {})}
           {...(props.autoComplete ? { autoComplete: props.autoComplete } : {})}

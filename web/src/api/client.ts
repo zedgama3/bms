@@ -186,7 +186,9 @@ async function perform(req: Request, info: CallInfo): Promise<Response> {
     }
 
     if (res.ok) {
-      if (text.trim() !== "") {
+      // A JSON Lines export is many documents, not one: callers ask for it as text.
+      const lines = (res.headers.get("Content-Type") ?? "").includes("ndjson");
+      if (text.trim() !== "" && !lines) {
         try {
           JSON.parse(text);
         } catch {

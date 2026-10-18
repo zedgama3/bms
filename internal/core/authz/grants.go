@@ -71,8 +71,28 @@ func (s *Service) ListGrants(ctx context.Context, q GrantQuery) (_ GrantPage, er
 		gs = gs[:limit]
 	}
 	page.Grants = make([]Grant, len(gs))
-	for i, g := range gs {
-		page.Grants[i] = grantOf(g)
+	if len(gs) > 0 {
+		// The role's key and name travel with each grant, so a person who may list their own
+		// grants but not the role catalogue can still say which role they hold. One small
+		// read of the roles (a regional has tens), in a transaction of its own.
+		var roles map[rows.RoleID]rows.Role
+		if err := s.inTx(ctx, db.Read, func(ctx context.Context) error {
+			rs, err := s.store.ListRoles(ctx, "")
+			if err != nil {
+				return wrap(op, err)
+			}
+			roles = make(map[rows.RoleID]rows.Role, len(rs))
+			for _, r := range rs {
+				roles[r.ID] = r
+			}
+			return nil
+		}); err != nil {
+			return GrantPage{}, err
+		}
+		for i, g := range gs {
+			page.Grants[i] = grantOf(g)
+			page.Grants[i].RoleKey, page.Grants[i].RoleName = roles[g.Role].Key, roles[g.Role].Name
+		}
 	}
 	if more {
 		page.Next = cursorOf(page.Grants[limit-1])
@@ -191,6 +211,10 @@ func (s *Service) Grant(ctx context.Context, in GrantInput) (_ Grant, err error)
 				return fieldConflict(op, "role", codeDuplicate, nil, "this person already has this role here")
 			case "role_grant_person_id_fkey":
 				return fieldInvalid(op, "person", codeUnknown, "is not a known person")
+			case "role_grant_granted_by_fkey":
+				// The granting actor has no core.person row yet (people's account-created
+				// handler has not run or failed); saving their own profile creates it.
+				return fieldInvalid(op, "actor", codeUnknown, "the person granting has no profile yet; save your profile, then try again")
 			}
 			return wrap(op, err)
 		}
@@ -198,6 +222,7 @@ func (s *Service) Grant(ctx context.Context, in GrantInput) (_ Grant, err error)
 			return err
 		}
 		out = grantOf(g)
+		out.RoleKey, out.RoleName = role.Key, role.Name
 		if err := s.record(ctx, audit.Entry{
 			Action: actionGrantCreated, Outcome: audit.Succeeded, Subject: g.Person, Record: audit.RefOf(kindGrant, g.ID),
 		}); err != nil {

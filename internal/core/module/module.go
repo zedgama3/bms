@@ -6,7 +6,9 @@ import (
 	"log/slog"
 
 	"github.com/zedgama3/bms/internal/core/audit"
+	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/db"
+	"github.com/zedgama3/bms/internal/core/people"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/telemetry"
 	"github.com/zedgama3/bms/internal/lib/clock"
@@ -130,10 +132,24 @@ type Deps struct {
 	// audittest.Fake.
 	Audit audit.Recorder
 
+	// Authz decides what the actor in ctx may do (authz.md; M2): the module passes its own
+	// permission names, checking each use case first with Allow (a site-wide permission),
+	// AllowIn (one record of a department) or ExtentOf (a list, search, count or export
+	// filters by the extent it returns). Shared, not scoped: Provision sets it. Nil only in
+	// tests that do not check permissions; moduletest.Conformance fills a nil one with an
+	// authztest.Fake, which denies everything, so a module that forgets its check fails its
+	// tests rather than the burner.
+	Authz authz.Authorizer
+
+	// People is the directory of people (people.md; M2): NamesOf and ConsentOf. Shared, not
+	// scoped: Provision sets it. A foreign key to core.person(id) is allowed and uses ON
+	// DELETE RESTRICT, because people calls the module's DeletePerson first. Nil only in
+	// tests that do not look people up; moduletest.Conformance fills a nil one with a
+	// peopletest.Fake.
+	People people.Directory
+
 	// Added by later specs, named here so modules know where to look:
 	// Settings settings.Reader   settings.md
-	// Authz    authz.Authorizer  authz.md
-	// People   people.Directory  people.md
 	// Jobs     jobs.Registrar    jobs.md
 	// Notify   notify.Notifier   notify.md
 	// Files    files.Store       files.md

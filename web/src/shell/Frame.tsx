@@ -6,6 +6,7 @@ import type { RouteHandle } from "@/registry/types";
 import { CatalogueBanner, ReadOnlyBanner, SessionBanner, SuperuserBanner } from "./Banners";
 import { Header } from "./Nav";
 import { RouteAnnouncer } from "./RouteAnnouncer";
+import { useMeEffects } from "./me";
 import { useRegionalName } from "./regional";
 import { getSessionEnded, useSession } from "./session";
 
@@ -20,6 +21,7 @@ export function Frame() {
   const matches = useMatches();
   const location = useLocation();
   const navigation = useNavigation();
+  useMeEffects();
 
   const handle = matches[matches.length - 1]?.handle as RouteHandle | undefined;
   const needsSignIn = handle !== undefined && handle.access !== "public" && !session.signedIn;

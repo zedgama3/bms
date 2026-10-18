@@ -59,8 +59,8 @@ var Manifest = module.Manifest{
 	Name:       "hello",
 	Migrations: postgres.Migrations,
 	Permissions: []authz.PermissionDecl{
-		{Name: PermissionGreetingsRead, Scope: authz.ScopeSite, Reaches: model.SensitivityInternal},
-		{Name: PermissionGreetingsWrite, Scope: authz.ScopeSite, Reaches: model.SensitivityInternal},
+		{Name: PermissionGreetingsRead, Scope: authz.ScopeSite, Reaches: model.SensitivityInternal, StarterRoles: []string{authz.RoleParticipant}},
+		{Name: PermissionGreetingsWrite, Scope: authz.ScopeSite, Reaches: model.SensitivityInternal, StarterRoles: []string{authz.RoleParticipant}},
 	},
 	Settings:      []module.SettingDecl{{Key: SettingGreeting, Kind: module.SettingText, Default: DefaultGreeting, Check: validateGreeting}},
 	Publishes:     []signals.Name{SignalGreeted},
@@ -79,7 +79,7 @@ var openAPIFragment []byte
 const bannerKey = "module.hello.banner.welcome"
 
 var (
-	errDenied    = errors.New("no authorizer is wired yet (M0): every permission is denied")
+	errDenied    = errors.New("no authorizer is wired: every permission is denied")
 	errNoActor   = errors.New("no signed-in person in the request context")
 	errStarted   = errors.New("the module is already started")
 	errNilDep    = errors.New("nil dependency")
@@ -108,8 +108,9 @@ func acceptsBanner(v any) bool {
 }
 
 // seams are the three seams and the store (module-hello decision 2). New wires them to the
-// postgres store, identity.PersonFrom (M1), "deny" (until authz, M2) and "the declared
-// default" (until settings, M2); tests inject fakes.
+// postgres store, identity.PersonFrom (M1), deps.Authz (M2; "deny" when Provision left it
+// nil, so the module fails closed) and "the declared default" (until settings, M2); tests
+// inject fakes.
 type seams struct {
 	store    store
 	actor    actorFunc
@@ -117,7 +118,7 @@ type seams struct {
 	greeting greetingSource
 }
 
-// denyAll is the M0 permissionChecker: it refuses every permission.
+// denyAll is the permissionChecker used when Deps.Authz is nil: it refuses every permission.
 type denyAll struct{}
 
 // Allow always fails with errs.Permission.
@@ -167,7 +168,11 @@ func New(_ context.Context, deps module.Deps) (module.Module, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
-	return newModule(deps, seams{store: st, actor: identity.PersonFrom, allow: denyAll{}, greeting: declaredDefault})
+	var allow permissionChecker = denyAll{}
+	if deps.Authz != nil {
+		allow = deps.Authz
+	}
+	return newModule(deps, seams{store: st, actor: identity.PersonFrom, allow: allow, greeting: declaredDefault})
 }
 
 // checkDeps fails with errs.Invalid naming every nil dependency.

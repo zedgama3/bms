@@ -18,9 +18,11 @@ import (
 
 	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/audit/audittest"
+	"github.com/zedgama3/bms/internal/core/authz/authztest"
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/db/dbtest"
 	"github.com/zedgama3/bms/internal/core/module"
+	"github.com/zedgama3/bms/internal/core/people/peopletest"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/signals/signalstest"
 	"github.com/zedgama3/bms/internal/core/telemetry/telemetrytest"
@@ -205,8 +207,9 @@ func resolveOptions(m module.Manifest, opts []Option) (options, []string) {
 // signalstest.Fake in Signals scoped to the manifest, and the later fields); it is called
 // once per rule, so each rule gets fresh fakes; nil is allowed. Conformance replaces Logger
 // and Tracer with telemetrytest.New(t)'s (any policy violation fails the rule), fills a nil
-// Clock, DB, Signals or Audit with a fake (an audittest.NewFake scoped to the module), and
-// sets Links through Plan.Build. A DB, Signals or Audit that is not a dbtest.Fake,
+// Clock, DB, Signals or Audit with a fake (an audittest.NewFake scoped to the module), a nil
+// Authz with authztest.NewFake() (it denies everything) and a nil People with
+// peopletest.NewFake(), and sets Links through Plan.Build. A DB, Signals or Audit that is not a dbtest.Fake,
 // signalstest.Fake or audittest.Fake fails t (t.Fatalf), naming the module, because the
 // rules need to make the database read-only, to read back the subscriptions and to scan
 // the audit entries the module recorded for personal data (no_personal_data_in_logs).
@@ -411,6 +414,12 @@ func (h *harness) provisioner(readOnly bool) module.Provision {
 			rec = audittest.NewFake(m.Name)
 		}
 		d.Audit = rec
+		if d.Authz == nil {
+			d.Authz = authztest.NewFake()
+		}
+		if d.People == nil {
+			d.People = peopletest.NewFake()
+		}
 		if m.Name == r.m.Name {
 			fake.SetReadOnly(readOnly)
 			h.db, h.sig, h.audit = fake, bus, rec

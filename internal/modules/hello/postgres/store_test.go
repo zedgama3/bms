@@ -48,12 +48,12 @@ func TestMigrations_AreRootedAtTheFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadDir: %v", err)
 	}
-	if len(entries) != 1 || entries[0].Name() != "0001_init.sql" {
-		t.Fatalf("entries = %v, want only 0001_init.sql", entries)
+	if len(entries) != 2 || entries[0].Name() != "0001_init.sql" || entries[1].Name() != "0002_person_fk.sql" {
+		t.Fatalf("entries = %v, want 0001_init.sql and 0002_person_fk.sql", entries)
 	}
 	v, err := db.Version(postgres.Migrations)
-	if err != nil || v != 1 {
-		t.Errorf("db.Version = %d, %v; want 1", v, err)
+	if err != nil || v != 2 {
+		t.Errorf("db.Version = %d, %v; want 2", v, err)
 	}
 	sql, err := fs.ReadFile(postgres.Migrations, "0001_init.sql")
 	if err != nil {

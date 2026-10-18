@@ -82,6 +82,28 @@ func (s Scope) String() string {
 	}
 }
 
+// The starter role keys migration 0001 of authz creates (authz decision 12), here so that
+// packages authz records through, such as audit, can name them in a PermissionDecl without
+// importing authz, which re-exports them as authz.Role*. RoleParticipant is the base role;
+// RoleDepartmentAdmin is department-scoped; the rest are site roles.
+const (
+	RoleParticipant       = "participant"
+	RoleAccountAdmin      = "account-admin"
+	RoleAccessAdmin       = "access-admin"
+	RoleDepartmentSteward = "department-steward"
+	RoleEventAdmin        = "event-admin"
+	RoleSettingsAdmin     = "settings-admin"
+	RoleAuditReviewer     = "audit-reviewer"
+	RoleDepartmentAdmin   = "department-admin"
+)
+
+// SiteAdminRoles are the six site-wide administrative starter roles: the starter roles of
+// api's core.modules.read. Callers must not modify it.
+var SiteAdminRoles = []string{
+	RoleAccountAdmin, RoleAccessAdmin, RoleDepartmentSteward,
+	RoleEventAdmin, RoleSettingsAdmin, RoleAuditReviewer,
+}
+
 // PermissionDecl is one declared permission. Its title and description are message keys
 // derived from Name (module-contract decision 8), not text.
 type PermissionDecl struct {
@@ -93,7 +115,7 @@ type PermissionDecl struct {
 	// out in the role editor.
 	Reaches model.Sensitivity
 	// StarterRoles are the keys of the starter roles the permission is seeded into, once,
-	// by `bms migrate` (authz decision 12): authz.RoleAccessAdmin and the other Role*
+	// by `bms migrate` (authz decision 12): RoleAccessAdmin and the other Role*
 	// constants. Each is an ident and appears once. A key with no role is skipped at seed
 	// time, and a regional's later edits to a role are never undone.
 	StarterRoles []string

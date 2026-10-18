@@ -173,10 +173,21 @@ describe("access filtering of navigation (a convenience, never access control)",
     expect(canSee(inNoPerms, undefined)).toBe(true);
   });
 
-  it("a permission list shows to a holder, and before authz fills permissions to every signed-in person", () => {
+  it("a permission list shows to a holder; an empty permission list means none", () => {
     expect(canSee(out, ["core.modules.read"])).toBe(false);
     expect(canSee(inPerms, ["core.modules.read"])).toBe(true);
     expect(canSee(inOther, ["core.modules.read"])).toBe(false);
-    expect(canSee(inNoPerms, ["core.modules.read"])).toBe(true);
+    expect(canSee(inNoPerms, ["core.modules.read"])).toBe(false);
+  });
+
+  it("matches `p` exactly or any `p@<department>`, never a longer name or another prefix", () => {
+    const dept = { ...inNoPerms, permissions: ["access.grants.read@dept-1"] } as const;
+    expect(canSee(dept, ["access.grants.read"])).toBe(true);
+    expect(canSee(dept, ["access.grants"])).toBe(false);
+    expect(canSee(dept, ["access.grants.read.more"])).toBe(false);
+    expect(
+      canSee({ ...inNoPerms, permissions: ["access.grants.readx"] }, ["access.grants.read"]),
+    ).toBe(false);
+    expect(canSee(inPerms, [])).toBe(false);
   });
 });

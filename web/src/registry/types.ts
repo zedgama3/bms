@@ -30,9 +30,9 @@ export interface NavEntry {
   /** `main`: the primary navigation. `admin`: the "Administration" group. */
   readonly area: "main" | "admin";
   /** Who sees it before the server decides: `public` (always), `signed-in` (default), or
-   *  the permissions of which the person needs any one (from session.permissions, M2;
-   *  before M2 a permission requirement shows the entry to every signed-in person and the
-   *  screen shows its forbidden state). */
+   *  the permissions of which the person needs any one (from session.permissions): an entry
+   *  matches when the session holds `p` exactly or any `p@<department-id>`; an empty list
+   *  means none, so the entry is hidden. The server still decides every call. */
   readonly access?: "public" | "signed-in" | readonly string[];
 }
 

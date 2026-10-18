@@ -554,6 +554,8 @@
           "id",
           "person_id",
           "role_id",
+          "role_key",
+          "role_name",
           "created_at",
           "ended"
         ],
@@ -566,6 +568,17 @@
           },
           "role_id": {
             "$ref": "#/components/schemas/ID"
+          },
+          "role_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The role's starter key (for example account-admin), null for a role the regional made. The shell titles a starter role from core.access.role.<key>.title."
+          },
+          "role_name": {
+            "type": "string",
+            "description": "The role's name; empty while a starter role has not been renamed (then use role_key)."
           },
           "department_id": {
             "$ref": "#/components/schemas/ID"

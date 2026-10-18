@@ -21,6 +21,8 @@ import (
 	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/db/dbtest"
+	"github.com/zedgama3/bms/internal/core/identity"
+	"github.com/zedgama3/bms/internal/core/people"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/model"
 )
@@ -104,30 +106,21 @@ var (
 	errTimeout = errs.E("test.timeout", errs.Timeout, errors.New("database too slow"))
 )
 
-// prepareDB creates the stand-in for people's core.person (people is not part of this
-// spec's set) so the foreign keys of migration 0002 have something to point at, then
-// migrates authz.
+// prepareDB migrates the core sets authz depends on, in db.md order (identity, people,
+// authz), so core.person exists for migration 0002's foreign keys.
 func prepareDB(t testing.TB, pool *db.Pool) {
 	t.Helper()
-	ctx := ctxT(t)
-	for _, q := range []string{
-		"CREATE SCHEMA IF NOT EXISTS core",
-		"CREATE TABLE IF NOT EXISTS core.person (id uuid PRIMARY KEY)",
-	} {
-		if _, err := pool.Exec(ctx, q); err != nil {
-			t.Fatalf("preparing the database: %v", err)
-		}
-	}
 	mig, err := db.NewMigrator(pool, slog.New(slog.DiscardHandler))
 	wantNoErr(t, err)
-	_, err = mig.Migrate(ctx, []db.Set{authz.Set})
+	_, err = mig.Migrate(ctxT(t), []db.Set{identity.Set, people.Set, authz.Set})
 	wantNoErr(t, err)
 }
 
-// ensurePerson inserts a stand-in person row.
+// ensurePerson inserts a core.person row (an empty profile, as sign-up makes).
 func ensurePerson(t testing.TB, pool *db.Pool, p model.PersonID) {
 	t.Helper()
-	if _, err := pool.Exec(ctxT(t), "INSERT INTO core.person (id) VALUES ($1) ON CONFLICT DO NOTHING", [16]byte(p)); err != nil {
+	if _, err := pool.Exec(ctxT(t),
+		"INSERT INTO core.person (id, created_at, updated_at) VALUES ($1, now(), now()) ON CONFLICT DO NOTHING", [16]byte(p)); err != nil {
 		t.Fatalf("inserting a person: %v", err)
 	}
 }

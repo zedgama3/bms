@@ -9,7 +9,7 @@ set -euo pipefail
 
 src="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/web/src}"
 # API prefixes any set may call: the shell's routes and the core areas' (module-contract: core contracts).
-core_api=" modules admin client-errors openapi.json accounts people departments events roles settings audit "
+core_api=" modules admin client-errors openapi.json accounts access people departments events roles settings audit "
 fail=0
 
 report() {

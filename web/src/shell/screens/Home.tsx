@@ -2,6 +2,7 @@ import { Link } from "react-router";
 import { useT } from "@/i18n";
 import { EmptyState, linkButtonClass } from "@/ui";
 import { useBoot } from "../boot";
+import { usePlayaName } from "../me";
 import { useRegionalName } from "../regional";
 import { navItems } from "../registryNav";
 import { useSession } from "../session";
@@ -15,6 +16,7 @@ export function Home() {
   const session = useSession();
   const sets = useEnabledSets();
   const boot = useBoot();
+  const playaName = usePlayaName();
   const cards = navItems(sets, session).filter((i) => i.area === "main");
   // "Nothing is turned on" is about modules: the accounts area is always there.
   const anyEntries = sets.some((s) => s.kind === "module" && s.nav.some((n) => n.area === "main"));
@@ -22,8 +24,8 @@ export function Home() {
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-2xl font-bold">
-        {session.signedIn && session.playaName !== ""
-          ? t("shell.home.hi", { playa_name: session.playaName })
+        {session.signedIn && playaName !== ""
+          ? t("shell.home.hi", { playa_name: playaName })
           : t("shell.home.welcome", { regional })}
       </h1>
       {!session.signedIn && boot.identityAvailable ? (

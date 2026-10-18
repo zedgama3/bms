@@ -187,6 +187,19 @@ export function AdminDetail() {
           {t("core.accounts.detail.temp")}
         </Button>
       </div>
+      {session.signedIn &&
+      session.permissions.some(
+        (p) => p === "people.directory.read" || p.startsWith("people.directory.read@"),
+      ) ? (
+        <div>
+          <Link
+            to={`/people/${a.person_id}`}
+            className="inline-flex min-h-11 items-center underline"
+          >
+            {t("core.accounts.detail.profile")}
+          </Link>
+        </div>
+      ) : null}
       <BackLink />
 
       <Dialog open={confirm !== null} title={t(titleKey)} onClose={() => setConfirm(null)}>

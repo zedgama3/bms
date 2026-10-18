@@ -40,8 +40,10 @@ func declareIdentity(a *assembly) error {
 }
 
 // buildIdentity constructs the service (no I/O: it succeeds against db.None() and on a
-// read-only copy), hands the shell its Authenticator and mounts the accounts routes. Every
-// optional seam stays nil (the M1 behaviour); authz, settings and people fill them later.
+// read-only copy), hands the shell its Authenticator and mounts the accounts routes. The
+// permission checker, the permission lister and the name source are the lazy adapters,
+// because authz and people are built after identity (app.md, rows 4 and 5); the policy
+// source stays nil until settings.
 func buildIdentity(_ context.Context, a *assembly) error {
 	const op = "app.identity.build"
 	if a.deps.audit == nil {
@@ -69,6 +71,9 @@ func buildIdentity(_ context.Context, a *assembly) error {
 		AllowPlaintext: a.cfg.HTTP.AllowPlaintext,
 		Audit:          rec,
 		Signals:        bus,
+		Permissions:    lazyPermissions{a: a},
+		Lister:         lazyLister{a: a},
+		Names:          lazyNames{a: a},
 	})
 	if err != nil {
 		return err //nolint:wrapcheck // identity.New names itself
@@ -119,6 +124,7 @@ func runCreateSuperuser(ctx context.Context, p *process) int {
 		return ExitUsage
 	}
 	a := newAssembly(p, cfg)
+	a.operator = true
 	if err := a.startTelemetry(ctx, p.lookup, p.stderr); err != nil {
 		return p.earlyFail(ctx, err, ExitUsage)
 	}

@@ -50,8 +50,9 @@ type Recorder interface {
 }
 
 // ActorFunc reads the signed-in actor from ctx. identity owns the session; app wraps its
-// ctx accessor: Kind ActorPerson with Person and Superuser set, ok true; or ok false when
-// there is no session. Must not do I/O.
+// ctx accessor: Kind ActorPerson with Person and Superuser set, ok true; Kind ActorOperator
+// (nothing else set) while a bms command runs with no session; or ok false when there is no
+// session. Any other answer fails the Record with errs.Internal. Must not do I/O.
 type ActorFunc func(ctx context.Context) (Actor, bool)
 
 // TitleSource returns the role or position titles person holds now, for D22. authz

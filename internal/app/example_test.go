@@ -22,6 +22,8 @@ func ExampleMain_help() {
 	//   version           print the build version
 	//   help              print this usage
 	//   create-superuser  create or reset the superuser account; its password is shown once  <email>
+	//   export            print everything held about one person as JSON (personal data)  <person-id>
+	//   delete            delete one person everywhere and print what was deleted  <person-id>
 	// Configuration comes from `BMS_*` environment variables; run `bms check` to see it.
 	// exit status: 0
 }

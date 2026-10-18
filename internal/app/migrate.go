@@ -78,6 +78,7 @@ func runMigrate(ctx context.Context, p *process) int {
 		return p.earlyFail(ctx, err, ExitUsage)
 	}
 	a := newAssembly(p, cfg)
+	a.operator = true
 	if err := a.startTelemetry(ctx, p.lookup, p.stderr); err != nil {
 		return p.earlyFail(ctx, err, ExitUsage)
 	}
@@ -110,7 +111,11 @@ func runMigrate(ctx context.Context, p *process) int {
 		if errors.Is(err, db.ErrReadOnly) {
 			err = fmt.Errorf("this copy of the database is read-only: run `bms migrate` on the copy that writes: %w", err)
 		}
-		return bail(err, statusOf(err, ExitSchema))
+		return bail(err, migrateStatus(err))
+	}
+	// The parts' seed steps come before the summary line, which stays last.
+	if err := a.seed(ctx); err != nil {
+		return bail(err, statusOf(err, ExitFailure))
 	}
 	if len(applied) == 0 {
 		sayln(p.stdout, "nothing to apply")
@@ -122,6 +127,39 @@ func runMigrate(ctx context.Context, p *process) int {
 		return ExitFailure
 	}
 	return ExitOK
+}
+
+// seed runs the parts' seed steps (authz's starter permissions) after the migrations. The
+// parts are built as serve builds them, over the pool: building reads nothing and starts
+// nothing. It fails with the kind of whatever refused, on a read-only copy errs.Unavailable.
+func (a *assembly) seed(ctx context.Context) error {
+	if !a.hasSeed() {
+		return nil
+	}
+	if err := a.newDispatcher(); err != nil {
+		return err
+	}
+	sctx, cancel := context.WithTimeout(ctx, checkTimeout)
+	defer cancel()
+	if err := a.buildParts(sctx); err != nil {
+		return err
+	}
+	return a.seedParts(sctx)
+}
+
+// migrateStatus is the exit status of a failed Migrate: a Conflict of the migrator (another
+// run, a changed applied file, a database newer than the binary) is ExitSchema; a failing
+// migration file, whatever the kind of the driver's error (a constraint violation is Invalid
+// or Conflict), and everything else is ExitFailure (app.md F20, F21). The operator's input was checked before Migrate ran.
+func migrateStatus(err error) int {
+	var dbErr *db.Error
+	if errors.As(err, &dbErr) {
+		return ExitFailure // a statement of a migration file failed, whatever its kind
+	}
+	if errs.Is(err, errs.Conflict) {
+		return ExitSchema
+	}
+	return ExitFailure
 }
 
 // printApplied writes one line per applied migration file.
