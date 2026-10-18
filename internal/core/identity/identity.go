@@ -55,6 +55,7 @@ const (
 	actionDisabled       audit.Action = "identity.account.disabled"
 	actionEnabled        audit.Action = "identity.account.enabled"
 	actionDeleted        audit.Action = "identity.account.deleted"
+	actionLinked         audit.Action = "identity.account.linked"
 	actionPasswordSet    audit.Action = "identity.password.changed"
 	actionTemporarySet   audit.Action = "identity.password.temporary-set"
 	actionSessionsEnded  audit.Action = "identity.sessions.ended"
@@ -84,8 +85,14 @@ const (
 	codeIncorrect = "incorrect" // the current password is wrong
 	codeSelf      = "self"      // an admin change aimed at one's own account
 	codeMalformed = validate.CodeMalformed
+	codeUnknown   = "unknown"     // no account has the address (LinkAccount)
+	codeSuperuser = "superuser"   // the account is the superuser's (LinkAccount)
+	codeHasAcct   = "has_account" // the person already has an account (LinkAccount)
 	codeRequired  = validate.CodeRequired
 )
 
 // emailKey is the unique constraint a duplicate address violates.
 const emailKey = "account_email_canonical_key"
+
+// personKey is the unique constraint a second account for one person violates.
+const personKey = "account_person_id_key"

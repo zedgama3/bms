@@ -1,0 +1,1459 @@
+{
+  "tags": [
+    {
+      "name": "people",
+      "description": "Who each participant is: profiles, emergency contacts, consents, search, and export or deletion of a person's data."
+    }
+  ],
+  "paths": {
+    "/me": {
+      "get": {
+        "tags": [
+          "people"
+        ],
+        "operationId": "peopleMe",
+        "summary": "Your own profile, every field group, contacts, consents and the modules' sections. A person with no row yet gets an empty, incomplete profile (nothing is written). Read once per session by the frame.",
+        "responses": {
+          "200": {
+            "description": "Your profile.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeopleProfile"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "people"
+        ],
+        "operationId": "peopleUpdateMe",
+        "summary": "Change your own profile; absent or null fields are unchanged and an empty string clears one. 400 playa_name required, legal_name or phone required when the regional requires them, hidden for a field the regional turned off, has_account for contact_email, malformed, too_long, control_chars.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PeopleProfileInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Your profile after the change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeopleProfile"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/contacts": {
+      "post": {
+        "tags": [
+          "people"
+        ],
+        "operationId": "peopleAddMyContact",
+        "summary": "Add an emergency contact. 400 contacts too_many {max} at ten, hidden when the regional turned contacts off.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PeopleContactInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Added.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeopleContact"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/contacts/{contact}": {
+      "put": {
+        "tags": [
+          "people"
+        ],
+        "operationId": "peopleUpdateMyContact",
+        "summary": "Replace one of your emergency contacts. 404 when it is not yours.",
+        "parameters": [
+          {
+            "name": "contact",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PeopleContactInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Changed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeopleContact"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "people"
+        ],
+        "operationId": "peopleRemoveMyContact",
+        "summary": "Remove one of your emergency contacts. 404 when it is not yours.",
+        "parameters": [
+          {
+            "name": "contact",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed."
+          }
+        }
+      }
+    },
+    "/me/consents/{purpose}": {
+      "put": {
+        "tags": [
+          "people"
+        ],
+        "operationId": "peopleSetMyConsent",
+        "summary": "Grant or revoke your consent to a purpose. 400 purpose malformed.",
+        "parameters": [
+          {
+            "name": "purpose",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A consent purpose, <owner>.<ident>."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PeopleConsentInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The consent now.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeopleConsent"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/export": {
+      "get": {
+        "tags": [
+          "people"
+        ],
+        "operationId": "peopleExportMe",
+        "summary": "Download everything bms holds about you as one JSON attachment (bms-export-<person>.json). Audited; once every ten minutes (429 with Retry-After).",
+        "responses": {
+          "200": {
+            "description": "The export document, format 1.",
+            "headers": {
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/requests": {
+      "get": {
+        "tags": [
+          "people"
+        ],
+        "operationId": "peopleMyRequests",
+        "summary": "Your own deletion requests, newest first.",
+        "responses": {
+          "200": {
+            "description": "Requests.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeopleRequestList"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "people"
+        ],
+        "operationId": "peopleRequestDeletion",
+        "summary": "Ask for your data to be deleted. A holder of people.data.delete fulfils or declines it. 409 (field request, code duplicate) while one is open; 400 note too_long.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PeopleRequestInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Filed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeopleRequest"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/requests/{request}/withdraw": {
+      "post": {
+        "tags": [
+          "people"
+        ],
+        "operationId": "peopleWithdrawRequest",
+        "summary": "Withdraw your own open request. 404 when it is not yours; 409 (field request, code status) when it is not open.",
+        "parameters": [
+          {
+            "name": "request",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Withdrawn."
+          }
+        }
+      }
+    },
+    "/search": {
+      "get": {
+        "tags": [
+          "people"
+        ],
+        "operationId": "peopleSearch",
+        "summary": "Search people by playa name (case-insensitive substring); holders of people.contacts.read also match legal name, phone and contact address, and each such match is audited. Needs people.directory.read. 400 q too_short {min} or too_long {max}, limit range.",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "At least 2 bytes, at most 100."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 50
+            },
+            "description": "0 or absent means 20."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matches ordered by playa name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeopleMatchList"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/names": {
+      "get": {
+        "tags": [
+          "people"
+        ],
+        "operationId": "peopleNames",
+        "summary": "Playa names of the given people, for the access and audit screens. Any signed-in person. Unknown IDs are omitted. 400 ids too_many {max} over 200.",
+        "parameters": [
+          {
+            "name": "ids",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated person IDs."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Names by person ID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeopleNames"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/": {
+      "post": {
+        "tags": [
+          "people"
+        ],
+        "operationId": "peopleCreate",
+        "summary": "Create a person without an account. Needs people.profiles.manage. 400 playa_name required.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PeopleProfileInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new profile.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeopleProfile"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/requests": {
+      "get": {
+        "tags": [
+          "people"
+        ],
+        "operationId": "peopleListRequests",
+        "summary": "Deletion requests by status (default open), oldest first. Needs people.data.delete.",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "open",
+                "withdrawn",
+                "declined"
+              ]
+            },
+            "description": "Default open."
+          },
+          {
+            "name": "person",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            },
+            "description": "Only this person's requests."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Requests.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeopleRequestList"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/requests/{request}/decline": {
+      "post": {
+        "tags": [
+          "people"
+        ],
+        "operationId": "peopleDeclineRequest",
+        "summary": "Decline an open request with a note for the person. Needs people.data.delete. 409 (field request, code status) when it is not open.",
+        "parameters": [
+          {
+            "name": "request",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PeopleDecisionInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Declined.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeopleRequest"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/requests/{request}/fulfil": {
+      "post": {
+        "tags": [
+          "people"
+        ],
+        "operationId": "peopleFulfilRequest",
+        "summary": "Delete the request's person as DELETE /{person} does. Needs people.data.delete. 409 last_access_admin, in_use, status; 400 self.",
+        "parameters": [
+          {
+            "name": "request",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "What was deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeopleDeletionReport"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{person}": {
+      "get": {
+        "tags": [
+          "people"
+        ],
+        "operationId": "peopleGet",
+        "summary": "A person's profile as you may see it: internal fields with people.directory.read; personal fields and contacts with people.contacts.read (audited); consents with people.profiles.manage. Your own ID behaves as /me. 403 without people.directory.read; 404 for an unknown person.",
+        "parameters": [
+          {
+            "name": "person",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The profile.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeopleProfile"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "people"
+        ],
+        "operationId": "peopleUpdate",
+        "summary": "Change another person's profile. Needs people.profiles.manage; the regional's required modes are not enforced. Your own ID behaves as PUT /me. 404 for an unknown person.",
+        "parameters": [
+          {
+            "name": "person",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PeopleProfileInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The profile after the change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeopleProfile"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "people"
+        ],
+        "operationId": "peopleDelete",
+        "summary": "Delete a person and everything about them across identity, access and every module, in one transaction. Needs people.data.delete. 400 self; 403 for a superuser account; 404; 409 last_access_admin or in_use. Audit rows stay and are counted.",
+        "parameters": [
+          {
+            "name": "person",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "What was deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeopleDeletionReport"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{person}/contacts": {
+      "post": {
+        "tags": [
+          "people"
+        ],
+        "operationId": "peopleAddContact",
+        "summary": "Add an emergency contact for a person. Needs people.profiles.manage (or your own ID).",
+        "parameters": [
+          {
+            "name": "person",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PeopleContactInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Added.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeopleContact"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{person}/contacts/{contact}": {
+      "put": {
+        "tags": [
+          "people"
+        ],
+        "operationId": "peopleUpdateContact",
+        "summary": "Replace a person's emergency contact. Needs people.profiles.manage (or your own ID). 404 when it is not theirs.",
+        "parameters": [
+          {
+            "name": "person",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          },
+          {
+            "name": "contact",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PeopleContactInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Changed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeopleContact"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "people"
+        ],
+        "operationId": "peopleRemoveContact",
+        "summary": "Remove a person's emergency contact. Needs people.profiles.manage (or your own ID). 404 when it is not theirs.",
+        "parameters": [
+          {
+            "name": "person",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          },
+          {
+            "name": "contact",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed."
+          }
+        }
+      }
+    },
+    "/{person}/consents/{purpose}": {
+      "put": {
+        "tags": [
+          "people"
+        ],
+        "operationId": "peopleSetConsent",
+        "summary": "Record a person's consent, for example from a paper form. Needs people.profiles.manage (or your own ID).",
+        "parameters": [
+          {
+            "name": "person",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          },
+          {
+            "name": "purpose",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A consent purpose, <owner>.<ident>."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PeopleConsentInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The consent now.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeopleConsent"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{person}/link-account": {
+      "post": {
+        "tags": [
+          "people"
+        ],
+        "operationId": "peopleLinkAccount",
+        "summary": "Join the account with this login address to a person who has none. Needs people.profiles.manage. 404 (field email, code unknown) when no account has the address; 409 has_account or superuser. The empty profile sign-up made is removed when nothing refers to it.",
+        "parameters": [
+          {
+            "name": "person",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PeopleLinkInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Linked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeopleLinkResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{person}/export": {
+      "get": {
+        "tags": [
+          "people"
+        ],
+        "operationId": "peopleExport",
+        "summary": "Download everything bms holds about a person as one JSON attachment. Needs people.data.export. Audited.",
+        "parameters": [
+          {
+            "name": "person",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The export document, format 1.",
+            "headers": {
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "PeoplePerson": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "playa_name": {
+            "type": "string"
+          },
+          "pronouns": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          },
+          "legal_name": {
+            "type": "string",
+            "description": "Only when the viewer may see personal fields (see fields)."
+          },
+          "phone": {
+            "type": "string"
+          },
+          "contact_email": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "description": "The login address."
+          },
+          "has_account": {
+            "type": "boolean"
+          },
+          "complete": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "playa_name",
+          "pronouns",
+          "language",
+          "has_account",
+          "complete"
+        ]
+      },
+      "PeopleContact": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "person_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "name": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "relationship": {
+            "type": "string"
+          },
+          "position": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "person_id",
+          "name",
+          "phone",
+          "relationship",
+          "position",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "PeopleContactInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "relationship": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "phone"
+        ]
+      },
+      "PeopleConsent": {
+        "type": "object",
+        "properties": {
+          "person_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "granted": {
+            "type": "boolean"
+          },
+          "recorded_by": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "changed_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "person_id",
+          "purpose",
+          "granted",
+          "changed_at"
+        ]
+      },
+      "PeopleConsentInput": {
+        "type": "object",
+        "properties": {
+          "granted": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "granted"
+        ]
+      },
+      "PeopleSection": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "<module>.<ident>; the title is module.<module>.section.<ident>.title."
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                },
+                "href": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "label",
+                "value"
+              ]
+            }
+          },
+          "failed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key",
+          "items",
+          "failed"
+        ]
+      },
+      "PeopleCan": {
+        "type": "object",
+        "properties": {
+          "edit": {
+            "type": "boolean"
+          },
+          "read_contacts": {
+            "type": "boolean"
+          },
+          "export": {
+            "type": "boolean"
+          },
+          "delete": {
+            "type": "boolean"
+          },
+          "link": {
+            "type": "boolean"
+          },
+          "view_roles": {
+            "type": "boolean"
+          },
+          "view_audit": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "edit",
+          "read_contacts",
+          "export",
+          "delete",
+          "link",
+          "view_roles",
+          "view_audit"
+        ]
+      },
+      "PeoplePolicy": {
+        "type": "object",
+        "properties": {
+          "legal_name": {
+            "type": "string",
+            "enum": [
+              "hidden",
+              "optional",
+              "required"
+            ]
+          },
+          "phone": {
+            "type": "string",
+            "enum": [
+              "hidden",
+              "optional",
+              "required"
+            ]
+          },
+          "emergency_contacts": {
+            "type": "string",
+            "enum": [
+              "hidden",
+              "optional",
+              "required"
+            ]
+          }
+        },
+        "required": [
+          "legal_name",
+          "phone",
+          "emergency_contacts"
+        ]
+      },
+      "PeopleProfile": {
+        "type": "object",
+        "properties": {
+          "person": {
+            "$ref": "#/components/schemas/PeoplePerson"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Which field groups were included: playa_name, pronouns, language, legal_name, phone, contact_email, email, emergency_contacts, consents."
+          },
+          "contacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PeopleContact"
+            }
+          },
+          "consents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PeopleConsent"
+            }
+          },
+          "sections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PeopleSection"
+            }
+          },
+          "can": {
+            "$ref": "#/components/schemas/PeopleCan"
+          },
+          "policy": {
+            "$ref": "#/components/schemas/PeoplePolicy"
+          }
+        },
+        "required": [
+          "person",
+          "fields",
+          "contacts",
+          "consents",
+          "sections",
+          "can",
+          "policy"
+        ]
+      },
+      "PeopleProfileInput": {
+        "type": "object",
+        "properties": {
+          "playa_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Absent or null leaves the field unchanged; an empty string clears it."
+          },
+          "pronouns": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Absent or null leaves the field unchanged; an empty string clears it."
+          },
+          "language": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Absent or null leaves the field unchanged; an empty string clears it."
+          },
+          "legal_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Absent or null leaves the field unchanged; an empty string clears it."
+          },
+          "phone": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Absent or null leaves the field unchanged; an empty string clears it."
+          },
+          "contact_email": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Absent or null leaves the field unchanged; an empty string clears it."
+          }
+        }
+      },
+      "PeopleMatchList": {
+        "type": "object",
+        "properties": {
+          "matches": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "$ref": "#/components/schemas/ID"
+                },
+                "playa_name": {
+                  "type": "string"
+                },
+                "pronouns": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "playa_name",
+                "pronouns"
+              ]
+            }
+          }
+        },
+        "required": [
+          "matches"
+        ]
+      },
+      "PeopleNames": {
+        "type": "object",
+        "properties": {
+          "names": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "names"
+        ]
+      },
+      "PeopleRequest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "person_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "delete"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "withdrawn",
+              "declined"
+            ]
+          },
+          "note": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "decided_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "decided_by": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "decision_note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "person_id",
+          "kind",
+          "status",
+          "note",
+          "created_at",
+          "decision_note"
+        ]
+      },
+      "PeopleRequestList": {
+        "type": "object",
+        "properties": {
+          "requests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PeopleRequest"
+            }
+          }
+        },
+        "required": [
+          "requests"
+        ]
+      },
+      "PeopleRequestInput": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "delete"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "PeopleDecisionInput": {
+        "type": "object",
+        "properties": {
+          "note": {
+            "type": "string",
+            "maxLength": 500
+          }
+        }
+      },
+      "PeopleLinkInput": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ]
+      },
+      "PeopleLinkResult": {
+        "type": "object",
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "orphan_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "orphan_deleted": {
+            "type": "boolean",
+            "description": "The empty profile sign-up made was removed; false means it was kept."
+          }
+        },
+        "required": [
+          "account_id",
+          "orphan_deleted"
+        ]
+      },
+      "PeopleDeletionReport": {
+        "type": "object",
+        "properties": {
+          "person": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "people": {
+            "type": "integer"
+          },
+          "identity": {
+            "type": "integer"
+          },
+          "access": {
+            "type": "integer"
+          },
+          "modules": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "deleted": {
+                  "type": "integer"
+                },
+                "anonymized": {
+                  "type": "integer"
+                },
+                "kept": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PeopleKept"
+                  }
+                }
+              },
+              "required": [
+                "deleted",
+                "anonymized",
+                "kept"
+              ]
+            }
+          },
+          "kept": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PeopleKept"
+            }
+          }
+        },
+        "required": [
+          "person",
+          "people",
+          "identity",
+          "access",
+          "modules",
+          "kept"
+        ]
+      },
+      "PeopleKept": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "count"
+        ]
+      }
+    }
+  }
+}

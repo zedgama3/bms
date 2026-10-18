@@ -59,6 +59,7 @@ var (
 	sqlTouchLogin     = mustSQL("touch_login.sql")
 	sqlRehash         = mustSQL("rehash_password.sql")
 	sqlUpsertSuperuse = mustSQL("upsert_superuser.sql")
+	sqlSetPerson      = mustSQL("set_account_person.sql")
 )
 
 func mustSQL(name string) string {
@@ -385,4 +386,17 @@ func (s *Store) Superuser(ctx context.Context, id model.AccountID, person model.
 	}
 	out.ID, out.Person = model.AccountID(aid), model.PersonID(pi)
 	return out, nil
+}
+
+// SetPerson points the account at person and returns the person it pointed at before. A
+// person who already has an account fails errs.Conflict with *db.Error whose Constraint is
+// account_person_id_key; an unknown account fails errs.NotFound; a read-only copy fails
+// errs.Unavailable wrapping db.ErrReadOnly.
+func (s *Store) SetPerson(ctx context.Context, id model.AccountID, person model.PersonID, at time.Time) (model.PersonID, error) {
+	const op = "identity.postgres.SetPerson"
+	var previous [16]byte
+	if err := s.db.QueryRow(ctx, sqlSetPerson, [16]byte(id), [16]byte(person), at.UTC()).Scan(&previous); err != nil {
+		return model.PersonID{}, db.Wrap(op, err)
+	}
+	return model.PersonID(previous), nil
 }

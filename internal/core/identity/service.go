@@ -42,6 +42,7 @@ type store interface {
 	ListByEmail(ctx context.Context, e model.Email) ([]account.Record, error)
 	ExportByPerson(ctx context.Context, p model.PersonID) (account.Record, error)
 	DeleteByPerson(ctx context.Context, p model.PersonID) (model.AccountID, int, error)
+	SetPerson(ctx context.Context, id model.AccountID, person model.PersonID, at time.Time) (model.PersonID, error)
 	SetPassword(ctx context.Context, id model.AccountID, hash secret.Secret, at time.Time) (int32, error)
 	SetTemporaryPassword(ctx context.Context, id model.AccountID, hash secret.Secret, at time.Time) (int32, error)
 	BumpGeneration(ctx context.Context, id model.AccountID, at time.Time) (int32, error)

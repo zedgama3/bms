@@ -3,6 +3,7 @@ package identity
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/zedgama3/bms/internal/core/audit"
@@ -48,8 +49,8 @@ func (s *Service) ExportPerson(ctx context.Context, person model.PersonID) (_ js
 // DeletePerson deletes the person's account row (0 or 1) and records
 // identity.account.deleted in the caller's Write transaction (Transact joins it); its
 // sessions fail at the next request (NotFound becomes Unauthenticated). Idempotent: no
-// account, no entry, 0. Fails Invalid for a zero ID (F47), Unavailable wrapping
-// db.ErrReadOnly (F48), store and audit kinds.
+// account, no entry, 0. Fails Invalid for a zero ID (F47), Permission for a superuser
+// account (F68), Unavailable wrapping db.ErrReadOnly (F48), store and audit kinds.
 func (s *Service) DeletePerson(ctx context.Context, person model.PersonID) (_ int, err error) {
 	const op = "identity.Service.DeletePerson"
 	ctx, span := s.start(ctx, "delete-person")
@@ -60,6 +61,13 @@ func (s *Service) DeletePerson(ctx context.Context, person model.PersonID) (_ in
 	}
 	var n int
 	err = s.db.Transact(ctx, db.Write, func(ctx context.Context) error {
+		// A superuser account is never changed through the API (decision 7, F68).
+		switch rec, err := s.store.ExportByPerson(ctx, person); {
+		case err == nil && rec.Superuser:
+			return errs.E(op, errs.Permission, errors.New("the superuser account cannot be deleted"))
+		case err != nil && !errs.Is(err, errs.NotFound):
+			return wrap(op, err)
+		}
 		id, deleted, err := s.store.DeleteByPerson(ctx, person)
 		if err != nil {
 			return wrap(op, err)
