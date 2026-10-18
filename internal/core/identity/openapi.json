@@ -1,0 +1,227 @@
+{
+  "tags": [
+    {
+      "name": "accounts",
+      "description": "Who is signed in, and the local accounts: sign-up, sign-in, passwords and the account admin."
+    }
+  ],
+  "paths": {
+    "/session": {
+      "get": {
+        "tags": ["accounts"],
+        "operationId": "accountsSession",
+        "summary": "Who is making this request. Public; never an error for a missing session. Not cached.",
+        "responses": {
+          "200": {
+            "description": "The session, or signed_in false.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AccountsSession"}}}
+          }
+        }
+      }
+    },
+    "/sign-up": {
+      "post": {
+        "tags": ["accounts"],
+        "operationId": "accountsSignUp",
+        "summary": "Create an account and sign in. 409 with field email, code taken, when the address has an account; 501 when sign-ups are by invitation; rate-limited.",
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AccountsCredentials"}}}
+        },
+        "responses": {
+          "201": {"description": "Created and signed in; the session cookie is set. Read GET /session for the session."}
+        }
+      }
+    },
+    "/sign-in": {
+      "post": {
+        "tags": ["accounts"],
+        "operationId": "accountsSignIn",
+        "summary": "Sign in. 401 for an unknown address, a wrong password or a disabled account, without saying which; 429 when rate-limited.",
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AccountsCredentials"}}}
+        },
+        "responses": {
+          "204": {"description": "Signed in; the session cookie is set. Read GET /session for the session."}
+        }
+      }
+    },
+    "/sign-out": {
+      "post": {
+        "tags": ["accounts"],
+        "operationId": "accountsSignOut",
+        "summary": "Sign out. The cookie is cleared even when recording the sign-out fails.",
+        "responses": {
+          "204": {"description": "Signed out; the session cookie is cleared."}
+        }
+      }
+    },
+    "/password": {
+      "post": {
+        "tags": ["accounts"],
+        "operationId": "accountsChangePassword",
+        "summary": "Change your own password. Allowed for a session that must change its password. Ends every other session and sets a new cookie.",
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AccountsPasswordChange"}}}
+        },
+        "responses": {
+          "204": {"description": "Changed; a new session cookie is set."}
+        }
+      }
+    },
+    "/sessions/end-others": {
+      "post": {
+        "tags": ["accounts"],
+        "operationId": "accountsEndOtherSessions",
+        "summary": "Sign out everywhere else: ends every other session of your account and sets a new cookie.",
+        "responses": {
+          "204": {"description": "Other sessions ended; a new session cookie is set."}
+        }
+      }
+    },
+    "/": {
+      "get": {
+        "tags": ["accounts"],
+        "operationId": "accountsList",
+        "summary": "List accounts, newest first, or find the one at an exact address. Needs accounts.read. Each account but your own is recorded as a read.",
+        "parameters": [
+          {"name": "email", "in": "query", "schema": {"type": "string"}, "description": "Find the account at exactly this address (ignoring case); after and limit are ignored."},
+          {"name": "after", "in": "query", "schema": {"type": "string"}, "description": "The next value of the previous page."},
+          {"name": "limit", "in": "query", "schema": {"type": "integer", "minimum": 0, "maximum": 100}, "description": "Page size; 0 or absent means 50."}
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of accounts.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AccountsAccountPage"}}}
+          }
+        }
+      }
+    },
+    "/{account}": {
+      "get": {
+        "tags": ["accounts"],
+        "operationId": "accountsGet",
+        "summary": "One account. Needs accounts.read. Recorded as a read unless it is your own.",
+        "parameters": [
+          {"name": "account", "in": "path", "required": true, "schema": {"$ref": "#/components/schemas/ID"}}
+        ],
+        "responses": {
+          "200": {
+            "description": "The account.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AccountsAccount"}}}
+          }
+        }
+      }
+    },
+    "/{account}/disable": {
+      "post": {
+        "tags": ["accounts"],
+        "operationId": "accountsDisable",
+        "summary": "Disable an account and end its sessions. Needs accounts.manage. Not the superuser account (403) and not your own (400, field account, code self). Idempotent.",
+        "parameters": [
+          {"name": "account", "in": "path", "required": true, "schema": {"$ref": "#/components/schemas/ID"}}
+        ],
+        "responses": {
+          "204": {"description": "Disabled (or already disabled)."}
+        }
+      }
+    },
+    "/{account}/enable": {
+      "post": {
+        "tags": ["accounts"],
+        "operationId": "accountsEnable",
+        "summary": "Enable a disabled account. Needs accounts.manage. Same refusals as disable. Idempotent.",
+        "parameters": [
+          {"name": "account", "in": "path", "required": true, "schema": {"$ref": "#/components/schemas/ID"}}
+        ],
+        "responses": {
+          "204": {"description": "Enabled (or already enabled)."}
+        }
+      }
+    },
+    "/{account}/temporary-password": {
+      "post": {
+        "tags": ["accounts"],
+        "operationId": "accountsSetTemporaryPassword",
+        "summary": "Set a generated password the person must change at their next sign-in, and end their sessions. Needs accounts.manage. Same refusals as disable. The password is shown once and not cached.",
+        "parameters": [
+          {"name": "account", "in": "path", "required": true, "schema": {"$ref": "#/components/schemas/ID"}}
+        ],
+        "responses": {
+          "200": {
+            "description": "The new password, shown once.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AccountsTemporaryPassword"}}}
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AccountsSession": {
+        "type": "object",
+        "required": ["signed_in", "superuser", "password_change_required", "signup_open", "permissions"],
+        "properties": {
+          "signed_in": {"type": "boolean"},
+          "person_id": {"$ref": "#/components/schemas/ID"},
+          "account_id": {"$ref": "#/components/schemas/ID"},
+          "playa_name": {"type": "string", "description": "Absent until the person has a profile."},
+          "superuser": {"type": "boolean"},
+          "password_change_required": {"type": "boolean", "description": "The password is temporary: only the accounts routes work until it is changed."},
+          "expires_at": {"type": "string", "format": "date-time"},
+          "signup_open": {"type": "boolean", "description": "Whether anyone may create an account; true also when signed out."},
+          "permissions": {"type": "array", "items": {"type": "string"}, "description": "The site-wide permissions the person holds; never null."}
+        }
+      },
+      "AccountsCredentials": {
+        "type": "object",
+        "required": ["email", "password"],
+        "properties": {
+          "email": {"type": "string"},
+          "password": {"type": "string"}
+        }
+      },
+      "AccountsPasswordChange": {
+        "type": "object",
+        "required": ["current_password", "new_password"],
+        "properties": {
+          "current_password": {"type": "string"},
+          "new_password": {"type": "string"}
+        }
+      },
+      "AccountsAccount": {
+        "type": "object",
+        "required": ["id", "person_id", "email", "superuser", "password_change_required", "password_changed_at", "created_at", "updated_at"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"},
+          "person_id": {"$ref": "#/components/schemas/ID"},
+          "email": {"type": "string", "description": "As entered."},
+          "superuser": {"type": "boolean"},
+          "password_change_required": {"type": "boolean"},
+          "disabled_at": {"type": "string", "format": "date-time", "description": "Absent when the account is enabled."},
+          "last_login_at": {"type": "string", "format": "date-time", "description": "Absent when the person never signed in."},
+          "password_changed_at": {"type": "string", "format": "date-time"},
+          "created_at": {"type": "string", "format": "date-time"},
+          "updated_at": {"type": "string", "format": "date-time"}
+        }
+      },
+      "AccountsAccountPage": {
+        "type": "object",
+        "required": ["accounts"],
+        "properties": {
+          "accounts": {"type": "array", "items": {"$ref": "#/components/schemas/AccountsAccount"}},
+          "next": {"type": "string", "description": "Pass as after to get the next page; absent on the last page."}
+        }
+      },
+      "AccountsTemporaryPassword": {
+        "type": "object",
+        "required": ["password"],
+        "properties": {
+          "password": {"type": "string", "description": "Shown once; never retrievable again."}
+        }
+      }
+    }
+  }
+}

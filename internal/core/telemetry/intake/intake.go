@@ -18,6 +18,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/telemetry"
 	"github.com/zedgama3/bms/internal/lib/clock"
 	"github.com/zedgama3/bms/internal/lib/errs"
+	"github.com/zedgama3/bms/internal/lib/httpx"
 	"github.com/zedgama3/bms/internal/lib/validate"
 	"github.com/zedgama3/bms/internal/model"
 )
@@ -41,8 +42,10 @@ const (
 const rateLimitLogEvery = time.Hour
 
 // ErrRateLimited is wrapped (errs.Unavailable) by every rejection for rate; api maps it to
-// 429 with Retry-After: 60. Check it with errors.Is before the kind, as with db.ErrReadOnly.
-var ErrRateLimited = errors.New("too many client error reports")
+// 429 with Retry-After: 60. It is httpx.ErrRateLimited, the sentinel identity's limiters
+// share, so errors.Is holds both ways. Check it with errors.Is before the kind, as with
+// db.ErrReadOnly.
+var ErrRateLimited = httpx.ErrRateLimited
 
 // Options is what New needs.
 type Options struct {

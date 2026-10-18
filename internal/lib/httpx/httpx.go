@@ -42,7 +42,7 @@ type Field struct {
 // Shell codes that are not errs.Kind names. The strings are stable API, pinned by a test.
 const (
 	CodeReadOnly             = "read_only"              // 503: db.ErrReadOnly
-	CodeRateLimited          = "rate_limited"           // 429: intake.ErrRateLimited
+	CodeRateLimited          = "rate_limited"           // 429: ErrRateLimited (intake and identity)
 	CodeShuttingDown         = "shutting_down"          // 503: canceled by shutdown, client still connected
 	CodePayloadTooLarge      = "payload_too_large"      // 413: *http.MaxBytesError
 	CodeUnsupportedMediaType = "unsupported_media_type" // 415: ErrUnsupportedMediaType
@@ -51,6 +51,11 @@ const (
 	CodeMethodNotAllowed     = "method_not_allowed"     // 405: the path exists, the method does not
 	CodeNotFound             = "not_found"              // 404: also errs.NotFound
 )
+
+// ErrRateLimited is wrapped (errs.Unavailable) by every rejection for rate: the client-error
+// intake's and identity's login limiters. The mapper answers 429 rate_limited with
+// Retry-After: 60. Check it with errors.Is before the kind, as with db.ErrReadOnly.
+var ErrRateLimited = errors.New("too many requests")
 
 // ErrUnsupportedMediaType is wrapped (errs.Invalid) by ReadJSON when the request's
 // Content-Type is not JSON; the mapper answers 415. Check it with errors.Is before the kind.

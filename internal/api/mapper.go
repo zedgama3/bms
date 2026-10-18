@@ -12,7 +12,6 @@ import (
 
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/telemetry"
-	"github.com/zedgama3/bms/internal/core/telemetry/intake"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/lib/httpx"
 	"github.com/zedgama3/bms/internal/lib/validate"
@@ -52,7 +51,7 @@ func (s *Server) classify(err error) outcome {
 		return outcome{status: se.status, code: se.code, extra: se.extra}
 	case errors.Is(err, db.ErrReadOnly):
 		return outcome{status: http.StatusServiceUnavailable, code: httpx.CodeReadOnly}
-	case errors.Is(err, intake.ErrRateLimited):
+	case errors.Is(err, httpx.ErrRateLimited):
 		return outcome{status: http.StatusTooManyRequests, code: httpx.CodeRateLimited,
 			extra: http.Header{"Retry-After": {"60"}}}
 	case errors.Is(err, httpx.ErrUnsupportedMediaType):

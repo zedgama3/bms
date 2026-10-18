@@ -156,8 +156,12 @@ func (st *reqState) authenticate(r *http.Request) (*http.Request, bool) {
 			st.Fail(st.rw, r, errs.E(op, errs.Internal, errNilContext))
 			return r, false
 		default:
+			// The returned ctx always replaces the request's, even with no person: a
+			// restricted session (a temporary password) is in ctx for identity's own routes.
 			ctx = nctx
 			st.actor = pid
+			st.ctx = ctx
+			r = r.WithContext(ctx)
 		}
 	}
 	if !st.actor.IsZero() {
