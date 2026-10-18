@@ -1,0 +1,303 @@
+{
+  "tags": [
+    {
+      "name": "departments",
+      "description": "The regional's standing departments: details, archiving and restoring."
+    }
+  ],
+  "paths": {
+    "/": {
+      "get": {
+        "tags": [
+          "departments"
+        ],
+        "operationId": "departmentsList",
+        "summary": "Active departments by name; every signed-in person may read them. include_archived=true adds archived ones and needs departments.manage (403 otherwise).",
+        "parameters": [
+          {
+            "name": "include_archived",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The departments.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "departments"
+                  ],
+                  "properties": {
+                    "departments": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Department"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "departments"
+        ],
+        "operationId": "departmentsCreate",
+        "summary": "Create a department. Needs departments.manage. 400 name required, too_long, control_chars; description too_long; contact_email malformed; 409 name taken.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DepartmentCreateInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Department"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{department}": {
+      "get": {
+        "tags": [
+          "departments"
+        ],
+        "operationId": "departmentsGet",
+        "summary": "One department. An archived one is 404 unless the caller holds departments.manage or departments.details.manage at it.",
+        "parameters": [
+          {
+            "name": "department",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The department.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Department"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "departments"
+        ],
+        "operationId": "departmentsUpdate",
+        "summary": "Change the fields set. name needs departments.manage; description and contact_email need departments.details.manage at the department. 400 body required when no field is set; 409 archived, or name taken.",
+        "parameters": [
+          {
+            "name": "department",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DepartmentUpdateInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The department after the change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Department"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{department}/archive": {
+      "post": {
+        "tags": [
+          "departments"
+        ],
+        "operationId": "departmentsArchive",
+        "summary": "Archive a department. Needs departments.manage. Grants stay; the department stops being active. 409 archived when it already is.",
+        "parameters": [
+          {
+            "name": "department",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The archived department.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Department"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{department}/restore": {
+      "post": {
+        "tags": [
+          "departments"
+        ],
+        "operationId": "departmentsRestore",
+        "summary": "Restore an archived department. Needs departments.manage. 409 not_archived when it is active.",
+        "parameters": [
+          {
+            "name": "department",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The restored department.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Department"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Department": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "archived",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "contact_email": {
+            "type": "string",
+            "description": "The department's shared mailbox, never a person's address. Omitted when none."
+          },
+          "archived": {
+            "type": "boolean"
+          },
+          "archived_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Omitted while active."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "DepartmentCreateInput": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "contact_email": {
+            "type": "string"
+          }
+        }
+      },
+      "DepartmentUpdateInput": {
+        "type": "object",
+        "required": [],
+        "properties": {
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Needs departments.manage."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Needs departments.details.manage at the department."
+          },
+          "contact_email": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Needs departments.details.manage at the department. Empty clears it."
+          }
+        }
+      }
+    }
+  }
+}

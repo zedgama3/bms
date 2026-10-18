@@ -1,0 +1,825 @@
+{
+  "tags": [
+    {
+      "name": "events",
+      "description": "The events the regional puts on: dates and zone, kinds, schedule, closing, and the modules' set-up."
+    }
+  ],
+  "paths": {
+    "/": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "operationId": "eventsList",
+        "summary": "Events newest first; every signed-in person may read them. status is any (default), open or closed (400 one_of otherwise).",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "any",
+                "open",
+                "closed"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The events.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "events"
+                  ],
+                  "properties": {
+                    "events": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Event"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "events"
+        ],
+        "operationId": "eventsCreate",
+        "summary": "Create an event; with copy_from, the modules' set-up runs and its outcome is in setup (a failed provider never undoes the event). Needs events.manage. 400 name, kind (malformed, unknown), dates.start and dates.end (required, range), zone (malformed, too_long), copy_from unknown; 409 name taken.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventCreateInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventCreated"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/kinds": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "operationId": "eventsListKinds",
+        "summary": "Event kinds, the seeded ones first. Every signed-in person may read them.",
+        "responses": {
+          "200": {
+            "description": "The kinds.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "kinds"
+                  ],
+                  "properties": {
+                    "kinds": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/EventKind"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "events"
+        ],
+        "operationId": "eventsCreateKind",
+        "summary": "Add a kind. Needs events.manage. 400 key malformed, too_long; name required, too_long; 409 key taken.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventKindInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventKind"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/kinds/{kind}": {
+      "put": {
+        "tags": [
+          "events"
+        ],
+        "operationId": "eventsUpdateKind",
+        "summary": "Rename a kind (a seeded one too); the key never changes and a key in the body is ignored. Needs events.manage. 404 for an unknown key.",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventKindInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The kind after the change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventKind"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{event}": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "operationId": "eventsGet",
+        "summary": "One event with its schedule, sorted by start then position.",
+        "parameters": [
+          {
+            "name": "event",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The event.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventDetail"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "events"
+        ],
+        "operationId": "eventsUpdate",
+        "summary": "Change the fields set on an open event. Needs events.manage. 400 body required when no field is set, and field errors as for create; 409 closed, or name taken.",
+        "parameters": [
+          {
+            "name": "event",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventUpdateInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The event after the change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Event"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{event}/close": {
+      "post": {
+        "tags": [
+          "events"
+        ],
+        "operationId": "eventsClose",
+        "summary": "Close an event; it accepts no changes until reopened. Needs events.manage. 409 closed when it already is.",
+        "parameters": [
+          {
+            "name": "event",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The closed event.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Event"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{event}/reopen": {
+      "post": {
+        "tags": [
+          "events"
+        ],
+        "operationId": "eventsReopen",
+        "summary": "Reopen a closed event. Needs events.manage. 409 open when it is not closed.",
+        "parameters": [
+          {
+            "name": "event",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The reopened event.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Event"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{event}/setup": {
+      "post": {
+        "tags": [
+          "events"
+        ],
+        "operationId": "eventsRunSetup",
+        "summary": "Run the modules' set-up again for an open event, copying from another. Needs events.manage. 400 copy_from required, self, unknown; 409 closed.",
+        "parameters": [
+          {
+            "name": "event",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventSetupInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "What each module did.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "setup"
+                  ],
+                  "properties": {
+                    "setup": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/EventSetupResult"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{event}/schedule": {
+      "post": {
+        "tags": [
+          "events"
+        ],
+        "operationId": "eventsAddScheduleItem",
+        "summary": "Add a schedule item to an open event, at most 100. Needs events.manage. 400 key malformed; label required, too_long; starts_at required; ends_at range; schedule too_many; 409 closed, or key duplicate.",
+        "parameters": [
+          {
+            "name": "event",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventScheduleInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Added.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventScheduleItem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{event}/schedule/{item}": {
+      "put": {
+        "tags": [
+          "events"
+        ],
+        "operationId": "eventsUpdateScheduleItem",
+        "summary": "Replace one schedule item. Needs events.manage. 404 when the item is not this event's; errors as for add.",
+        "parameters": [
+          {
+            "name": "event",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          },
+          {
+            "name": "item",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventScheduleInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Changed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventScheduleItem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "events"
+        ],
+        "operationId": "eventsRemoveScheduleItem",
+        "summary": "Delete one schedule item. Needs events.manage. 404 when the item is not this event's; 409 closed.",
+        "parameters": [
+          {
+            "name": "event",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          },
+          {
+            "name": "item",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Event": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "dates",
+          "zone",
+          "closed",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "description": "A kind key; see GET /kinds."
+          },
+          "dates": {
+            "type": "object",
+            "required": [
+              "start",
+              "end"
+            ],
+            "properties": {
+              "start": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "end": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          },
+          "zone": {
+            "type": "string",
+            "description": "IANA zone name the dates are shown in."
+          },
+          "closed": {
+            "type": "boolean"
+          },
+          "closed_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Omitted while open."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "EventDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Event"
+          },
+          {
+            "type": "object",
+            "required": [
+              "schedule"
+            ],
+            "properties": {
+              "schedule": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/EventScheduleItem"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "EventScheduleItem": {
+        "type": "object",
+        "required": [
+          "id",
+          "event",
+          "label",
+          "starts_at",
+          "position"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "event": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "key": {
+            "type": "string",
+            "description": "Optional token unique within the event. Omitted when none."
+          },
+          "label": {
+            "type": "string"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Omitted for a moment."
+          },
+          "position": {
+            "type": "integer"
+          }
+        }
+      },
+      "EventKind": {
+        "type": "object",
+        "required": [
+          "key",
+          "name",
+          "builtin",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "builtin": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "EventSetupResult": {
+        "type": "object",
+        "required": [
+          "module",
+          "items",
+          "failed"
+        ],
+        "properties": {
+          "module": {
+            "type": "string"
+          },
+          "items": {
+            "type": "integer"
+          },
+          "failed": {
+            "type": "boolean"
+          },
+          "code": {
+            "type": "string",
+            "description": "The error kind name when failed (permission, timeout, unavailable, internal, ...)."
+          }
+        }
+      },
+      "EventCreated": {
+        "type": "object",
+        "required": [
+          "event",
+          "setup"
+        ],
+        "properties": {
+          "event": {
+            "$ref": "#/components/schemas/Event"
+          },
+          "setup": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EventSetupResult"
+            }
+          }
+        }
+      },
+      "EventCreateInput": {
+        "type": "object",
+        "required": [
+          "name",
+          "kind",
+          "dates",
+          "zone"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "dates": {
+            "type": "object",
+            "required": [
+              "start",
+              "end"
+            ],
+            "properties": {
+              "start": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "end": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          },
+          "zone": {
+            "type": "string"
+          },
+          "copy_from": {
+            "$ref": "#/components/schemas/ID",
+            "description": "Optional: the event whose module data the set-up providers copy."
+          }
+        }
+      },
+      "EventUpdateInput": {
+        "type": "object",
+        "required": [],
+        "properties": {
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "zone": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dates": {
+            "oneOf": [
+              {
+                "type": "object",
+                "required": [
+                  "start",
+                  "end"
+                ],
+                "properties": {
+                  "start": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "end": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "EventScheduleInput": {
+        "type": "object",
+        "required": [
+          "label",
+          "starts_at"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Optional token, lower-case letters, digits and single hyphens, at most 32 bytes."
+          },
+          "label": {
+            "type": "string"
+          },
+          "starts_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Omit for a moment."
+          }
+        }
+      },
+      "EventKindInput": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "EventSetupInput": {
+        "type": "object",
+        "required": [
+          "copy_from"
+        ],
+        "properties": {
+          "copy_from": {
+            "$ref": "#/components/schemas/ID"
+          }
+        }
+      }
+    }
+  }
+}
