@@ -51,6 +51,9 @@ internal/modules/<name>/
                    (an actor function, a permission checker, a setting source) wired to "no
                    actor", "deny" and "the declared default"; the service fails closed and
                    the wiring, not the code, changes later (`hello` shows it)
+                   The actor is `identity.PersonFrom(ctx)` (false inside a signal delivery and for
+                   a restricted session): the module imports `core/identity` for it and takes it
+                   as a seam (`actorFunc`) so tests use `identity.WithSession`; no `Deps` field
   <record>/        a leaf package for record types shared by the service and the store
                    (`hello/greeting`). The module root imports postgres/ to build the store,
                    so postgres/ cannot import the root; the leaf imports only model and lib
@@ -107,6 +110,12 @@ The template to copy is the `hello` reference module (`plan/design/module-hello.
     core's routes, and import only `@/api`, `@/i18n`, `@/ui`, `@/registry/types` and
     themselves; another module's data comes through a contract the owning module renders.
     ESLint and `scripts/check-web-module-imports.sh` (`make imports`) enforce it.
+- **Audit what the privacy rules say to audit** (`audit.md`; `deps.Audit` is scoped to the
+  module, so actions are `<module>.<record>.<verb>`). Every read of `personal` fields about
+  someone else and every `sensitive` read calls `deps.Audit.Record` after loading and before
+  returning, with `Fields` and `Level`. A change records inside its `Write` transaction.
+  Never record inside a `Read` transaction (`Internal`). A `Record` error fails the use case
+  (no audit, no action). Unit tests use `audittest.NewFake(Manifest.Name)`.
 - **Every screen works on a phone first** (web-shell.md decision 21; owner, 2026-10-17):
   many participants only have a phone, so a flow that needs a wide screen or a mouse is a
   defect. Screens use the shell's `ErrorState` and `ErrorSummary`, `useT` with typed keys

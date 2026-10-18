@@ -2,6 +2,7 @@
 
 - **Status:** Implemented (2026-10-17); Approved (2026-10-16)
 - Amended 2026-10-17 (owner): `Write` begins with plain `BEGIN` so the session's `default_transaction_read_only` applies (server answers 25006); a NULL uuid scans into `*model.ID[E]`; accepted implementation deviations recorded in Behavior, "Accepted implementation deviations".
+- **Amended 2026-10-18 (owner approval of audit/identity):** Proposed change 10 applied for `audit` and `identity` (`postgres.Migrations`, `audit.Set`, `identity.Set`, schema `core`); audit's guard deviates from "insert and select only": `UPDATE` and `TRUNCATE` are revoked from the application role and a trigger refuses `UPDATE`, `DELETE` and `TRUNCATE`, with `DELETE` allowed only inside `core.audit_purge` through a transaction-local flag, because the installation has one role and a plain grant cannot tell the retention job from the app (audit decision 9).
 - **Package:** `internal/core/db` (Go module `github.com/zedgama3/bms`), plus the test
   helper package `internal/core/db/dbtest`. **UI:** none of its own; the "this copy is
   read-only" banner and `/readyz` are `web-shell.md`'s and `api.md`'s, fed by `ReadOnly()`
@@ -97,7 +98,7 @@ once, calls `Close` after `Set.Stop` and the HTTP server; core packages export `
 
 Accepted deviations (2026-10-17, see Behavior): `Write` is plain `BEGIN`; the probe also reads `pg_db_role_setting` and the pool is Reset on a state change; a `25006` in a Read tx owned by the pool is `Internal` and flips nothing; a closed pool is `Unavailable`; `Write` nested in `Read` and `AfterCommit` after an ended tx are `Invalid`; `Migrate` returns the files applied so far with the error; `Wrap` keeps only `%T` for unknown errors.
 
-Pending proposed changes (targets not yet written): 10 core specs with tables export a migration `Set`, 11
+Pending proposed changes (targets not yet written): 10 core specs with tables export a migration `Set` (applied for `audit` and `identity`, 2026-10-18), 11
 `docs/operating.md`, 13 jobs/notify read `ReadOnly()` and stop on `ErrReadOnly`.
 
 ## Purpose
@@ -571,8 +572,8 @@ None. `db` performs no operation on behalf of a person; every store names the pe
 for its own operation and checks it in the service before calling `db` (09 ground rules).
 The commands that use `Migrator` run on the host as the operator. The PostgreSQL role in
 `db.url` is the installation's one role; what it may do is the operator's grant (the
-`audit` spec restricts its own tables to insert and select by a grant in audit's
-migration). `GET /api/admin/modules`, which shows `Status`, is behind `core.modules.read`
+`audit` spec makes its table append-only: `UPDATE` and `TRUNCATE` are revoked in audit's
+migration and a trigger refuses `UPDATE`, `DELETE` and `TRUNCATE` outside `core.audit_purge`, audit decision 9). `GET /api/admin/modules`, which shows `Status`, is behind `core.modules.read`
 (module-contract "Permissions").
 
 ## Signals
@@ -1085,7 +1086,7 @@ the owner on 2026-10-16 and are recorded as decisions 20, 10 and 7.
 ## Proposed changes elsewhere
 
 Status as of 2026-10-17: items 1, 2, 3, 4, 5, 6, 7, 8, 9, 12 and the `.env.example` half of
-11 are applied. Items 10, 13 and the `docs/operating.md` half of 11 wait for their
+11 are applied. Items 13, item 10 for the specs not yet written, and the `docs/operating.md` half of 11 wait for their
 target to be written and are carried by this list until then.
 
 1. **`plan/07-abstractions.md`, `db` entry** (applied 2026-10-16): replace "Owns" with: the pool and its
@@ -1157,11 +1158,13 @@ target to be written and are carried by this list until then.
    its own constant policy; note beside `Retryable` that `db.ErrReadOnly` is `Unavailable`
    and a loop around a write must check the sentinel first (decision 9).
 10. **Every core spec with tables (`identity`, `people`, `departments-events`, `authz`,
-    `audit`, `settings`, `jobs`, `files`)** (pending: specs not written): export `var Migrations fs.FS` from its
+    `audit`, `settings`, `jobs`, `files`)** (applied 2026-10-18 for `audit` and `identity`: `postgres.Migrations`, `audit.Set`/`identity.Set`, schema `core`; pending for the rest: specs not written): export `var Migrations fs.FS` from its
     `postgres/` package (or a `db.Set`), schema `core`, set name equal to the package name;
     the set names are reserved module names already (module-contract "Reserved module
-    names"); `audit`'s migration grants the application role insert and select only on its
-    tables.
+    names"); `audit`'s migration revokes `UPDATE` and `TRUNCATE` from the application role and
+    installs the guard trigger, so the table is append-only except through `core.audit_purge`
+    (audit.md decision 9; this replaces "insert and select only", which a one-role installation
+    cannot enforce while keeping the retention purge).
 11. **`docs/operating.md` (pending: not written) and `deploy/compose/.env.example` (applied
     2026-10-16):** PostgreSQL 16
     or newer; the `bms` role needs `CREATE` on the database (schemas) and ownership of

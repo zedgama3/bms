@@ -25,7 +25,7 @@ copy and can fork it. Features are modules.
 ## Status
 
 - **Phase:** 0, foundations
-- **Last updated:** 2026-10-17
+- **Last updated:** 2026-10-18
 - **Done 2026-10-16:**
   - Repo scaffolded: plan, agents, skills, lint rules, dev compose. Methodology carried over
     from Sojourn (D7).
@@ -87,7 +87,9 @@ copy and can fork it. Features are modules.
      module-contract moduletest amendment (2026-10-17).
      Done 2026-10-17: M0 implemented on branch feat/m0 (every M0 spec Implemented; `bms migrate`,
      `check` and `serve` verified against the dev database; Playwright smoke passes against the
-     real server). Next: draft `audit` (order 10) and `identity` (order 11) for M1.
+     real server).
+     Done 2026-10-18: `audit` (order 10) and `identity` (order 11) are Approved (D35).
+     Next: M1 implementation.
      Open follow-ups:
      - (a) Confirm D34 as D20's debug-level exception.
      - (b) The M3 part name `departments-events` is not a core area name for `module.IsCoreArea`

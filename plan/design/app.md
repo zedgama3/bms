@@ -2,6 +2,7 @@
 
 - **Status:** Implemented (2026-10-17); Approved (2026-10-17)
 - **Amended 2026-10-17 (owner):** `check` ignores a never-migrated disabled module and exits 2 without a session key; `openapi` prints indented JSON; `migrate` creates the data directory only when it writes the secrets file; the part-name check uses `module.IsCoreArea`; debug logging is announced (decision 18); reviewer-accepted implementation deviations are recorded ("Accepted deviations").
+- **Amended 2026-10-18 (owner approval of audit/identity):** core part order is audit 1, identity 2 (identity's `build` takes the audit recorder; audit needs nothing from identity at build time); the audit and identity rows of "How later core services plug in" are filled in (audit.md Proposed change 1, identity.md Proposed change 3).
 - **Package:** `internal/app` (Go module `github.com/zedgama3/bms`), plus the helper package
   `internal/app/secrets` (the generated-secrets file) and the binary `cmd/bms`. **UI:**
   none of its own; `serve` hands the built web shell to `api`.
@@ -57,7 +58,7 @@
 - D9 start order: config, telemetry, registry, database, signals, parts, modules, HTTP shell, `Set.Start`, runnables, `Listen`.
 - D10 stop order HTTP, runnables, signals, modules, database, telemetry within `http.shutdown_timeout`; HTTP gets `max(1s, 2*budget/3)`; every closer is called even after failure; shutdown ctx is `WithoutCancel`.
 - D11 `serve` starts on a read-only copy; `migrate` refuses one.
-- D12 later core services plug in as ordered parts with `declare`, `build`, `link`, `start`/`stop` (order: identity, audit, settings, authz, people, departments-events, jobs, notify, files), not a registry.
+- D12 later core services plug in as ordered parts with `declare`, `build`, `link`, `start`/`stop` (order: audit, identity, settings, authz, people, departments-events, jobs, notify, files), not a registry.
 - D13 end-to-end test runs the real assembly in process through `Main`, plus one subprocess signal test.
 - D14 `migrate` creates data dir and secrets file before touching the database, only when `cfg.Session.Key` is unset (a read-only filesystem with `BMS_SESSION_KEY` injected works), then reloads config.
 - D15 the module list is `internal/app/modules.go` (blank imports) mirrored by `web/src/modules/index.ts`.
@@ -75,7 +76,7 @@
 **Open questions:**
 - None. Answered by the owner (2026-10-17): no drain delay in M0 (D17); non-`serve` commands log to stderr (D4); `serve` requires the session key from M0 (D6); a second signal terminates immediately (D1).
 
-**Proposed changes elsewhere (2026-10-17):** applied to config, module-contract, db, telemetry, signals, web-shell, api, 07-abstractions, 09 §1, add-module and go-conventions. Pending: jobs, identity, people, departments-events, authz, settings, audit, notify, files (targets not written), the D20 clarification (plan-keeper), the Makefile targets and `scripts/e2e.sh` (implementation, created when app is built), `docs/operating.md`.
+**Proposed changes elsewhere (2026-10-17):** applied to config, module-contract, db, telemetry, signals, web-shell, api, 07-abstractions, 09 §1, add-module and go-conventions; items 9 (identity) and the audit part of 11 applied 2026-10-18. Pending: jobs, people, departments-events, authz, settings, notify, files (targets not written), the D20 clarification (plan-keeper), the Makefile targets and `scripts/e2e.sh` (implementation, created when app is built), `docs/operating.md`.
 
 ## Purpose
 
@@ -784,8 +785,8 @@ a later part may read what an earlier one set on the `assembly`.
 
 | Order | Part | `declare` | `build` | `link` | Runnable | Deps field |
 |---|---|---|---|---|---|---|
-| 1 | `identity` (M1) | migration set `identity`; commands `create-superuser`, `rotate-secret`; core signals it publishes | `a.authenticator`; route set `accounts`; needs `cfg.Session.Key` | — | — | — |
-| 2 | `audit` (M1) | migration set `audit` | the recorder over `cfg.Data.Dir` (spool) and `cfg.Instance.Name`; `a.deps.Audit` | — | the spool importer, if its spec makes it one | `Audit` |
+| 1 | `audit` (M1) | migration set `audit` (`coreSets` order unchanged: no foreign keys); `corePerms` += `audit.Permissions`; settings declarations | `audit.New` over `cfg.Instance.Name`, `cfg.Data.Dir`, the pool, clock, telemetry, the actor closure (over `identity.SessionFrom`, called per request only), and `a.titles`/`a.permissions` (nil until authz's part sets them: read lazily through small adapters); `a.deps.Audit` left unscoped and scoped in `provision` with `Scoped(m.Name)`; route set `audit` from `Routes()`/`OpenAPI()` as `module.ModuleRoutes{Module: "audit"}` (`audit.Route` converted to `module.Route`) | — | `Run` (the spool importer) starts after `Set.Start` and stops with the runnables; `Close` after `Set.Stop`, before `db.Close` | `Audit` (scoped per module) |
+| 2 | `identity` (M1) | `identity.Set` in `coreSets` at its place in db.md's fixed order (identity first; part order does not change migration order); `identity.Permissions` to `corePerms`; `SignalAccountCreated` to `coreSignals`; command `create-superuser` (`usage: <email>`; `rotate-secret` later) | `identity.New` over `cfg.Session.Key`, `cfg.HTTP.AllowPlaintext`, `a.dbc`, the clock, telemetry, `audit.Scoped("identity")` (audit is built first), `a.disp.Scope("identity", {SignalAccountCreated}, nil)`, every seam nil; sets `a.authenticator` and route set `accounts` (`identity.Route` converted to `module.Route`); the audit actor closure is `func(ctx) (audit.Actor, bool)` over `identity.SessionFrom` (`{Kind: ActorPerson, Person, Superuser}`; a restricted session is still the person for audit) | — | — | — |
 | 3 | `settings` (M2) | migration set `settings`; route set declared as `settings` | the store; `Plan.Settings()`; `a.deps.Settings` (scoped per module in `provision`); the public settings and `theme.css` routes | — | — | `Settings` |
 | 4 | `authz` (M2) | migration set `authz`; `corePerms` of its own | the `Authorizer` over `a.corePerms` + `Plan.Permissions()`; `a.permissions`; `a.deps.Authz`; route set `access` | — | — | `Authz` |
 | 5 | `people` (M2) | migration set `people`; core signals `people.person-created`, `people.person-deleted`; extension point `people.person-page`; commands `export`, `delete` | the directory; `a.deps.People`; route set `people`; its signals scope | takes `a.set.PersonData()`; contributions to `people.person-page` (Proposed change 2(a)) | — | `People` |
@@ -1087,7 +1088,7 @@ decision 17 (not in M0); the stderr logging of `migrate`, `check` and `openapi` 
    equivalent) that `app` calls after `signals.New`; it is a `runnable`: `start` after
    `Set.Start` (modules register jobs in `Start`), `stop` after the HTTP server drained
    and before `signals.Close`; `Deps.Jobs` is scoped per module by `provision`.
-9. **`plan/design/identity.md` (row 6):** (pending: target not written) core part 1: `declare` registers the commands
+9. **`plan/design/identity.md` (row 6):** (applied 2026-10-18, by identity.md Proposed change 3 and the table row above; `rotate-secret` stays later) core part 2 (after audit): `declare` registers the commands
    `create-superuser` (M1) and `rotate-secret` (later) in app's command table with their
    `usage`, and its migration set; `build` sets `a.authenticator` and the `accounts`
    route set from `cfg.Session.Key`; both commands require the key (app F6) and load
@@ -1100,8 +1101,9 @@ decision 17 (not in M0); the stderr logging of `migrate`, `check` and `openapi` 
 11. **`plan/design/authz.md` (row 7):** (pending: target not written) part 4: `build` receives `a.corePerms`
     (`api.PermissionModulesRead` first, then every part's declarations) and
     `a.plan.Permissions()`, sets `a.permissions` and `a.deps.Authz`.
-    **`plan/design/settings.md` (row 15), `audit.md` (row 12), `notify.md` (row 11),
-    `files.md` (row 13):** parts 3, 2, 8, 9 as the table "How later core services plug
+    **`audit.md` (row 12):** (applied 2026-10-18, by audit.md Proposed change 1: part 1, built before identity; the table row names its `coreDeps` field and that `provision` scopes it).
+    **`plan/design/settings.md` (row 15), `notify.md` (row 11),
+    `files.md` (row 13):** (pending: targets not written) parts 3, 8, 9 as the table "How later core services plug
     in" states; each names its `coreDeps` field and whether `provision` scopes it.
 12. **`Makefile` and `scripts/e2e.sh`:** (pending: Makefile exists, but the new targets name web/, cmd/bms and scripts/e2e.sh, which are implementation created when app is built; adding them now would break make check) the targets in "The Makefile": add `VERSION`,
     `web-check`, `web-build`, `openapi-check`, `bin`, `run`, `migrate`, `test-e2e`,

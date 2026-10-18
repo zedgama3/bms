@@ -2,6 +2,7 @@
 
 - **Status:** Implemented (2026-10-17); Approved (2026-10-17)
 - **Amended 2026-10-17 (owner):** decisions 24 to 26 added (real error code sent in `code`; licence allowlist gains MIT-0 and Python-2.0 with a dev-only caniuse-lite exception; `web.FS()` hides dot-paths) and decision 27 (accepted implementation deviations); decision 6 amended so sign-in's own 401 does not redirect.
+- **Amended 2026-10-18 (owner approval of audit/identity):** from M1 `/sign-in` redirects to `/accounts/sign-in` (keeping the query) and the sign-in screen, `shell/identity.ts` and the `shell.signin.*` keys move to `web/src/core/accounts/` (`core.accounts.*`); the session body and store gain `accountId`, `passwordChangeRequired`, `expiresAt`, `signupOpen`; a restricted session is sent to `/accounts/password?returnTo=` from every route outside `/accounts/`; the header shows `shell.account.anonymous` ("Account") when `playa_name` is empty; `web/src/core/audit/` is a core area folder with the M2 audit screen (identity.md Proposed change 2, audit.md Proposed change 14).
 - **Package:** `web/` (pnpm workspace; `web/src/...`), plus the Go package `web`
   (`web/embed.go`, Go module `github.com/zedgama3/bms/web`) that embeds the built files for
   `app`. **UI:** this spec is the UI frame; module and core-area screens plug into it.
@@ -45,7 +46,7 @@
 **Key decisions:**
 - D1 modules mount under `/<name>/` in the browser; reserved names `api, assets, admin, account, sign-in, healthz, readyz, modules, core`.
 - D2 an untranslated field code shows the server's English `reason` inside the translated `field.unknown` wrapper in `<span lang="en">` and is reported (owner 2026-10-17); a top-level unknown code shows `error.unknown`.
-- D3 core areas register through the same `ScreenSet` (`kind: "core"`, always enabled).
+- D3 core areas register through the same `ScreenSet` (`kind: "core"`, always enabled); from M1 `web/src/core/accounts/` (sign-in, sign-up, password, account admin; identity.md) and from M2 `web/src/core/audit/` (the audit log; audit.md) are the first two.
 - D4 module isolation enforced by ESLint and `scripts/check-web-module-imports.sh` (under `make imports`); a literal `"/api/<other>/"` is refused.
 - D5 client generated from the server's document, committed; `make openapi-check` regenerates via `bms openapi`; `fetch` only in `@/api` and the reporter.
 - D6 every call: fresh `traceparent` (flags `01`), same-origin credentials, 35 s timeout, one `ApiError`, three hooks; `401` (except the session endpoint and sign-in's own) signs out and goes to `/sign-in?returnTo=`.
@@ -67,7 +68,7 @@
 
 **Errors/codes callers handle (client side, no Go errs except `web.*`):** `ApiError.code` is the problem body code or `network` (offline, DNS, reset, 35 s timeout) or `malformed_response` (non-2xx without problem body, or unparseable 2xx). `RegistryError` (F19-F21) for a bad name, absolute route path, untitled leaf or missing `en`. `web.FS`: `errs.NotFound` (app warns, `UI: nil`). `web.Version`: `NotFound`/`Invalid` (app warns).
 
-**Owns (routes, keys, constants):** screens `/`, `/sign-in`, `/admin/modules`, not-found, crashed, cannot-reach-server; keys `error.<code>`, `field.<code>`, `field.unknown`, `module.<name>.field.<code>`, `term.*`; constants (not settings): 35 s timeout, reporter 10 s timer / 100 pending / count cap 1000 / backoff 10 s to 5 min, 300 ms loading delay, bundle budget (entry 200 KB gzip JS, 30 KB CSS, lazy chunks 100 KB), `localStorage["bms.lang"]`. No Go settings or permissions; reads `core.modules.read` (api) and `session.permissions` only to hide UI. Defaults used until `settings` exists: regional name `BMS`, language `en`.
+**Owns (routes, keys, constants):** screens `/`, `/sign-in` (from M1 a redirect to `/accounts/sign-in`, keeping the query), `/admin/modules`, not-found, crashed, cannot-reach-server; keys `error.<code>`, `field.<code>`, `field.unknown`, `module.<name>.field.<code>`, `term.*`; constants (not settings): 35 s timeout, reporter 10 s timer / 100 pending / count cap 1000 / backoff 10 s to 5 min, 300 ms loading delay, bundle budget (entry 200 KB gzip JS, 30 KB CSS, lazy chunks 100 KB), `localStorage["bms.lang"]`. No Go settings or permissions; reads `core.modules.read` (api) and `session.permissions` only to hide UI. Defaults used until `settings` exists: regional name `BMS`, language `en`.
 
 **Expects of dependencies:** api (problem body with `fields[].code/params/reason`, `X-Read-Only`, `X-Trace-Id`, `GET /api/modules` and `/api/admin/modules` shapes, `POST /api/client-errors`, CSP, `Options.UI`); telemetry (intake wire form and limits, `Ref`, `traceparent` form, token grammar for `screen` and `api.route`); module-contract (name grammar, message-key derivation, admin graph); identity (`GET /api/accounts/session`, `POST /api/accounts/sign-in|sign-out`; M0 answers 404 and the shell is signed out); authz (`permissions` in the session response); settings (`GET /api/settings/public`, `/theme.css`); lib-core (field codes `required, range, positive, one_of, url, host_port, malformed`).
 
@@ -112,7 +113,7 @@ Host every module's screens in one browser application.
 | Concern | Owner |
 |---|---|
 | Any module's screens, their fields and flows | the module's spec (`module-<name>.md`, "UI"), built in `web/src/modules/<name>/` by the rules here |
-| The core areas' screens (accounts, profile, people, departments, events, roles, settings, audit) | each area's spec (`identity.md`, `people.md`, ...), built in `web/src/core/<area>/` with the same registry shape (decision 3) |
+| The core areas' screens (accounts, profile, people, departments, events, roles, settings, audit; `web/src/core/accounts/` from M1, `web/src/core/audit/` from M2) | each area's spec (`identity.md`, `people.md`, ...), built in `web/src/core/<area>/` with the same registry shape (decision 3) |
 | Sessions, the cookie, sign-in and sign-out routes, password rules | `identity.md`. The shell renders the sign-in screen and calls its routes (Proposed change 5) |
 | Deciding what a person may do | the server, on every call (09 ground rules). The shell hides what `session.permissions` says the person lacks (09 §4) and never relies on it |
 | Serving the files, the CSP and other headers, caching, `index.html` for app paths | `api.md` decision 12. This spec builds what it serves and keeps to its CSP (decision 10) |
@@ -386,10 +387,10 @@ Defined here: `ScreenSet`, `NavEntry`, `Messages`, `ApiError`, `ProblemCode`, `C
 ```ts
 // web/src/shell/session.ts (private to the frame; screens read it through useSession())
 export type Session =
-  | { signedIn: false }
-  | { signedIn: true; personId: ID; playaName: string; superuser: boolean; permissions: readonly string[] };
+  | { signedIn: false; signupOpen: boolean }
+  | { signedIn: true; personId: ID; accountId: ID; playaName: string; superuser: boolean; passwordChangeRequired: boolean; expiresAt: Date; signupOpen: boolean; permissions: readonly string[] };
 // Filled from GET /api/accounts/session (identity.md, Proposed change 5; permissions from
-// authz.md, Proposed change 6). In M0 the route does not exist and the shell is signed out (F28).
+// authz.md, Proposed change 6). signupOpen is also sent when signed out (identity.md Proposed change 2). In M0 the route does not exist and the shell is signed out (F28).
 
 export type ReadOnlyState = { readOnly: boolean; since?: Date };
 ```
@@ -1143,7 +1144,7 @@ requirement (decision 21).
    targets `web-check`, `web-build`, `openapi-check`, `test-e2e`, with `check` extended
    by `web-check` and `openapi-check`, and `build` depending on `web-build` for a release
    binary; (f) `app` is the only importer of the `web` package.
-5. **`plan/design/identity.md` (row 6)** (pending: target not written): the frame needs `GET /api/accounts/session`
+5. **`plan/design/identity.md` (row 6)** (applied 2026-10-18, by identity.md Proposed change 2, which extends the session body with `account_id`, `password_change_required`, `expires_at`, `signup_open`, redirects `/sign-in` to `/accounts/sign-in`, moves the screen and keys to `core/accounts` and adds the restricted-session gate, the neutral "Account" label, the field codes `too_short {min}`, `too_long {max}`, `common`, `taken`, `incorrect`, `self` and the sign-up, sign-in and password change smoke run; the audit core folder `web/src/core/audit/` is audit.md Proposed change 14): the frame needs `GET /api/accounts/session`
    (`AccessPublic`, `200` always: `{"signed_in": false}` or `{"signed_in": true,
    "person_id", "playa_name", "superuser", "permissions": []}`; `no-store`), `POST
    /api/accounts/sign-in` (`{email, password}` → `204` + cookie; `401 unauthenticated`

@@ -2,6 +2,7 @@
 
 - **Status:** Implemented (2026-10-17); Approved (2026-10-17)
 - **Amended 2026-10-17 (owner):** decisions 19 and 24 reworded, decisions 28 to 30 added (mapper span error carries only op and kind below 500; cookie guard refuses `bms_session_dev` unless `AllowPlaintext`; port 0 in tests, CSP on every UI-handler response, status 499 for a gone client; accepted implementation deviations).
+- **Amended 2026-10-18 (owner approval of audit/identity):** `httpx.ErrRateLimited` is added to `lib/httpx` (identity and intake both use it): the mapper answers `429 rate_limited` with `Retry-After: 60` for anything wrapping it, and `intake.ErrRateLimited` is, or wraps, it; `Authenticator` is implemented by identity as in Proposed change 9 (identity.md Proposed change 1).
 - **Package:** `internal/api` (Go module `github.com/zedgama3/bms`), plus the foundation
   helper package `internal/lib/httpx` that this spec owns (decision 2): the wire form of an
   error, the kind-to-status table, and the three calls a handler makes (`ReadJSON`,
@@ -44,7 +45,7 @@
 - Shell codes (pinned strings): `read_only`(503), `rate_limited`(429), `shutting_down`(503), `payload_too_large`(413), `unsupported_media_type`(415), `cross_origin`(403), `misdirected`(403), `method_not_allowed`(405), `not_found`(404); otherwise the `errs.Kind` name.
 - `StatusOf(errs.Kind) int` (Invalid 400, Unauthenticated 401, Permission 403, NotFound 404, Conflict 409, Unavailable 503, Timeout 504, Canceled 503, Unsupported 501, Internal 500).
 - `Fail(w, r, err)` hands any error to the shell's mapper (falls back to the same table without one); `Failer`, `WithFailer`.
-- `ReadJSON(r, dst) error` (JSON content type required, unknown fields ignored, errors never echo the body); `WriteJSON(w, status, v) error`; `ErrUnsupportedMediaType`.
+- `ReadJSON(r, dst) error` (JSON content type required, unknown fields ignored, errors never echo the body); `WriteJSON(w, status, v) error`; `ErrUnsupportedMediaType`; `ErrRateLimited` (shared sentinel: a rate-limit rejection wraps it, `errs.Unavailable`; the mapper answers `429 rate_limited`, `Retry-After: 60`).
 - `ClientAddrFrom(ctx)`, `SchemeFrom(ctx)`, `WithClientAddr`, `WithScheme` (derived values; the address is personal data, never log it).
 
 **Exported, `api`:**
@@ -89,7 +90,7 @@
 
 **Expects of dependencies:** telemetry (`Tracer.Start` with `WithParentFrom`, `RefFrom`, `TraceIDFrom`, token grammar admitting `_OTHER` and the `<METHOD> <route>` span form, `intake`); module-contract (`Route.Access`, `ModuleRoutes`, `Graph`, `RouteProvider` must also provide an OpenAPI fragment); db (`Ping`, `ReadOnly`, `ErrReadOnly`, `Status`, `Close` tolerant of late callers); identity (Authenticator, cookie rules); authz (PermissionChecker); lib-core (`validate.FieldError.Code/Params`, applied in spec, implementation follow-up needed); app (shutdown order and sub-deadline).
 
-**Pending proposed changes:** items 9 (identity), 10 (authz), 15 (settings: trusted origins and Host allowlist), and the front-end examples and `docs/operating.md` half of 14 wait on targets not yet written; the rest are applied.
+**Pending proposed changes:** items 10 (authz), 15 (settings: trusted origins and Host allowlist), and the front-end examples and `docs/operating.md` half of 14 wait on targets not yet written; the rest are applied.
 
 ## Purpose
 
@@ -201,7 +202,7 @@ type Field struct {
 // Shell codes that are not errs.Kind names. Codes are stable API strings pinned by a test.
 const (
 	CodeReadOnly             = "read_only"              // 503: db.ErrReadOnly
-	CodeRateLimited          = "rate_limited"           // 429: intake.ErrRateLimited (and later limiters)
+	CodeRateLimited          = "rate_limited"           // 429: httpx.ErrRateLimited (intake and identity)
 	CodeShuttingDown         = "shutting_down"          // 503: canceled by shutdown, client still connected
 	CodePayloadTooLarge      = "payload_too_large"      // 413: *http.MaxBytesError
 	CodeUnsupportedMediaType = "unsupported_media_type" // 415: ErrUnsupportedMediaType
@@ -214,6 +215,11 @@ const (
 // ErrUnsupportedMediaType is wrapped (errs.Invalid) by ReadJSON when the request's
 // Content-Type is not JSON; the mapper answers 415. Check it with errors.Is before the kind.
 var ErrUnsupportedMediaType = errors.New("request body is not application/json")
+
+// ErrRateLimited is wrapped (errs.Unavailable) by every rejection for rate (the client-error
+// intake, identity's sign-in and sign-up limits); the mapper answers 429 rate_limited with
+// Retry-After: 60. Check it with errors.Is before the kind, as with db.ErrReadOnly.
+var ErrRateLimited = errors.New("too many requests")
 
 // StatusOf is the one kind-to-status table (go-conventions "Errors"): Invalid 400,
 // Unauthenticated 401, Permission 403, NotFound 404, Conflict 409, Unavailable 503,
@@ -1124,7 +1130,7 @@ this derivation is logged; the warning in step 1 names no address.
 1. If the header was already written: log at error "error after response started" with
    `op` and kind; return (F34).
 2. Decide status and code, in this order: `errors.Is(err, db.ErrReadOnly)` → `503
-   read_only`; `errors.Is(err, intake.ErrRateLimited)` → `429 rate_limited`,
+   read_only`; `errors.Is(err, httpx.ErrRateLimited)` → `429 rate_limited`,
    `Retry-After: 60`; `errors.Is(err, httpx.ErrUnsupportedMediaType)` → `415`;
    `errors.As(err, *http.MaxBytesError)` → `413`; kind `Canceled` → decision 17 (write
    nothing, or `503 shutting_down` with `Connection: close`); otherwise `StatusOf(kind)`
@@ -1153,7 +1159,7 @@ this derivation is logged; the warning in step 1 names no address.
 | 409 | `conflict` | `errs.Conflict` |
 | 413 | `payload_too_large` | the body cap |
 | 415 | `unsupported_media_type` | `ReadJSON` on a non-JSON body |
-| 429 | `rate_limited` | `intake.ErrRateLimited`; later limiters wrap the same sentinel or their own |
+| 429 | `rate_limited` | `httpx.ErrRateLimited` (`intake.ErrRateLimited` is, or wraps, it; identity's limiters wrap it) |
 | 500 | `internal` | `errs.Internal`, an unkinded error, a panic, a cookie-guard refusal |
 | 501 | `unsupported` | `errs.Unsupported` |
 | 503 | `unavailable` | `errs.Unavailable` (`Retry-After: 5`) |
@@ -1278,7 +1284,7 @@ library (`bytes`, `context`, `encoding/json`, `errors`, `fmt`, `io`, `mime`, `ne
 | F34 | mapper | `Fail` after the header was written | none: error log "error after response started"; nothing more written | fix the handler (fail before writing) | `TestFail_AfterHeader_LogsOnly` |
 | F35 | `New` | `AllowPlaintext` true | none: one warn log at start | development only | `TestNew_AllowPlaintext_LogsWarningOnce` |
 | F36 | mapper | `db.ErrReadOnly` anywhere in the chain | `503 read_only` | "this copy is read-only" | `TestMapper_ReadOnly_503ReadOnlyCode` |
-| F37 | mapper | `intake.ErrRateLimited` | `429 rate_limited`, `Retry-After: 60` | back off | `TestMapper_RateLimited_429RetryAfter` |
+| F37 | mapper | `httpx.ErrRateLimited` (directly, or through `intake.ErrRateLimited`) | `429 rate_limited`, `Retry-After: 60` | back off | `TestMapper_RateLimited_429RetryAfter` |
 | F38 | mapper | kind `Canceled`, client gone | nothing written; debug log; span not failed | — | `TestMapper_CanceledClientGone_WritesNothing` |
 | F39 | mapper | kind `Canceled` while draining | `503 shutting_down`, `Connection: close` | retry against the new instance | `TestMapper_CanceledWhileDraining_503ShuttingDown` |
 | F40 | mapper | every other kind, including an unkinded error | `StatusOf(kind)`, code `Kind.String()`, `ref`, `fields` for `invalid`; one log record at the level of decision 4, with `error.message` (scrubbed, capped) for a 5xx only; `err.Error()` absent from the body | per the code | `TestMapper_KindTable` (ten kinds), `TestMapper_BodyNeverCarriesErrorText`, `TestMapper_LogLevel_Table` (5xx error; signed-in 4xx warn; anonymous 4xx debug), `TestMapper_ErrorMessage_5xxOnlyAndScrubbed` (a marker e-mail in the error text is absent from the capture) |
@@ -1538,7 +1544,7 @@ this list until then. Item 17 needs nothing.
    `one_of` with `options`, `URL` → `url`, `HostPort`/`ListenAddr` → `host_port`,
    `Positive` → `positive`), reserve `malformed` for decoders (`httpx.ReadJSON`), and
    let `Addf` take a code.
-9. **`plan/design/identity.md` (row 6)** (pending: target not written): implement `api.Authenticator` (no database write;
+9. **`plan/design/identity.md` (row 6)** (applied 2026-10-18, by identity.md Proposed change 1 and its Behavior: `Authenticator` with no write, accessors `SessionFrom`/`PersonFrom`, cookies as decisions 7 and 24, the `accounts` set with public sign-in, sign-up, session, sign-out and password routes, `httpx.ErrRateLimited` as the shared sentinel; `httpx.TrustedPeerFrom` is not requested yet): implement `api.Authenticator` (no database write;
    `Unauthenticated` for a bad or expired session; `(ctx, zero, nil)` for none); define
    the principal's ctx accessor that services and `authz` use; never return a nil ctx
    with a nil error (F51); write the session cookie with `Secure`, `HttpOnly`,

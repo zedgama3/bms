@@ -2,6 +2,7 @@
 
 - **Status:** Implemented (2026-10-17); Approved (2026-10-17)
 - **Amended 2026-10-17 (owner):** `SettingDecl.Check` replaces `Validate`; Conformance is called with a factory over the in-memory fake store and `moduletest.WithSeed(seed)` (module-contract Proposed change 15). Reviewer wording corrections: `Start` validates banner keys before subscribing; `hello.greeting` gains `updated_at`, a byte-length check and named constraints; `DeletePerson` runs in `db.Transact(Write)`; `handleGreeted` waits for the counter's acknowledgement; `Stop` is nil when already stopped; module tests use a bare `ServeMux` only and the api-shell and OpenAPI-versus-routes tests live in `internal/app`; handlers `httpx.Fail` on a non-Canceled write failure; `Greet` trims the source word.
+- **Amended 2026-10-18 (owner approval of audit/identity):** the M1 step of decision 2 is named: `actor` is `identity.PersonFrom` (false with no session, for a restricted session and inside a signal delivery); `GET /api/hello/greeting` with a session is `403` until the owner's base role exists (M2), and the request-driven `deliver:hello.greeted` assertion lands then (identity.md Proposed change 4).
 - **Package:** `internal/modules/hello` (with `internal/modules/hello/greeting`,
   `internal/modules/hello/postgres`) and `internal/contracts/greeter`
   **UI:** `web/src/modules/hello`
@@ -86,7 +87,7 @@ compiled in and enabled by default through Phase 1; regionals set `BMS_MODULES_D
 revisit when `volunteers` is Implemented.
 
 **Open questions:** None. **Proposed changes elsewhere:** all applied 2026-10-17 (item 9 is
-README row 4b).
+README row 4b); identity.md's Proposed change 4 (the M1 step: `actor: identity.PersonFrom`) applied 2026-10-18.
 
 ## Purpose
 
@@ -289,8 +290,8 @@ type store interface {
 	DeleteByPerson(ctx context.Context, person model.PersonID) (int, error)
 }
 
-// actorFunc reads the signed-in person from ctx. M0: always (zero, false). M1: identity's
-// accessor.
+// actorFunc reads the signed-in person from ctx. M0: always (zero, false). M1:
+// identity.PersonFrom.
 type actorFunc func(ctx context.Context) (model.PersonID, bool)
 
 // permissionChecker decides one permission for the actor in ctx; the same shape as
@@ -546,7 +547,7 @@ kept). Other languages are optional and fall back to `en`.
 **Seams (decision 2).** `New` wires `actor`, `allow` and `greeting` to M0 implementations:
 `actor` returns `(zero, false)`, `allow` returns `errs.E("hello.allow", errs.Permission,
 errDenied)` for every permission, `greeting` returns `DefaultGreeting`. When `Deps` gains
-`Authz` (M2) and `Settings` (M2), and `identity` exports its accessor (M1), `New` wires
+`Authz` (M2) and `Settings` (M2), and `identity` exports `PersonFrom` (M1: `actor` becomes `identity.PersonFrom`), `New` wires
 them in and nothing else changes; tests inject fakes for all three. The order inside a
 signed-in use case is fixed: actor, then permission, then the span, then the work.
 In M0 a real request never reaches `Greeting` or `Greet`: `api` answers 401 first.
@@ -670,7 +671,7 @@ other markers are unused here). `hello` requires and uses no capability, so no
 `TestGreet_EndToEnd_DeliversInSameTrace`: real `db.Pool`, real `signals.Dispatcher` scoped to
 `hello`, `telemetrytest` tracer, a fake actor and allow-all checker; `Greet` commits one row,
 `deliver:hello.greeted` is a descendant of the `hello.greet` span's trace, and `Seen()` is 1.
-(The request-driven form of this assertion waits for a session, M1: Proposed change 6.)
+(The request-driven form of this assertion waits for the owner's base role, M2, because from M1 a signed-in `GET /api/hello/greeting` is `403`: actor present, permission denied; Proposed change 6, identity.md Proposed change 4.)
 
 **Web** (`web/`): `registry.test.ts` accepts the set; `scripts/check-web-module-imports.sh`
 passes; `Greeting.test.tsx` (Testing Library, mocked client) covers loading, loaded with

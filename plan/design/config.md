@@ -2,6 +2,7 @@
 
 - **Status:** Implemented (2026-10-17); Approved 2026-10-16
 - Amended 2026-10-17 (owner): a `*_FILE` or secrets-file read error reports only the reason class (not found, permission denied, is a directory, unreadable), never the path (F8, F23); ctx is checked before and after each file read, it cannot interrupt a blocking open or read.
+- **Amended 2026-10-18 (owner approval of audit/identity):** Proposed change 6 applied in part for identity (HKDF info `bms identity session v1`, failed logins limited by `httpx.ClientAddrFrom`, rotation a later command, no new keys) and Proposed change 8 applied for audit (`Instance.Name` on every entry; the spool under `Data.Dir/audit/spool`, created by `Run` at start, failing `Invalid` under `data.dir`, printed by app as `BMS_DATA_DIR`).
 - **Package:** `internal/config` (Go module `github.com/zedgama3/bms`; foundation-level, not
   a bms module). **UI:** none.
 - **Depends on specs:** `lib-errs.md` (Implemented): `errs.E`, `errs.Is`, kinds `Invalid`,
@@ -49,7 +50,7 @@
 
 **Expects of dependencies.** `lib-errs`: `E`, `Is`, kinds `Invalid`, `Internal`, `Canceled`, `Timeout`. `lib-core`: `validate.Errors`, `FieldError`, `Fields`, `NonEmpty`, `Range`, `OneOf`, `URL`, `ListenAddr` (holds no `retry.Policy`). `lib-secret`: `Secret`, `New`, `Value`, `IsSet`; a Secret decoded from the secrets file refuses the marker texts. `module-contract` decision 7 / Proposed change 10: opt-out enablement via `modules.disabled`, `Env.Enabled`. Expected of `app`: `Load` once per process, print `<Env>: <Reason>` per field (exit 2), `bms migrate` generates the secrets file via `app/secrets.Ensure`, copies sections into `db`, `api`, `identity`, `telemetry`, `audit` options.
 
-**Pending.** Proposed changes 1-13 to `.golangci.yml`, 07-abstractions, app, db, identity, telemetry, audit, settings (future `settings_sealing_key` generated key), lib-core row, deploy examples and D20 note; 3 and 5 are applied. Later keys (OIDC, trusted-proxy-header provider, S3 keys, TLS) are added by their specs.
+**Pending.** Proposed changes 1-13 to `.golangci.yml`, 07-abstractions, app, db, identity (applied in part), telemetry, audit (applied), settings (future `settings_sealing_key` generated key), lib-core row, deploy examples and D20 note; 3 and 5 are applied. Later keys (OIDC, trusted-proxy-header provider, S3 keys, TLS) are added by their specs.
 
 ## Purpose
 
@@ -849,7 +850,7 @@ None. The three questions in the first draft were answered by the owner on 2026-
    checks from the orchestrator then go through the front end or come from loopback). TLS
    in the binary is not planned (Open question 2, answered). (superseded in part by api.md
    decisions 9 and 26: 403 `misdirected`, HSTS without includeSubDomains, no CSRF cookie)
-6. **`plan/design/identity.md` (row 6):** take `Session.Key` as its signing material and
+6. **`plan/design/identity.md` (row 6):** (applied in part 2026-10-18, by identity.md Proposed change 11: HKDF derivation with info `bms identity session v1`; failed logins limited by `httpx.ClientAddrFrom`; rotation stays a later command; no new keys; the OIDC and trusted-header keys wait for their specs) take `Session.Key` as its signing material and
    derive purpose-specific keys from it (HKDF), so one generated value serves session
    tokens and, later, password-reset links; design key rotation
    (`bms rotate-secret session_key`: new value in the secrets file, every session invalid)
@@ -861,7 +862,7 @@ None. The three questions in the first draft were answered by the owner on 2026-
    `Log.Format`; set `service.instance.id` (or an equivalent attribute) from
    `Instance.Name`; read `OTEL_*` through the SDK, not through `config`; state that log
    retention is the collector's setting.
-8. **`plan/design/audit.md` (row 12):** record `Instance.Name` as the "which copy" of every
+8. **`plan/design/audit.md` (row 12):** (applied 2026-10-18, by audit.md Proposed change 9; the directory is created by `Run` at start, which is where `Start` is meant here) record `Instance.Name` as the "which copy" of every
    entry (09 §8); keep the read-only spool under `Data.Dir`, creating the directory at
    `Start` and failing with `errs.Invalid` under `BMS_DATA_DIR` if it cannot.
 9. **`plan/design/settings.md` (row 15):** adopt the configuration-versus-settings rule in

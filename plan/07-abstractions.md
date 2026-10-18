@@ -138,16 +138,17 @@ Rules (enforced by depguard and `make imports`):
 
 ### identity: who is this?
 - **Purpose:** authenticate a person and manage their session.
-- **Owns:** login providers (local, OIDC, optional trusted proxy header; D15), sessions, password or magic-link flow, the break-glass superuser (D23).
-- **Doesn't do:** decide what they may do (`authz`), hold their profile (`people`).
+- **Owns:** local accounts keyed by e-mail (D21), the password policy and Argon2id, the signed session token and cookie checked without a write, the `Authenticator` and the principal accessors (`SessionFrom`, `PersonFrom`), per-account revocation, failed-login limits, the superuser and `bms create-superuser` (D23), the `accounts` routes and screens, `identity.account-created`; providers (OIDC, trusted header; D15) Later behind the same service.
+- **Doesn't do:** decide what they may do (`authz`), hold their profile or the playa name (`people`), invitations and password reset until their milestones, e-mail (`notify`).
 
 ### authz: may they do this?
 - **Purpose:** decide whether a person may perform an action on a resource.
 - **Owns:** roles, grants (site-wide or scoped to one department, with an optional end date),
   separation-of-duties rules (D23), the permissions modules declare, the `Authorizer`, and
   the `Permission`, `Scope` and `PermissionDecl` types.
-- **Doesn't do:** authentication, audit logging, the superuser (`identity`; it bypasses
-  `authz` by design and is audited).
+- **Doesn't do:** authentication, audit logging, creating or marking the superuser
+  (`identity`). `authz` allows the superuser by the flag identity supplies; it bypasses
+  `authz` by design and is audited.
 
 ### people: the directory of participants
 - **Purpose:** hold each person's profile and contact details, with consent.
@@ -177,6 +178,7 @@ Rules (enforced by depguard and `make imports`):
 
 ### audit: who did what, and who saw what
 - **Purpose:** append-only record of sensitive reads and of changes.
+- **Owns:** the `Entry` vocabulary, `Recorder` (scoped per area), the table and its guard, the read-only spool and its importer, `Search`/`Export` behind `audit.search`/`audit.export`, settings `audit.retention` and `audit.self_view`.
 - **Doesn't do:** authorization, analytics.
 
 ### files: attachments

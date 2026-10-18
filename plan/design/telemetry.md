@@ -2,6 +2,7 @@
 
 - **Status:** Implemented (2026-10-17); Approved (2026-10-16)
 - **Amended 2026-10-17 (owner):** decisions 21 to 25 (intake `api.code` is any token, client reports carry `origin=client`, `IsToken` and `Collect` and the accepted implementation deviations, `client.stack` cap, debug logging keeps scrubbing on); the Data section now says `New` reads the OTLP certificate and key files.
+- **Amended 2026-10-18 (owner approval of audit/identity):** `intake.ErrRateLimited` is, or wraps, the shared `httpx.ErrRateLimited` (api.md, identity.md Proposed change 1); instrument rows for `bms.audit.*` and `bms.identity.*` added (audit.md Proposed change 8, identity.md Proposed change 15); `TraceIDFrom` is recorded on every audit entry (Proposed change 7 applied).
 - **Package:** `internal/core/telemetry` (Go module `github.com/zedgama3/bms`), plus the
   sub-package `internal/core/telemetry/intake` (client error reports) and the test helper
   package `internal/core/telemetry/telemetrytest`. **UI:** none of its own; the error
@@ -75,11 +76,11 @@
 
 **Errors callers handle:** `New`/`Validate`: `Invalid` with field names (`log.level`, `log.format`, `instance.name`, `telemetry.version`, `telemetry.stdout`, `telemetry.clock`, or the offending `OTEL_*` variable), `Canceled`/`Timeout`. `Tracer`/`Meter`: `Invalid` (bad scope), `Internal` (after Close). `Meter.*`: `Invalid` (name, unit, nil observe), `Conflict` (name reused with another kind or unit). `Close`: `Timeout`/`Canceled`. `Ref.Validate`: `Invalid`. `intake.Accept`: `Invalid` (field errors `reports[i].<field>`), `Unavailable` wrapping `ErrRateLimited` (check `errors.Is` before kind; api maps to 429, `Retry-After: 60`), `Canceled`/`Timeout`. Span/Attr/log methods never fail: bad input becomes a marker (`[denied]`, `[invalid-token]`, `invalid-span-name`) plus a Violation. `RefFrom`/`TraceIDFrom` return ok=false without a span (omit the field).
 
-**Owns (config, routes, metrics):** reads `OTEL_SDK_DISABLED`, `OTEL_EXPORTER_OTLP_ENDPOINT` (+ `_TRACES/_METRICS/_LOGS_ENDPOINT`), `OTEL_EXPORTER_OTLP_PROTOCOL` (+ variants), `OTEL_TRACES_SAMPLER(_ARG)`, `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES`; the SDK reads the rest (headers never logged). No settings, no permissions, no tables, no signals. Route `POST /api/client-errors` (`AccessPublic`) is mounted by api over `intake.Accept`. Key denylist and `Scrub` rules are package constants. Instruments: `bms.telemetry.{export_failures,dropped,policy_violations,log_write_failures}`, `bms.client_errors.{accepted,rejected}`; also defines the M0 table for `http.server.request.duration`, `db.client.connection.*`, `bms.signals.*`, `bms.jobs.runs`. Imports only lib (errs, validate, clock) and the OTel SDK; not model (except `intake`), config, db or pgx.
+**Owns (config, routes, metrics):** reads `OTEL_SDK_DISABLED`, `OTEL_EXPORTER_OTLP_ENDPOINT` (+ `_TRACES/_METRICS/_LOGS_ENDPOINT`), `OTEL_EXPORTER_OTLP_PROTOCOL` (+ variants), `OTEL_TRACES_SAMPLER(_ARG)`, `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES`; the SDK reads the rest (headers never logged). No settings, no permissions, no tables, no signals. Route `POST /api/client-errors` (`AccessPublic`) is mounted by api over `intake.Accept`. Key denylist and `Scrub` rules are package constants. Instruments: `bms.telemetry.{export_failures,dropped,policy_violations,log_write_failures}`, `bms.client_errors.{accepted,rejected}`; also defines the M0 table for `http.server.request.duration`, `db.client.connection.*`, `bms.signals.*`, `bms.jobs.runs`, and the rows for `bms.audit.*` and `bms.identity.*`. Imports only lib (errs, validate, clock) and the OTel SDK; not model (except `intake`), config, db or pgx.
 
 **Expects of dependencies:** lib-errs (`E`, `KindOf`, `Error.Op`, kinds); lib-core (`clock.Clock`, `validate.*`); lib-secret (`Secret` and `Email` redact via `LogValue`); model (`PersonID`, `ID.String`); config (`app` copies `config.Log`/`Instance.Name` into `Options`; client address derived per config decision 16, by api); module-contract (`Deps.Logger`, `Deps.Tracer`, `Route.Access`); db (`Options.Tracer/Meter`, pgx `QueryTracer`, pool gauges).
 
-**Pending proposed changes:** item 7 (`audit.md` `TraceIDFrom`) waits on its target; item 6 pending for `jobs.md`; item 9 pending for Loki retention, alert rules and `docs/operating.md`; all others applied.
+**Pending proposed changes:** item 6 pending for `jobs.md`; item 9 pending for Loki retention, alert rules and `docs/operating.md`; all others applied.
 
 ## Purpose
 
@@ -536,6 +537,8 @@ const (
 // ErrRateLimited is wrapped (errs.Unavailable) by every rejection for rate; api maps it to
 // 429 with Retry-After: 60. Check it with errors.Is before the kind, as with db.ErrReadOnly.
 var ErrRateLimited = errors.New("too many client error reports")
+// Since 2026-10-18 this is, or wraps, httpx.ErrRateLimited (api.md, identity.md), so
+// errors.Is(err, httpx.ErrRateLimited) holds for an intake rejection.
 
 // Kind is what the web shell caught (D20).
 type Kind string
@@ -1064,6 +1067,13 @@ One record at `warn`, message `client error`, attributes: `origin=client`,
 | `bms.telemetry.dropped` | counter, `{record}` | `signal` | this package |
 | `bms.telemetry.policy_violations` | counter, `{violation}` | `signal`, `rule` | this package |
 | `bms.telemetry.log_write_failures` | counter, `{record}` | — | this package |
+| `bms.audit.recorded` | counter, `{entry}` | `via` = `db` or `spool` | `audit` |
+| `bms.audit.record_failures` | counter, `{failure}` | `kind` (an `errs` kind) | `audit` |
+| `bms.audit.imported` | counter, `{entry}` | `outcome` = `ok`, `duplicate`, `truncated`, `failed` | `audit` |
+| `bms.audit.spool_files` | gauge, `{file}` | — | `audit` |
+| `bms.identity.logins` | counter, `{login}` | `outcome` = `ok`, `superuser`, `bad_credentials`, `disabled`, `rate_limited`, `restricted` | `identity` |
+| `bms.identity.sessions_rejected` | counter, `{request}` | `reason` = `malformed`, `expired`, `revoked`, `disabled`, `unknown` | `identity` |
+| `bms.identity.rate_limited` | counter, `{request}` | `bucket` = `address` or `email` | `identity` |
 | `bms.signals.published`, `bms.signals.delivered`, `bms.jobs.runs` | counter | `signal`/`job` (token), `module`, `outcome` (`delivered`: `ok`, `failed`, `deferred`, `read_only`, `panicked`; `published` has none) | `signals` (signals.md "Telemetry"), `jobs` (Proposed change 6) |
 
 Rates, errors and durations per route also come from Tempo's metrics generator over the
@@ -1330,7 +1340,7 @@ target to be written and are carried by this list until then.
    `bms.signals.delivered{signal,module,outcome}` (`outcome` = `ok`, `failed`, `deferred`,
    `read_only`, `panicked`) and `bms.jobs.runs{job,outcome}` (the job outcomes are for
    `jobs.md` to define); payloads never on spans (IDs only, by their own rule).
-7. **`plan/design/audit.md` (row 12)** (pending: target not written): record `telemetry.TraceIDFrom(ctx)` on every entry
+7. **`plan/design/audit.md` (row 12)** (applied 2026-10-18, by audit.md Proposed change 8; `Record` stamps `TraceIDFrom(ctx)` on every entry, `""` when none): record `telemetry.TraceIDFrom(ctx)` on every entry
    (09 §8), empty when none.
 8. **`.golangci.yml`** (applied 2026-10-16): add a depguard rule `otel-seam`: files `$all` except
    `**/internal/core/telemetry/**`, deny `go.opentelemetry.io` ("telemetry wraps the SDK;

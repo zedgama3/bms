@@ -56,7 +56,7 @@ Each milestone is something the owner can try on bms-vm, not just code.
 | Milestone | Features | You can... |
 |---|---|---|
 | **M0. Skeleton** | 1 | install with `bms migrate`, start it, see the empty shell, see its traces in Grafana; a "hello" module shows up |
-| **M1. Accounts** | 2, 8 (basic) | create the superuser by command, sign up, log in and out, disable an account |
+| **M1. Accounts** | 2, 8 (basic) | create the superuser by command, sign up, sign in and out, change a password, sign out everywhere else, disable and re-enable an account, set a temporary password |
 | **M2. People and permissions** | 3, 4, 9 (basic) | edit a profile, give someone an admin job, see menus change, see who viewed whose contact details |
 | **M3. Departments and events** | 5, 7 | set up departments and an event, appoint a department's leadership, have that department manage itself, archive a department |
 | **M4. Ready for a module** | 6, 11 (basic) | receive e-mail, reset a forgotten password by e-mail, export or delete one person by command; start `volunteers` |
@@ -132,13 +132,13 @@ the publisher. The `signals` spec confirms the details.
 
 **People can:**
 - *Participant:* create an account with their e-mail address and a password, and log in with
-  that address (D21); log in and out; change their password; see and end their other
-  sessions; reset a forgotten password by e-mail (from M4, Q-CORE2).
+  that address (D21); log in and out; change their password; end their other sessions (M1;
+  seeing them: Later); reset a forgotten password by e-mail (from M4, Q-CORE2).
 - *Account admin:* disable and re-enable an account; set a temporary password that must be
   changed at next login; see when an account last logged in.
 
 **Done when:**
-- **The login name is the person's primary e-mail address** (D21), unique ignoring case. It's
+- **The login name is the person's primary e-mail address** (D21), unique ignoring case. Identity owns it (one row, one uniqueness rule); `people` shows and edits it through an identity method (`ChangeEmail`, M4, with confirmation) and holds a contact address only for people without an account (owner, 2026-10-18). It's
   `personal` data: shown only to the person and to roles with the right permission (account
   admins, volunteer admins), never on lists other participants see. People are known by their
   playa name everywhere else.
@@ -329,8 +329,8 @@ own spec (its screens, built as that core area's `ScreenSet` under `web/src/core
   data itself. Recording fields and title from the start keeps every D22 setting possible
   later without a migration.
 - Superuser actions are marked, so they're easy to review.
-- Nobody can change or delete entries through the app; the database role the app uses can only
-  insert and read.
+- Nobody can change or delete entries through the app; the app can only insert and read; the
+  only deletion is the retention purge, which the schema enforces.
 - **On a read-only copy,** audited reads are written to a local append-only file and imported
   when that copy writes again, so audit isn't lost and reads don't need the database to write.
 - Entries are kept for a set time (a setting; the default is to keep them until a regional sets

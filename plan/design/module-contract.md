@@ -2,6 +2,7 @@
 
 - **Status:** Implemented (2026-10-17); Approved (2026-10-16)
 - **Amended 2026-10-17 (owner):** `moduletest.Conformance` takes options (`WithCapability`, `WithSeed`/`WithoutPersonData`) and gains five rules; `Set.Start` rolls back under `StartRollbackTimeout`; `SettingDecl.Check` replaces `Validate`; `module.IsCoreArea` exported; wording fixes (Graph edges, Resolve kind, Build step 3).
+- **Amended 2026-10-18 (owner approval of audit/identity):** `Deps.Audit audit.Recorder` is available from M1 and scoped per module (actions are prefixed `<name>.`, another prefix fails `Invalid`); `moduletest.Conformance` fills a nil `Deps.Audit` with `audittest.NewFake(manifest.Name)` and the leak rule scans the recorded entries' `Reason` and `Fields` (audit.md Proposed change 2); the actor is `identity.PersonFrom(ctx)`, taken as a seam, and no `Deps` field is added (identity.md Proposed change 5).
 - **Package:** `internal/core/module` (Go module `github.com/zedgama3/bms`), plus the test
   helper package `internal/core/module/moduletest`. **UI:** none of its own; the admin
   "modules" screen is `web-shell.md`'s, fed by `GET /api/admin/modules` (`api.md`), both
@@ -54,7 +55,7 @@ Exported names (package `module`):
 - `Route{Method, Pattern, Access, Handler}` (relative to `/api/<name>`; `Validate`),
   `Access` (`AccessSignedIn` zero default, `AccessPublic`). `Deps{Logger, Tracer
   telemetry.Tracer, Clock, Links *Links, DB db.DB, Signals signals.Bus}`; later fields
-  Settings, Authz, People, Audit, Jobs, Notify, Files (M2 to Later).
+  Settings, Authz, People, Audit, Jobs, Notify, Files (Audit M1, scoped per module: actions are prefixed `<name>.`; the rest M2 to Later). The actor is `identity.PersonFrom(ctx)` (false inside a signal delivery and for a restricted session), taken as a seam (`actorFunc`) so tests use `identity.WithSession`; no `Deps` field.
 - `Set.Contributors(point) ([]Contribution, error)` for core definers (`Invalid` unless point is in `Env.CoreExtensionPoints`); `Factory` needs no database read (`openapi`/`check` build against `db.None()`); `Build`/`Start` run under 30 s, `Stop` shares `http.shutdown_timeout`; decision 9: every module ships `messages/en.json`.
 - `Links.Capability(name) (any, error)`, `Links.Contributors(point) ([]Contribution, error)`, `Contribution{Module, Value}`; frozen after `Build`, safe for concurrent use.
 - `Registry`: `NewRegistry`, `Default`, package `Register(Manifest, Factory)` (in `init`),
@@ -76,7 +77,7 @@ Exported names (package `module`):
   error`; `Subject{Person, LegalName, Email, Phone, Note}` (markers; the unknown-person ID is
   unexported and distinct); rules `rejects_wrong_capability_type`, `used_capability_absent_
   builds_and_starts`, `seeded_person_exports_data`, `seeded_person_delete_counts_and_is_
-  idempotent`; the leak rule also asserts no `[email]`; `module.StartRollbackTimeout` (10 s).
+  idempotent`; the leak rule also asserts no `[email]` and scans the `audittest.Fake`'s recorded entries (`Reason`, `Fields`) for the seed markers and `[email]`; a nil `Deps.Audit` becomes `audittest.NewFake(manifest.Name)`; `module.StartRollbackTimeout` (10 s).
 - `module.IsCoreArea(name) bool` (the core areas reserved by `Manifest.Validate`; app.md F28 uses it).
 
 Key decisions: 1 static Manifest plus separate Factory; 2 `Register` records problems, no
@@ -459,7 +460,7 @@ type Deps struct {
 	// Settings settings.Reader   settings.md (row 15)
 	// Authz    authz.Authorizer  authz.md (row 7)
 	// People   people.Directory  people.md (row 8)
-	// Audit    audit.Recorder    audit.md (row 12)
+	// Audit    audit.Recorder    audit.md (row 12): M1; scoped per module, actions prefixed "<name>."
 	// Jobs     jobs.Registrar    jobs.md (row 14)
 	// Notify   notify.Notifier   notify.md (row 11)
 	// Files    files.Store       files.md (row 13)
@@ -716,7 +717,7 @@ package moduletest
 // signalstest.Fake scoped to the manifest, and the later fields); it is called once per
 // rule, so each rule gets fresh fakes; nil is allowed. Conformance replaces Logger and
 // Tracer with telemetrytest.New(t)'s (any policy violation fails the rule), fills a nil
-// Clock, DB or Signals with a fake, and sets Links through Plan.Build.
+// Clock, DB, Signals or Audit with a fake (audittest.NewFake(m.Name)), and sets Links through Plan.Build.
 //
 // opts supply what the rules cannot learn from the manifest: the value behind each
 // capability the module requires or uses (WithCapability), and how to put a known
@@ -899,10 +900,13 @@ func (n Name) Publisher() string
 | `Signals` | `signals.md` | publishing a name not in `Publishes`, or subscribing to one not in `Subscribes`, fails with `errs.Invalid` | M0 |
 | `Settings` | `settings.md` | keys prefixed `<name>.`; reads only the module's declared keys and the core's retention keys for it | M2 |
 | `Authz` | `authz.md` | shared; the module passes its own permission names | M2 |
-| `People`, `Audit` | `people.md`, `audit.md` | shared; audit entries carry the module name | M2 / M1 |
+| `Audit` | `audit.md` | scoped per module with `Scoped(<name>)`: actions are prefixed `<name>.`, another prefix fails `Invalid`; `Conformance` supplies `audittest.NewFake(manifest.Name)` when `Provision` leaves it nil and its leak rule scans the recorded entries' `Reason` and `Fields` for the seed markers and `[email]` | M1 |
+| `People` | `people.md` | shared | M2 |
 | `Jobs` | `jobs.md` | job names prefixed `<name>.`; jobs run only on the writing copy | M4 |
 | `Notify` | `notify.md` | templates prefixed `<name>.` | M4 |
 | `Files` | `files.md` | shared | Later |
+
+The actor is not a `Deps` field. A module that needs the signed-in person calls `identity.PersonFrom(ctx)` (false when there is no session, for a restricted session and inside `signals.InDelivery`); it imports `core/identity` for that and takes it as a seam (`actorFunc`, as `hello` does) so tests use `identity.WithSession` (identity.md Proposed change 5).
 
 ## Data
 

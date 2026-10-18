@@ -414,3 +414,28 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
   - `/readyz` and the UI are unchanged in M0.
 - Any future relaxation of scrubbing at debug level needs its own spec change.
 - Affects [design/telemetry.md](design/telemetry.md) and [design/app.md](design/app.md).
+
+## D35. Audit and identity specs approved, with their M1 answers
+
+- **Status:** Accepted (2026-10-18). Owner approved [design/audit.md](design/audit.md) and
+  [design/identity.md](design/identity.md) as Approved, accepting every recommended answer.
+- **audit:**
+  - Minimum retention is 365 days when `audit.retention` is set. The default, 0, keeps
+    entries forever (D30).
+  - `audit.self_view` defaults to `viewed` once that Later feature ships, and stays `off`
+    until then (D22).
+  - Person IDs are kept on audit rows after a person is deleted (pseudonymous).
+  - "No audit, no action": a failed Record fails the caller, reads included.
+  - Exception: sign-out clears the cookie before recording `identity.logout`.
+- **identity:**
+  - M1 sign-up asks for e-mail and password only.
+  - There can be several superusers, each created by `bms create-superuser`; an account is
+    never promoted.
+  - Sign-up answers 409 `taken` until e-mail verification arrives (M4).
+  - identity owns the login address (D21).
+  - "See my other sessions" is Later; M1 ships "sign out everywhere else".
+  - A disabled account gets the same 401 as a wrong password.
+  - The common-password list is the SecLists top 100k (MIT), embedded.
+  - Temporary passwords are in M1.
+  - The login rate limit is in memory, per process, keyed by client address and submitted
+    address.
