@@ -5,6 +5,7 @@
 - **Amended 2026-10-18 (owner approval of audit/identity):** from M1 `/sign-in` redirects to `/accounts/sign-in` (keeping the query) and the sign-in screen, `shell/identity.ts` and the `shell.signin.*` keys move to `web/src/core/accounts/` (`core.accounts.*`); the session body and store gain `accountId`, `passwordChangeRequired`, `expiresAt`, `signupOpen`; a restricted session is sent to `/accounts/password?returnTo=` from every route outside `/accounts/`; the header shows `shell.account.anonymous` ("Account") when `playa_name` is empty; `web/src/core/audit/` is a core area folder with the M2 audit screen (identity.md Proposed change 2, audit.md Proposed change 14).
 - **Amended 2026-10-18 (owner approval of authz/people):** `session.permissions` holds `p` (site-wide) and `p@<department-id>`; `NavEntry.access: string[]` matches an entry when the session holds `p` exactly or any `p@...`; the M1 placeholder that showed every permissioned entry when the list was empty is removed (an empty list now means none); `web/src/core/access/` and `web/src/core/people/` are core areas (decision 3); after a session is established the frame calls `GET /api/people/me` once, applies `language` (mirrored to `localStorage["bms.lang"]`), sends a session with an empty `playa_name` (not the superuser) to `/people/me?first=1` once per session, and writes a signed-in person's language change with `PUT /api/people/me {language}`; `@/api` exports a `useMe()` hook limited to `core/people` and the frame; `@/ui` gains a date-only input helper; the smoke run adds "grant a role and see the menu change" and the two people flows, all at the phone viewport (authz.md Proposed change 7, people.md Proposed change 7).
 - **Amended 2026-10-18 (M1 build, accepted deviations):** implementation deviations recorded in Behavior, "Accepted implementation deviations (M1 build, 2026-10-18)"; the Interface gains the `@/api` additions and `ErrorState`'s `message` prop; the restricted-session gate holds the person on `/accounts/password` only.
+- **Amended 2026-10-18 (M2 build, accepted deviations):** implementation deviations recorded in Behavior, "Accepted implementation deviations (M2 build, 2026-10-18)": RouteAnnouncer, `@/api` additions, UI kit additions, known duplication; `web/src/core/audit/` built.
 - **Package:** `web/` (pnpm workspace; `web/src/...`), plus the Go package `web`
   (`web/embed.go`, Go module `github.com/zedgama3/bms/web`) that embeds the built files for
   `app`. **UI:** this spec is the UI frame; module and core-area screens plug into it.
@@ -76,6 +77,8 @@
 **Expects of dependencies:** api (problem body with `fields[].code/params/reason`, `X-Read-Only`, `X-Trace-Id`, `GET /api/modules` and `/api/admin/modules` shapes, `POST /api/client-errors`, CSP, `Options.UI`); telemetry (intake wire form and limits, `Ref`, `traceparent` form, token grammar for `screen` and `api.route`); module-contract (name grammar, message-key derivation, admin graph); identity (`GET /api/accounts/session`, `POST /api/accounts/sign-in|sign-out`; M0 answers 404 and the shell is signed out); authz (`permissions` in the session response); settings (`GET /api/settings/public`, `/theme.css`); lib-core (field codes `required, range, positive, one_of, url, host_port, malformed`).
 
 **Pending proposed changes:** items 5 (identity endpoints), 7 (settings public endpoint, theme, `language.detect_browser`), 15 (`docs/operating.md`) wait on targets not yet written; items 6 and 13 applied 2026-10-18; the rest are applied.
+
+**M2 build deviations (2026-10-18).** `RouteAnnouncer` moves focus only on a pathname change; `@/api` gains `useMe` and `useSetMe` and the client accepts multi-line NDJSON; the UI kit gains `ui/DateField`, `ui/Check` and a ref-accepting `Button`; `PersonPicker` is duplicated (candidate refactor noted); the audit screen is built in `web/src/core/audit/`.
 
 ## Purpose
 
@@ -972,6 +975,14 @@ and `internal/lib/errs`; imported by `internal/app` only (depguard, Proposed cha
 - The restricted-session gate (a session with `password_change_required`) holds the person on `/accounts/password` for every route except that one. The identity spec said "outside /accounts/", but the server answers 401 on `/accounts/admin`; identity.md's UI paragraph is corrected too.
 - `@/api` gains `refreshSession`, `setSessionEnded` (ESLint limits both to `core/accounts`), `safeReturnTo`, `useReadOnly` and `useSessionCheckFailed`; see the Interface.
 - `ErrorState` gains an optional `message` prop.
+
+**M2 build (2026-10-18):**
+
+- **Shell.** `RouteAnnouncer` moves focus only on a pathname change.
+- **`@/api`.** `useMe` and `useSetMe`, limited to `core/people` by ESLint. The client accepts multi-line NDJSON with `parseAs: "text"`.
+- **UI kit additions.** `ui/DateField` (`endOfDayInstant`, `lastDayOf`, `todayDate`); `ui/Check` (44 px); `Button` accepts a ref.
+- **Duplication.** `PersonPicker` is duplicated in `core/access` and `core/audit`, and small helpers are copied across areas. Candidate refactor: a `ui/PersonSearch` taking a `search(q, signal)` prop, plus shared `useAction`, `holds` and `useNames`.
+- `web/src/core/audit/` (the audit screen) is built in M2.
 
 ## Failure modes
 

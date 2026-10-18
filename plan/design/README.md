@@ -20,8 +20,8 @@ The order follows dependencies: foundation first, then the core, then modules.
 | 4b | `module-hello.md` | the reference module (M0) | Implemented (2026-10-17) |
 | 5 | `db.md` | pool, transactions, per-schema migrations, error mapping | Implemented (2026-10-17) |
 | 6 | `identity.md` | accounts, passwords, sessions, the superuser (M1) | Implemented (2026-10-18) |
-| 7 | `authz.md` | roles, grants, permissions, Authorizer | Approved (2026-10-18) |
-| 8 | `people.md` | profiles, contacts, consent, export and deletion | Approved (2026-10-18) |
+| 7 | `authz.md` | roles, grants, permissions, Authorizer | Implemented (2026-10-18) |
+| 8 | `people.md` | profiles, contacts, consent, export and deletion | Implemented (2026-10-18) |
 | 9 | `departments-events.md` | departments, leadership, archiving, events (D24) | Not started |
 | 10 | `signals.md` | in-process domain events (D24) | Implemented (2026-10-17) |
 | 11 | `notify.md` | notifier contract, e-mail | Not started |

@@ -1,6 +1,7 @@
 # authz
 
-- **Status:** Approved (2026-10-18; owner approved every recommended answer)
+- **Status:** Implemented (2026-10-18); Approved (2026-10-18; owner approved every recommended answer)
+- **Amended 2026-10-18 (M2 build, accepted deviations):** implementation deviations recorded in Behavior, "Accepted implementation deviations (M2 build, 2026-10-18)": leaf packages `authz/perm` and `authz/rows`, wrapped list responses, fail-closed decisions, grant wire fields, migration 0002, new failure mode F64. Records of what was built, not design changes.
 - **Package:** `internal/core/authz` (contract and service), `internal/core/authz/postgres`
   (the store, SQL and migrations), `internal/core/authz/authztest` (the fake modules test
   with). **UI:** `web/src/core/access/` (screen set `access`, keys `core.access.*`).
@@ -50,6 +51,8 @@
 **Expects of dependencies.** `app`: part 4 (`declare`: `Set`, `Permissions`, the two signal names; `build`: `New` over `a.corePerms` + `a.plan.Permissions()`, the actor closure, `audit.Scoped("access")`, `a.disp.Scope("access", ...)`; sets `a.permissions`, `a.titles`, `a.deps.authz`, route set `access`; a `seed` step in `migrate`; lazy adapters for identity's `Permissions` and `Lister`, built before authz). `module-contract`: `Deps.Authz authz.Authorizer`, `PermissionDecl.StarterRoles`, `moduletest` supplying `authztest.NewFake()`. `identity`: `SessionFrom`/`PersonFrom` semantics (restricted session is not an actor), `PermissionLister` called with the session's own person. `audit`: `Recorder` honours the ctx transaction; `TitlesOf` may be called inside a `Write` transaction. `db`: `Transact`, `AfterCommit`, `Wrap`, `*Error.Constraint`, `ErrReadOnly`. `signals`: a scoped `Bus`; `InDelivery`. `web-shell`: `session.permissions` entries `p` and `p@<dept>`; `NavEntry.access` matching `p` or any `p@`; the M1 "empty list shows everything" placeholder removed. `people` (M2): `GET /api/people/search` and a batch names route for the grant screens; `ExportPerson`/`DeletePerson` called from its orchestration. `departments-events` (M3): `DepartmentSource`, a departments list route for the grant form.
 
 **Open questions:** None (the five were settled 2026-10-18, folded into decisions 2, 5, 6, 9 and 13). **Proposed changes elsewhere:** 17, listed at the end; 14 applied 2026-10-18, 3 pending (departments-events, settings, notify: targets not written).
+
+**Accepted deviations (M2 build, 2026-10-18).** `authz/perm` (the leaf types and role-key constants, re-exported here as aliases) and `authz/rows`; list responses are wrapped objects; `UpdateRole` refuses a scope change; decisions fail closed; grants carry `role_key` and `role_name`; F64; migration 0002. See Behavior.
 
 ## Purpose
 
@@ -449,6 +452,20 @@ A denial is `errs.Permission` with the operation and the permission name in the 
 
 **Expired grants** simply stop counting at `ends_at`; nothing is published and nothing is deleted. The grants screen shows them as ended with `include_ended`.
 
+### Accepted implementation deviations (M2 build, 2026-10-18)
+
+- **Leaf packages.** `authz/perm` holds `Permission`, `Scope`, `PermissionDecl` (with `StarterRoles`) and the role-key constants (`RoleParticipant`, ..., `SiteAdminRoles`); `authz` re-exports them as aliases. This breaks an audit<->authz import cycle. `authz/rows` holds the store row types.
+- **API shape.** List responses are wrapped objects (`{"roles":[...]}` and so on).
+- **Roles.** `UpdateRole` refuses a scope change (`scope` `immutable`). A starter role may be saved with an empty name.
+- **Grant and revoke checks.** `Grant` checks separation of duties against the target's whole resulting set, including violations that already existed. `Revoke` answers `Permission` when the caller holds no granting permission anywhere, and `NotFound` when the grant is out of reach.
+- **Seed and delete.** `Seed` skips site-only permissions for `department-admin`. The separation-of-duties `Conflict` carries params `{rule, note}`. `DeletePerson` records nothing when there were no grants. `granted_by` is always the actor's person.
+- **Decisions fail closed.** Rows that carry a department for a permission declared `ScopeSite` are dropped at load; the grant-time separation-of-duties check ignores undeclared names; an unreadable rule is `Internal`.
+- **Grant wire.** Grants carry `role_key` (nullable) and `role_name`. `ListGrants` reads the role catalogue for the page without gating on `access.roles.read`, so a participant can name their own roles.
+- **New failure mode F64** (below): a grant by an actor with no `core.person` row.
+- **Migration 0002.** `role_grant_person_id_fkey` is `RESTRICT`; `role_grant_granted_by_fkey` is `ON DELETE SET NULL`, plus a partial index on `granted_by`; a preflight refuses orphan grants with SQLSTATE 23503 carrying schema, table and constraint, and the file rolls back.
+- **SQL.** Decision queries ignore grants whose department presence does not match the role's scope; an `INCLUDE` index on `person_id`; a partial department index; no `updated_at` on child tables.
+- **UI.** A grant's end date is the end of the chosen day in the browser's zone until `settings` supplies the regional's zone, and is displayed as `ends_at - 1 ms`. Without `access.grants.read`, the grants screen is a self-only "My roles" view.
+
 ## Failure modes
 
 Store kinds (`Unavailable`, `Timeout`, `Canceled`) apply to every method that touches the database and are tested once per method group (`Test<Group>_StoreFails_ReturnsStoreKind`); the rows below list the modes specific to each method.
@@ -518,6 +535,7 @@ Store kinds (`Unavailable`, `Timeout`, `Canceled`) apply to every method that to
 | F61 | `DeletePerson` | read-only copy | Unavailable wrapping `db.ErrReadOnly` | 503 / exit 1 | `TestDeletePerson_ReadOnly_ReturnsReadOnly` |
 | F62 | handlers | malformed path ID | Invalid | 400 | `TestHandlers_BadID_Returns400` |
 | F63 | handlers | denial on a signed-in route | 403 problem body via `httpx.Fail` | shell forbidden state | `TestHandlers_Permission_Returns403` |
+| F64 | `Grant` | the actor has no `core.person` row (FK `role_grant_granted_by_fkey`) | Invalid (`actor` `unknown`) | explain | `TestGrant_ForeignKeyViolation_NamesTheOffendingField` |
 
 `ListRules`, `ListPermissions`, `TitlesOf` and `ExportPerson` have no modes beyond permission (where it applies) and the store kinds: they read fixed data with no input to validate besides the IDs covered above. `Extent.Covers`/`IsZero` and `Cursor.String` cannot fail (pure).
 

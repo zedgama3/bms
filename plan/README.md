@@ -92,9 +92,11 @@ copy and can fork it. Features are modules.
      Done 2026-10-18: M1 implemented on feat/m1.
      Done 2026-10-18: `authz` and `people` are Approved (D36), with the owner's answers to
      their recommendations.
-     Next: the spec amendments (db, audit, api, identity, per D36), then the M1 follow-up
-     fixes, then the M2 build.
-     Open follow-ups:
+     Done 2026-10-18: M2 implemented on feat/m1 (authz and people Implemented; access, people
+     and audit screens built; `bms export` and `bms delete` built; e2e run against the real
+     server passes). Not pushed.
+     Next milestone: M3, specs `departments-events`.
+     Open follow-ups (all waiting on the owner or architect):
      - (a) Confirm D34 as D20's debug-level exception.
      - (b) The M3 part name `departments-events` is not a core area name for `module.IsCoreArea`
        (split into two parts, or amend F28).
@@ -104,33 +106,61 @@ copy and can fork it. Features are modules.
      - (d) CI workflow `.github/workflows/ci.yml` is written (2026-10-17): a `make check` job and
        an integration-test job with a PostgreSQL 17 service. It runs once the owner pushes the
        branch; waiting for the first push.
-     - (e) audit: entries spooled inside a caller's transaction can outlive a rollback. Needs a
-       db seam (for example `db.TxMode(ctx)`) and an audit amendment, both by the architect.
+     - (e) Done 2026-10-18. audit: entries spooled inside a caller's transaction can outlive a
+       rollback. Needs a db seam (for example `db.TxMode(ctx)`) and an audit amendment, both by
+       the architect.
        Decided 2026-10-18 (D36): the architect amends `db` and `audit` with a seam (for example
        `db.TxMode(ctx)`), so audit never spools while ctx carries a transaction.
-     - (f) audit F36: an import insert that fails Invalid keeps retrying the file forever.
-       Recommendation: set it aside as `.failed`.
+     - (f) Done 2026-10-18. audit F36: an import insert that fails Invalid keeps retrying the
+       file forever. Recommendation: set it aside as `.failed`.
        Decided 2026-10-18 (D36): an import insert that fails with Invalid sets the file aside
        as `.failed`.
-     - (g) api: a 409 Conflict carries no `fields`, so sign-up `taken` can't name the field.
-       Recommendation: the mapper emits fields for conflict too. The web already copes either way.
+     - (g) Done 2026-10-18. api: a 409 Conflict carries no `fields`, so sign-up `taken` can't
+       name the field. Recommendation: the mapper emits fields for conflict too. The web already
+       copes either way.
        Decided 2026-10-18 (D36): the mapper also emits `fields` for a 409 Conflict, so sign-up
        `taken` names the e-mail field.
-     - (h) identity limiter defaults: the per-client-address limit of 10 failures per 15 minutes
-       may lock out a shared gate uplink. Recommendation: raise the address bucket to about 100
-       and keep the per-account limit at 10.
+     - (h) Done 2026-10-18. identity limiter defaults: the per-client-address limit of 10
+       failures per 15 minutes may lock out a shared gate uplink. Recommendation: raise the
+       address bucket to about 100 and keep the per-account limit at 10.
        Decided 2026-10-18 (D36): the per-client-address bucket rises to about 100 failures per
        15 minutes; the per-account bucket stays at 10.
-     - (i) Two behaviours added beyond the identity spec are pending the owner's review:
-       ChangePassword shares the sign-in limiter buckets, and IPv6 addresses are keyed by /64.
+     - (i) Done 2026-10-18. Two behaviours added beyond the identity spec were pending the
+       owner's review: ChangePassword shares the sign-in limiter buckets, and IPv6 addresses are
+       keyed by /64.
        Decided 2026-10-18 (D36): both are kept. No longer pending.
-     - (j) Spec drift: app.md gives notify a migration set, but db.md's set order has none
-       (architect).
-     - (k) The password hint hard-codes the 12-character minimum. The minimum should reach the
-       browser before settings lets a regional change it (M2+).
-     - (l) The common-password list has only 488 entries of 12 or more characters, so it barely
-       bites at the default minimum. Consider a different check later.
-  3. CI on GitHub (`make check`): workflow `.github/workflows/ci.yml` is written (2026-10-17);
+     - (m) Approve the D36 (e) amendment to `db.md` and `audit.md` (`db.TxMode`; audit never
+       spools inside a transaction). Recommendation: yes, and `audittest.Fake` refuses a Record
+       inside a Read tx.
+     - (n) authz: a SoD rule or revoke can leave no effective access admin. Recommendation:
+       refuse with `last_access_admin`.
+     - (o) authz: should Seed record an audit entry when an upgrade adds a permission to a starter
+       role? Recommendation: yes.
+     - (p) authz/people: should DeletePerson publish `access.grant-revoked` for removed grants?
+       Recommendation: yes.
+     - (q) authz: department stewards can't list grants. Recommendation: give them
+       `access.grants.read` scoped to their department.
+     - (r) people: a language-only `PUT /me` is held to the required fields. Recommendation:
+       exempt it.
+     - (s) people: should the consent audit record the purpose and direction? Recommendation:
+       yes.
+     - (t) people: clear a walk-on's `contact_email` when an account is linked. Recommendation:
+       yes.
+     - (u) people: audit reads of deletion-request notes. Recommendation: yes.
+     - (v) people: data rights for an account holder with no `core.person` row. Recommendation:
+       run the identity and authz steps anyway.
+     - (w) architect, app spec gaps: commands don't start modules, so `people.person-deleted`
+       from `bms delete` reaches no module, and PersonData must work on an unstarted module.
+       Migrate's seed must reuse serve's split sequence once `jobs` arrives. app.md vs db.md
+       notify set drift.
+     - (x) Earlier still-open items: (a) D34 as D20's debug-level exception; (b) the M3 part
+       name `departments-events` vs `IsCoreArea`; (j) notify drift (merge into w); (k) the
+       password hint hard-codes 12; (l) the common-password list barely applies at a
+       12-character minimum; and CI waiting for the first push.
+  3. Local dev database (half-reset): the `authz` and `hello` version-2 rows in
+     `core.schema_migration` have to be deleted by the owner, then `make migrate` run again.
+     The alternative is `make down && make up`.
+  4. CI on GitHub (`make check`): workflow `.github/workflows/ci.yml` is written (2026-10-17);
      waiting for the owner to push the branch so it runs.
 
 ## Conventions

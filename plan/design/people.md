@@ -1,6 +1,7 @@
 # people
 
-- **Status:** Approved (2026-10-18; owner approved every recommended answer)
+- **Status:** Implemented (2026-10-18); Approved (2026-10-18; owner approved every recommended answer)
+- **Amended 2026-10-18 (M2 build, accepted deviations):** implementation deviations recorded in Behavior, "Accepted implementation deviations (M2 build, 2026-10-18)"; five owner questions raised by the build are listed under Open questions (not decided). Records of what was built, not design changes.
 - **Package:** `internal/core/people` (contract and service), `internal/core/people/postgres`
   (store, SQL, migrations), `internal/core/people/peopletest` (the fake `Directory` modules
   test with), `internal/contracts/personpage` (the person-page extension point's shape).
@@ -52,6 +53,8 @@
 **Expects of dependencies.** `identity`: `PersonFrom`/`SessionFrom` semantics; `EmailOf` and `LinkAccount` (proposed); `DeletePerson` refusing a superuser account with `Permission` (proposed); `NameSource` maps `NotFound` to `""`. `authz`: `ExtentOf` for the any-extent checks, `Allow` for site permissions, `Conflict last_access_admin` from `DeletePerson`, migration `0002` adding the foreign key to `core.person`, starter-role seeding from `StarterRoles`. `audit`: a `Recorder` scoped `people`; `CountAbout` callable inside a `Write` transaction; the `/audit?subject=` screen filter. `signals`: a `Bus` scoped `people` (publishes the three, subscribes `identity.account-created`); `InDelivery`. `db`: `Transact` ctx-carried transactions joined by nested calls (so modules' `DeletePerson` run inside people's), `*Error.Constraint`, `ErrReadOnly`. `app`: part 5 (declare, build, link, commands, the `NameSource` adapter for identity, the `Accepts` for the point, `Deps.People`). `module-contract`: `Deps.People people.Directory`; `peopletest.NewFake()` in `Conformance`. `settings` (M2): the three keys through `PolicySource`. `web-shell`: `GET /api/people/me` read once per session by the frame (language, profile prompt); `web/src/core/people/` as a core area.
 
 **Open questions:** None (the seven were settled 2026-10-18, folded into decisions 2, 5, 8, 9, 10, 19 and 20). **Proposed changes elsewhere:** 18, listed at the end; 14 applied 2026-10-18, 4 pending (settings, notify, jobs, `docs/operating.md`: targets not written).
+
+**Accepted deviations (M2 build, 2026-10-18).** Leaf package `people/rows`; extra exports (`PublishedSignals`, `SubscribedSignals`, `ParseRequestStatus`, `RequestStatus.String`, the Field constants, `personpage.SectionTimeout`); `UpdateMe`, `LinkAccount` and `Delete` take the deletion lock; export cooldown kept on Canceled; exit codes of the commands. Five owner questions are open. See Behavior and Open questions.
 
 ## Purpose
 
@@ -680,6 +683,18 @@ Read through `PolicySource` on every use case that needs it (no cache; settings 
 
 **Delivery by milestone.** M2: everything above, including the commands (09 §11 moves "basic" export and deletion here; decision 19). M4: `ChangeEmail` on the profile (identity), notify on `people.deletion-requested`, retries of the account-created handler through `jobs`, the `people.retention.unused` setting and job. Later: `ViewsOf` on the profile (D22), merging two people, a department-scoped extent for contacts (volunteers' membership contract), an export request kind.
 
+### Accepted implementation deviations (M2 build, 2026-10-18)
+
+- **Leaf package.** `people/rows`, aliased as `ContactID` and `RequestID`.
+- **Extra exports.** `PublishedSignals`, `SubscribedSignals`, `ParseRequestStatus`, `RequestStatus.String` and the `Field` constants. `personpage.SectionTimeout` is also exported.
+- **Profile updates.** `Update` on your own ID delegates to `UpdateMe`. `Create` and `Update` return a profile built like `Get`'s, with a read audit when the viewer holds `people.contacts.read`. The section timeout is a real context deadline.
+- **Search.** Search by contact address is an exact, case-insensitive match. The store passes no paging cursors (first page, limit 200).
+- **Concurrency.** `UpdateMe`'s repair takes the deletion lock and re-checks the account before validating, so a deleted person always gets `Unauthenticated`. `LinkAccount` takes the deletion lock first. `Delete` loads the person with `GetForUpdate`.
+- **Orphans on link.** The cleanup runs outside the transaction and records `people.person.deleted` with the system actor and reason `link`.
+- **Export.** The cooldown is kept on `Canceled` and once the audit entry is written.
+- **Commands.** The `DeleteCommand` report has one line per part. `export` and `delete` exit 2 only for a malformed person ID, and 1 otherwise.
+- **SQL.** The `(lower(playa_name) COLLATE "C", id)` index; the partial contact-email index; the position key is `DEFERRABLE INITIALLY IMMEDIATE`; `delete_orphan_person` is stricter; `data_request_decided_chk`.
+
 ## Failure modes
 
 | # | Method | Condition | errs kind | Caller is expected to | Test |
@@ -756,6 +771,14 @@ No external technology beyond PostgreSQL through `db` (D8). `text_pattern_ops`, 
 ## Open questions
 
 None. The seven questions were answered by the owner on 2026-10-18 (all recommendations accepted) and are folded into the Key decisions: Q1 (export, deletion and the two commands in M2) in decision 19; Q2 (`people.contacts.read` to `account-admin` only) in decision 9; Q3 (signal plus repair) in decision 2; Q4 (no `people.directory.read` in the base role) in decision 20; Q5 (immediate, audited self export with a 10-minute cooldown) in decision 10; Q6 (keep consents and `ConsentOf`) in decision 8; Q7 (one legal-name field) in decision 5.
+
+**Open (raised by the M2 build, 2026-10-18; owner questions, not decided).** No answer is chosen for any of these.
+
+1. Language-only `PUT /me`, and which fields are required.
+2. Which purpose and direction a consent audit records.
+3. Whether `contact_email` is cleared on link.
+4. Whether reads of a request's note are audited.
+5. Data rights for a person with no `core.person` row.
 
 ## Proposed changes elsewhere
 

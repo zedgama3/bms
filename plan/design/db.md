@@ -4,6 +4,7 @@
 - Amended 2026-10-17 (owner): `Write` begins with plain `BEGIN` so the session's `default_transaction_read_only` applies (server answers 25006); a NULL uuid scans into `*model.ID[E]`; accepted implementation deviations recorded in Behavior, "Accepted implementation deviations".
 - **Amended 2026-10-18 (owner approval of audit/identity):** Proposed change 10 applied for `audit` and `identity` (`postgres.Migrations`, `audit.Set`, `identity.Set`, schema `core`); audit's guard deviates from "insert and select only": `UPDATE` and `TRUNCATE` are revoked from the application role and a trigger refuses `UPDATE`, `DELETE` and `TRUNCATE`, with `DELETE` allowed only inside `core.audit_purge` through a transaction-local flag, because the installation has one role and a plain grant cannot tell the retention job from the app (audit decision 9).
 - **Amended 2026-10-18 (owner approval of authz/people):** Proposed change 10 applied for `authz` and `people` (`postgres.Migrations`, `authz.Set`, `people.Set`, schema `core`, set names `authz` and `people` already in the fixed order); people's migration `0001` reads `core.account` once to backfill a person row per existing account, the one read across sets (authz.md Proposed change 16, people.md Proposed change 10). The transaction seam is not changed here.
+- **Amended 2026-10-18 (D36 (e), pending owner approval):** `TxMode(ctx) (Mode, bool)` added: reports whether ctx carries a transaction begun by any `DB` (`*Pool` or `dbtest.Fake`) and its mode, so `audit` never spools an entry while a transaction is in flight (audit.md, same amendment). A package function beside `AfterCommit`, reading the internal `txctx`; cannot fail; `db.None()` never puts a transaction in a ctx, so it reports none there. Decision 21; Summary, Interface, "Who needs each member", Test plan and Proposed changes 14 and 15 updated. Nothing else in the transaction seam changes.
 - **Package:** `internal/core/db` (Go module `github.com/zedgama3/bms`), plus the test
   helper package `internal/core/db/dbtest`. **UI:** none of its own; the "this copy is
   read-only" banner and `/readyz` are `web-shell.md`'s and `api.md`'s, fed by `ReadOnly()`
@@ -26,7 +27,8 @@
   (`identity`, `people`, `departments-events`, `authz`, `audit`, `settings`, `jobs`,
   `files`: each has a `postgres/` package over `DB` and a migration `Set`), every module's
   `postgres/` package (`DB`, `Transact`, `Wrap`, `*Error`), `signals` (`AfterCommit`),
-  `moduletest` and module tests (`dbtest`).
+  `audit` (`TxMode`, and `audittest.Fake` through it), `moduletest` and module tests
+  (`dbtest`).
 
 ## Summary
 
@@ -47,6 +49,9 @@ Exported names (package `db`):
 - `None() DB` and `ErrNoDatabase`: a `DB` that refuses every statement with `Unavailable` wrapping the sentinel (`ReadOnly()` false, `AfterCommit` outside a transaction runs at once), for `bms openapi` and `bms check` (app.md decision 7).
 - `AfterCommit(ctx, fn) error`: runs fn after the ctx's transaction commits, at once when
   there is none.
+- `TxMode(ctx) (Mode, bool)`: the mode of the transaction ctx carries (begun by any `DB`:
+  `*Pool` or `dbtest.Fake`) and true, or `(0, false)` when it carries none; cannot fail
+  (D36 (e)). For `audit`, which never spools while a transaction is in flight.
 - `Wrap(op, err) error` (idempotent classifier, nil in nil out), `*Error{Code, Schema, Table,
   Column, Constraint}` (names only), `ErrReadOnly` and `ErrNoDatabase` sentinels.
 - Migrations: `Set{Name, Schema, Files fs.FS}` (+`Validate`), `Version(fs.FS) (int, error)`,
@@ -70,7 +75,9 @@ creates each set's schema; 14 pgx `PG*` variables and pgpass honoured for what t
 15 `Open` retries only Unavailable/Timeout; 16 every statement gets `min(ctx deadline,
 QueryTimeout)`, `Migrate` excepted; 17 `Migrate` takes a session advisory lock, fails fast;
 18 missing `core.schema_migration` means nothing applied; 19 `TempDB` is a database not a
-schema; 20 PostgreSQL 16 minimum (owner, 2026-10-16).
+schema; 20 PostgreSQL 16 minimum (owner, 2026-10-16); 21 `TxMode` is a package function
+that reports the ctx's transaction whoever began it, ended or not, so `audit` can refuse to
+spool inside one (D36 (e), pending).
 
 Errs kinds and sentinels callers handle: `Invalid` (bad options/URL/credentials/old server,
 FK/not-null/check/data errors, malformed migrations), `Conflict` (unique violation with
@@ -100,7 +107,7 @@ once, calls `Close` after `Set.Stop` and the HTTP server; core packages export `
 Accepted deviations (2026-10-17, see Behavior): `Write` is plain `BEGIN`; the probe also reads `pg_db_role_setting` and the pool is Reset on a state change; a `25006` in a Read tx owned by the pool is `Internal` and flips nothing; a closed pool is `Unavailable`; `Write` nested in `Read` and `AfterCommit` after an ended tx are `Invalid`; `Migrate` returns the files applied so far with the error; `Wrap` keeps only `%T` for unknown errors.
 
 Pending proposed changes (targets not yet written): 10 core specs with tables export a migration `Set` (applied for `audit` and `identity`, 2026-10-18), 11
-`docs/operating.md`, 13 jobs/notify read `ReadOnly()` and stop on `ErrReadOnly`.
+`docs/operating.md`, 13 jobs/notify read `ReadOnly()` and stop on `ErrReadOnly`. Pending owner approval (D36 (e)): 14 `TxMode` in 07's `db` "Owns", 15 the skills' audit sentence.
 
 ## Purpose
 
@@ -150,7 +157,7 @@ PostgreSQL database.
 | Name | Purpose (one line) | Notes |
 |---|---|---|
 | `Options`, `Open`, `Pool` | Open one pool from validated options with a bounded, retried connect, and close it. | `Pool` implements `DB`. `Close` stops the read-only watcher. |
-| `Querier`, `Transact`, `AfterCommit` | Run each statement with a deadline on the pool, or on the transaction the context carries. | One code path for a store method, in or out of a transaction. |
+| `Querier`, `Transact`, `AfterCommit`, `TxMode` | Run each statement with a deadline on the pool, or on the transaction the context carries. | One code path for a store method, in or out of a transaction. `TxMode` lets `audit` tell the two apart. |
 | `Wrap`, `*Error`, `ErrReadOnly` | Turn any error that comes back from the driver into an `errs` kind without echoing values. | The only exported mapping function; `*Error` is the scrubbed leaf. |
 | Read-only state | Know whether this copy may write, cheaply, and keep it current. | Probed at `Open`, on `Ping`, on a schedule and on every `25006`. |
 | `Set`, `Version`, `Migrator` | Apply each set's numbered files in order, record them, and check versions for `module.Build`. | `Migrator` satisfies `module.SchemaChecker` structurally. |
@@ -306,6 +313,18 @@ func (m Mode) String() string
 // Fails with errs.Invalid if fn is nil (F27).
 func AfterCommit(ctx context.Context, fn func(ctx context.Context)) error
 
+// TxMode reports the transaction ctx carries: its Mode and true when some DB's Transact
+// (a *Pool's or a dbtest.Fake's; the owner is not checked, as AfterCommit does not check
+// it) handed this ctx, or a child of it, to its fn; the zero Mode and false otherwise.
+// It still reports a transaction that has ended when the caller kept fn's ctx past
+// Transact's return (that ctx is the caller's bug, as for AfterCommit: a statement on
+// it fails). It reads one context value, does no I/O and cannot fail. Consumer: audit,
+// which never spools an entry while ctx carries a transaction (audit.md decisions 2 and
+// 4): inside a Write transaction a refused insert is returned so the caller's change
+// fails with it; inside a Read transaction Record is errs.Internal before any statement.
+// db.None() never runs a Transact fn, so a ctx under it never carries a transaction.
+func TxMode(ctx context.Context) (Mode, bool)
+
 // Ping checks that the server answers and refreshes the read-only state in the same round
 // trip, for /readyz. Fails with errs.Unavailable when the server does not answer (F28),
 // errs.Canceled or errs.Timeout when ctx ends (F29).
@@ -460,7 +479,10 @@ package dbtest
 // Fake implements db.DB with no database behind it: Exec records the call and returns an
 // empty CommandTag; Query returns rows with no row; QueryRow's Scan fails with
 // errs.NotFound; Transact runs fn (Write fails first when read-only) and then the
-// AfterCommit hooks; ReadOnly reports what SetReadOnly set. Safe for concurrent use.
+// AfterCommit hooks; ReadOnly reports what SetReadOnly set. Transact puts the same
+// transaction value in fn's ctx as a Pool does, so db.AfterCommit and db.TxMode work
+// unchanged under the Fake (a test of audit or of a module sees Read, Write or none).
+// Safe for concurrent use.
 type Fake struct{ /* unexported */ }
 
 // NewFake returns a writable Fake. Cannot fail.
@@ -498,6 +520,7 @@ func TempDB(t testing.TB) *db.Pool
 | `Querier` (`Exec`, `Query`, `QueryRow`) | every core and module `postgres/` store | — | deadline applied; errors classified |
 | `Transact`, `Mode` | every store that writes more than one row (postgres-sql "Transactions"); `people` (export and deletion across modules, one transaction); the `hello` module | — | committed, or rolled back with the cause |
 | `AfterCommit` | `signals` (deliver after commit, 09 §1); `jobs` (enqueue on commit) | inside or outside a transaction | runs iff committed |
+| `TxMode` | `audit` (`Record` decides between the table, the spool and `Internal`); `audittest.Fake` (refuses a `Record` inside a `Read` transaction like the real recorder) | any ctx | the mode of the carried transaction, or none; no I/O |
 | `ReadOnly` | `api` (`/readyz`, the banner), `jobs` (run only on the writer), `notify` (send only on the writer), `Transact` (fail fast) | — | cached, current within one watcher interval or one `Ping` |
 | `Ping` | `api` (`/readyz`), `app` (`bms check`) | — | reachable; state refreshed |
 | `Close` | `app` at shutdown | — | watcher stopped, pool closed |
@@ -750,6 +773,23 @@ read-only copy becomes a clear "this copy is read-only" response rather than an 
     of 16 is fine. Accepting 14 or 15 would cost nothing in code but would commit the
     project to testing against them. An older server is refused at `Open` (F8) with both
     versions named.
+21. **`TxMode` is a package function over the ctx, owner-blind, and reports an ended
+    transaction too (D36 (e), pending owner approval).** `audit` found three ways a spooled
+    entry could outlive the caller's rollback (audit.md, "Why never spool inside a
+    transaction"); each needs one question answered before the insert: does this ctx carry
+    a transaction, and may it write? The transaction already travels in the ctx (decision
+    5), so the answer is a read of `txctx`, the same read `AfterCommit` does. A method on
+    `DB` was the alternative; it would check the owner, which no consumer wants: the one
+    `*Pool` of the process is the owner of every transaction, and in a unit test a
+    `dbtest.Fake` is, and `audit`'s question is "is any transaction in flight on this
+    ctx", not "mine". A package function also keeps `DB` at the three things a store
+    needs (decision 2) and costs `dbtest.Fake` nothing: its `Transact` already puts the
+    same `txctx.State` in the ctx, so `TxMode` sees it unchanged. Whether the transaction
+    has ended is not reported: a ctx kept past `Transact`'s return is the caller's bug
+    (`AfterCommit` answers `Invalid` on it, a statement on it fails), and `audit` wants
+    such a `Record` to fail on the closed transaction rather than slip into the spool.
+    `db.None()` never calls its fn, so nothing under it is ever "in a transaction", and
+    `TxMode` needs no special case for it.
 
 ### Migration files
 
@@ -890,8 +930,9 @@ past it (a handler that ignored its ctx past `api.Shutdown` may still hold a con
 it sees `Unavailable` on its next call, F20). `Migrator`
 holds no state beyond its pool and may be shared; `Migrate` runs are serialised by the
 advisory lock across processes and by that same lock within one process. `dbtest.Fake` is
-safe for concurrent use. Nothing in `db` runs a goroutine other than the watcher, and the
-watcher's exit is `Close`.
+safe for concurrent use. `TxMode` reads an immutable context value, so it is safe from any
+goroutine, though the transaction it reports is still bound to one. Nothing in `db` runs a
+goroutine other than the watcher, and the watcher's exit is `Close`.
 
 ### Imports
 
@@ -989,8 +1030,14 @@ under `**/internal/core/db/**`.
 
 Members that cannot fail, and why: `ReadOnly` (an atomic read); `Stats` (a copy of
 pgxpool's counters; zeros after `Close`); `Mode.String`, `Error.Error` (formatting of
-fields); `Wrap` on nil (returns nil); `NewFake`, `SetReadOnly`, `Calls` (in-memory). Each
-has a success-path test.
+fields); `Wrap` on nil (returns nil); `NewFake`, `SetReadOnly`, `Calls` (in-memory);
+`TxMode` (one `ctx.Value` read, no I/O: `(0, false)` for a ctx with no transaction,
+`(Read, true)` or `(Write, true)` inside one, and the same under `dbtest.Fake`; its tests
+are `TestTxMode_OutsideTransaction_ReturnsFalse`,
+`TestTxMode_InsideFakeTransaction_ReportsMode` (unit, both modes, nested `Transact` joins
+and reports the outer's mode, a child ctx reports it too),
+`TestTxMode_InsidePoolTransaction_ReportsMode` (integration, both modes) and
+`TestTxMode_UnderNoneDB_ReportsFalse`). Each has a success-path test.
 
 ## Lock-in check
 
@@ -1023,7 +1070,12 @@ every error path):
   writable → read-only → probe failures keep state and log once → writable);
   `TestWatcher_StopsOnClose`.
 - Transact without a database: F21, F22 (a `Pool` built in an internal test with the
-  read-only flag set), F27; `TestAfterCommit_OutsideTransaction_RunsImmediately`.
+  read-only flag set), F27; `TestAfterCommit_OutsideTransaction_RunsImmediately`;
+  `TestTxMode_OutsideTransaction_ReturnsFalse` (`context.Background()` and a ctx with
+  unrelated values), `TestTxMode_InsideFakeTransaction_ReportsMode` (a `dbtest.Fake`
+  `Transact` in each mode; a nested `Transact` reports the outer's mode; a `context.WithValue`
+  child of fn's ctx reports it too), `TestTxMode_UnderNoneDB_ReportsFalse` (`None().Transact`
+  fails without calling fn, so there is no ctx to carry one: the test asserts fn never ran).
 - Telemetry (internal tests over the adapter with `telemetrytest.New(t)`; the SQL text and
   an argument carry the marker): `TestQueryTracer_SpanNamedByOperation_Table` (`select`,
   `  INSERT`, `with ... `, `begin`, an unclassifiable text → `db.OTHER`; kind
@@ -1052,7 +1104,9 @@ every error path):
   `TestTransact_NestedJoinsOuter` (an inner `Transact` sees the outer's uncommitted row;
   an inner error rolls back both); `TestTransact_ReadModeOnReadOnlyDatabase_Works`;
   `TestTransact_CtxFromAnotherGoroutine_RaceDetectorClean` (documents the rule by a test
-  that stays single-goroutine); F17 (via `ALTER DATABASE ... SET
+  that stays single-goroutine); `TestTxMode_InsidePoolTransaction_ReportsMode` (`Read`
+  and `Write`, and `(0, false)` on the ctx `Transact` was given, before and after it
+  returns); F17 (via `ALTER DATABASE ... SET
   default_transaction_read_only = on` then a new pool), F23–F26.
 - Read-only: `TestReadOnly_ProbeSeesDefaultTransactionReadOnly`;
   `TestPing_RefreshesReadOnlyState`; F28 (a pool whose server is stopped is hard to
@@ -1086,9 +1140,10 @@ the owner on 2026-10-16 and are recorded as decisions 20, 10 and 7.
 
 ## Proposed changes elsewhere
 
-Status as of 2026-10-17: items 1, 2, 3, 4, 5, 6, 7, 8, 9, 12 and the `.env.example` half of
+Status as of 2026-10-18: items 1, 2, 3, 4, 5, 6, 7, 8, 9, 12 and the `.env.example` half of
 11 are applied. Items 13, item 10 for the specs not yet written, and the `docs/operating.md` half of 11 wait for their
-target to be written and are carried by this list until then.
+target to be written and are carried by this list until then. Items 14 and 15 (D36 (e))
+wait for the owner's approval of this amendment.
 
 1. **`plan/07-abstractions.md`, `db` entry** (applied 2026-10-16): replace "Owns" with: the pool and its
    bounded, retried connect; statements with deadlines, on the pool or on the transaction
@@ -1184,3 +1239,12 @@ target to be written and are carried by this list until then.
 13. **`plan/design/jobs.md` (row 14) and `notify.md` (row 11)** (pending: specs not written): read `ReadOnly()` before
     each run and send, and treat `errors.Is(err, db.ErrReadOnly)` as "stop until the next
     probe", not as a retryable failure.
+14. **`plan/07-abstractions.md`, `db` entry** (pending: D36 (e), owner approval): in
+    "Owns", after "`Transact` with after-commit hooks", add "and `TxMode` (the mode of the
+    transaction a context carries, for `audit`)".
+15. **`.claude/skills/go-conventions/SKILL.md` ("Module package layout", the Audit
+    sentence) and `.claude/skills/add-module/SKILL.md`** (pending: D36 (e), owner
+    approval): after "a change records inside its `Write` transaction, never inside a
+    `Read` transaction", add "on a read-only copy a `Record` inside a `Write` transaction
+    fails with `Unavailable` wrapping `db.ErrReadOnly` like the change itself and is never
+    spooled; only a `Record` outside any transaction (a read, a login, a search) spools".

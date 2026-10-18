@@ -5,6 +5,7 @@
 - **Amended 2026-10-18 (owner approval of audit/identity):** core part order is audit 1, identity 2 (identity's `build` takes the audit recorder; audit needs nothing from identity at build time); the audit and identity rows of "How later core services plug in" are filled in (audit.md Proposed change 1, identity.md Proposed change 3).
 - **Amended 2026-10-18 (owner approval of authz/people):** the `authz` and `people` rows of "How later core services plug in" are filled in (authz.md Proposed change 1, people.md Proposed change 1): the actor closure, the lazy adapters for identity, the `migrate` `seed` step, the `export` and `delete` commands, `link` for `PersonData` and the page contributors.
 - **Amended 2026-10-18 (M1 build, accepted deviations):** implementation deviations recorded in Behavior, "Accepted implementation deviations (M1 build, 2026-10-18)"; `serve` step 8 and the shutdown closer list updated (a seventh closer, `audit`).
+- **Amended 2026-10-18 (M2 build, accepted deviations):** implementation deviations recorded in Behavior, "Accepted implementation deviations (M2 build, 2026-10-18)": operator attribution, `migrate` and its exit statuses, command pre-parsing, new exported surface (`api.Permissions`, `core.modules.read`), the Imports list, and three open spec gaps for the architect.
 - **Package:** `internal/app` (Go module `github.com/zedgama3/bms`), plus the helper package
   `internal/app/secrets` (the generated-secrets file) and the binary `cmd/bms`. **UI:**
   none of its own; `serve` hands the built web shell to `api`.
@@ -79,6 +80,8 @@
 - None. Answered by the owner (2026-10-17): no drain delay in M0 (D17); non-`serve` commands log to stderr (D4); `serve` requires the session key from M0 (D6); a second signal terminates immediately (D1).
 
 **Proposed changes elsewhere (2026-10-17):** applied to config, module-contract, db, telemetry, signals, web-shell, api, 07-abstractions, 09 §1, add-module and go-conventions; items 9 (identity) and the audit part of 11 applied 2026-10-18; item 10 (people) and 11 (authz) applied 2026-10-18 (owner approval of authz/people). Pending: jobs, departments-events, settings, notify, files (targets not written), the D20 clarification (plan-keeper), the Makefile targets and `scripts/e2e.sh` (implementation, created when app is built), `docs/operating.md`.
+
+**M2 build deviations (2026-10-18).** authz is part 4 and people part 5; the audit actor is the session's person, else operator while `a.operator` is set (create-superuser, export, delete, migrate); `migrate` builds the parts and seeds after Migrate; `export`/`delete` pre-parse the ID (exit 2); commands build modules but do not start them; `api.Permissions` and `core.modules.read` (`StarterRoles: authz.SiteAdminRoles`) are exported. Three open spec gaps are listed in Behavior.
 
 ## Purpose
 
@@ -862,7 +865,7 @@ exit ends (decision 10).
 `os`, `path/filepath`, `runtime`, `runtime/debug`, `strings`, `time`), `internal/config`,
 `internal/lib/*`, `internal/model`, `internal/core/module`, `internal/core/db`,
 `internal/core/telemetry`, `internal/core/telemetry/intake`, `internal/core/signals`,
-`internal/core/authz` (`PermissionDecl`), `internal/api`, `web`, `internal/app/secrets`,
+`internal/core/authz`, `internal/core/identity`, `internal/core/audit`, `internal/core/people`, `internal/contracts/personpage`, `internal/api`, `web`, `internal/app/secrets`,
 and in `modules.go` every shipped module as a blank import (`_ ".../internal/modules/
 hello"`). Never pgx (depguard `storage-seam`: that is why `db.None()` must live in `db`),
 never `go.opentelemetry.io`, never `dbtest` or `telemetrytest` outside test files.
@@ -883,6 +886,20 @@ never `go.opentelemetry.io`, never `dbtest` or `telemetrytest` outside test file
 - `create-superuser` resolves modules before building parts, so a `BMS_MODULES_DISABLED` typo exits 2.
 - `check` prints `audit spool: N waiting, M failed`, or `empty`, via `audit.SpoolCounts`.
 - **Open spec drift (for the architect, not fixed here):** the part table gives `notify` a migration set, but db.md's fixed set order has no `notify`.
+
+**M2 build (2026-10-18):**
+
+- **Part order.** authz is part 4 and people is part 5.
+- **Operator attribution.** The audit actor is the session's person, else operator while `a.operator` is set. `a.operator` is set by `create-superuser`, `export`, `delete` and `migrate`.
+- **`migrate`.** It builds the parts and seeds after `Migrate`. `migrateStatus`: a failing migration file exits 1 whatever its kind, and a migrator `Conflict` exits 3.
+- **`export` and `delete`.** They pre-parse the ID (exit 2) and `delete` refuses a read-only copy.
+- **Commands build modules but do not start them.**
+- **New exported surface.** `api.Permissions`, and the exported `core.modules.read` declaration with `StarterRoles: authz.SiteAdminRoles` (also noted in api.md).
+- **Imports.** The `app` list gains `internal/core/identity`, `internal/core/audit`, `internal/core/authz` (beyond `PermissionDecl`), `internal/core/people` and `internal/contracts/personpage`.
+- **Open spec gaps (for the architect, not resolved here):**
+  - `people.person-deleted` published by `bms delete` reaches no module handler, because modules subscribe in `Start`.
+  - A module's `PersonData` must work on a built but unstarted module.
+  - `migrate`'s seed step must reuse `serve`'s split sequence once `jobs` arrives (M4).
 
 ## Failure modes
 

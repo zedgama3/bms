@@ -4,6 +4,7 @@
 - **Amended 2026-10-17 (owner):** `SettingDecl.Check` replaces `Validate`; Conformance is called with a factory over the in-memory fake store and `moduletest.WithSeed(seed)` (module-contract Proposed change 15). Reviewer wording corrections: `Start` validates banner keys before subscribing; `hello.greeting` gains `updated_at`, a byte-length check and named constraints; `DeletePerson` runs in `db.Transact(Write)`; `handleGreeted` waits for the counter's acknowledgement; `Stop` is nil when already stopped; module tests use a bare `ServeMux` only and the api-shell and OpenAPI-versus-routes tests live in `internal/app`; handlers `httpx.Fail` on a non-Canceled write failure; `Greet` trims the source word.
 - **Amended 2026-10-18 (owner approval of audit/identity):** the M1 step of decision 2 is named: `actor` is `identity.PersonFrom` (false with no session, for a restricted session and inside a signal delivery); `GET /api/hello/greeting` with a session is `403` until the owner's base role exists (M2), and the request-driven `deliver:hello.greeted` assertion lands then (identity.md Proposed change 4).
 - **Amended 2026-10-18 (owner approval of authz/people):** the M2 step of decision 2 is named: `permissionChecker` is `deps.Authz`; both permissions declare `StarterRoles: []string{authz.RoleParticipant}` (decision 11); the app e2e asserts `GET /api/hello/greeting` is `200` for a signed-in participant and `POST /api/hello/greetings` drives `deliver:hello.greeted`; migration `0002` adds `FOREIGN KEY (person_id) REFERENCES core.person(id) ON DELETE RESTRICT` (replacing the "on delete cascade" sketch: `people` calls `DeletePerson` first and a cascade would hide a module that forgot something); `Manifest.Subscribes` may add `people.person-deleted` to reset the counter (optional, deferred); the e2e export shows `hello` inside the document (authz.md Proposed change 3, people.md Proposed change 8).
+- **Amended 2026-10-18 (M2 build, accepted deviations):** implementation deviations recorded in Behavior, "Accepted implementation deviations (M2 build, 2026-10-18)": a nil `Deps.Authz` denies everything (the rule for modules copying hello); migration 0002 is the person FK, `RESTRICT`, with a preflight.
 - **Package:** `internal/modules/hello` (with `internal/modules/hello/greeting`,
   `internal/modules/hello/postgres`) and `internal/contracts/greeter`
   **UI:** `web/src/modules/hello`
@@ -89,6 +90,8 @@ revisit when `volunteers` is Implemented.
 
 **Open questions:** None. **Proposed changes elsewhere:** all applied 2026-10-17 (item 9 is
 README row 4b); identity.md's Proposed change 4 (the M1 step: `actor: identity.PersonFrom`) applied 2026-10-18; authz.md's Proposed change 3 and people.md's Proposed change 8 (the M2 step: `deps.Authz`, `StarterRoles`, migration `0002`) applied 2026-10-18.
+
+**M2 build deviations (2026-10-18).** A nil `Deps.Authz` means deny-all (fail closed), the rule for modules copying hello (`TestNew_NilAuthz_DeniesEverything`); migration 0002 is the person FK, `RESTRICT`, with a preflight.
 
 ## Purpose
 
@@ -591,6 +594,12 @@ statement gets `db`'s `QueryTimeout` cap.
 **Disabled.** With `BMS_MODULES_DISABLED=hello`: no routes, no screen (the shell hides the
 set), no migrations applied, table left alone; `greeter` has no provider, which is fine
 because nothing requires it.
+
+### Accepted implementation deviations (M2 build, 2026-10-18)
+
+- **A nil `Deps.Authz` means deny-all (fail closed).** Tested by `TestNew_NilAuthz_DeniesEverything`. This is the rule for modules copying hello.
+- **Migration 0002** is the person foreign key, `RESTRICT`, with a preflight.
+- The 0001 header comment still says cascade. It is left as is, because applied migration files are immutable.
 
 ## Failure modes
 

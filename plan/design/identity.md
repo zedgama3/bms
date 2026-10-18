@@ -3,6 +3,7 @@
 - **Status:** Implemented (2026-10-18); Approved (2026-10-18; owner approved every recommended answer)
 - **Amended 2026-10-18 (owner approval of authz/people):** Proposed changes 6 and 7 applied: `EmailOf` and `LinkAccount` added, `DeletePerson` refuses a superuser account, the accounts admin screen links to the profile, the starter role `account-admin` holds `accounts.read` and `accounts.manage` (`StarterRoles`); the sign-up `taken` conflict reaches the browser as `fields` (api D31; F15 and the UI note); the per-client-address limiter default is about 100 failures per 15 minutes while the per-account bucket stays at 10 (new `ClientFailureLimit`, decision 12); the two deviations marked pending (ChangePassword sharing the sign-in buckets, IPv6 keyed by /64) are accepted.
 - **Amended 2026-10-18 (M1 build, accepted deviations):** implementation deviations recorded in Behavior, "Accepted implementation deviations (M1 build, 2026-10-18)"; `(*Service).CreateSuperuser` added to the Interface; the store interface and the dev-cookie and restricted-session wording corrected to what was built.
+- **Amended 2026-10-18 (M2 build, accepted deviations):** `LinkAccount` Conflict codes and the store method `SetPerson` recorded in Behavior, "Accepted implementation deviations (M2 build, 2026-10-18)".
 - **Package:** `internal/core/identity` (service, `Authenticator`, tokens, handlers), `internal/core/identity/account` (the record type), `internal/core/identity/postgres` (store, `sql/`, `migrations/`)   **UI:** `web/src/core/accounts/`
 - **Depends on specs:** `model`, `lib-errs`, `lib-core`, `lib-secret`, `config` (through `app`), `db`, `signals`, `telemetry`, `api` (the `Authenticator` seam, `httpx`, the cookie rules), `audit` (Approved; the `Recorder`), `web-shell`, `app`   **Used by:** `api` (`Authenticator`), `app` (part 2, after audit; the `create-superuser` command, the audit actor closure), `audit` (`ActorFunc`, through `app`), every module and core service that needs the actor (`PersonFrom`), `web-shell` (the session endpoint, the sign-in flow), later `authz` (the actor and the superuser flag), `people` (`identity.account-created`, export and deletion), `settings` (`PolicySource`), `notify` (`Alerter`)
 
@@ -31,6 +32,8 @@
 **Expects of dependencies.** `api`: calls `Authenticate` on every routed request, 401 on signed-in routes when the person is zero, `httpx.ClientAddrFrom`/`SchemeFrom`, the cookie guard, `httpx.ErrRateLimited` mapped to 429 (Proposed change 1). `audit`: a `Recorder` scoped to `identity` at build time (audit built before identity, audit.md Proposed change 1), `Record` outside any `Read` transaction, the spool on a read-only copy, an explicit `Actor` honoured. `db`: `Transact`, `AfterCommit`, `Wrap`, `ErrReadOnly`, `*Error.Constraint`, `Set`, `dbtest`. `signals`: a `Bus` scoped to `identity`, `InDelivery`. `config` through `app`: `Session.Key`, `HTTP.AllowPlaintext`. `model`: `AccountID`, `PersonID`, `Email` (`ParseEmail`, `Canonical`, `LogValue`). `app`: part 2 as in app.md's table, the command, the actor closures for audit (M1) and authz (M2), the `accounts` route set, the end-to-end test. `web-shell`: the session store, the `401` rule, `/sign-in` as a redirect to `/accounts/sign-in` (Proposed change 2).
 
 **Open questions:** none; the nine are settled as decisions 8, 7, 15, 17, 3, 4, 13, 18 and 12 (owner, 2026-10-18). **Proposed changes elsewhere:** 18, listed at the end (status there).
+
+**M2 build deviations (2026-10-18).** `LinkAccount` Conflict codes are `superuser` (field `email`) and `has_account` (field `person`); the store gains `SetPerson` (`set_account_person.sql`).
 
 ## Purpose
 
@@ -669,6 +672,11 @@ The frame (web-shell) shows the superuser banner from `superuser`, holds the per
 - IPv6 client addresses are keyed by /64 (accepted, owner, 2026-10-18).
 - UI: the restricted-session gate holds the person on `/accounts/password` for every route except that one. The spec said "outside /accounts/", but the server answers 401 on `/accounts/admin`. The UI paragraph here and web-shell.md are corrected.
 - UI: a 409 on sign-up was shown as `taken` on the email field whatever the body contained; now the api mapper emits `fields` for a 409 (api D31) and the sign-up screen maps `fields[].field` and `fields[].code` (`email`/`taken`) like any other field error (owner, 2026-10-18).
+
+**M2 build (2026-10-18):**
+
+- `LinkAccount` Conflict codes are `superuser` (field `email`) and `has_account` (field `person`).
+- The store gains `SetPerson` (`set_account_person.sql`).
 
 ## Failure modes
 

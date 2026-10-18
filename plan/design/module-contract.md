@@ -5,6 +5,7 @@
 - **Amended 2026-10-18 (owner approval of audit/identity):** `Deps.Audit audit.Recorder` is available from M1 and scoped per module (actions are prefixed `<name>.`, another prefix fails `Invalid`); `moduletest.Conformance` fills a nil `Deps.Audit` with `audittest.NewFake(manifest.Name)` and the leak rule scans the recorded entries' `Reason` and `Fields` (audit.md Proposed change 2); the actor is `identity.PersonFrom(ctx)`, taken as a seam, and no `Deps` field is added (identity.md Proposed change 5).
 - **Amended 2026-10-18 (owner approval of authz/people):** `Deps.Authz authz.Authorizer` and `Deps.People people.Directory` are available from M2 (unscoped; `Provision` sets them); `authz.PermissionDecl` gains `StarterRoles []string` (each a valid ident, unique; `Validate` reports `starter_roles[j]`); `moduletest.Conformance` fills a nil `Deps.Authz` with `authztest.NewFake()` (denies everything) and a nil `Deps.People` with `peopletest.NewFake()`; new rules for module authors: a list, search, count or export use case filters by `ExtentOf`, a single-record use case uses `AllowIn` (department records) or `Allow`, and a foreign key to `core.person(id)` is allowed with `ON DELETE RESTRICT` because `people` calls the module's `DeletePerson` first; `Env.CoreExtensionPoints` carries `people.person-page` and `Env.CoreSignals` the three `people.*` names (authz.md Proposed change 2, people.md Proposed change 2).
 - **Amended 2026-10-18 (M1 build, accepted deviations):** implementation deviations recorded in Behavior, "Accepted implementation deviations (M1 build, 2026-10-18)".
+- **Amended 2026-10-18 (M2 build, accepted deviations):** implementation deviations recorded in Behavior, "Accepted implementation deviations (M2 build, 2026-10-18)": `Deps.Authz` and `Deps.People` in `module.go`; Conformance fills them with fakes.
 - **Package:** `internal/core/module` (Go module `github.com/zedgama3/bms`), plus the test
   helper package `internal/core/module/moduletest`. **UI:** none of its own; the admin
   "modules" screen is `web-shell.md`'s, fed by `GET /api/admin/modules` (`api.md`), both
@@ -114,6 +115,8 @@ Of consumers: `app` supplies `Env`, `Provision`, the checker and the order Build
 `api` mounts `Set.Routes`; `authz`/`settings` take `Plan.Permissions`/`Plan.Settings`; `people` runs `Set.PersonData`.
 Proposed changes: 1, 3, 4, 6, 7, 9–12, 14 applied; 2 and 8 applied 2026-10-18; 5, 13 pending (targets unwritten);
 15–17 (hello, skills; none for telemetry or app) applied 2026-10-17.
+
+**M2 build deviations (2026-10-18).** `Deps.Authz` and `Deps.People` are declared in `module.go`; `moduletest.Conformance` fills them with `authztest` and `peopletest` fakes.
 
 ## Purpose
 
@@ -1181,6 +1184,11 @@ Standard library (`context`, `encoding/json`, `errors`, `fmt`, `io/fs`, `log/slo
 
 - `Deps.Audit` is declared in `module.go`.
 - Conformance's leak rule scans the audit entries' `Reason` and `Fields` (recorded by the fake) for the seed markers.
+
+**M2 build (2026-10-18):**
+
+- `Deps.Authz` and `Deps.People` are declared in `module.go`.
+- `moduletest.Conformance` fills them with `authztest` and `peopletest` fakes.
 
 ## Failure modes
 
