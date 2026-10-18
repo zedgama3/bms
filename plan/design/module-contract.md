@@ -3,6 +3,7 @@
 - **Status:** Implemented (2026-10-17); Approved (2026-10-16)
 - **Amended 2026-10-17 (owner):** `moduletest.Conformance` takes options (`WithCapability`, `WithSeed`/`WithoutPersonData`) and gains five rules; `Set.Start` rolls back under `StartRollbackTimeout`; `SettingDecl.Check` replaces `Validate`; `module.IsCoreArea` exported; wording fixes (Graph edges, Resolve kind, Build step 3).
 - **Amended 2026-10-18 (owner approval of audit/identity):** `Deps.Audit audit.Recorder` is available from M1 and scoped per module (actions are prefixed `<name>.`, another prefix fails `Invalid`); `moduletest.Conformance` fills a nil `Deps.Audit` with `audittest.NewFake(manifest.Name)` and the leak rule scans the recorded entries' `Reason` and `Fields` (audit.md Proposed change 2); the actor is `identity.PersonFrom(ctx)`, taken as a seam, and no `Deps` field is added (identity.md Proposed change 5).
+- **Amended 2026-10-18 (M1 build, accepted deviations):** implementation deviations recorded in Behavior, "Accepted implementation deviations (M1 build, 2026-10-18)".
 - **Package:** `internal/core/module` (Go module `github.com/zedgama3/bms`), plus the test
   helper package `internal/core/module/moduletest`. **UI:** none of its own; the admin
   "modules" screen is `web-shell.md`'s, fed by `GET /api/admin/modules` (`api.md`), both
@@ -1170,6 +1171,11 @@ Standard library (`context`, `encoding/json`, `errors`, `fmt`, `io/fs`, `log/slo
 `internal/contracts`, a module, `api`, `app` or `config` (depguard rule `core`); never
 `go.opentelemetry.io` (depguard rule `otel-seam`). `moduletest` adds `testing`,
 `internal/lib/testkit` and `internal/core/telemetry/telemetrytest`.
+
+### Accepted implementation deviations (M1 build, 2026-10-18)
+
+- `Deps.Audit` is declared in `module.go`.
+- Conformance's leak rule scans the audit entries' `Reason` and `Fields` (recorded by the fake) for the seed markers.
 
 ## Failure modes
 

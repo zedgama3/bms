@@ -3,6 +3,7 @@
 - **Status:** Implemented (2026-10-17); Approved (2026-10-17)
 - **Amended 2026-10-17 (owner):** decisions 24 to 26 added (real error code sent in `code`; licence allowlist gains MIT-0 and Python-2.0 with a dev-only caniuse-lite exception; `web.FS()` hides dot-paths) and decision 27 (accepted implementation deviations); decision 6 amended so sign-in's own 401 does not redirect.
 - **Amended 2026-10-18 (owner approval of audit/identity):** from M1 `/sign-in` redirects to `/accounts/sign-in` (keeping the query) and the sign-in screen, `shell/identity.ts` and the `shell.signin.*` keys move to `web/src/core/accounts/` (`core.accounts.*`); the session body and store gain `accountId`, `passwordChangeRequired`, `expiresAt`, `signupOpen`; a restricted session is sent to `/accounts/password?returnTo=` from every route outside `/accounts/`; the header shows `shell.account.anonymous` ("Account") when `playa_name` is empty; `web/src/core/audit/` is a core area folder with the M2 audit screen (identity.md Proposed change 2, audit.md Proposed change 14).
+- **Amended 2026-10-18 (M1 build, accepted deviations):** implementation deviations recorded in Behavior, "Accepted implementation deviations (M1 build, 2026-10-18)"; the Interface gains the `@/api` additions and `ErrorState`'s `message` prop; the restricted-session gate holds the person on `/accounts/password` only.
 - **Package:** `web/` (pnpm workspace; `web/src/...`), plus the Go package `web`
   (`web/embed.go`, Go module `github.com/zedgama3/bms/web`) that embeds the built files for
   `app`. **UI:** this spec is the UI frame; module and core-area screens plug into it.
@@ -38,7 +39,7 @@
 - `ScreenSet{name, kind: "module"|"core", routes: RouteObject[] (relative paths, lazy elements, handle {title, access?}), nav: NavEntry[], messages: {lang: () => Promise<Messages>}}` (`en` required); `NavEntry{label: MessageKey, to, area: "main"|"admin", access?: "public"|"signed-in"|string[]}`. A set is exported as `ui` from `web/src/modules/<name>/index.ts` or `web/src/core/<area>/index.ts` and listed in the matching `index.ts` (D31).
 - `api` typed client generated from `/api/openapi.json` (`openapi-typescript` + `openapi-fetch`, both outputs committed); `CallOptions{signal, params}`; `ApiError{status, code, ref, fields, method, route, module, traceId, retryAfter, reported}`; `ProblemCode` (mirrors api.md codes), `ClientCode` (`network`, `malformed_response`); `Problem`, `Field`, `Method`; wire types `ID`, `Sensitivity`, `TimeRange`; `configureClient({onUnauthenticated, onReadOnly, onFailure})` (frame only).
 - i18n: `useT()`, `MessageKey` (generated typed keys), `isMessageKey(s)` (runtime guard for keys another module contributes), `useFormat()` (date/time with an event zone, number, relative, list), `useLanguage()`.
-- Error display: `messageFor`, `ErrorState`, `ErrorSummary`, `useFieldErrors` (returns `FieldMessage{text, reason?}`), `showsRef`.
+- Error display: `messageFor`, `ErrorState` (optional `message` prop), `ErrorSummary`, `useFieldErrors` (returns `FieldMessage{text, reason?}`), `showsRef`.
 - Reporter: `installReporter(...)`, `Reporter{apiFailure, screenCrash, flush, reportable}`.
 - UI kit: `Button`, `Field`, `Dialog` (native `<dialog>`), `Banner`, `EmptyState`, `Loading`, `Table`, `Toast`.
 - Go `web`: `FS() (fs.FS, error)` (`errs.NotFound` when `dist/index.html` is missing; dot-prefixed paths hidden, D26), `Version() (string, error)` (`NotFound`, or `Invalid` unless a telemetry token of at most 64 bytes). Imports stdlib and `lib/errs`; only `app` imports it.
@@ -64,6 +65,7 @@
 - D24 the reporter sends the error body's real code in `api.code` (any telemetry token), never folded into `message` (owner 2026-10-17).
 - D25 licence allowlist adds MIT-0 and Python-2.0; caniuse-lite (CC-BY-4.0, dev-only) is an explicit exception (owner 2026-10-17).
 - D26 `web.FS()` hides dot-prefixed paths (owner 2026-10-17).
+- M1 additions to `@/api`: `refreshSession`, `setSessionEnded` (ESLint limits both to `core/accounts`), `safeReturnTo`, `useReadOnly`, `useSessionCheckFailed`.
 - D27 accepted deviations: react-router 8.4; the client resolves with the body; `useSession` and `Session` are exported from `@/api`, every other client/i18n/ui setter is frame-private (`internal.ts`) and lint-banned in `modules/**` and `core/**`; nav catalogues load at boot (report plus retry banner on failure); `ui` may `import type` from `@/api`; sets may not declare route loaders or actions; `axe-core` helper instead of `vitest-axe`; logical-property violations are lint errors; the isolation script is `scripts/check-web-module-imports.sh`.
 
 **Errors/codes callers handle (client side, no Go errs except `web.*`):** `ApiError.code` is the problem body code or `network` (offline, DNS, reset, 35 s timeout) or `malformed_response` (non-2xx without problem body, or unparseable 2xx). `RegistryError` (F19-F21) for a bad name, absolute route path, untitled leaf or missing `en`. `web.FS`: `errs.NotFound` (app warns, `UI: nil`). `web.Version`: `NotFound`/`Invalid` (app warns).
@@ -297,8 +299,8 @@ export function useLanguage(): { current: string; offered: readonly string[]; se
 export function messageFor(t: ReturnType<typeof useT>, error: ApiError): string;
 
 /** A screen's error state: the sentence, the reference line and copy button when
- *  `showsRef(error)` (decision 9), a retry button when `onRetry` is given. */
-export function ErrorState(props: { error: ApiError; onRetry?: () => void }): JSX.Element;
+ *  `showsRef(error)` (decision 9), a retry button when `onRetry` is given; an optional `message` prop (M1 build). */
+export function ErrorState(props: { error: ApiError; onRetry?: () => void; message?: string }): JSX.Element;
 
 /** A form's error summary: `role="alert"`, receives focus when it appears, lists each field
  *  error as a link to its input (by the input's `name` equal to `fields[].field`), then the
@@ -393,6 +395,13 @@ export type Session =
 // authz.md, Proposed change 6). signupOpen is also sent when signed out (identity.md Proposed change 2). In M0 the route does not exist and the shell is signed out (F28).
 
 export type ReadOnlyState = { readOnly: boolean; since?: Date };
+
+// M1 additions exported from `@/api` (web/src/api/index.ts):
+export function refreshSession(): Promise<void>;   // re-reads GET /api/accounts/session; ESLint: core/accounts only
+export function setSessionEnded(ended: boolean): void; // set when a 401 ended the session, so sign-in can say so once; ESLint: core/accounts only
+export function safeReturnTo(raw: string | null): string; // a same-origin path, else "/"
+export function useReadOnly(): ReadOnlyState;
+export function useSessionCheckFailed(): boolean;  // the boot session check failed (not "signed out")
 ```
 
 Wire types a module needs come from `schema.d.ts` (`components["schemas"]["VolunteersShift"]`),
@@ -956,6 +965,12 @@ and `shell/report.ts` only. `localStorage`: `i18n/lang.ts` only; `sessionStorage
 `indexedDB`, `caches`, `document.cookie`: nowhere. The Go package `web`: standard library
 and `internal/lib/errs`; imported by `internal/app` only (depguard, Proposed change 8).
 
+### Accepted implementation deviations (M1 build, 2026-10-18)
+
+- The restricted-session gate (a session with `password_change_required`) holds the person on `/accounts/password` for every route except that one. The identity spec said "outside /accounts/", but the server answers 401 on `/accounts/admin`; identity.md's UI paragraph is corrected too.
+- `@/api` gains `refreshSession`, `setSessionEnded` (ESLint limits both to `core/accounts`), `safeReturnTo`, `useReadOnly` and `useSessionCheckFailed`; see the Interface.
+- `ErrorState` gains an optional `message` prop.
+
 ## Failure modes
 
 "Kind" is the `ApiError.code` a screen sees, the shell's own error class, or (for the Go
@@ -1144,7 +1159,7 @@ requirement (decision 21).
    targets `web-check`, `web-build`, `openapi-check`, `test-e2e`, with `check` extended
    by `web-check` and `openapi-check`, and `build` depending on `web-build` for a release
    binary; (f) `app` is the only importer of the `web` package.
-5. **`plan/design/identity.md` (row 6)** (applied 2026-10-18, by identity.md Proposed change 2, which extends the session body with `account_id`, `password_change_required`, `expires_at`, `signup_open`, redirects `/sign-in` to `/accounts/sign-in`, moves the screen and keys to `core/accounts` and adds the restricted-session gate, the neutral "Account" label, the field codes `too_short {min}`, `too_long {max}`, `common`, `taken`, `incorrect`, `self` and the sign-up, sign-in and password change smoke run; the audit core folder `web/src/core/audit/` is audit.md Proposed change 14): the frame needs `GET /api/accounts/session`
+5. **`plan/design/identity.md` (row 6)** (applied 2026-10-18, by identity.md Proposed change 2, which extends the session body with `account_id`, `password_change_required`, `expires_at`, `signup_open`, redirects `/sign-in` to `/accounts/sign-in`, moves the screen and keys to `core/accounts` and adds the restricted-session gate (it holds the person on `/accounts/password` for every route except that one, because the server answers 401 on `/accounts/admin`), the neutral "Account" label, the field codes `too_short {min}`, `too_long {max}`, `common`, `taken`, `incorrect`, `self` and the sign-up, sign-in and password change smoke run; the audit core folder `web/src/core/audit/` is audit.md Proposed change 14): the frame needs `GET /api/accounts/session`
    (`AccessPublic`, `200` always: `{"signed_in": false}` or `{"signed_in": true,
    "person_id", "playa_name", "superuser", "permissions": []}`; `no-store`), `POST
    /api/accounts/sign-in` (`{email, password}` → `204` + cookie; `401 unauthenticated`

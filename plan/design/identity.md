@@ -1,6 +1,7 @@
 # Identity
 
-- **Status:** Approved (2026-10-18; owner approved every recommended answer)
+- **Status:** Implemented (2026-10-18); Approved (2026-10-18; owner approved every recommended answer)
+- **Amended 2026-10-18 (M1 build, accepted deviations):** implementation deviations recorded in Behavior, "Accepted implementation deviations (M1 build, 2026-10-18)"; `(*Service).CreateSuperuser` added to the Interface; the store interface and the dev-cookie and restricted-session wording corrected to what was built.
 - **Package:** `internal/core/identity` (service, `Authenticator`, tokens, handlers), `internal/core/identity/account` (the record type), `internal/core/identity/postgres` (store, `sql/`, `migrations/`)   **UI:** `web/src/core/accounts/`
 - **Depends on specs:** `model`, `lib-errs`, `lib-core`, `lib-secret`, `config` (through `app`), `db`, `signals`, `telemetry`, `api` (the `Authenticator` seam, `httpx`, the cookie rules), `audit` (Approved; the `Recorder`), `web-shell`, `app`   **Used by:** `api` (`Authenticator`), `app` (part 2, after audit; the `create-superuser` command, the audit actor closure), `audit` (`ActorFunc`, through `app`), every module and core service that needs the actor (`PersonFrom`), `web-shell` (the session endpoint, the sign-in flow), later `authz` (the actor and the superuser flag), `people` (`identity.account-created`, export and deletion), `settings` (`PolicySource`), `notify` (`Alerter`)
 
@@ -16,7 +17,7 @@
 - `Policy{SignupMode, SessionLifetime, SuperuserSessionLifetime, PasswordMinLength, LoginFailureLimit, LoginFailureWindow}` (+`Validate`), `DefaultPolicy()`, `SignupOpen|SignupInvitation`.
 - Seams (interfaces identity declares, filled later by `app`; nil means the M1 behaviour in brackets): `PolicySource{Policy(ctx) (Policy, error)}` (settings, M2 [`DefaultPolicy`]); `PermissionChecker{Allow(ctx, authz.Permission) error}` (authz, M2 [deny; the superuser is allowed before the seam is asked]); `PermissionLister{PermissionsOf(ctx, model.PersonID) ([]string, error)}` (authz, M2 [empty]); `NameSource{PlayaNameOf(ctx, model.PersonID) (string, error)}` (people, M2 [""]); `Alerter{SuperuserSignedIn(ctx, model.PersonID) error}` (notify, M4 [one warn log line]).
 - `Options{DB, Clock, Logger, Tracer, Meter, Key secret.Secret, AllowPlaintext bool, Audit audit.Recorder, Signals signals.Bus, Policy, Permissions, PermissionLister, Names, Alerter}` (+`Validate`); `New(Options) (*Service, error)` (no I/O; works against `db.None()`).
-- `*Service` (safe for concurrent use, nothing to close): `Authenticate(ctx, *http.Request) (context.Context, model.PersonID, error)` (= `api.Authenticator`); `SessionInfo(ctx) (SessionInfo, error)`; `SignUp(ctx, Credentials) (Issued, error)`; `SignIn(ctx, Credentials) (Issued, error)`; `SignOut(ctx) error`; `ChangePassword(ctx, PasswordChange) (Issued, error)`; `EndOtherSessions(ctx) (Issued, error)`; `ListAccounts(ctx, AccountQuery) (AccountPage, error)`; `GetAccount(ctx, model.AccountID) (Account, error)`; `DisableAccount(ctx, model.AccountID) error`; `EnableAccount(ctx, model.AccountID) error`; `SetTemporaryPassword(ctx, model.AccountID) (secret.Secret, error)`; `EnsureSuperuser(ctx, model.Email) (SuperuserResult, error)`; `ExportPerson(ctx, model.PersonID) (json.RawMessage, error)`; `DeletePerson(ctx, model.PersonID) (int, error)`; `Routes() []Route`; `OpenAPI() []byte`. `Route{Method, Pattern string, Public bool, Handler http.Handler}` (`app` converts to `module.Route`, as for audit).
+- `*Service` (safe for concurrent use, nothing to close): `Authenticate(ctx, *http.Request) (context.Context, model.PersonID, error)` (= `api.Authenticator`); `SessionInfo(ctx) (SessionInfo, error)`; `SignUp(ctx, Credentials) (Issued, error)`; `SignIn(ctx, Credentials) (Issued, error)`; `SignOut(ctx) error`; `ChangePassword(ctx, PasswordChange) (Issued, error)`; `EndOtherSessions(ctx) (Issued, error)`; `ListAccounts(ctx, AccountQuery) (AccountPage, error)`; `GetAccount(ctx, model.AccountID) (Account, error)`; `DisableAccount(ctx, model.AccountID) error`; `EnableAccount(ctx, model.AccountID) error`; `SetTemporaryPassword(ctx, model.AccountID) (secret.Secret, error)`; `EnsureSuperuser(ctx, model.Email) (SuperuserResult, error)`; `CreateSuperuser(ctx, out io.Writer, email string) error` (app's command; prints the spec's lines, never the address); `ExportPerson(ctx, model.PersonID) (json.RawMessage, error)`; `DeletePerson(ctx, model.PersonID) (int, error)`; `Routes() []Route`; `OpenAPI() []byte`. `Route{Method, Pattern string, Public bool, Handler http.Handler}` (`app` converts to `module.Route`, as for audit).
 - Constants: `CookieName = "__Host-bms_session"`, `DevCookieName = "bms_session_dev"`, `TokenVersion = 1`, `MaxPasswordBytes = 256`, `PasswordMinLengthFloor = 12`, `GeneratedPasswordLength = 24`, `HashConcurrency = 4`, `MaxTrackedKeys = 10000`, `MaxPageSize = 100`, `DefaultPageSize = 50`, `ClockSkew = 5 * time.Minute`.
 - `PermissionAccountsRead = "accounts.read"`, `PermissionAccountsManage = "accounts.manage"` (both `ScopeSite`, reach `personal`); `Permissions []authz.PermissionDecl`. `SignalAccountCreated = "identity.account-created"` (payload `account`, `person`). Audit actions `identity.login`, `identity.login-failed`, `identity.logout`, `identity.account.created`, `.read`, `.disabled`, `.enabled`, `.deleted`, `identity.password.changed`, `identity.password.temporary-set`, `identity.sessions.ended`, `identity.superuser.created`, `identity.superuser.reset`, `identity.superuser.login`. Settings `accounts.signup`, `accounts.session_lifetime`, `accounts.superuser_session_lifetime`, `accounts.password_min_length`, `accounts.login_failure_limit`, `accounts.login_failure_window`. `postgres.Migrations fs.FS`; `Set = db.Set{Name: "identity", Schema: "core"}`. Command `bms create-superuser <email>`.
 
@@ -402,6 +403,10 @@ func (s *Service) SetTemporaryPassword(ctx context.Context, id model.AccountID) 
 // Internal (rand, F43). Consumer: app's create-superuser command.
 func (s *Service) EnsureSuperuser(ctx context.Context, email model.Email) (SuperuserResult, error)
 
+// CreateSuperuser is what app's create-superuser command calls: it parses email, runs
+// EnsureSuperuser and writes the spec's output lines to out. It never prints the address.
+func (s *Service) CreateSuperuser(ctx context.Context, out io.Writer, email string) error
+
 // ExportPerson returns {"account": {...}} (Account without the hash) or {"account": null}
 // when the person has none. people (M2/M4) calls it through app. Fails Invalid for a zero
 // ID (F47), store kinds. Not audited here: people records people.person.exported.
@@ -480,19 +485,29 @@ type State struct {
 ```
 
 ```go
-// The storage interface the service declares (D8); postgres.Store implements it. Every
+// store is the storage the service declares (D8); postgres.Store implements it. Every
 // error is already classified by db.Wrap. A unique violation on account_email_canonical_key
-// is Conflict with *db.Error.Constraint set.
+// is Conflict with *db.Error.Constraint set. The per-purpose writes are single statements,
+// so a concurrent change cannot be lost to a read-modify-write.
 type store interface {
 	Insert(ctx context.Context, r account.Record) error
-	ByID(ctx context.Context, id model.AccountID) (account.Record, error)
+	ByID(ctx context.Context, id model.AccountID) (account.Record, error)       // with the hash: to verify a password
+	ByIDNoHash(ctx context.Context, id model.AccountID) (account.Record, error) // without it: the admin reads
 	ByCanonicalEmail(ctx context.Context, e model.Email) (account.Record, error)
 	ByPerson(ctx context.Context, p model.PersonID) (account.Record, error)
 	StateByID(ctx context.Context, id model.AccountID) (account.State, error)
-	List(ctx context.Context, after account.Key, limit int) ([]account.Record, error) // Key{CreatedAt, ID}
-	Update(ctx context.Context, r account.Record) error                             // hash, flags, generation, disabled_at, updated_at
+	List(ctx context.Context, after account.Key, limit int) ([]account.Record, error)
+	ListByEmail(ctx context.Context, e model.Email) ([]account.Record, error)
+	ExportByPerson(ctx context.Context, p model.PersonID) (account.Record, error)
+	DeleteByPerson(ctx context.Context, p model.PersonID) (model.AccountID, int, error)
+	SetPassword(ctx context.Context, id model.AccountID, hash secret.Secret, at time.Time) (int32, error)
+	SetTemporaryPassword(ctx context.Context, id model.AccountID, hash secret.Secret, at time.Time) (int32, error)
+	BumpGeneration(ctx context.Context, id model.AccountID, at time.Time) (int32, error)
+	Disable(ctx context.Context, id model.AccountID, at time.Time) (bool, error)
+	Enable(ctx context.Context, id model.AccountID, at time.Time) (bool, error)
 	TouchLogin(ctx context.Context, id model.AccountID, at time.Time) error
-	DeleteByPerson(ctx context.Context, p model.PersonID) (int, error)
+	Rehash(ctx context.Context, id model.AccountID, newHash, oldHash secret.Secret) error
+	Superuser(ctx context.Context, id model.AccountID, person model.PersonID, e model.Email, hash secret.Secret, at time.Time) (account.Superuser, error)
 }
 ```
 
@@ -508,7 +523,7 @@ Bytes, before encoding: `version(1) | account_id(16) | session_id(16) | generati
 
 ### The cookie
 
-`Set-Cookie: __Host-bms_session=<token>; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=<lifetime seconds>`. Under api decision 24 (AllowPlaintext and `httpx.SchemeFrom` is `http`) the handler writes `bms_session_dev` with the same attributes but `Secure`, and never both. Clearing uses the same name and attributes with `Max-Age=0`. Reading prefers `__Host-bms_session`; `bms_session_dev` is read only when `AllowPlaintext` is set. The handlers call `httpx.Fail` for every error and write nothing else themselves; `Issued.token` never appears in a log, span, error or body.
+`Set-Cookie: __Host-bms_session=<token>; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=<lifetime seconds>`. Under api decision 24 (AllowPlaintext and `httpx.SchemeFrom` is `http`) the handler writes `bms_session_dev` with the same attributes but `Secure`, and never both. Clearing uses the same name and attributes with `Max-Age=0`. Reading prefers `__Host-bms_session`; `bms_session_dev` is read only when `AllowPlaintext` is set and `httpx.SchemeFrom` is `http`. The handlers call `httpx.Fail` for every error and write nothing else themselves; `Issued.token` never appears in a log, span, error or body.
 
 ## Types
 
@@ -600,7 +615,7 @@ Screen set `accounts` (`kind: "core"`, `web/src/core/accounts/`, catalogue `mess
 | `/accounts/admin` (nav `admin` "Accounts", `access: ["accounts.read"]`) | account admins, the superuser | a search field "E-mail address" (exact match) and, below it, the newest accounts as a list (phone: one card per account; wide: `Table`): address, state (Active, Disabled, Superuser), last sign-in, created; "Load more" keyset paging; tap → detail | empty: "No accounts yet."; `403` → "You don't have permission to see accounts." (`ErrorState`, forbidden); search with no match: "No account has that address." |
 | `/accounts/admin/:account` | as above | the account's fields; "Disable" / "Enable" (confirmation `Dialog`; disabled for the superuser account and for oneself, with the reason as text); "Set a temporary password" (confirmation, then a `Dialog` showing the password once in a `<code>` with a copy button and "The person must change it at their next sign-in."); a toast per action | `404` → `ErrorState` not found; `403` as above; `503 read_only` → actions disabled with the banner's wording |
 
-The frame (web-shell) shows the superuser banner from `superuser`, redirects any route but identity's own to `/accounts/password` while `password_change_required` is true, and shows a neutral label ("Account") where it would show the playa name when `playa_name` is empty (Proposed change 2). Nothing identity renders includes the token, and no screen stores anything in the browser.
+The frame (web-shell) shows the superuser banner from `superuser`, holds the person on `/accounts/password` for every route except that one while `password_change_required` is true (the server answers 401 on `/accounts/admin`, so identity's other routes are not usable either), and shows a neutral label ("Account") where it would show the playa name when `playa_name` is empty (Proposed change 2). Nothing identity renders includes the token, and no screen stores anything in the browser.
 
 ## Behavior
 
@@ -614,8 +629,28 @@ The frame (web-shell) shows the superuser banner from `superuser`, redirects any
 - **The command.** `bms create-superuser <email>`: loads configuration like `serve` (needs `Session.Key`, app F6), builds the assembly through `check`'s path (so a schema behind exits 3 and a read-only copy exits 1 with "this copy is read-only; run it against the writing copy"), calls `EnsureSuperuser`, prints to stdout exactly: `Superuser account created.` or `Superuser account reset; its sessions have ended.`, then `Password (shown once, not stored anywhere else): <password>`, then `Sign in at /sign-in and keep this password in your password manager.` It never prints the address (the operator typed it). Exit 2 for a missing or invalid argument or a participant address (`Invalid`, `Conflict` with a line telling the operator to use another address), 1 otherwise.
 - **Superuser sign-in.** The token's lifetime is `SuperuserSessionLifetime`; the audit action is `identity.superuser.login`; `Alerter.SuperuserSignedIn` is called (nil: `logger.WarnContext(ctx, "superuser signed in", slog.String("person_id", ...))`); the metric counts `outcome=superuser`.
 - **Password verification timing.** When no account matches, the service verifies the submitted password against a fixed dummy hash with the same parameters so the response time does not reveal the difference; the limiter still counts the attempt under both keys.
-- **Rehash on login.** When a stored hash's parameters are weaker than the current constants, `SignIn` re-hashes and `Update`s on a writing copy (ignored on read-only), so parameters can be raised in a later release without a migration.
+- **Rehash on login.** When a stored hash's parameters are weaker than the current constants, `SignIn` re-hashes and `Rehash`es (compare-and-swap) on a writing copy (ignored on read-only), so parameters can be raised in a later release without a migration.
 - **Telemetry.** One `SpanInternal` span per use case, `identity.<use-case>`, attributes `telemetry.Token("outcome", ...)` and `telemetry.ID("account_id", ...)` only; `person_id` is on the request span already. Metrics: `bms.identity.logins{outcome: ok|superuser|bad_credentials|disabled|rate_limited|restricted}`, `bms.identity.sessions_rejected{reason: malformed|expired|revoked|disabled|unknown}`, `bms.identity.rate_limited{bucket: address|email}`. Never an address, a token or a password.
+
+### Accepted implementation deviations (M1 build, 2026-10-18)
+
+- `(*Service).CreateSuperuser(ctx, out io.Writer, email string) error` is exported for app's command; it prints the spec's lines, never the address.
+- The store's `Update(r)` is replaced by per-purpose atomic methods: `SetPassword`, `SetTemporaryPassword`, `BumpGeneration`, `Disable`, `Enable`, `Rehash`, `Superuser`, `ListByEmail`, `ExportByPerson`, `ByIDNoHash`. `DeleteByPerson` returns the account id too.
+- Admin reads (`GetAccount`, the manage target) never load the password hash.
+- The common-password list file is `xato-net-10-million-passwords-100000.txt` (the same SecLists top 100 000, renamed upstream).
+- HKDF uses the standard library `crypto/hkdf`, not `golang.org/x/crypto/hkdf`.
+- An extra metric, `bms.identity.alert_failures`.
+- Success responses: sign-up 201; sign-in, sign-out, password, end-others, disable and enable 204; temporary-password 200 `{password}` with no-store. The list path is `/api/accounts/`.
+- `LogValue` and `String` on `Credentials`, `PasswordChange` and `Issued` (nothing secret reaches a log).
+- An empty password gives field code `required`.
+- The dev cookie is read only when `AllowPlaintext` is set **and** the scheme is `http`. This resolves the spec's two readings to the stricter one; both places in the spec now say so.
+- The limiter reserves atomically: check-and-count under one lock, released on success or on errors that say nothing about the password, kept on a wrong guess. The reservation time is taken under the lock.
+- `Authenticate` returns a ctx derived from the caller's ctx.
+- The dummy hash is built in `New`. `maxArgonMemory` is 256 MiB. `Record.Validate` runs before `Insert`.
+- *(pending owner review)* `ChangePassword`'s current-password check reserves in the same two limiter buckets as sign-in, so wrong guesses there also block sign-in for that window.
+- *(pending owner review)* IPv6 client addresses are keyed by /64.
+- UI: the restricted-session gate holds the person on `/accounts/password` for every route except that one. The spec said "outside /accounts/", but the server answers 401 on `/accounts/admin`. The UI paragraph here and web-shell.md are corrected.
+- UI: a 409 on sign-up is shown as `taken` on the email field, whatever the body contains.
 
 ## Failure modes
 
@@ -628,7 +663,7 @@ The frame (web-shell) shows the superuser banner from `superuser`, redirects any
 | F5 | `Authenticate` | account's `session_generation` differs; account disabled | Unauthenticated | sign in again | `TestAuthenticate_Revoked_Unauthenticated`, `TestAuthenticate_Disabled_Unauthenticated` |
 | F6 | `Authenticate` | account row gone (deleted person) | Unauthenticated | sign in (fails) | `TestAuthenticate_UnknownAccount_Unauthenticated` |
 | F7 | `Authenticate` | `StateByID` fails Unavailable/Timeout/Canceled | that kind | api F33 | `TestAuthenticate_StoreUnavailable_PassesKind` |
-| F7b | `Authenticate` | `bms_session_dev` present, `AllowPlaintext` false | ignored: treated as no cookie | — | `TestAuthenticate_DevCookieIgnoredWithoutAllowPlaintext` |
+| F7b | `Authenticate` | `bms_session_dev` present, `AllowPlaintext` false or the scheme not `http` | ignored: treated as no cookie | — | `TestAuthenticate_DevCookieIgnoredWithoutAllowPlaintext` |
 | F8 | `SessionInfo` | `Names`, `Lister` or `Policy` fails (not NotFound from Names) | its kind | shell F29 banner | `TestSessionInfo_SeamFailure_PassesKind`, `TestSessionInfo_NameNotFound_EmptyName` |
 | F9 | `SignUp` | `Policy.SignupMode` is `invitation` | Unsupported | 501, explain | `TestSignUp_InvitationMode_Unsupported` |
 | F10 | `SignUp`, `SignIn` | e-mail empty or fails `ParseEmail` | Invalid (`email`: `required`/`malformed`) | field error | `TestSignUp_BadEmail_Invalid` |
@@ -688,7 +723,7 @@ The frame (web-shell) shows the superuser banner from `superuser`, redirects any
 
 ## Lock-in check
 
-No external service. Libraries: `golang.org/x/crypto/argon2` and `golang.org/x/crypto/hkdf` (BSD-3-Clause), the standard library for HMAC, base64 and cookies, and PostgreSQL (D8). The embedded password list is SecLists' `10-million-password-list-top-100000.txt` (MIT), kept under `internal/core/identity/passwords/` with its licence text. Later providers (OIDC) must be implementable against Dex (D13 compose profile `oidc`) or Keycloak, both self-hostable; the trusted-header provider needs no external software.
+No external service. Libraries: `golang.org/x/crypto/argon2` (BSD-3-Clause), the standard library for HKDF (`crypto/hkdf`), HMAC, base64 and cookies, and PostgreSQL (D8). The embedded password list is SecLists' `xato-net-10-million-passwords-100000.txt` (MIT; the same SecLists top 100 000, renamed upstream), kept under `internal/core/identity/passwords/` with its licence text. Later providers (OIDC) must be implementable against Dex (D13 compose profile `oidc`) or Keycloak, both self-hostable; the trusted-header provider needs no external software.
 
 ## Test plan
 

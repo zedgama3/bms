@@ -89,7 +89,8 @@ copy and can fork it. Features are modules.
      `check` and `serve` verified against the dev database; Playwright smoke passes against the
      real server).
      Done 2026-10-18: `audit` (order 10) and `identity` (order 11) are Approved (D35).
-     Next: M1 implementation.
+     Done 2026-10-18: M1 implemented on feat/m1.
+     Next: M2, with the specs authz and people.
      Open follow-ups:
      - (a) Confirm D34 as D20's debug-level exception.
      - (b) The M3 part name `departments-events` is not a core area name for `module.IsCoreArea`
@@ -100,6 +101,23 @@ copy and can fork it. Features are modules.
      - (d) CI workflow `.github/workflows/ci.yml` is written (2026-10-17): a `make check` job and
        an integration-test job with a PostgreSQL 17 service. It runs once the owner pushes the
        branch; waiting for the first push.
+     - (e) audit: entries spooled inside a caller's transaction can outlive a rollback. Needs a
+       db seam (for example `db.TxMode(ctx)`) and an audit amendment, both by the architect.
+     - (f) audit F36: an import insert that fails Invalid keeps retrying the file forever.
+       Recommendation: set it aside as `.failed`.
+     - (g) api: a 409 Conflict carries no `fields`, so sign-up `taken` can't name the field.
+       Recommendation: the mapper emits fields for conflict too. The web already copes either way.
+     - (h) identity limiter defaults: the per-client-address limit of 10 failures per 15 minutes
+       may lock out a shared gate uplink. Recommendation: raise the address bucket to about 100
+       and keep the per-account limit at 10.
+     - (i) Two behaviours added beyond the identity spec are pending the owner's review:
+       ChangePassword shares the sign-in limiter buckets, and IPv6 addresses are keyed by /64.
+     - (j) Spec drift: app.md gives notify a migration set, but db.md's set order has none
+       (architect).
+     - (k) The password hint hard-codes the 12-character minimum. The minimum should reach the
+       browser before settings lets a regional change it (M2+).
+     - (l) The common-password list has only 488 entries of 12 or more characters, so it barely
+       bites at the default minimum. Consider a different check later.
   3. CI on GitHub (`make check`): workflow `.github/workflows/ci.yml` is written (2026-10-17);
      waiting for the owner to push the branch so it runs.
 

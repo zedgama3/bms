@@ -3,6 +3,7 @@
 - **Status:** Implemented (2026-10-17); Approved (2026-10-17)
 - **Amended 2026-10-17 (owner):** `check` ignores a never-migrated disabled module and exits 2 without a session key; `openapi` prints indented JSON; `migrate` creates the data directory only when it writes the secrets file; the part-name check uses `module.IsCoreArea`; debug logging is announced (decision 18); reviewer-accepted implementation deviations are recorded ("Accepted deviations").
 - **Amended 2026-10-18 (owner approval of audit/identity):** core part order is audit 1, identity 2 (identity's `build` takes the audit recorder; audit needs nothing from identity at build time); the audit and identity rows of "How later core services plug in" are filled in (audit.md Proposed change 1, identity.md Proposed change 3).
+- **Amended 2026-10-18 (M1 build, accepted deviations):** implementation deviations recorded in Behavior, "Accepted implementation deviations (M1 build, 2026-10-18)"; `serve` step 8 and the shutdown closer list updated (a seventh closer, `audit`).
 - **Package:** `internal/app` (Go module `github.com/zedgama3/bms`), plus the helper package
   `internal/app/secrets` (the generated-secrets file) and the binary `cmd/bms`. **UI:**
   none of its own; `serve` hands the built web shell to `api`.
@@ -658,7 +659,7 @@ The reviewers accepted these differences from the text above; they are the behav
    5 * time.Second, Deferrer: nil /* jobs, M4, set by its part before this call */})`.
 7. Run every part's `build` (F28); the registry's and the parts' permission
    declarations are gathered as `corePerms` with `api.PermissionModulesRead` first.
-8. `a.plan.Build(ctx /* buildTimeout */, migrator, a.provision)` (F9). Run every part's
+8. `checkSchemas` first checks the core sets (exit 3 when one is behind; only then does it also name the module sets); then `a.plan.Build(ctx /* buildTimeout */, migrator, a.provision)` (F9 stays with `Plan.Build`). Run every part's
    `link` (people takes `set.PersonData()`).
 9. `web.FS()`: ok → `a.ui`; `NotFound` → nil and warn "serving without a UI" (F17).
    `web.Version()`: compare with `version`; warn once when missing, invalid or
@@ -678,7 +679,7 @@ The reviewers accepted these differences from the text above; they are the behav
 13. `go srv.Serve()` into a channel. Wait for the first of: `ctx.Done()` (a signal) or
     the channel (F13). Log at info "stopping" with `reason` = `signal` or `serve_error`.
 14. `shutdown(ctx, logger, clock, cfg.HTTP.ShutdownTimeout, []closer{http (srv.Shutdown),
-    runnables in reverse, signals (disp.Close), modules (set.Stop), db (pool.Close),
+    runnables in reverse, signals (disp.Close), modules (set.Stop), audit (spool close), db (pool.Close),
     telemetry (tel.Close)})` (F15, F16). Log at info "stopped" with `duration_ms` (before
     `tel.Close`; records logged after it still reach stdout, telemetry.md decision 16).
 15. Return `ExitOK` when `Serve` returned nil and every closer returned nil; else
@@ -870,6 +871,18 @@ never `go.opentelemetry.io`, never `dbtest` or `telemetrytest` outside test file
 `forbidigo` bans `fmt.Print*`; command output goes through `fmt.Fprint*` on the writers
 `Main` was given, which it does not ban.
 
+### Accepted implementation deviations (M1 build, 2026-10-18)
+
+- **F11:** a runnable start failure maps through `statusOf`, so an Invalid spool directory exits 2.
+- `checkSchemas` checks the core sets before the build: exit 3, and only when a core set is behind does it also name the module sets (F9 stays with `Plan.Build`). Serve step 8 says so.
+- `openapi` passes a nil `Authenticator`. `openapi` and `check` use a non-secret `placeholderSessionKey`; `requireSessionKey` refuses that exact value.
+- A seventh closer, `audit`, in the order http, runnables, signals, modules, audit, db, telemetry (steps 14 and F15 updated).
+- The audit runnable's start creates `<data.dir>/audit/spool` (0700) before `Run`.
+- `lazyTitles` and the `a.titles` field are there for authz in M2.
+- `create-superuser` resolves modules before building parts, so a `BMS_MODULES_DISABLED` typo exits 2.
+- `check` prints `audit spool: N waiting, M failed`, or `empty`, via `audit.SpoolCounts`.
+- **Open spec drift (for the architect, not fixed here):** the part table gives `notify` a migration set, but db.md's fixed set order has no `notify`.
+
 ## Failure modes
 
 | # | Method | Condition | errs kind | Caller is expected to | Test |
@@ -888,7 +901,7 @@ never `go.opentelemetry.io`, never `dbtest` or `telemetrytest` outside test file
 | F12 | `serve` | `Listen` fails | Unavailable (in use) → `ExitFailure`; Invalid → `ExitUsage`; modules stopped, closers run | free the port | `TestServe_AddrInUse_Exit1AfterStoppingModules` (a listener held by the test) |
 | F13 | `serve` | `Serve` returns an error (the accept loop failed) | Unavailable; logged at error; the full `shutdown` runs; `ExitFailure` | restart | `TestServe_ServeFails_RunsShutdownExit1` (an injectable server seam in an internal test) |
 | F14 | `serve`, `migrate` | `ctx` ends during start-up or during a migration | Canceled; what started is stopped; "interrupted" on stderr; `ExitFailure` (a migration's current file is rolled back by `db`; "rerun") | rerun | `TestServe_InterruptedDuringStart_StopsStartedExit1`, `TestMigrate_Interrupted_Exit1` (integration) |
-| F15 | `shutdown` | a closer fails or does not finish within its deadline | Timeout or its kind; the next closers still run (each with the shared deadline, even when passed); errors joined; each logged with `name`, `duration_ms`, `error.kind`; `ExitFailure` | read the log; a second signal forces exit | `TestShutdown_ContinuesPastFailuresAndJoins`, `TestShutdown_OrderAndDeadlines` (fake clock; HTTP's deadline is `max(1s, 2b/3)`, the others' is `start+b`; order http, runnables, signals, modules, db, telemetry) |
+| F15 | `shutdown` | a closer fails or does not finish within its deadline | Timeout or its kind; the next closers still run (each with the shared deadline, even when passed); errors joined; each logged with `name`, `duration_ms`, `error.kind`; `ExitFailure` | read the log; a second signal forces exit | `TestShutdown_ContinuesPastFailuresAndJoins`, `TestShutdown_OrderAndDeadlines` (fake clock; HTTP's deadline is `max(1s, 2b/3)`, the others' is `start+b`; order http, runnables, signals, modules, audit, db, telemetry) |
 | F16 | `shutdown` | `api.Shutdown` times out with handlers alive | Timeout from HTTP; the remaining closers get at least a third of the budget; handlers are left to die with the process | — | `TestShutdown_HTTPTimeout_RestStillRunWithinBudget` (a handler blocked on a channel; `Set.Stop` and `db.Close` are fakes asserting their deadline) |
 | F17 | `serve` | `web.FS()` fails with NotFound | none: `UI: nil`, one warn "serving without a UI"; non-API paths answer 404 | run `make web-build` | `TestServe_NoUIBuild_WarnsAndServesAPI` (an injectable `fs.FS` seam; the real `web.FS` is tested by web-shell) |
 | F18 | `serve` | `web.Version()` missing, invalid or different from the binary's | none: one warn with `ui_version` and `version` | rebuild the UI | `TestServe_UIVersionMismatch_WarnsOnce` |
@@ -990,7 +1003,7 @@ port>`, `BMS_LOG_FORMAT=json`, no `OTEL_*`):
   with `X-Trace-Id` → `GET /api/hello/greeting` is `401` (no identity in M0) →
   `GET /api/hello/nope` is `404` with the `not_found` problem body →
   `GET /healthz` `200` → cancel ctx → `Main` returns `ExitOK` → stdout holds the four
-  lifecycle lines in order and the six closers' `stopped` records in the order of
+  lifecycle lines in order and the seven closers' `stopped` records in the order of
   decision 10, no record carries the markers; the trace of the greeting request has the
   `hello` module's span under the request span. The write route is `POST
   /api/hello/greetings`; in M0 it answers `401` before the handler, so api.md Proposed

@@ -1,6 +1,7 @@
 # Audit
 
-- **Status:** Approved (2026-10-18; owner approved every recommended answer)
+- **Status:** Implemented (2026-10-18); Approved (2026-10-18; owner approved every recommended answer)
+- **Amended 2026-10-18 (M1 build, accepted deviations):** implementation deviations recorded in Behavior, "Accepted implementation deviations (M1 build, 2026-10-18)"; `ActorKind.String` is exported and `audit.SpoolCounts(dataDir) (waiting, failed int, err error)` is added (for `bms check`). Records of what was built, not design changes.
 - **Package:** `internal/core/audit` (service, types, spool, importer, `http.go`), `internal/core/audit/postgres` (store, `sql/`, `migrations/`), `internal/core/audit/audittest` (the fake recorder). **UI:** `web/src/core/audit/` (M2)
 - **Depends on specs:** `model` (IDs, `Sensitivity`, `TimeRange`), `lib-errs`, `lib-core` (`clock`, `validate`), `db` (`DB`, `Transact`, `ReadOnly`, `ErrReadOnly`, `Wrap`, `Set`), `telemetry` (`Tracer`, `Meter`, `TraceIDFrom`), `signals` (`InDelivery` only), `module-contract` (`Deps.Audit`, `ModuleRoutes`), `config` (`Instance.Name`, `Data.Dir`, through `app`), `api` (`httpx`, route mounting), `app` (part 2 → part 1, see Proposed change 1). Leaf types from `authz` (`Permission`, `PermissionDecl`) that `module-contract` already places there.
 - **Used by:** `identity` (M1: logins, failed logins, sign-up, account disable, superuser creation), `people` (M2: reads of personal fields, export, deletion), `authz` (M2: grants, revocations, rules), `departments-events` (M3), `settings` (M2: changes), every module through `Deps.Audit`, `jobs` (M4: the retention purge), `app` (wiring and lifecycle), the web shell's audit screen (M2).
@@ -10,7 +11,7 @@
 **Purpose.** Keep an append-only record of who did what and who saw what, so that a regional can answer "who viewed this person's data" and "what did this account do" without trusting anyone's memory, on the writing copy and on a read-only copy alike.
 
 **Exported names (package `audit`).**
-- `Action` (`<area>.<ident>(.<ident>)*`, idents `[a-z][a-z0-9]*(-[a-z0-9]+)*`, at most 96 bytes; `Validate`, `Area`). `Outcome` (`Succeeded`=1, `Denied`, `Failed`; zero invalid; `String`, `ParseOutcome`, `Validate`). `ActorKind` (`ActorPerson`=1, `ActorAnonymous`, `ActorOperator`, `ActorSystem`). `Actor{Kind, Person model.PersonID, Superuser bool, Titles []string}` (+`Validate`). `Ref{Kind string, ID [16]byte}` (a record reference, kind `<area>.<ident>`; `RefOf[T ~[16]byte](kind, id)`, `IsZero`, `Validate`).
+- `Action` (`<area>.<ident>(.<ident>)*`, idents `[a-z][a-z0-9]*(-[a-z0-9]+)*`, at most 96 bytes; `Validate`, `Area`). `Outcome` (`Succeeded`=1, `Denied`, `Failed`; zero invalid; `String`, `ParseOutcome`, `Validate`). `ActorKind` (`ActorPerson`=1, `ActorAnonymous`, `ActorOperator`, `ActorSystem`; `String`). `SpoolCounts(dataDir) (waiting, failed int, err error)` (for `bms check`). `Actor{Kind, Person model.PersonID, Superuser bool, Titles []string}` (+`Validate`). `Ref{Kind string, ID [16]byte}` (a record reference, kind `<area>.<ident>`; `RefOf[T ~[16]byte](kind, id)`, `IsZero`, `Validate`).
 - `Entry{Action, Outcome, Actor, Subject model.PersonID, Record Ref, Fields []string, Level model.Sensitivity, Reason string}` (+`Validate`): what a writer gives. `RecordID = model.ID[record]`; `Record{ID, At, Instance, TraceID, Spooled bool, Entry}`: what is stored and what `Search` returns (`Actor` fully resolved).
 - `Recorder{Record(ctx, ...Entry) error}` = `module.Deps.Audit`. Each caller gets one scoped to its area from `(*Log).Scoped(area)`; an action outside the area fails `Invalid`.
 - `ActorFunc func(ctx) (Actor, bool)` (identity's session, wired by `app`); `TitleSource{TitlesOf(ctx, PersonID) ([]string, error)}` (authz, M2, optional); `PermissionChecker{Allow(ctx, authz.Permission) error}` (authz, M2, nil denies).
@@ -503,6 +504,28 @@ Strings are catalogue keys under `core.audit.*` in `web/src/core/audit/messages/
 **Telemetry.** Spans `audit.record` (`Int("entries")`, `Token("via", "db"|"spool")`, `Token("area")`), `audit.search`, `audit.export` (`Int("records")`), `audit.import` (`Int("files")`, `Int("entries")`), `audit.purge` (`Int("deleted")`). Metrics `bms.audit.recorded{via}`, `bms.audit.record_failures{kind}`, `bms.audit.imported{outcome}`, `bms.audit.spool_files` (gauge). Never a field name, reason, title, or person ID on a span or metric. Logs: warn when recording falls back to the spool, once per active file ("audit spooling started", `file` name only); info per import; warn per `.failed` file; error for a spool write failure (the caller also fails: the one place the error is logged is here, since the caller only returns it).
 
 **Delivery by milestone.** M1: everything except the UI; routes are mounted and answer 403 (nil `PermissionChecker`), as the hello module's do in M0. M2: the UI, `TitleSource` and `PermissionChecker` wired from authz, the two settings. M4: `Purge`'s caller (the retention job) and `CountAbout` for `people`. Later: `ViewsOf` (D22) by amendment.
+
+### Accepted implementation deviations (M1 build, 2026-10-18)
+
+- The trace ID is read from the caller's ctx before the `audit.record` span starts.
+- The `record_failures` metric label is `kind`.
+- `Run` creates its ticker after the first import.
+- `Imported.Entries` comes from RowsAffected; `Duplicates` = batch size - `Entries`.
+- Handlers validate the query first, so a bad query records nothing. Invalid fields are named `query.<param>`; a repeated param is Invalid; `from` and `to` must come together.
+- An `Export` failure after lines are written aborts the response with `http.ErrAbortHandler`.
+- The `Ref` kind grammar is `<area>.<ident>(.<ident>)*`, no wider than the SQL CHECK.
+- `TitleSource` titles are cleaned, not failed: control (Cc) and format (Cf) characters and U+FFFD are stripped, then the title is trimmed. Empty titles are dropped, at most 16 are kept, and each is capped at 64 bytes.
+- `Close` with an expired ctx still closes the spool handle.
+- `ActorKind.String` is exported.
+- `audittest.Fake` re-implements the batch validation; `TestFake_MatchesRealValidation` keeps the two in step.
+- The spool truncates back to the last good batch when a `Write` or `Sync` fails.
+- `Close` cancels a running import.
+- A spool closed under its mutex refuses later appends (Unavailable).
+- The import line cap is 64 KiB; a longer line sets the file aside as `.failed`.
+- The set-aside warning names the file, the line and the problem (a field name), never a value.
+- An existing spool directory is tightened to 0700.
+- `audit.SpoolCounts(dataDir) (waiting, failed int, err error)` was added for `bms check`.
+- SQL: `core.audit_purge` uses `set_config('bms.audit_purge','on',true)` and resets it to `'off'`, instead of `SET LOCAL`. The triggers are `audit_entry_guard_row` and `audit_entry_guard_truncate`. `core.audit_purge` also refuses a future `before` (22023, Invalid). Search uses four query files (unkeyed, by actor, by subject, by record) and an expanded keyset predicate, for stable plans.
 
 ## Failure modes
 
