@@ -58,7 +58,7 @@ Each milestone is something the owner can try on bms-vm, not just code.
 | **M0. Skeleton** | 1 | install with `bms migrate`, start it, see the empty shell, see its traces in Grafana; a "hello" module shows up |
 | **M1. Accounts** | 2, 8 (basic) | create the superuser by command, sign up, sign in and out, change a password, sign out everywhere else, disable and re-enable an account, set a temporary password |
 | **M2. People and permissions** | 3, 4, 9 (basic), 11 (basic) | edit a profile, give someone an admin job, see menus change, see who viewed whose contact details, download your own data, request deletion, export or delete one person (screen or command) |
-| **M3. Departments and events** | 5, 7 | set up departments and an event, appoint a department's leadership, have that department manage itself, archive a department |
+| **M3. Departments and events** | 5, 7 | set up departments and an event, add an event's schedule, copy a module's set-up into a new event, appoint a department's leadership, have that department manage itself, archive a department |
 | **M4. Ready for a module** | 6 | receive e-mail, reset a forgotten password by e-mail; start `volunteers` |
 
 ```
@@ -255,7 +255,9 @@ training and certificates come with qualifications (Q-QUAL), not as profile fiel
   (its people and, through `volunteers`, its positions).
 - *Event admin:* create an event (name, kind, a start and end date-time, and time zone), and
   close it when it's over. An event may also have scheduled times within it, such as gate hours
-  or the temple burn; how those are modelled is for `departments-events` to settle.
+  or the temple burn: a schedule item is a labelled window or moment, with an optional key
+  modules can anchor to. Event kinds (burn, decompression, other, and any the regional adds)
+  are rows the event admin can add and rename.
   Several events can be open at once (a burn and its decompression party).
 - *Participant:* see the departments and the upcoming events.
 
@@ -304,7 +306,11 @@ training and certificates come with qualifications (Q-QUAL), not as profile fiel
 
 **People can:**
 - *Each admin:* reach the screens for the jobs they hold, and only those: accounts, roles and
-  grants, separation-of-duties rules, departments, events, settings, audit.
+  grants, separation-of-duties rules, departments, events, settings, audit. The departments
+  and events screens (D37): the department list, new-department form and department page
+  (`/departments`, `/departments/new`, `/departments/:department`), and the event list,
+  new-event form, event page and event kinds (`/events`, `/events/new`, `/events/:event`,
+  `/events/kinds`).
 - *Department admin:* a page per department they run.
 - *Any site admin:* see which modules are compiled in and enabled, the provides/uses graph
   (D19) and each schema version.

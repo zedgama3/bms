@@ -95,11 +95,16 @@ copy and can fork it. Features are modules.
      Done 2026-10-18: M2 implemented on feat/m1 (authz and people Implemented; access, people
      and audit screens built; `bms export` and `bms delete` built; e2e run against the real
      server passes). Not pushed.
-     Next milestone: M3, specs `departments-events`.
+     Done 2026-10-18: `departments-events` is Approved (D37), with the owner's answers to its
+     six recommendations; its 13 proposed changes elsewhere are being applied. M3 build is next.
+     Next milestone: M3, spec `departments-events` (Approved 2026-10-18, D37).
      Open follow-ups (all waiting on the owner or architect):
      - (a) Confirm D34 as D20's debug-level exception.
      - (b) The M3 part name `departments-events` is not a core area name for `module.IsCoreArea`
        (split into two parts, or amend F28).
+       Decided 2026-10-18 (D37): two parts, `departments` (6) and `events` (7), each a reserved
+       core area; the spec file stays one; `jobs`, `notify`, `files` become parts 8–10. F28 is
+       not amended.
      - (c) Done 2026-10-17: `scripts/e2e.sh` has a readonly mode. `BMS_E2E_MODE=readonly`
        migrates a throw-away database, freezes it with `ALTER DATABASE ... SET
        default_transaction_read_only = on` and runs the read-only Playwright scenario.
@@ -132,29 +137,38 @@ copy and can fork it. Features are modules.
      - (m) Approve the D36 (e) amendment to `db.md` and `audit.md` (`db.TxMode`; audit never
        spools inside a transaction). Recommendation: yes, and `audittest.Fake` refuses a Record
        inside a Read tx.
+       Decided 2026-10-18 (D37): approved, and `audittest.Fake` refuses a Record inside a Read tx.
      - (n) authz: a SoD rule or revoke can leave no effective access admin. Recommendation:
        refuse with `last_access_admin`.
+       Decided 2026-10-18 (D37): refuse with `last_access_admin`.
      - (o) authz: should Seed record an audit entry when an upgrade adds a permission to a starter
        role? Recommendation: yes.
+       Decided 2026-10-18 (D37): yes.
      - (p) authz/people: should DeletePerson publish `access.grant-revoked` for removed grants?
        Recommendation: yes.
+       Decided 2026-10-18 (D37): yes.
      - (q) authz: department stewards can't list grants. Recommendation: give them
        `access.grants.read` scoped to their department.
+       Decided 2026-10-18 (D37): yes, scoped to their department.
      - (r) people: a language-only `PUT /me` is held to the required fields. Recommendation:
        exempt it.
+       Decided 2026-10-18 (D37): exempt.
      - (s) people: should the consent audit record the purpose and direction? Recommendation:
        yes.
+       Decided 2026-10-18 (D37): yes.
      - (t) people: clear a walk-on's `contact_email` when an account is linked. Recommendation:
        yes.
+       Decided 2026-10-18 (D37): yes.
      - (u) people: audit reads of deletion-request notes. Recommendation: yes.
+       Decided 2026-10-18 (D37): yes.
      - (v) people: data rights for an account holder with no `core.person` row. Recommendation:
        run the identity and authz steps anyway.
+       Decided 2026-10-18 (D37): run the identity and authz steps anyway.
      - (w) architect, app spec gaps: commands don't start modules, so `people.person-deleted`
        from `bms delete` reaches no module, and PersonData must work on an unstarted module.
        Migrate's seed must reuse serve's split sequence once `jobs` arrives. app.md vs db.md
        notify set drift.
-     - (x) Earlier still-open items: (a) D34 as D20's debug-level exception; (b) the M3 part
-       name `departments-events` vs `IsCoreArea`; (j) notify drift (merge into w); (k) the
+     - (x) Earlier still-open items: (a) D34 as D20's debug-level exception; (j) notify drift (merge into w); (k) the
        password hint hard-codes 12; (l) the common-password list barely applies at a
        12-character minimum; and CI waiting for the first push.
   3. Local dev database (half-reset): the `authz` and `hello` version-2 rows in

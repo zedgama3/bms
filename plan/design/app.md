@@ -33,7 +33,7 @@
   **Used by:** `cmd/bms` (`Main`), the operator (the commands), `check-runner` and CI (the
   Makefile targets), `module-hello.md` (its integration test runs through `Main`), every
   later core spec (`identity`, `authz`, `audit`, `settings`, `people`,
-  `departments-events`, `jobs`, `notify`, `files`: each plugs in through one *part*, see
+  `departments`, `events`, `jobs`, `notify`, `files`: each plugs in through one *part*, see
   "How later core services plug in").
 
 ## Summary
@@ -61,7 +61,7 @@
 - D9 start order: config, telemetry, registry, database, signals, parts, modules, HTTP shell, `Set.Start`, runnables, `Listen`.
 - D10 stop order HTTP, runnables, signals, modules, database, telemetry within `http.shutdown_timeout`; HTTP gets `max(1s, 2*budget/3)`; every closer is called even after failure; shutdown ctx is `WithoutCancel`.
 - D11 `serve` starts on a read-only copy; `migrate` refuses one.
-- D12 later core services plug in as ordered parts with `declare`, `build`, `link`, `start`/`stop` (order: audit, identity, settings, authz, people, departments-events, jobs, notify, files), not a registry.
+- D12 later core services plug in as ordered parts with `declare`, `build`, `link`, `start`/`stop` (order: audit, identity, settings, authz, people, departments, events, jobs, notify, files; D37), not a registry.
 - D13 end-to-end test runs the real assembly in process through `Main`, plus one subprocess signal test.
 - D14 `migrate` creates data dir and secrets file before touching the database, only when `cfg.Session.Key` is unset (a read-only filesystem with `BMS_SESSION_KEY` injected works), then reloads config.
 - D15 the module list is `internal/app/modules.go` (blank imports) mirrored by `web/src/modules/index.ts`.
@@ -79,7 +79,7 @@
 **Open questions:**
 - None. Answered by the owner (2026-10-17): no drain delay in M0 (D17); non-`serve` commands log to stderr (D4); `serve` requires the session key from M0 (D6); a second signal terminates immediately (D1).
 
-**Proposed changes elsewhere (2026-10-17):** applied to config, module-contract, db, telemetry, signals, web-shell, api, 07-abstractions, 09 §1, add-module and go-conventions; items 9 (identity) and the audit part of 11 applied 2026-10-18; item 10 (people) and 11 (authz) applied 2026-10-18 (owner approval of authz/people). Pending: jobs, departments-events, settings, notify, files (targets not written), the D20 clarification (plan-keeper), the Makefile targets and `scripts/e2e.sh` (implementation, created when app is built), `docs/operating.md`.
+**Proposed changes elsewhere (2026-10-17):** applied to config, module-contract, db, telemetry, signals, web-shell, api, 07-abstractions, 09 §1, add-module and go-conventions; items 9 (identity) and the audit part of 11 applied 2026-10-18; item 10 (people) and 11 (authz) applied 2026-10-18 (owner approval of authz/people). Item 10 (departments-events) applied 2026-10-18 (D37): parts 6 `departments` and 7 `events`, jobs 8, notify 9, files 10. Pending: jobs, settings, notify, files (targets not written), the D20 clarification (plan-keeper), the Makefile targets and `scripts/e2e.sh` (implementation, created when app is built), `docs/operating.md`.
 
 **M2 build deviations (2026-10-18).** authz is part 4 and people part 5; the audit actor is the session's person, else operator while `a.operator` is set (create-superuser, export, delete, migrate); `migrate` builds the parts and seeds after Migrate; `export`/`delete` pre-parse the ID (exit 2); commands build modules but do not start them; `api.Permissions` and `core.modules.read` (`StarterRoles: authz.SiteAdminRoles`) are exported. Three open spec gaps are listed in Behavior.
 
@@ -111,7 +111,7 @@ Run the command the operator asked for over the core assembled from its configur
   schema state, API and UI without starting, and exit with the status `serve` would.
 - **The seams for the rest of the core.** Define where each later core service hooks in (a
   *part*) so that `identity`, `authz`, `audit`, `settings`, `people`,
-  `departments-events`, `jobs`, `notify` and `files` arrive as one new file each and no
+  `departments`, `events`, `jobs`, `notify` and `files` arrive as one new file each and no
   change to the commands or the lifecycle.
 - **Tests that need everything.** Host the tests only the composition root can run: the
   message-catalogue check over every registered manifest (web-shell.md Proposed change 4),
@@ -793,12 +793,13 @@ a later part may read what an earlier one set on the `assembly`.
 | 1 | `audit` (M1) | migration set `audit` (`coreSets` order unchanged: no foreign keys); `corePerms` += `audit.Permissions`; settings declarations | `audit.New` over `cfg.Instance.Name`, `cfg.Data.Dir`, the pool, clock, telemetry, the actor closure (over `identity.SessionFrom`, called per request only), and `a.titles`/`a.permissions` (nil until authz's part sets them: read lazily through small adapters); `a.deps.Audit` left unscoped and scoped in `provision` with `Scoped(m.Name)`; route set `audit` from `Routes()`/`OpenAPI()` as `module.ModuleRoutes{Module: "audit"}` (`audit.Route` converted to `module.Route`) | — | `Run` (the spool importer) starts after `Set.Start` and stops with the runnables; `Close` after `Set.Stop`, before `db.Close` | `Audit` (scoped per module) |
 | 2 | `identity` (M1) | `identity.Set` in `coreSets` at its place in db.md's fixed order (identity first; part order does not change migration order); `identity.Permissions` to `corePerms`; `SignalAccountCreated` to `coreSignals`; command `create-superuser` (`usage: <email>`; `rotate-secret` later) | `identity.New` over `cfg.Session.Key`, `cfg.HTTP.AllowPlaintext`, `a.dbc`, the clock, telemetry, `audit.Scoped("identity")` (audit is built first), `a.disp.Scope("identity", {SignalAccountCreated}, nil)`, every seam nil; sets `a.authenticator` and route set `accounts` (`identity.Route` converted to `module.Route`); the audit actor closure is `func(ctx) (audit.Actor, bool)` over `identity.SessionFrom` (`{Kind: ActorPerson, Person, Superuser}`; a restricted session is still the person for audit) | — | — | — |
 | 3 | `settings` (M2) | migration set `settings`; route set declared as `settings` | the store; `Plan.Settings()`; `a.deps.Settings` (scoped per module in `provision`); the public settings and `theme.css` routes | — | — | `Settings` |
-| 4 | `authz` (M2) | `authz.Set` in `coreSets` (set name `authz`, already in db's fixed order); `authz.Permissions` to `corePerms`; core signals `access.grant-created`, `access.grant-revoked`; a `seed` step for `migrate` | `authz.New` over `a.dbc`, the clock, telemetry scope `authz`, `audit.Scoped("access")`, `a.disp.Scope("access", {the two}, nil)`, the actor closure `func(ctx) (authz.Actor, bool)` over `identity.PersonFrom` and `identity.SessionFrom` (`Superuser` from the session), `Declared: append(a.corePerms, a.plan.Permissions()...)`, `Departments: nil` (M3 sets a lazy adapter); sets `a.permissions`, `a.titles`, `a.lister`, `a.deps.authz` (`provision` copies it, unscoped); route set `access`. identity is built before authz, so its `Permissions` and `Lister` are the lazy adapters (`lazyPermissions`, `lazyLister`, in a shared file) | — | `migrate` runs each part's `seed func(ctx, *assembly) error` after `db.Migrate` on the writer: authz calls `Seed(ctx, declared)` and prints `access: <n> starter permissions seeded` when `n > 0` | `Authz` |
+| 4 | `authz` (M2) | `authz.Set` in `coreSets` (set name `authz`, already in db's fixed order); `authz.Permissions` to `corePerms`; core signals `access.grant-created`, `access.grant-revoked`; a `seed` step for `migrate` | `authz.New` over `a.dbc`, the clock, telemetry scope `authz`, `audit.Scoped("access")`, `a.disp.Scope("access", {the two}, nil)`, the actor closure `func(ctx) (authz.Actor, bool)` over `identity.PersonFrom` and `identity.SessionFrom` (`Superuser` from the session), `Declared: append(a.corePerms, a.plan.Permissions()...)`, `Departments: lazyDepartments{a}` (D37; answers `Unsupported` until part 6 is built); sets `a.permissions`, `a.titles`, `a.lister`, `a.deps.authz` (`provision` copies it, unscoped); route set `access`. identity is built before authz, so its `Permissions` and `Lister` are the lazy adapters (`lazyPermissions`, `lazyLister`, in a shared file) | — | `migrate` runs each part's `seed func(ctx, *assembly) error` after `db.Migrate` on the writer: authz calls `Seed(ctx, declared)` and prints `access: <n> starter permissions seeded` when `n > 0` | `Authz` |
 | 5 | `people` (M2) | `people.Set` in `coreSets` (set name `people`); `people.Permissions` to `corePerms`; core signals `people.person-created`, `people.person-deleted`, `people.deletion-requested`; extension point `people.person-page` (`Accepts`: a `personpage.Provider`); commands `export` and `delete` (`usage: <person-id>`; both require the session key like `create-superuser`; run `ExportCommand`/`DeleteCommand` after `Build` and `Link`) | `people.New` over `a.dbc`, the clock, telemetry scope `people`, `audit.Scoped("people")`, `a.disp.Scope("people", {the three}, {identity.SignalAccountCreated})`, `a.deps.authz`, the authz actor closure, `Accounts: a.identity`, `Access: a.authz`, `AuditCount: a.audit`, `Policy: nil` (settings' part sets a lazy adapter); sets `a.deps.people`; route set `people`; identity's `build` gets `Names: lazyNames{a}` (empty until `a.names` is set) | `link` converts `a.set.PersonData()` to `[]people.Source` and `a.set.Contributors(personpage.Point)` to `[]people.SectionProvider` and calls `Link` (Proposed change 2(a)) | — | `People` |
-| 6 | `departments-events` (M3) | migration sets `departments`, `events`; its signals; point `events.event-created` | route sets `departments`, `events`; its scopes | contributions to `events.event-created` | — | — |
-| 7 | `jobs` (M4) | migration set `jobs` | the runner over the pool and `ReadOnly()`; `a.deps.Jobs` (scoped); it is the `Deferrer`: `signals.New` is called after `build` of this part with `Deferrer` set, and the runner receives the `Dispatcher` for `Redeliver` through the setter `jobs.md` defines (Proposed change 8) | — | `start` after `Set.Start`; `stop` after HTTP drained, before `signals.Close` | `Jobs` |
-| 8 | `notify` (M4) | migration set `notify` (the queue) | the notifier over `settings` (SMTP) and `jobs`; `a.deps.Notify` (scoped) | — | — | `Notify` |
-| 9 | `files` (Later) | migration set `files` | the store over `cfg.Data.Dir` or S3-compatible options; `a.deps.Files` | — | — | `Files` |
+| 6 | `departments` (M3; D37) | migration set `departments` (already in db's fixed order); `departments.Permissions` to `corePerms`; core signals `departments.department-created`, `departments.department-archived`, `departments.department-restored` | `departments.New` over `a.dbc`, the clock, telemetry scope `departments`, `audit.Scoped("departments")`, `a.disp.Scope("departments", published, nil)`, `a.deps.authz`, the authz actor closure; sets `a.departments` and `a.deps.departments`; route set `departments`; `lazyDepartments{a}` (in `core_adapters.go`) is what `buildAuthz` passes as authz's `Departments` | — | — | `Departments` (unscoped) |
+| 7 | `events` (M3; D37) | migration set `events`; `events.Permissions` to `corePerms`; core signals `events.event-created`, `events.event-changed`, `events.event-closed`, `events.event-reopened`; extension point `events.event-setup` (`module.ExtensionPointDecl{Name: eventsetup.Point, Accepts: a eventsetup.Provider}`) | `events.New` likewise (scope `events`, `SetupTimeout: events.DefaultSetupTimeout`); sets `a.events` and `a.deps.events`; route set `events`; `import _ "time/tzdata"` (in `app` or `cmd/bms`) so zone names resolve without system data | `a.set.Contributors(eventsetup.Point)` converted to `[]events.SetupProvider`, passed to `Link` | — | `Events` (unscoped) |
+| 8 | `jobs` (M4) | migration set `jobs` | the runner over the pool and `ReadOnly()`; `a.deps.Jobs` (scoped); it is the `Deferrer`: `signals.New` is called after `build` of this part with `Deferrer` set, and the runner receives the `Dispatcher` for `Redeliver` through the setter `jobs.md` defines (Proposed change 8) | — | `start` after `Set.Start`; `stop` after HTTP drained, before `signals.Close` | `Jobs` |
+| 9 | `notify` (M4) | migration set `notify` (the queue) | the notifier over `settings` (SMTP) and `jobs`; `a.deps.Notify` (scoped) | — | — | `Notify` |
+| 10 | `files` (Later) | migration set `files` | the store over `cfg.Data.Dir` or S3-compatible options; `a.deps.Files` | — | — | `Files` |
 
 Rules every part keeps: `declare` does no I/O; `build` does no I/O beyond reads and
 succeeds against `db.None()` (decision 7) and on a read-only copy; a part's signals scope
@@ -807,8 +808,8 @@ area name, never `core`, `modules` or `admin` (api.md F10); a part that needs a
 configuration key proposes it to `config.md` and reads it from `a.cfg`. Because `jobs`
 must exist before `signals.New` and the dispatcher must exist before `provision`, `serve`
 step 6 is placed after the parts whose `build` the dispatcher does not need; in M0–M3 the
-distinction is moot and the implementation may call `build` for parts 1–6, then
-`signals.New`, then `build` for parts 7–9. `TestParts_OrderAndNames_Pinned` pins the
+distinction is moot and the implementation may call `build` for parts 1–7, then
+`signals.New`, then `build` for parts 8–10. `TestParts_OrderAndNames_Pinned` pins the
 order and that every name is a reserved core area name.
 
 ### `provision`, step by step
@@ -1113,7 +1114,7 @@ decision 17 (not in M0); the stderr logging of `migrate`, `check` and `openapi` 
    the listener stays open); `core.modules.read` is registered through `authz`'s part
    with `corePerms`; `bms check` prints the operation count; the `deliver:hello.greeted`
    assertion runs in app's e2e test on `POST /api/hello/greetings` once identity gives a session (M1); `module-hello.md` defines the route and proves the M0 trace relationship itself.
-8. **`plan/design/jobs.md` (row 14):** (pending: target not written) `jobs` is core part 7: its `build` constructs the
+8. **`plan/design/jobs.md` (row 14):** (pending: target not written) `jobs` is core part 8 (D37: was 7): its `build` constructs the
    runner before `signals.New` and hands it as `Options.Deferrer`; it then receives the
    `*signals.Dispatcher` for `Redeliver` through a setter (`Runner.SetRedeliverer` or
    equivalent) that `app` calls after `signals.New`; it is a `runnable`: `start` after
@@ -1124,8 +1125,8 @@ decision 17 (not in M0); the stderr logging of `migrate`, `check` and `openapi` 
    `usage`, and its migration set; `build` sets `a.authenticator` and the `accounts`
    route set from `cfg.Session.Key`; both commands require the key (app F6) and load
    configuration through `Main` like `serve`.
-10. **`plan/design/people.md` (row 8) and `departments-events.md` (row 9):** (people: applied 2026-10-18, the table row 5 above; departments-events: pending: target not written) parts 5 and
-    6: `declare` lists their core signals and extension points (`Env.CoreSignals`,
+10. **`plan/design/people.md` (row 8) and `departments-events.md` (row 9):** (people: applied 2026-10-18, the table row 5 above; departments-events: applied 2026-10-18, D37, the table rows 6 and 7 above; the assembly gains `departments *departments.Service` and `events *events.Service`) parts 5,
+    6 and 7: `declare` lists their core signals and extension points (`Env.CoreSignals`,
     `Env.CoreExtensionPoints`) and, for `people`, the commands `export <person-id>` and
     `delete <person-id>` (`model.ParseID`; audited by `people`); `link` takes
     `a.set.PersonData()` and reads contributions through `Set.Contributors` (item 2(a)).
@@ -1134,7 +1135,7 @@ decision 17 (not in M0); the stderr logging of `migrate`, `check` and `openapi` 
     `a.plan.Permissions()`, sets `a.permissions` and `a.deps.Authz`.
     **`audit.md` (row 12):** (applied 2026-10-18, by audit.md Proposed change 1: part 1, built before identity; the table row names its `coreDeps` field and that `provision` scopes it).
     **`plan/design/settings.md` (row 15), `notify.md` (row 11),
-    `files.md` (row 13):** (pending: targets not written) parts 3, 8, 9 as the table "How later core services plug
+    `files.md` (row 13):** (pending: targets not written) parts 3, 9, 10 as the table "How later core services plug
     in" states; each names its `coreDeps` field and whether `provision` scopes it.
 12. **`Makefile` and `scripts/e2e.sh`:** (pending: Makefile exists, but the new targets name web/, cmd/bms and scripts/e2e.sh, which are implementation created when app is built; adding them now would break make check) the targets in "The Makefile": add `VERSION`,
     `web-check`, `web-build`, `openapi-check`, `bin`, `run`, `migrate`, `test-e2e`,

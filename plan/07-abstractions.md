@@ -124,7 +124,8 @@ Rules (enforced by depguard and `make imports`):
 ### db: database access
 - **Purpose:** give modules a PostgreSQL connection with transactions and deadlines.
 - **Owns:** the pool and its bounded, retried connect; statements with deadlines, on the
-  pool or on the transaction the context carries; `Transact` with after-commit hooks;
+  pool or on the transaction the context carries; `Transact` with after-commit hooks
+  and `TxMode` (the mode of the transaction a context carries, for `audit`);
   `Wrap` and `*Error` (driver errors classified into `errs` kinds, values scrubbed);
   read-only detection (`pg_is_in_recovery()` or `default_transaction_read_only`, probed on
   a schedule, on `Ping` and on every refused write) exposed as `ReadOnly()` for `/readyz`,
@@ -170,9 +171,19 @@ Rules (enforced by depguard and `make imports`):
   department membership (`volunteers`).
 
 ### departments and events
-- **Purpose:** the regional's standing departments (archivable, with their leadership) and
-  its events (one per burn, D24).
-- **Doesn't do:** anything about what a department does (that's the modules).
+- **Purpose:** the regional's standing departments and its events (one per burn, D24), kept
+  as the reference records every module attaches its data to. Two packages, two `app`
+  parts (`departments`, `events`), one spec (`departments-events`).
+- **Owns:** `departments`: the standing departments (name, description, shared mailbox),
+  archiving and restoring, `Directory` (`NamesOf`, `Active`) which is also authz's
+  `DepartmentSource`, the `departments` routes and screens, signals
+  `departments.department-created|archived|restored`. `events`: the events (name, kind,
+  dates as instants plus zone, schedule items), kinds, closing and reopening, `Directory`
+  (`InfoOf`), the extension point `events.event-setup` (`contracts/eventsetup`), the
+  `events` routes and screens, signals `events.event-created|changed|closed|reopened`.
+- **Doesn't do:** anything about what a department does (that's the modules); leadership
+  (authz grants of `department-admin`); membership and positions (`volunteers`); work
+  around an event (modules); personal data (none held).
 
 ### signals: in-process domain events (D24)
 - **Purpose:** let modules react to each other without importing each other.

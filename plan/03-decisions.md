@@ -473,3 +473,35 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
   - Self export is an immediate, audited download with a 10-minute cooldown.
   - The consent table and `ConsentOf` stay in M2.
   - Legal name is one field.
+
+## D37. departments-events spec approved, with its answers; M2 follow-ups (m)–(v) decided
+
+- **Status:** Accepted (2026-10-18). Owner answered "Approve all with recommendations".
+  [design/departments-events.md](design/departments-events.md) is Approved, accepting all six
+  recommended answers. Its 13 "Proposed changes elsewhere" are approved and being applied.
+- **departments-events:**
+  - Two parts, `departments` (6) and `events` (7), each a reserved core area. The spec file
+    stays one (design/README.md row 9). `jobs`, `notify` and `files` become parts 8–10. F28 is
+    not amended. This resolves plan/README.md follow-up (b).
+  - A department's contact address is `internal`: a shared mailbox, never a person's address.
+    Form text and operator docs say so.
+  - In M3 the Leadership card is shown only to `access.grants.read` holders, and to department
+    admins at that department. A `HoldersOf` seam in authz comes Later.
+  - Every signed-in person can list active departments and all events without a permission.
+  - Event kinds are editable rows. The three seeded kinds (burn, decompression, other) keep
+    their catalogue keys.
+  - Schedule items ship in M3.
+- **M2 follow-ups** (plan/README.md, follow-ups (m)–(v)), all decided:
+  - (m) The D36(e) amendment to `db.md` and `audit.md` (`db.TxMode`; audit never spools while
+    ctx carries a transaction) is approved. `audittest.Fake` refuses a Record inside a Read tx.
+  - (n) authz refuses a SoD rule or revoke that would leave no effective access admin, with
+    `last_access_admin`.
+  - (o) authz Seed records an audit entry when an upgrade adds a permission to a starter role.
+  - (p) DeletePerson publishes `access.grant-revoked` for removed grants.
+  - (q) Department stewards get `access.grants.read` scoped to their department.
+  - (r) A language-only `PUT /me` is exempt from the required-fields check.
+  - (s) The consent audit records the purpose and direction.
+  - (t) A walk-on's `contact_email` is cleared when an account is linked.
+  - (u) Reads of deletion-request notes are audited.
+  - (v) Data rights for an account holder with no `core.person` row run the identity and authz
+    steps anyway.

@@ -120,7 +120,7 @@ The template to copy is the `hello` reference module (`plan/design/module-hello.
   someone else and every `sensitive` read calls `deps.Audit.Record` after loading and before
   returning, with `Fields` and `Level`. A change records inside its `Write` transaction.
   Never record inside a `Read` transaction (`Internal`). A `Record` error fails the use case
-  (no audit, no action). Unit tests use `audittest.NewFake(Manifest.Name)`.
+  (no audit, no action). On a read-only copy a `Record` inside a `Write` transaction fails with `Unavailable` wrapping `db.ErrReadOnly` like the change itself and is never spooled; only a `Record` outside any transaction (a read, a login, a search) spools. Unit tests use `audittest.NewFake(Manifest.Name)`.
 - **Every screen works on a phone first** (web-shell.md decision 21; owner, 2026-10-17):
   many participants only have a phone, so a flow that needs a wide screen or a mouse is a
   defect. Screens use the shell's `ErrorState` and `ErrorSummary`, `useT` with typed keys
@@ -140,6 +140,7 @@ The template to copy is the `hello` reference module (`plan/design/module-hello.
   (`people.person-page`), return a `personpage.Provider` from `Contributions()`, add catalogue
   keys `module.<name>.section.<ident>.title`; the provider checks the viewer's permission and
   audits what it shows. Tests use `Deps.People` with `peopletest.NewFake()`, and `authztest.NewFake()` for `Deps.Authz`.
+- **Departments and events** (M3, D37): `Deps.Departments` (`NamesOf`, `Active`; check `Active` before writing a department's record) and `Deps.Events` (`InfoOf`) are unscoped; tests use `departmentstest.NewFake()` and `eventstest.NewFake()`. A foreign key to `core.department(id)` or `core.event(id)` is allowed with `ON DELETE RESTRICT`; never read those tables directly. To contribute to a new event's set-up, set `ContributesTo: eventsetup.Point` (`events.event-setup`) and return an `eventsetup.Provider` from `Contributions()`: idempotent per (event, module), and it checks the caller's permission. A module that takes sign-ups subscribes to `departments.department-archived` and `events.event-closed`.
 - **Terminology comes from settings.** A regional that calls them "theme villages" instead of
   "theme camps" changes a setting, not code.
 - **The module works with zero optional settings changed.** Defaults are sensible.

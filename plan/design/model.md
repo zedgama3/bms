@@ -3,6 +3,7 @@
 - **Status:** Implemented (2026-10-17); Approved (2026-10-16)
 - Amended 2026-10-17 (owner): Email also rejects invalid UTF-8 and Unicode format characters (Cf); `Email.LogValue` redacts only a directly logged Email (never log a struct holding one; the app never logs addresses); a NULL uuid column scans into `*model.ID[E]` (Proposed change 4).
 - **Amended 2026-10-18 (owner approval of audit/identity):** Proposed change 5 applied for identity: the address is stored as entered and unique on `lower(email)` (`email_canonical`, a generated column), lookup by the canonical form (identity.md Proposed change 13, decision 16); `people` still pending.
+- **Amended 2026-10-18 (D37):** Proposed change 8 applied for departments-events (an event is a `TimeRange` plus an IANA zone; schedule items are `events`' `ScheduleItem`; `Email` is used for a department's shared mailbox, `internal`, never a person's address).
 - **Amended 2026-10-18 (owner approval of authz/people):** Proposed change 5 applied for people: `contact_email` (an account-less person's address) is stored as entered, searched by `Canonical()`, and not unique (two account-less people may share a household address) (people.md Proposed change 9).
 - **Package:** `internal/model` (Go module `github.com/zedgama3/bms`; foundation, not a bms
   module). **UI:** none.
@@ -47,7 +48,7 @@
 
 **Expects of dependencies.** `lib-errs`: `errs.E`, `Is`, kinds `Invalid`, `Internal`. `lib-core`: `validate.Errors`, `validate.FieldError` (with the pending Code/Params amendment this spec does not rely on codes). `lib-secret`: `Redacted`, `Unset` markers.
 
-**Pending.** Proposed changes (1-8) to 07-abstractions, add-module skill, module-contract, db, people, departments-events (identity's item 5 applied 2026-10-18) remain to be applied; api.md item 6 and lib-core item 7 are applied.
+**Pending.** Proposed changes (1-8) to 07-abstractions, add-module skill, module-contract, db, people (identity's item 5 and departments-events' item 8 applied 2026-10-18) remain to be applied; api.md item 6 and lib-core item 7 are applied.
 
 ## Purpose
 
@@ -524,7 +525,7 @@ None. The two questions in the first draft were answered by the owner on 2026-10
 7. **`plan/design/lib-core.md`, `timeutil` consumer table** (applied 2026-10-17): `CheckRange` is no longer
    listed as used by `model.TimeRange.Validate` (decision 10); module stores remain its
    consumers.
-8. **`plan/design/departments-events.md` (when written):** design the schedule items within
+8. **`plan/design/departments-events.md`** (applied 2026-10-18, D37: an event is a `TimeRange` plus the IANA zone; schedule items are `events`' `ScheduleItem`, a `Starts` instant and an optional `Ends`; `model` adds nothing; `Email` is used for the department's shared mailbox, held as `internal` because it is never a person's address, departments-events decision 7): design the schedule items within
    an event that the owner described (2026-10-16): windows such as gate hours, of which an
    event may have several, and single moments such as the temple burn. They are expected to
    use `model.TimeRange` for a window and a single instant (`time.Time`) for a moment, both

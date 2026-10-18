@@ -3,6 +3,7 @@
 - **Status:** Implemented (2026-10-17); Approved (2026-10-16)
 - **Amended 2026-10-17 (owner):** decisions 21 to 25 (intake `api.code` is any token, client reports carry `origin=client`, `IsToken` and `Collect` and the accepted implementation deviations, `client.stack` cap, debug logging keeps scrubbing on); the Data section now says `New` reads the OTLP certificate and key files.
 - **Amended 2026-10-18 (owner approval of audit/identity):** `intake.ErrRateLimited` is, or wraps, the shared `httpx.ErrRateLimited` (api.md, identity.md Proposed change 1); instrument rows for `bms.audit.*` and `bms.identity.*` added (audit.md Proposed change 8, identity.md Proposed change 15); `TraceIDFrom` is recorded on every audit entry (Proposed change 7 applied).
+- **Amended 2026-10-18 (D37):** instrument row `bms.events.setup{module,outcome}` added; spans `departments.<use-case>`, `events.<use-case>` and `events.setup` are token names (departments-events.md Proposed change 9).
 - **Amended 2026-10-18 (owner approval of authz/people):** instrument rows for `bms.authz.decisions` and `bms.people.*` added (authz.md Proposed change 15, people.md Proposed change 13).
 - **Package:** `internal/core/telemetry` (Go module `github.com/zedgama3/bms`), plus the
   sub-package `internal/core/telemetry/intake` (client error reports) and the test helper
@@ -1078,6 +1079,7 @@ One record at `warn`, message `client error`, attributes: `origin=client`,
 | `bms.authz.decisions` | counter, `{decision}` | `outcome` = `allowed`, `denied`, `superuser`, `unauthenticated`, `error` | `authz` |
 | `bms.people.exports` | counter, `{export}` | `outcome` (a token: `ok` or the failure's kind) | `people` |
 | `bms.people.deletions` | counter, `{deletion}` | `outcome` (a token: `ok` or the failure's kind) | `people` |
+| `bms.events.setup` | counter, `{setup}` | `module` (the module name), `outcome` (a token: `ok` or the failure's kind) | `events` |
 | `bms.people.sections` | counter, `{section}` | `module` (the module name), `outcome` (a token: `ok` or the failure's kind) | `people` |
 | `bms.signals.published`, `bms.signals.delivered`, `bms.jobs.runs` | counter | `signal`/`job` (token), `module`, `outcome` (`delivered`: `ok`, `failed`, `deferred`, `read_only`, `panicked`; `published` has none) | `signals` (signals.md "Telemetry"), `jobs` (Proposed change 6) |
 
@@ -1259,7 +1261,7 @@ answered by the owner on 2026-10-16 and are recorded in decisions 3, 9, 17, 18 a
 
 ## Proposed changes elsewhere
 
-Status as of 2026-10-17: items 1, 2, 3, 5, 8, 10, 11, 13, 14 and 15 are applied; item 9 is
+Status as of 2026-10-18: the departments-events instrument (item 9 there) is applied. Status as of 2026-10-17: items 1, 2, 3, 5, 8, 10, 11, 13, 14 and 15 are applied; item 9 is
 applied for `deploy/compose/.env.example` and Tempo's retention, and Prometheus's retention flag, and pending for
 Loki retention, the alert rules and `docs/operating.md`; item 12 is applied; item 6 is
 applied for `signals.md` and pending for `jobs.md`; item 4 is applied; item 7 waits for its

@@ -3,8 +3,9 @@
 - **Status:** Implemented (2026-10-17); Approved (2026-10-16)
 - Amended 2026-10-17 (owner): `Write` begins with plain `BEGIN` so the session's `default_transaction_read_only` applies (server answers 25006); a NULL uuid scans into `*model.ID[E]`; accepted implementation deviations recorded in Behavior, "Accepted implementation deviations".
 - **Amended 2026-10-18 (owner approval of audit/identity):** Proposed change 10 applied for `audit` and `identity` (`postgres.Migrations`, `audit.Set`, `identity.Set`, schema `core`); audit's guard deviates from "insert and select only": `UPDATE` and `TRUNCATE` are revoked from the application role and a trigger refuses `UPDATE`, `DELETE` and `TRUNCATE`, with `DELETE` allowed only inside `core.audit_purge` through a transaction-local flag, because the installation has one role and a plain grant cannot tell the retention job from the app (audit decision 9).
+- **Amended 2026-10-18 (D37):** Proposed change 10 applied for `departments` and `events` (`postgres.Migrations`, `departments.Set`, `events.Set`, schema `core`, set names already in the fixed order); `events` `0001` inserts the three seeded kinds.
 - **Amended 2026-10-18 (owner approval of authz/people):** Proposed change 10 applied for `authz` and `people` (`postgres.Migrations`, `authz.Set`, `people.Set`, schema `core`, set names `authz` and `people` already in the fixed order); people's migration `0001` reads `core.account` once to backfill a person row per existing account, the one read across sets (authz.md Proposed change 16, people.md Proposed change 10). The transaction seam is not changed here.
-- **Amended 2026-10-18 (D36 (e), pending owner approval):** `TxMode(ctx) (Mode, bool)` added: reports whether ctx carries a transaction begun by any `DB` (`*Pool` or `dbtest.Fake`) and its mode, so `audit` never spools an entry while a transaction is in flight (audit.md, same amendment). A package function beside `AfterCommit`, reading the internal `txctx`; cannot fail; `db.None()` never puts a transaction in a ctx, so it reports none there. Decision 21; Summary, Interface, "Who needs each member", Test plan and Proposed changes 14 and 15 updated. Nothing else in the transaction seam changes.
+- **Amended 2026-10-18 (D36 (e); approved by the owner 2026-10-18, D37):** `TxMode(ctx) (Mode, bool)` added: reports whether ctx carries a transaction begun by any `DB` (`*Pool` or `dbtest.Fake`) and its mode, so `audit` never spools an entry while a transaction is in flight (audit.md, same amendment). A package function beside `AfterCommit`, reading the internal `txctx`; cannot fail; `db.None()` never puts a transaction in a ctx, so it reports none there. Decision 21; Summary, Interface, "Who needs each member", Test plan and Proposed changes 14 and 15 updated. Nothing else in the transaction seam changes.
 - **Package:** `internal/core/db` (Go module `github.com/zedgama3/bms`), plus the test
   helper package `internal/core/db/dbtest`. **UI:** none of its own; the "this copy is
   read-only" banner and `/readyz` are `web-shell.md`'s and `api.md`'s, fed by `ReadOnly()`
@@ -77,7 +78,7 @@ QueryTimeout)`, `Migrate` excepted; 17 `Migrate` takes a session advisory lock, 
 18 missing `core.schema_migration` means nothing applied; 19 `TempDB` is a database not a
 schema; 20 PostgreSQL 16 minimum (owner, 2026-10-16); 21 `TxMode` is a package function
 that reports the ctx's transaction whoever began it, ended or not, so `audit` can refuse to
-spool inside one (D36 (e), pending).
+spool inside one (D36 (e); approved D37).
 
 Errs kinds and sentinels callers handle: `Invalid` (bad options/URL/credentials/old server,
 FK/not-null/check/data errors, malformed migrations), `Conflict` (unique violation with
@@ -106,8 +107,8 @@ once, calls `Close` after `Set.Stop` and the HTTP server; core packages export `
 
 Accepted deviations (2026-10-17, see Behavior): `Write` is plain `BEGIN`; the probe also reads `pg_db_role_setting` and the pool is Reset on a state change; a `25006` in a Read tx owned by the pool is `Internal` and flips nothing; a closed pool is `Unavailable`; `Write` nested in `Read` and `AfterCommit` after an ended tx are `Invalid`; `Migrate` returns the files applied so far with the error; `Wrap` keeps only `%T` for unknown errors.
 
-Pending proposed changes (targets not yet written): 10 core specs with tables export a migration `Set` (applied for `audit` and `identity`, 2026-10-18), 11
-`docs/operating.md`, 13 jobs/notify read `ReadOnly()` and stop on `ErrReadOnly`. Pending owner approval (D36 (e)): 14 `TxMode` in 07's `db` "Owns", 15 the skills' audit sentence.
+Pending proposed changes (targets not yet written): 10 core specs with tables export a migration `Set` (applied for `audit`, `identity`, `authz`, `people`, `departments` and `events`, 2026-10-18), 11
+`docs/operating.md`, 13 jobs/notify read `ReadOnly()` and stop on `ErrReadOnly`. Approved (D36 (e), D37) and applied 2026-10-18: 14 `TxMode` in 07's `db` "Owns", 15 the skills' audit sentence.
 
 ## Purpose
 
@@ -774,7 +775,7 @@ read-only copy becomes a clear "this copy is read-only" response rather than an 
     project to testing against them. An older server is refused at `Open` (F8) with both
     versions named.
 21. **`TxMode` is a package function over the ctx, owner-blind, and reports an ended
-    transaction too (D36 (e), pending owner approval).** `audit` found three ways a spooled
+    transaction too (D36 (e); approved D37).** `audit` found three ways a spooled
     entry could outlive the caller's rollback (audit.md, "Why never spool inside a
     transaction"); each needs one question answered before the insert: does this ctx carry
     a transaction, and may it write? The transaction already travels in the ctx (decision
@@ -1142,8 +1143,7 @@ the owner on 2026-10-16 and are recorded as decisions 20, 10 and 7.
 
 Status as of 2026-10-18: items 1, 2, 3, 4, 5, 6, 7, 8, 9, 12 and the `.env.example` half of
 11 are applied. Items 13, item 10 for the specs not yet written, and the `docs/operating.md` half of 11 wait for their
-target to be written and are carried by this list until then. Items 14 and 15 (D36 (e))
-wait for the owner's approval of this amendment.
+target to be written and are carried by this list until then. Items 14 and 15 (D36 (e), approved D37) are applied 2026-10-18.
 
 1. **`plan/07-abstractions.md`, `db` entry** (applied 2026-10-16): replace "Owns" with: the pool and its
    bounded, retried connect; statements with deadlines, on the pool or on the transaction
@@ -1214,7 +1214,7 @@ wait for the owner's approval of this amendment.
    its own constant policy; note beside `Retryable` that `db.ErrReadOnly` is `Unavailable`
    and a loop around a write must check the sentinel first (decision 9).
 10. **Every core spec with tables (`identity`, `people`, `departments-events`, `authz`,
-    `audit`, `settings`, `jobs`, `files`)** (applied 2026-10-18 for `audit`, `identity`, `authz` and `people`: `postgres.Migrations`, `audit.Set`/`identity.Set`/`authz.Set`/`people.Set`, schema `core`, set names `authz` and `people` in the fixed order; people's `0001` backfills one person row per existing account, the one migration-time read of `core.account` by another set; pending for the rest: specs not written): export `var Migrations fs.FS` from its
+    `audit`, `settings`, `jobs`, `files`)** (applied 2026-10-18 for `audit`, `identity`, `authz`, `people`, `departments` and `events` (D37: `postgres.Migrations`, `departments.Set`, `events.Set`, schema `core`, set names already in the fixed order; `events` `0001` inserts the three seeded kinds): `postgres.Migrations`, `audit.Set`/`identity.Set`/`authz.Set`/`people.Set`, schema `core`, set names `authz` and `people` in the fixed order; people's `0001` backfills one person row per existing account, the one migration-time read of `core.account` by another set; pending for the rest: specs not written): export `var Migrations fs.FS` from its
     `postgres/` package (or a `db.Set`), schema `core`, set name equal to the package name;
     the set names are reserved module names already (module-contract "Reserved module
     names"); `audit`'s migration revokes `UPDATE` and `TRUNCATE` from the application role and
@@ -1239,12 +1239,11 @@ wait for the owner's approval of this amendment.
 13. **`plan/design/jobs.md` (row 14) and `notify.md` (row 11)** (pending: specs not written): read `ReadOnly()` before
     each run and send, and treat `errors.Is(err, db.ErrReadOnly)` as "stop until the next
     probe", not as a retryable failure.
-14. **`plan/07-abstractions.md`, `db` entry** (pending: D36 (e), owner approval): in
+14. **`plan/07-abstractions.md`, `db` entry** (applied 2026-10-18, D37): in
     "Owns", after "`Transact` with after-commit hooks", add "and `TxMode` (the mode of the
     transaction a context carries, for `audit`)".
 15. **`.claude/skills/go-conventions/SKILL.md` ("Module package layout", the Audit
-    sentence) and `.claude/skills/add-module/SKILL.md`** (pending: D36 (e), owner
-    approval): after "a change records inside its `Write` transaction, never inside a
+    sentence) and `.claude/skills/add-module/SKILL.md`** (applied 2026-10-18, D37): after "a change records inside its `Write` transaction, never inside a
     `Read` transaction", add "on a read-only copy a `Record` inside a `Write` transaction
     fails with `Unavailable` wrapping `db.ErrReadOnly` like the change itself and is never
     spooled; only a `Record` outside any transaction (a read, a login, a search) spools".

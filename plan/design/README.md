@@ -22,7 +22,7 @@ The order follows dependencies: foundation first, then the core, then modules.
 | 6 | `identity.md` | accounts, passwords, sessions, the superuser (M1) | Implemented (2026-10-18) |
 | 7 | `authz.md` | roles, grants, permissions, Authorizer | Implemented (2026-10-18) |
 | 8 | `people.md` | profiles, contacts, consent, export and deletion | Implemented (2026-10-18) |
-| 9 | `departments-events.md` | departments, leadership, archiving, events (D24) | Not started |
+| 9 | `departments-events.md` | departments, leadership, archiving, events (D24) | Approved (2026-10-18, D37) |
 | 10 | `signals.md` | in-process domain events (D24) | Implemented (2026-10-17) |
 | 11 | `notify.md` | notifier contract, e-mail | Not started |
 | 12 | `audit.md` | append-only audit log and its read-only spool | Implemented (2026-10-18) |

@@ -99,7 +99,7 @@ failure); telemetry (`Tracer` Producer/Consumer spans, `Meter` counters,
 
 Accepted deviations (2026-10-17, reviewer-approved): `bms.signals.published` is counted in the after-commit hook (rollback counts nothing); `Close` while deliveries run waits again and returns Timeout/Canceled, nil only once nothing is in flight (F32); the `Deferrer` gets the handler's trace and in-delivery marker but a fresh `HandlerTimeout` deadline (up to 2x per subscriber); consumer spans carry `Int` depth, producer spans `Int` subscribers; `NewPayload` records a repeated key under reserved key `!repeated`, which `Validate` reports as F4 on `payload`; `signalstest.Fake` stamps `At` with `clock.Real()`; a delivery arriving after `Close` is dropped with one warn and not counted; `Redeliver` after `Close` is `Unavailable`.
 
-Pending proposed changes (targets not written): 6 jobs.md (implement `Deferrer`, call `Redeliver`), 8 departments-events (declare its signals). Items 1, 2, 3, 4, 5, 7, 9, 10, 11 are applied, and 8 for people (2026-10-18).
+Pending proposed changes (targets not written): 6 jobs.md (implement `Deferrer`, call `Redeliver`). Items 1, 2, 3, 4, 5, 7, 9, 10, 11 are applied, and 8 for people and departments-events (2026-10-18, D37).
 
 ## Purpose
 
@@ -469,7 +469,7 @@ Nothing from `core/module` (it imports this package).
 
 ### Payload keys of the core's signals
 
-None in M0: the core publishes no signal yet, so `Env.CoreSignals` is empty. From M1 it lists `identity.account-created` (payload `{account: AccountID, person: PersonID}`; published inside the `Write` transaction of sign-up and of the superuser's creation; no personal data, identity.md "Signals"). From M2 it also lists `access.grant-created` and `access.grant-revoked` (`{grant, person, role, department?}`; authz.md), and `people.person-created {person}`, `people.person-deleted {person}` and `people.deletion-requested {request, person}` (people.md). `departments-events.md` declares its own when written (Proposed change 8); the `departments-events` signals (`{department}`, `{event}`). The `hello`
+None in M0: the core publishes no signal yet, so `Env.CoreSignals` is empty. From M1 it lists `identity.account-created` (payload `{account: AccountID, person: PersonID}`; published inside the `Write` transaction of sign-up and of the superuser's creation; no personal data, identity.md "Signals"). From M2 it also lists `access.grant-created` and `access.grant-revoked` (`{grant, person, role, department?}`; authz.md), and `people.person-created {person}`, `people.person-deleted {person}` and `people.deletion-requested {request, person}` (people.md). From M3 it also lists `departments.department-created|archived|restored {department}` and `events.event-created {event, copied_from?}`, `events.event-changed {event}`, `events.event-closed {event}`, `events.event-reopened {event}` (departments-events.md, scopes `departments` and `events` from `app`; applied 2026-10-18, D37). The `hello`
 module's `hello.greeted` carries `{person}`.
 
 ## Data
@@ -856,7 +856,7 @@ references only; synchronous delivery with 5 s per handler) were answered by the
 
 ## Proposed changes elsewhere
 
-Status as of 2026-10-18: items 1, 2, 3, 4, 5, 7, 9 and 10 are applied, and 8 for people. Items 6, 8 (for departments-events) and 11
+Status as of 2026-10-18: items 1, 2, 3, 4, 5, 7, 9 and 10 are applied, and 8 for people and departments-events (D37). Items 6 and 11
 wait for their target to be written and are carried by this list until then.
 
 1. **`plan/design/module-contract.md` (row 4)** (applied 2026-10-16): `Deps.Signals` is `signals.Bus` as
@@ -911,7 +911,7 @@ wait for their target to be written and are carried by this list until then.
    when `signals.InDelivery(ctx)` is true (the decision there is `Permission` or an explicit
    "system" path the module's spec names), and `identity` should document that the
    session value is a request-scoped value only.
-8. **`plan/design/people.md` (row 8)** (applied 2026-10-18, by people.md Proposed change 6) **and `departments-events.md` (row 9)** (pending: target not written): declare their
+8. **`plan/design/people.md` (row 8)** (applied 2026-10-18, by people.md Proposed change 6) **and `departments-events.md` (row 9)** (applied 2026-10-18, D37: the seven names and payload keys in `Env.CoreSignals`, scopes `departments` and `events`): declare their
    signal names and payload keys in a "Signals" table (name, when, keys and ID types):
    `people.person-created {person}`, `people.person-deleted {person}` (published after the
    deletion across modules commits), and the department and event signals; obtain a scoped

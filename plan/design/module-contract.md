@@ -5,6 +5,7 @@
 - **Amended 2026-10-18 (owner approval of audit/identity):** `Deps.Audit audit.Recorder` is available from M1 and scoped per module (actions are prefixed `<name>.`, another prefix fails `Invalid`); `moduletest.Conformance` fills a nil `Deps.Audit` with `audittest.NewFake(manifest.Name)` and the leak rule scans the recorded entries' `Reason` and `Fields` (audit.md Proposed change 2); the actor is `identity.PersonFrom(ctx)`, taken as a seam, and no `Deps` field is added (identity.md Proposed change 5).
 - **Amended 2026-10-18 (owner approval of authz/people):** `Deps.Authz authz.Authorizer` and `Deps.People people.Directory` are available from M2 (unscoped; `Provision` sets them); `authz.PermissionDecl` gains `StarterRoles []string` (each a valid ident, unique; `Validate` reports `starter_roles[j]`); `moduletest.Conformance` fills a nil `Deps.Authz` with `authztest.NewFake()` (denies everything) and a nil `Deps.People` with `peopletest.NewFake()`; new rules for module authors: a list, search, count or export use case filters by `ExtentOf`, a single-record use case uses `AllowIn` (department records) or `Allow`, and a foreign key to `core.person(id)` is allowed with `ON DELETE RESTRICT` because `people` calls the module's `DeletePerson` first; `Env.CoreExtensionPoints` carries `people.person-page` and `Env.CoreSignals` the three `people.*` names (authz.md Proposed change 2, people.md Proposed change 2).
 - **Amended 2026-10-18 (M1 build, accepted deviations):** implementation deviations recorded in Behavior, "Accepted implementation deviations (M1 build, 2026-10-18)".
+- **Amended 2026-10-18 (D37; departments-events Proposed change 3, audit Proposed change 16):** `Deps.Departments departments.Directory` (`NamesOf`, `Active`) and `Deps.Events events.Directory` (`InfoOf`) are available from M3 (unscoped; `Provision` sets them); `moduletest.Conformance` fills a nil one with `departmentstest.NewFake()` / `eventstest.NewFake()`; `Env.CoreExtensionPoints` carries `events.event-setup` (the point is `events.event-setup`, not `events.event-created`) and `Env.CoreSignals` the seven `departments.*` and `events.*` names; module authors may declare a foreign key to `core.department(id)` or `core.event(id)` with `ON DELETE RESTRICT`, never read those tables directly, and keep an event-setup contribution idempotent per (event, module); `audittest.Fake` fails `Internal` on a `Record` inside a `db.Read` transaction, so a module whose read path records inside its `Transact(Read)` fails its own unit tests and the conformance run (record after the transaction, before returning).
 - **Amended 2026-10-18 (M2 build, accepted deviations):** implementation deviations recorded in Behavior, "Accepted implementation deviations (M2 build, 2026-10-18)": `Deps.Authz` and `Deps.People` in `module.go`; Conformance fills them with fakes.
 - **Package:** `internal/core/module` (Go module `github.com/zedgama3/bms`), plus the test
   helper package `internal/core/module/moduletest`. **UI:** none of its own; the admin
@@ -58,7 +59,7 @@ Exported names (package `module`):
 - `Route{Method, Pattern, Access, Handler}` (relative to `/api/<name>`; `Validate`),
   `Access` (`AccessSignedIn` zero default, `AccessPublic`). `Deps{Logger, Tracer
   telemetry.Tracer, Clock, Links *Links, DB db.DB, Signals signals.Bus}`; later fields
-  Settings, Authz, People, Audit, Jobs, Notify, Files (Audit M1, scoped per module: actions are prefixed `<name>.`; the rest M2 to Later). The actor is `identity.PersonFrom(ctx)` (false inside a signal delivery and for a restricted session), taken as a seam (`actorFunc`) so tests use `identity.WithSession`; no `Deps` field.
+  Settings, Authz, People, Departments, Events, Audit, Jobs, Notify, Files (Audit M1, scoped per module: actions are prefixed `<name>.`; Departments and Events M3, unscoped, D37; the rest M2 to Later). The actor is `identity.PersonFrom(ctx)` (false inside a signal delivery and for a restricted session), taken as a seam (`actorFunc`) so tests use `identity.WithSession`; no `Deps` field.
 - `Set.Contributors(point) ([]Contribution, error)` for core definers (`Invalid` unless point is in `Env.CoreExtensionPoints`); `Factory` needs no database read (`openapi`/`check` build against `db.None()`); `Build`/`Start` run under 30 s, `Stop` shares `http.shutdown_timeout`; decision 9: every module ships `messages/en.json`.
 - `Links.Capability(name) (any, error)`, `Links.Contributors(point) ([]Contribution, error)`, `Contribution{Module, Value}`; frozen after `Build`, safe for concurrent use.
 - `Registry`: `NewRegistry`, `Default`, package `Register(Manifest, Factory)` (in `init`),
@@ -465,6 +466,8 @@ type Deps struct {
 	// Settings settings.Reader   settings.md (row 15)
 	// Authz    authz.Authorizer  authz.md (row 7): M2; unscoped; Provision sets it
 	// People   people.Directory  people.md (row 8): M2; unscoped; Provision sets it
+	// Departments departments.Directory  departments-events.md (row 9): M3; unscoped; Provision sets it (D37)
+	// Events   events.Directory  departments-events.md (row 9): M3; unscoped; Provision sets it (D37)
 	// Audit    audit.Recorder    audit.md (row 12): M1; scoped per module, actions prefixed "<name>."
 	// Jobs     jobs.Registrar    jobs.md (row 14)
 	// Notify   notify.Notifier   notify.md (row 11)
@@ -538,7 +541,7 @@ type Env struct {
 	// module may subscribe to them.
 	CoreSignals []signals.Name
 	// CoreExtensionPoints are the points the core defines (people.person-page,
-	// events.event-created, ...), so modules may contribute to them.
+	// events.event-setup, ...), so modules may contribute to them.
 	CoreExtensionPoints []ExtensionPointDecl
 }
 
@@ -911,6 +914,8 @@ func (n Name) Publisher() string
 | `Authz` | `authz.md` | shared (unscoped); the module passes its own permission names; a list, search, count or export use case filters by `ExtentOf`, a single-record use case uses `AllowIn` (department records) or `Allow`; `Conformance` supplies `authztest.NewFake()` when `Provision` leaves it nil (it denies everything, so a module that forgets its check fails its tests) | M2 |
 | `Audit` | `audit.md` | scoped per module with `Scoped(<name>)`: actions are prefixed `<name>.`, another prefix fails `Invalid`; `Conformance` supplies `audittest.NewFake(manifest.Name)` when `Provision` leaves it nil and its leak rule scans the recorded entries' `Reason` and `Fields` for the seed markers and `[email]` | M1 |
 | `People` | `people.md` | shared (unscoped); `NamesOf`, `ConsentOf`; `Conformance` supplies `peopletest.NewFake()` when nil; a foreign key to `core.person(id)` is allowed and uses `ON DELETE RESTRICT` (`people` calls the module's `DeletePerson` first) | M2 |
+| `Departments` | `departments-events.md` | shared (unscoped); `NamesOf`, `Active` (check `Active` before writing a department's record); `Conformance` supplies `departmentstest.NewFake()` when nil; a foreign key to `core.department(id)` is allowed with `ON DELETE RESTRICT`, the table is never read directly (D37) | M3 |
+| `Events` | `departments-events.md` | shared (unscoped); `InfoOf`; `Conformance` supplies `eventstest.NewFake()` when nil; a foreign key to `core.event(id)` is allowed with `ON DELETE RESTRICT`; an `events.event-setup` contribution is idempotent per (event, module) (D37) | M3 |
 | `Jobs` | `jobs.md` | job names prefixed `<name>.`; jobs run only on the writing copy | M4 |
 | `Notify` | `notify.md` | templates prefixed `<name>.` | M4 |
 | `Files` | `files.md` | shared | Later |
@@ -1402,8 +1407,9 @@ with the proposed answer:
    declare the person-page extension point (`people.person-page`, with its `Accepts`) in
    `Env.CoreExtensionPoints` and the signals the core publishes (`people.person-created`,
    `people.person-deleted`) in `Env.CoreSignals`; call `Links.Contributors` at request time.
-   `departments-events.md` (row 9) likewise declares `events.event-created` as the extension
-   point for copying into a new event (09 §5).
+   `departments-events.md` (row 9) likewise declares `events.event-setup` as the extension
+   point for copying into a new event (09 §5) and the seven `departments.*` and `events.*`
+   signals in `Env.CoreSignals` (applied 2026-10-18, D37; see the Amended line and the Deps table).
 9. **`plan/design/app.md` (row 18):** (applied 2026-10-17, by app.md "`serve`, step by step"; `Build` and `Set.Start` run under 30 s, `Set.Stop` shares `http.shutdown_timeout`, replacing the proposed 30 s and 15 s) `serve`: `Default().Resolve(env)` → log warnings →
    `Build` (with `db` as the checker and a `Provision` that builds scoped `Deps`) → hand
    `Plan.Permissions()` to `authz`, `Plan.Settings()` to `settings`, `Set.Routes()` to `api`,
