@@ -1,6 +1,6 @@
 # Departments and events
 
-- **Status:** Approved (2026-10-18, D37)
+- **Status:** Implemented (2026-10-18; approved D37)
 - **Package:** `internal/core/departments`, `internal/core/events`, `internal/contracts/eventsetup`   **UI:** `web/src/core/departments/`, `web/src/core/events/`
 - **Depends on specs:** model, lib-errs, lib-core, db, signals, telemetry, audit, identity (the actor), authz (the `Authorizer`, `DepartmentSource`, starter roles), api (`httpx`), web-shell, app (parts), module-contract (`Deps`, extension points)   **Used by:** authz (`DepartmentSource`, the grant screens), every module from Phase 1 (`volunteers` first: `Deps.Departments`, `Deps.Events`, the `events.event-setup` point, the signals), the admin screens (09 §7)
 

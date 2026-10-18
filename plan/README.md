@@ -96,8 +96,19 @@ copy and can fork it. Features are modules.
      and audit screens built; `bms export` and `bms delete` built; e2e run against the real
      server passes). Not pushed.
      Done 2026-10-18: `departments-events` is Approved (D37), with the owner's answers to its
-     six recommendations; its 13 proposed changes elsewhere are being applied. M3 build is next.
-     Next milestone: M3, spec `departments-events` (Approved 2026-10-18, D37).
+     six recommendations; its 13 proposed changes elsewhere are being applied.
+     Done 2026-10-18: M3 implemented on feat/m1 (`departments-events` Implemented; core parts
+       `departments` (6) and `events` (7)). Commits: 8551724 packages; 63c1297 app wiring;
+       bca3d5b screens; 5195624 the D37 follow-ups (m)–(p) and (r)–(v), now Done. Verification:
+       all Go checks pass (unit, race and integration tests; lint on three tag sets; import
+       rules); `pnpm check` and openapi-check pass; Playwright on a fresh database passes 100
+       default, 2 hello-disabled and 6 readonly. Accepted deviations: the signal payload key
+       `copied_from` is renamed `copied-from` to fit the signals key grammar (specs updated);
+       the audit Ref for an event kind uses a fixed ID derived from sha256 of the key, with
+       Reason `key:<key>`; RunSetup with no providers records no `events.setup.ran` entry; most
+       failure modes are tested in integration tests rather than in unit tests over an
+       in-memory store (as in M2). Not pushed.
+     Next milestone: M4 (see 09-core-features.md).
      Open follow-ups (all waiting on the owner or architect):
      - (a) Confirm D34 as D20's debug-level exception.
      - (b) The M3 part name `departments-events` is not a core area name for `module.IsCoreArea`
@@ -150,17 +161,25 @@ copy and can fork it. Features are modules.
      - (q) authz: department stewards can't list grants. Recommendation: give them
        `access.grants.read` scoped to their department.
        Decided 2026-10-18 (D37): yes, scoped to their department.
+       Reopened 2026-10-18: still open. `department-steward` is site-scoped, so "access.grants.read
+       in their department" can't be expressed. Options: give steward site-wide
+       `access.grants.read`, or take another route to the Leadership card. Recommendation:
+       site-wide, since stewards already manage every department.
      - (r) people: a language-only `PUT /me` is held to the required fields. Recommendation:
        exempt it.
        Decided 2026-10-18 (D37): exempt.
      - (s) people: should the consent audit record the purpose and direction? Recommendation:
        yes.
        Decided 2026-10-18 (D37): yes.
+       Spec amendment pending owner approval (2026-10-18): the consent Reason `granted:<purpose>`
+       / `withdrawn:<purpose>`. Recommendation: approve.
      - (t) people: clear a walk-on's `contact_email` when an account is linked. Recommendation:
        yes.
        Decided 2026-10-18 (D37): yes.
      - (u) people: audit reads of deletion-request notes. Recommendation: yes.
        Decided 2026-10-18 (D37): yes.
+       Spec amendment pending owner approval (2026-10-18): one `people.request.read` entry per
+       request, with Subject = the requester. Recommendation: approve.
      - (v) people: data rights for an account holder with no `core.person` row. Recommendation:
        run the identity and authz steps anyway.
        Decided 2026-10-18 (D37): run the identity and authz steps anyway.
@@ -171,9 +190,31 @@ copy and can fork it. Features are modules.
      - (x) Earlier still-open items: (a) D34 as D20's debug-level exception; (j) notify drift (merge into w); (k) the
        password hint hard-codes 12; (l) the common-password list barely applies at a
        12-character minimum; and CI waiting for the first push.
+     - (y) M3 review: `events.setup.ran` is lost when the request deadline expires mid-run.
+       Recommendation: record with `context.WithoutCancel` and a short deadline.
+     - (z) M3 review: the setup metric outcome for a provider returning Timeout. Recommendation:
+       map it to `timeout`.
+     - (aa) M3 review: a late provider success is reported as a timeout. Recommendation: report
+       what happened.
+     - (ab) M3 review: a panic is logged twice. Recommendation: log once.
+     - (ac) M3 review: `RunSetup` checks permission before input. Recommendation: validate first.
+     - (ad) M3 review: an empty zone gives code `required` where the spec says `malformed`.
+       Recommendation: align the spec on `required`.
+     - (ae) M3 review: `departments` maps conflicts by kind, not by constraint name.
+       Recommendation: match by name.
+     - (af) Web: page titles are literal "Departments" and "Events", since terms have no plural
+       or title-case form. Recommendation: add plural and title term keys in settings.
+     - (ag) Web: the "See roles here" link has no role filter, because `GrantList` filters by
+       role ID. Recommendation: let `GrantList` accept a role key.
+     - (ah) Web: a renamed builtin kind still shows its catalogue label elsewhere, a
+       contradiction in the spec. Recommendation: show the stored name once renamed.
+     - (ai) Web e2e lacks the "grant department-admin to a second person" and "copy set-up at
+       phone width" flows. Recommendation: add them when a module contributes set-up.
+     - (aj) Kind names are not unique. Recommendation: allow it.
   3. Local dev database (half-reset): the `authz` and `hello` version-2 rows in
      `core.schema_migration` have to be deleted by the owner, then `make migrate` run again.
-     The alternative is `make down && make up`.
+     The alternative is `make down && make up`. Still half-reset on 2026-10-18; the owner's
+     command is unchanged.
   4. CI on GitHub (`make check`): workflow `.github/workflows/ci.yml` is written (2026-10-17);
      waiting for the owner to push the branch so it runs.
 
