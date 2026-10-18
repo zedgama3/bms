@@ -69,6 +69,8 @@ func buildAuthz(_ context.Context, a *assembly) error {
 		Signals:  bus,
 		Actor:    authzActor,
 		Declared: declaredPermissions(a),
+
+		Departments: lazyDepartments{a},
 	})
 	if err != nil {
 		return err //nolint:wrapcheck // authz.New names itself

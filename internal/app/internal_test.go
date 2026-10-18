@@ -19,6 +19,7 @@ import (
 
 	"github.com/zedgama3/bms/internal/api"
 	"github.com/zedgama3/bms/internal/config"
+	"github.com/zedgama3/bms/internal/contracts/eventsetup"
 	"github.com/zedgama3/bms/internal/contracts/personpage"
 	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/authz"
@@ -214,7 +215,7 @@ func TestAssembly_CorePermsStartWithModulesRead(t *testing.T) {
 
 // coreOrder is the order in which the core's services plug in (app.md "How later core
 // services plug in"); coreParts must be a subsequence of it.
-var coreOrder = []string{"audit", "identity", "settings", "authz", "people", "departments-events", "jobs", "notify", "files"}
+var coreOrder = []string{"audit", "identity", "settings", "authz", "people", "departments", "events", "jobs", "notify", "files"}
 
 func TestParts_OrderAndNames_Pinned(t *testing.T) {
 	pos := -1
@@ -614,8 +615,8 @@ func TestCoreParts_Declare_SetsPermissionsSignalAndCommand(t *testing.T) {
 	for _, s := range a.coreSets {
 		sets = append(sets, s.Name)
 	}
-	if got := strings.Join(sets, ","); got != "identity,people,authz,audit" {
-		t.Errorf("core migration sets = %s, want identity,people,authz,audit (db.md order, not part order)", got)
+	if got := strings.Join(sets, ","); got != "identity,people,authz,departments,events,audit" {
+		t.Errorf("core migration sets = %s, want identity,people,authz,departments,events,audit (db.md order, not part order)", got)
 	}
 	var perms []string
 	for _, d := range a.corePerms {
@@ -623,23 +624,28 @@ func TestCoreParts_Declare_SetsPermissionsSignalAndCommand(t *testing.T) {
 	}
 	want := "core.modules.read,audit.search,audit.export,accounts.read,accounts.manage," +
 		"access.roles.read,access.roles.manage,access.rules.manage,access.grants.read,access.grants.manage,access.department-grants.manage," +
-		"people.directory.read,people.contacts.read,people.profiles.manage,people.data.export,people.data.delete"
+		"people.directory.read,people.contacts.read,people.profiles.manage,people.data.export,people.data.delete," +
+		"departments.manage,departments.details.manage,events.manage"
 	if got := strings.Join(perms, ","); got != want {
 		t.Errorf("corePerms = %s, want %s (api first, then each part's in part order)", got, want)
 	}
 	for _, want := range []signals.Name{
 		"identity.account-created", "access.grant-created", "access.grant-revoked",
 		"people.person-created", "people.person-deleted", "people.deletion-requested",
+		"departments.department-created", "departments.department-archived", "departments.department-restored",
+		"events.event-created", "events.event-changed", "events.event-closed", "events.event-reopened",
 	} {
 		if !slices.Contains(a.coreSignals, want) {
 			t.Errorf("coreSignals = %v lacks %s", a.coreSignals, want)
 		}
 	}
-	if len(a.corePoints) != 1 || a.corePoints[0].Name != personpage.Point {
-		t.Errorf("corePoints = %v, want only %s", a.corePoints, personpage.Point)
+	if len(a.corePoints) != 2 || a.corePoints[0].Name != personpage.Point || a.corePoints[1].Name != eventsetup.Point {
+		t.Errorf("corePoints = %v, want %s then %s", a.corePoints, personpage.Point, eventsetup.Point)
 	}
-	if a.corePoints[0].Accepts(struct{}{}) {
-		t.Errorf("the %s point accepts a value that is not a personpage.Provider", personpage.Point)
+	for _, pt := range a.corePoints {
+		if pt.Accepts(struct{}{}) {
+			t.Errorf("the %s point accepts a value that is not its provider", pt.Name)
+		}
 	}
 	usage := map[string]string{}
 	for _, c := range a.commands {
@@ -790,8 +796,8 @@ func TestBuildParts_AgainstNoDatabase_SetsAuthenticatorRoutesAndRunnable(t *test
 			t.Errorf("route set %s has %d routes and %d bytes of fragment", rs.Module, len(rs.Routes), len(rs.OpenAPI))
 		}
 	}
-	if strings.Join(areas, ",") != "audit,accounts,access,people" {
-		t.Errorf("route sets = %v, want audit, accounts, access, people", areas)
+	if strings.Join(areas, ",") != "audit,accounts,access,people,departments,events" {
+		t.Errorf("route sets = %v, want audit, accounts, access, people, departments, events", areas)
 	}
 	if len(a.runnables) != 1 || a.runnables[0].name != "audit" {
 		t.Errorf("runnables = %+v, want the audit importer", a.runnables)
@@ -837,8 +843,8 @@ func TestCheckSchemas_CoreAndModuleSets_ReportedTogether(t *testing.T) {
 	if !errs.Is(err, errs.Conflict) {
 		t.Fatalf("err = %v, want Conflict", err)
 	}
-	if got := strings.Join(checked, ","); got != "identity,people,authz,audit,zqmod" {
-		t.Errorf("checked = %s, want identity,people,authz,audit,zqmod (every set, none stopped the rest, no schema-less module)", got)
+	if got := strings.Join(checked, ","); got != "identity,people,authz,departments,events,audit,zqmod" {
+		t.Errorf("checked = %s, want identity,people,authz,departments,events,audit,zqmod (every set, none stopped the rest, no schema-less module)", got)
 	}
 	// The first problem that is not a Conflict decides the kind, not the last.
 	mixed := schemaFunc(func(_ context.Context, name string, _ fs.FS) error {
@@ -862,7 +868,7 @@ func TestCheckSchemas_CoreAndModuleSets_ReportedTogether(t *testing.T) {
 	if err := a.checkSchemas(context.Background(), core, []module.Manifest{{Name: "zqmod", Migrations: fstest.MapFS{}}}); err != nil {
 		t.Errorf("current core sets: %v", err)
 	}
-	if got := strings.Join(checked, ","); got != "identity,people,authz,audit" {
+	if got := strings.Join(checked, ","); got != "identity,people,authz,departments,events,audit" {
 		t.Errorf("checked = %s, want only the core sets when they are current", got)
 	}
 	unavailable := schemaFunc(func(context.Context, string, fs.FS) error {
@@ -1071,6 +1077,9 @@ func TestBuildParts_AuthzAndPeople_FillTheLazySeams(t *testing.T) {
 	if a.authz == nil || a.people == nil || a.deps.authz == nil || a.deps.people == nil {
 		t.Fatalf("authz=%v people=%v deps.authz=%v deps.people=%v, want all set", a.authz, a.people, a.deps.authz, a.deps.people)
 	}
+	if a.departments == nil || a.events == nil || a.deps.departments == nil || a.deps.events == nil {
+		t.Fatalf("departments=%v events=%v deps.departments=%v deps.events=%v, want all set", a.departments, a.events, a.deps.departments, a.deps.events)
+	}
 	if a.permissions == nil || a.titles == nil || a.lister == nil || a.names == nil {
 		t.Errorf("permissions=%v titles=%v lister=%v names=%v, want all set", a.permissions, a.titles, a.lister, a.names)
 	}
@@ -1078,8 +1087,8 @@ func TestBuildParts_AuthzAndPeople_FillTheLazySeams(t *testing.T) {
 	if err != nil {
 		t.Fatalf("provision: %v", err)
 	}
-	if deps.Authz == nil || deps.People == nil {
-		t.Errorf("provision: Authz=%v People=%v, want both set", deps.Authz, deps.People)
+	if deps.Authz == nil || deps.People == nil || deps.Departments == nil || deps.Events == nil {
+		t.Errorf("provision: Authz=%v People=%v Departments=%v Events=%v, want all set", deps.Authz, deps.People, deps.Departments, deps.Events)
 	}
 }
 
@@ -1097,6 +1106,9 @@ func TestLazyAdapters_BeforeTheirPartsAreBuilt_AnswerNothing(t *testing.T) {
 	}
 	if got, err := (lazyTitles{a: a}).TitlesOf(ctx, model.PersonID{}); err != nil || got != nil {
 		t.Errorf("TitlesOf = %v, %v, want nil", got, err)
+	}
+	if got, err := (lazyDepartments{a: a}).Active(ctx, model.DepartmentID{}); !errs.Is(err, errs.Unsupported) || got {
+		t.Errorf("Active = %v, %v, want false and Unsupported", got, err)
 	}
 }
 

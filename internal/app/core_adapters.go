@@ -75,3 +75,16 @@ func authzActor(ctx context.Context) (authz.Actor, bool) {
 	s, _ := identity.SessionFrom(ctx)
 	return authz.Actor{Person: p, Superuser: s.Superuser}, true
 }
+
+// lazyDepartments is authz's DepartmentSource over a.departments, which the departments part
+// sets after authz is built: until then a department grant is Unsupported, as it is when
+// authz is given no source (departments-events.md; D37).
+type lazyDepartments struct{ a *assembly }
+
+// Active asks the departments service when there is one, else fails errs.Unsupported.
+func (l lazyDepartments) Active(ctx context.Context, d model.DepartmentID) (bool, error) {
+	if l.a.departments == nil {
+		return false, errs.E("app.Active", errs.Unsupported, errors.New("no departments service is wired"))
+	}
+	return l.a.departments.Active(ctx, d) //nolint:wrapcheck // the service's own error
+}

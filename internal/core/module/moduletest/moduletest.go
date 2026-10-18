@@ -21,6 +21,8 @@ import (
 	"github.com/zedgama3/bms/internal/core/authz/authztest"
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/db/dbtest"
+	"github.com/zedgama3/bms/internal/core/departments/departmentstest"
+	"github.com/zedgama3/bms/internal/core/events/eventstest"
 	"github.com/zedgama3/bms/internal/core/module"
 	"github.com/zedgama3/bms/internal/core/people/peopletest"
 	"github.com/zedgama3/bms/internal/core/signals"
@@ -209,8 +211,9 @@ func resolveOptions(m module.Manifest, opts []Option) (options, []string) {
 // and Tracer with telemetrytest.New(t)'s (any policy violation fails the rule), fills a nil
 // Clock, DB, Signals or Audit with a fake (an audittest.NewFake scoped to the module), a nil
 // Authz with authztest.NewFake() (it denies everything) and a nil People with
-// peopletest.NewFake(), and sets Links through Plan.Build. A DB, Signals or Audit that is not a dbtest.Fake,
-// signalstest.Fake or audittest.Fake fails t (t.Fatalf), naming the module, because the
+// peopletest.NewFake(), a nil Departments with departmentstest.NewFake(), a nil Events with
+// eventstest.NewFake(), and sets Links through Plan.Build. A DB, Signals or Audit that is
+// not a dbtest.Fake, signalstest.Fake or audittest.Fake fails t (t.Fatalf), naming the module, because the
 // rules need to make the database read-only, to read back the subscriptions and to scan
 // the audit entries the module recorded for personal data (no_personal_data_in_logs).
 //
@@ -419,6 +422,12 @@ func (h *harness) provisioner(readOnly bool) module.Provision {
 		}
 		if d.People == nil {
 			d.People = peopletest.NewFake()
+		}
+		if d.Departments == nil {
+			d.Departments = departmentstest.NewFake()
+		}
+		if d.Events == nil {
+			d.Events = eventstest.NewFake()
 		}
 		if m.Name == r.m.Name {
 			fake.SetReadOnly(readOnly)

@@ -8,6 +8,8 @@ import (
 	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/db"
+	"github.com/zedgama3/bms/internal/core/departments"
+	"github.com/zedgama3/bms/internal/core/events"
 	"github.com/zedgama3/bms/internal/core/people"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/telemetry"
@@ -147,6 +149,20 @@ type Deps struct {
 	// tests that do not look people up; moduletest.Conformance fills a nil one with a
 	// peopletest.Fake.
 	People people.Directory
+
+	// Departments is the directory of departments (departments-events.md; M3): NamesOf and
+	// Active. Shared, not scoped: Provision sets it, unscoped, because both methods need no
+	// actor. A module checks Active before writing a department's record; a foreign key to
+	// core.department(id) is allowed with ON DELETE RESTRICT, and the table is never read
+	// directly. Nil only in tests that do not look departments up; moduletest.Conformance
+	// fills a nil one with a departmentstest.Fake.
+	Departments departments.Directory
+
+	// Events is the directory of events (departments-events.md; M3): InfoOf. Shared, not
+	// scoped: Provision sets it, unscoped. A foreign key to core.event(id) is allowed with ON
+	// DELETE RESTRICT, and the table is never read directly. Nil only in tests that do not
+	// look events up; moduletest.Conformance fills a nil one with an eventstest.Fake.
+	Events events.Directory
 
 	// Added by later specs, named here so modules know where to look:
 	// Settings settings.Reader   settings.md

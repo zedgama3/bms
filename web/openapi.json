@@ -803,6 +803,421 @@
         ],
         "type": "object"
       },
+      "Department": {
+        "properties": {
+          "archived": {
+            "type": "boolean"
+          },
+          "archived_at": {
+            "description": "Omitted while active.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "contact_email": {
+            "description": "The department's shared mailbox, never a person's address. Omitted when none.",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "name": {
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "archived",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "DepartmentCreateInput": {
+        "properties": {
+          "contact_email": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "DepartmentUpdateInput": {
+        "properties": {
+          "contact_email": {
+            "description": "Needs departments.details.manage at the department. Empty clears it.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "description": "Needs departments.details.manage at the department.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "description": "Needs departments.manage.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "Event": {
+        "properties": {
+          "closed": {
+            "type": "boolean"
+          },
+          "closed_at": {
+            "description": "Omitted while open.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "dates": {
+            "properties": {
+              "end": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "start": {
+                "format": "date-time",
+                "type": "string"
+              }
+            },
+            "required": [
+              "start",
+              "end"
+            ],
+            "type": "object"
+          },
+          "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "kind": {
+            "description": "A kind key; see GET /kinds.",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "zone": {
+            "description": "IANA zone name the dates are shown in.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "dates",
+          "zone",
+          "closed",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "EventCreateInput": {
+        "properties": {
+          "copy_from": {
+            "$ref": "#/components/schemas/ID",
+            "description": "Optional: the event whose module data the set-up providers copy."
+          },
+          "dates": {
+            "properties": {
+              "end": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "start": {
+                "format": "date-time",
+                "type": "string"
+              }
+            },
+            "required": [
+              "start",
+              "end"
+            ],
+            "type": "object"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "zone": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "dates",
+          "zone"
+        ],
+        "type": "object"
+      },
+      "EventCreated": {
+        "properties": {
+          "event": {
+            "$ref": "#/components/schemas/Event"
+          },
+          "setup": {
+            "items": {
+              "$ref": "#/components/schemas/EventSetupResult"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "event",
+          "setup"
+        ],
+        "type": "object"
+      },
+      "EventDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Event"
+          },
+          {
+            "properties": {
+              "schedule": {
+                "items": {
+                  "$ref": "#/components/schemas/EventScheduleItem"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "schedule"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "EventKind": {
+        "properties": {
+          "builtin": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "builtin",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "EventKindInput": {
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "EventScheduleInput": {
+        "properties": {
+          "ends_at": {
+            "description": "Omit for a moment.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "key": {
+            "description": "Optional token, lower-case letters, digits and single hyphens, at most 32 bytes.",
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "starts_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "starts_at"
+        ],
+        "type": "object"
+      },
+      "EventScheduleItem": {
+        "properties": {
+          "ends_at": {
+            "description": "Omitted for a moment.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "event": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "key": {
+            "description": "Optional token unique within the event. Omitted when none.",
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "position": {
+            "type": "integer"
+          },
+          "starts_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "event",
+          "label",
+          "starts_at",
+          "position"
+        ],
+        "type": "object"
+      },
+      "EventSetupInput": {
+        "properties": {
+          "copy_from": {
+            "$ref": "#/components/schemas/ID"
+          }
+        },
+        "required": [
+          "copy_from"
+        ],
+        "type": "object"
+      },
+      "EventSetupResult": {
+        "properties": {
+          "code": {
+            "description": "The error kind name when failed (permission, timeout, unavailable, internal, ...).",
+            "type": "string"
+          },
+          "failed": {
+            "type": "boolean"
+          },
+          "items": {
+            "type": "integer"
+          },
+          "module": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "module",
+          "items",
+          "failed"
+        ],
+        "type": "object"
+      },
+      "EventUpdateInput": {
+        "properties": {
+          "dates": {
+            "oneOf": [
+              {
+                "properties": {
+                  "end": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "start": {
+                    "format": "date-time",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "start",
+                  "end"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "zone": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
       "Field": {
         "properties": {
           "code": {
@@ -2773,6 +3188,881 @@
         ]
       }
     },
+    "/api/departments/": {
+      "get": {
+        "operationId": "departmentsList",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "include_archived",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "departments": {
+                      "items": {
+                        "$ref": "#/components/schemas/Department"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "departments"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The departments."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Active departments by name; every signed-in person may read them. include_archived=true adds archived ones and needs departments.manage (403 otherwise).",
+        "tags": [
+          "departments"
+        ]
+      },
+      "post": {
+        "operationId": "departmentsCreate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DepartmentCreateInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Department"
+                }
+              }
+            },
+            "description": "Created."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Create a department. Needs departments.manage. 400 name required, too_long, control_chars; description too_long; contact_email malformed; 409 name taken.",
+        "tags": [
+          "departments"
+        ]
+      }
+    },
+    "/api/departments/{department}": {
+      "get": {
+        "operationId": "departmentsGet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "department",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Department"
+                }
+              }
+            },
+            "description": "The department."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "One department. An archived one is 404 unless the caller holds departments.manage or departments.details.manage at it.",
+        "tags": [
+          "departments"
+        ]
+      },
+      "put": {
+        "operationId": "departmentsUpdate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "department",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DepartmentUpdateInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Department"
+                }
+              }
+            },
+            "description": "The department after the change."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Change the fields set. name needs departments.manage; description and contact_email need departments.details.manage at the department. 400 body required when no field is set; 409 archived, or name taken.",
+        "tags": [
+          "departments"
+        ]
+      }
+    },
+    "/api/departments/{department}/archive": {
+      "post": {
+        "operationId": "departmentsArchive",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "department",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Department"
+                }
+              }
+            },
+            "description": "The archived department."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Archive a department. Needs departments.manage. Grants stay; the department stops being active. 409 archived when it already is.",
+        "tags": [
+          "departments"
+        ]
+      }
+    },
+    "/api/departments/{department}/restore": {
+      "post": {
+        "operationId": "departmentsRestore",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "department",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Department"
+                }
+              }
+            },
+            "description": "The restored department."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Restore an archived department. Needs departments.manage. 409 not_archived when it is active.",
+        "tags": [
+          "departments"
+        ]
+      }
+    },
+    "/api/events/": {
+      "get": {
+        "operationId": "eventsList",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "any",
+                "open",
+                "closed"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "events": {
+                      "items": {
+                        "$ref": "#/components/schemas/Event"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "events"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The events."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Events newest first; every signed-in person may read them. status is any (default), open or closed (400 one_of otherwise).",
+        "tags": [
+          "events"
+        ]
+      },
+      "post": {
+        "operationId": "eventsCreate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventCreateInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventCreated"
+                }
+              }
+            },
+            "description": "Created."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Create an event; with copy_from, the modules' set-up runs and its outcome is in setup (a failed provider never undoes the event). Needs events.manage. 400 name, kind (malformed, unknown), dates.start and dates.end (required, range), zone (malformed, too_long), copy_from unknown; 409 name taken.",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/api/events/kinds": {
+      "get": {
+        "operationId": "eventsListKinds",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "kinds": {
+                      "items": {
+                        "$ref": "#/components/schemas/EventKind"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "kinds"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The kinds."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Event kinds, the seeded ones first. Every signed-in person may read them.",
+        "tags": [
+          "events"
+        ]
+      },
+      "post": {
+        "operationId": "eventsCreateKind",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventKindInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventKind"
+                }
+              }
+            },
+            "description": "Created."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Add a kind. Needs events.manage. 400 key malformed, too_long; name required, too_long; 409 key taken.",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/api/events/kinds/{kind}": {
+      "put": {
+        "operationId": "eventsUpdateKind",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventKindInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventKind"
+                }
+              }
+            },
+            "description": "The kind after the change."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Rename a kind (a seeded one too); the key never changes and a key in the body is ignored. Needs events.manage. 404 for an unknown key.",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/api/events/{event}": {
+      "get": {
+        "operationId": "eventsGet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventDetail"
+                }
+              }
+            },
+            "description": "The event."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "One event with its schedule, sorted by start then position.",
+        "tags": [
+          "events"
+        ]
+      },
+      "put": {
+        "operationId": "eventsUpdate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventUpdateInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Event"
+                }
+              }
+            },
+            "description": "The event after the change."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Change the fields set on an open event. Needs events.manage. 400 body required when no field is set, and field errors as for create; 409 closed, or name taken.",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/api/events/{event}/close": {
+      "post": {
+        "operationId": "eventsClose",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Event"
+                }
+              }
+            },
+            "description": "The closed event."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Close an event; it accepts no changes until reopened. Needs events.manage. 409 closed when it already is.",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/api/events/{event}/reopen": {
+      "post": {
+        "operationId": "eventsReopen",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Event"
+                }
+              }
+            },
+            "description": "The reopened event."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Reopen a closed event. Needs events.manage. 409 open when it is not closed.",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/api/events/{event}/schedule": {
+      "post": {
+        "operationId": "eventsAddScheduleItem",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventScheduleInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventScheduleItem"
+                }
+              }
+            },
+            "description": "Added."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Add a schedule item to an open event, at most 100. Needs events.manage. 400 key malformed; label required, too_long; starts_at required; ends_at range; schedule too_many; 409 closed, or key duplicate.",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/api/events/{event}/schedule/{item}": {
+      "delete": {
+        "operationId": "eventsRemoveScheduleItem",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          },
+          {
+            "in": "path",
+            "name": "item",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Delete one schedule item. Needs events.manage. 404 when the item is not this event's; 409 closed.",
+        "tags": [
+          "events"
+        ]
+      },
+      "put": {
+        "operationId": "eventsUpdateScheduleItem",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          },
+          {
+            "in": "path",
+            "name": "item",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventScheduleInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventScheduleItem"
+                }
+              }
+            },
+            "description": "Changed."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Replace one schedule item. Needs events.manage. 404 when the item is not this event's; errors as for add.",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/api/events/{event}/setup": {
+      "post": {
+        "operationId": "eventsRunSetup",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventSetupInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "setup": {
+                      "items": {
+                        "$ref": "#/components/schemas/EventSetupResult"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "setup"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "What each module did."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Run the modules' set-up again for an open event, copying from another. Needs events.manage. 400 copy_from required, self, unknown; 409 closed.",
+        "tags": [
+          "events"
+        ]
+      }
+    },
     "/api/hello/greeting": {
       "get": {
         "operationId": "helloGreeting",
@@ -4064,6 +5354,14 @@
     {
       "description": "Who each participant is: profiles, emergency contacts, consents, search, and export or deletion of a person's data.",
       "name": "people"
+    },
+    {
+      "description": "The regional's standing departments: details, archiving and restoring.",
+      "name": "departments"
+    },
+    {
+      "description": "The events the regional puts on: dates and zone, kinds, schedule, closing, and the modules' set-up.",
+      "name": "events"
     }
   ]
 }

@@ -17,6 +17,8 @@ import (
 	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/db"
+	"github.com/zedgama3/bms/internal/core/departments"
+	"github.com/zedgama3/bms/internal/core/events"
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/module"
 	"github.com/zedgama3/bms/internal/core/people"
@@ -106,15 +108,18 @@ type assembly struct {
 
 	// Beyond the spec's list: the parts, what they built that a command calls, and what the
 	// lifecycle has started.
-	identity  *identity.Service // the identity part's service (create-superuser); nil before its build
-	authz     *authz.Service    // the authz part's service (migrate's seed, people's Access); nil before its build
-	people    *people.Service   // the people part's service (export, delete); nil before its build
-	stdout    io.Writer         // the command's standard output (migrate's seed line)
-	operator  bool              // a command that acts as the operator is running (auditActor)
-	parts     []part
-	started   []runnable
-	srv       httpServer
-	uiVersion string
+	identity *identity.Service // the identity part's service (create-superuser); nil before its build
+	authz    *authz.Service    // the authz part's service (migrate's seed, people's Access); nil before its build
+	people   *people.Service   // the people part's service (export, delete); nil before its build
+
+	departments *departments.Service // the departments part's service; nil before its build
+	events      *events.Service      // the events part's service; nil before its build
+	stdout      io.Writer            // the command's standard output (migrate's seed line)
+	operator    bool                 // a command that acts as the operator is running (auditActor)
+	parts       []part
+	started     []runnable
+	srv         httpServer
+	uiVersion   string
 }
 
 // newAssembly returns the assembly of one command run over cfg. Telemetry and everything
@@ -305,6 +310,8 @@ func (a *assembly) provision(_ context.Context, m module.Manifest) (module.Deps,
 	}
 	deps.Authz = a.deps.authz
 	deps.People = a.deps.people
+	deps.Departments = a.deps.departments
+	deps.Events = a.deps.events
 	return deps, nil
 }
 

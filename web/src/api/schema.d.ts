@@ -383,6 +383,233 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/departments/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Active departments by name; every signed-in person may read them. include_archived=true adds archived ones and needs departments.manage (403 otherwise). */
+        get: operations["departmentsList"];
+        put?: never;
+        /** Create a department. Needs departments.manage. 400 name required, too_long, control_chars; description too_long; contact_email malformed; 409 name taken. */
+        post: operations["departmentsCreate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/departments/{department}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One department. An archived one is 404 unless the caller holds departments.manage or departments.details.manage at it. */
+        get: operations["departmentsGet"];
+        /** Change the fields set. name needs departments.manage; description and contact_email need departments.details.manage at the department. 400 body required when no field is set; 409 archived, or name taken. */
+        put: operations["departmentsUpdate"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/departments/{department}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive a department. Needs departments.manage. Grants stay; the department stops being active. 409 archived when it already is. */
+        post: operations["departmentsArchive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/departments/{department}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore an archived department. Needs departments.manage. 409 not_archived when it is active. */
+        post: operations["departmentsRestore"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Events newest first; every signed-in person may read them. status is any (default), open or closed (400 one_of otherwise). */
+        get: operations["eventsList"];
+        put?: never;
+        /** Create an event; with copy_from, the modules' set-up runs and its outcome is in setup (a failed provider never undoes the event). Needs events.manage. 400 name, kind (malformed, unknown), dates.start and dates.end (required, range), zone (malformed, too_long), copy_from unknown; 409 name taken. */
+        post: operations["eventsCreate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/kinds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Event kinds, the seeded ones first. Every signed-in person may read them. */
+        get: operations["eventsListKinds"];
+        put?: never;
+        /** Add a kind. Needs events.manage. 400 key malformed, too_long; name required, too_long; 409 key taken. */
+        post: operations["eventsCreateKind"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/kinds/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Rename a kind (a seeded one too); the key never changes and a key in the body is ignored. Needs events.manage. 404 for an unknown key. */
+        put: operations["eventsUpdateKind"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/{event}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One event with its schedule, sorted by start then position. */
+        get: operations["eventsGet"];
+        /** Change the fields set on an open event. Needs events.manage. 400 body required when no field is set, and field errors as for create; 409 closed, or name taken. */
+        put: operations["eventsUpdate"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/{event}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close an event; it accepts no changes until reopened. Needs events.manage. 409 closed when it already is. */
+        post: operations["eventsClose"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/{event}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reopen a closed event. Needs events.manage. 409 open when it is not closed. */
+        post: operations["eventsReopen"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/{event}/schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add a schedule item to an open event, at most 100. Needs events.manage. 400 key malformed; label required, too_long; starts_at required; ends_at range; schedule too_many; 409 closed, or key duplicate. */
+        post: operations["eventsAddScheduleItem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/{event}/schedule/{item}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Replace one schedule item. Needs events.manage. 404 when the item is not this event's; errors as for add. */
+        put: operations["eventsUpdateScheduleItem"];
+        post?: never;
+        /** Delete one schedule item. Needs events.manage. 404 when the item is not this event's; 409 closed. */
+        delete: operations["eventsRemoveScheduleItem"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/{event}/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run the modules' set-up again for an open event, copying from another. Needs events.manage. 400 copy_from required, self, unknown; 409 closed. */
+        post: operations["eventsRunSetup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/hello/greeting": {
         parameters: {
             query?: never;
@@ -1043,6 +1270,141 @@ export interface components {
                 stack?: string;
                 trace_id?: string;
             }[];
+        };
+        Department: {
+            archived: boolean;
+            /**
+             * Format: date-time
+             * @description Omitted while active.
+             */
+            archived_at?: string;
+            /** @description The department's shared mailbox, never a person's address. Omitted when none. */
+            contact_email?: string;
+            /** Format: date-time */
+            created_at: string;
+            description: string;
+            id: components["schemas"]["ID"];
+            name: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        DepartmentCreateInput: {
+            contact_email?: string;
+            description?: string;
+            name: string;
+        };
+        DepartmentUpdateInput: {
+            /** @description Needs departments.details.manage at the department. Empty clears it. */
+            contact_email?: string | null;
+            /** @description Needs departments.details.manage at the department. */
+            description?: string | null;
+            /** @description Needs departments.manage. */
+            name?: string | null;
+        };
+        Event: {
+            closed: boolean;
+            /**
+             * Format: date-time
+             * @description Omitted while open.
+             */
+            closed_at?: string;
+            /** Format: date-time */
+            created_at: string;
+            dates: {
+                /** Format: date-time */
+                end: string;
+                /** Format: date-time */
+                start: string;
+            };
+            id: components["schemas"]["ID"];
+            /** @description A kind key; see GET /kinds. */
+            kind: string;
+            name: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** @description IANA zone name the dates are shown in. */
+            zone: string;
+        };
+        EventCreateInput: {
+            /** @description Optional: the event whose module data the set-up providers copy. */
+            copy_from?: components["schemas"]["ID"];
+            dates: {
+                /** Format: date-time */
+                end: string;
+                /** Format: date-time */
+                start: string;
+            };
+            kind: string;
+            name: string;
+            zone: string;
+        };
+        EventCreated: {
+            event: components["schemas"]["Event"];
+            setup: components["schemas"]["EventSetupResult"][];
+        };
+        EventDetail: components["schemas"]["Event"] & {
+            schedule: components["schemas"]["EventScheduleItem"][];
+        };
+        EventKind: {
+            builtin: boolean;
+            /** Format: date-time */
+            created_at: string;
+            key: string;
+            name: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        EventKindInput: {
+            key?: string;
+            name: string;
+        };
+        EventScheduleInput: {
+            /**
+             * Format: date-time
+             * @description Omit for a moment.
+             */
+            ends_at?: string;
+            /** @description Optional token, lower-case letters, digits and single hyphens, at most 32 bytes. */
+            key?: string;
+            label: string;
+            /** Format: date-time */
+            starts_at: string;
+        };
+        EventScheduleItem: {
+            /**
+             * Format: date-time
+             * @description Omitted for a moment.
+             */
+            ends_at?: string;
+            event: components["schemas"]["ID"];
+            id: components["schemas"]["ID"];
+            /** @description Optional token unique within the event. Omitted when none. */
+            key?: string;
+            label: string;
+            position: number;
+            /** Format: date-time */
+            starts_at: string;
+        };
+        EventSetupInput: {
+            copy_from: components["schemas"]["ID"];
+        };
+        EventSetupResult: {
+            /** @description The error kind name when failed (permission, timeout, unavailable, internal, ...). */
+            code?: string;
+            failed: boolean;
+            items: number;
+            module: string;
+        };
+        EventUpdateInput: {
+            dates?: {
+                /** Format: date-time */
+                end: string;
+                /** Format: date-time */
+                start: string;
+            } | null;
+            kind?: string | null;
+            name?: string | null;
+            zone?: string | null;
         };
         Field: {
             /** @description A machine-readable rule code: required, range, one_of, url, host_port, positive, malformed, ... */
@@ -2162,6 +2524,631 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    departmentsList: {
+        parameters: {
+            query?: {
+                include_archived?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The departments. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        departments: components["schemas"]["Department"][];
+                    };
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    departmentsCreate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DepartmentCreateInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Department"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    departmentsGet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                department: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The department. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Department"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    departmentsUpdate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                department: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DepartmentUpdateInput"];
+            };
+        };
+        responses: {
+            /** @description The department after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Department"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    departmentsArchive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                department: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The archived department. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Department"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    departmentsRestore: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                department: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The restored department. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Department"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    eventsList: {
+        parameters: {
+            query?: {
+                status?: "any" | "open" | "closed";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The events. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        events: components["schemas"]["Event"][];
+                    };
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    eventsCreate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventCreateInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventCreated"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    eventsListKinds: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The kinds. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        kinds: components["schemas"]["EventKind"][];
+                    };
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    eventsCreateKind: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventKindInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventKind"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    eventsUpdateKind: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventKindInput"];
+            };
+        };
+        responses: {
+            /** @description The kind after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventKind"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    eventsGet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The event. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventDetail"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    eventsUpdate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventUpdateInput"];
+            };
+        };
+        responses: {
+            /** @description The event after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Event"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    eventsClose: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The closed event. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Event"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    eventsReopen: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The reopened event. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Event"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    eventsAddScheduleItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventScheduleInput"];
+            };
+        };
+        responses: {
+            /** @description Added. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventScheduleItem"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    eventsUpdateScheduleItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event: components["schemas"]["ID"];
+                item: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventScheduleInput"];
+            };
+        };
+        responses: {
+            /** @description Changed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventScheduleItem"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    eventsRemoveScheduleItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event: components["schemas"]["ID"];
+                item: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    eventsRunSetup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventSetupInput"];
+            };
+        };
+        responses: {
+            /** @description What each module did. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        setup: components["schemas"]["EventSetupResult"][];
+                    };
                 };
             };
             /** @description An error. The body is a Problem. */

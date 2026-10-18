@@ -9,6 +9,8 @@ import (
 	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/db"
+	"github.com/zedgama3/bms/internal/core/departments"
+	"github.com/zedgama3/bms/internal/core/events"
 	"github.com/zedgama3/bms/internal/core/people"
 	"github.com/zedgama3/bms/internal/lib/errs"
 )
@@ -23,11 +25,13 @@ import (
 //	Files    files.Store                                           files.md
 //
 // Audit (audit.md, M1) is held unscoped: provision scopes it per module with Scoped(m.Name).
-// Authz and People (M2) are shared: provision copies them to every module's Deps as they are.
+// Authz, People, Departments and Events (M2, M3) are shared: provision copies them to every module's Deps as they are.
 type coreDeps struct {
-	audit  *audit.Log       // set by the audit part's build; nil when no part builds one (tests)
-	authz  authz.Authorizer // set by the authz part's build; nil when no part builds one
-	people people.Directory // set by the people part's build; nil when no part builds one
+	audit       *audit.Log            // set by the audit part's build; nil when no part builds one (tests)
+	authz       authz.Authorizer      // set by the authz part's build; nil when no part builds one
+	people      people.Directory      // set by the people part's build; nil when no part builds one
+	departments departments.Directory // set by the departments part's build; nil when no part builds one
+	events      events.Directory      // set by the events part's build; nil when no part builds one
 }
 
 // coreSetOrder is the order of the core's migration sets (db.md Proposed change 10),
@@ -88,9 +92,9 @@ type runnable struct {
 }
 
 // coreParts are the core services that plug in, in dependency order (audit, identity,
-// settings, authz, people, departments-events, jobs, notify, files; app.md "How later core
+// settings, authz, people, departments, events, jobs, notify, files; app.md "How later core
 // services plug in"). Each later core spec adds one file core_<name>.go and one line here.
-var coreParts = []part{auditPart, identityPart, authzPart, peoplePart}
+var coreParts = []part{auditPart, identityPart, authzPart, peoplePart, departmentsPart, eventsPart}
 
 // declare runs every part's declare, in order (F28).
 func (a *assembly) declare() error {
