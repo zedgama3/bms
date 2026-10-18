@@ -3,6 +3,7 @@
 - **Status:** Implemented (2026-10-17); Approved (2026-10-17)
 - **Amended 2026-10-17 (owner):** decisions 24 to 26 added (real error code sent in `code`; licence allowlist gains MIT-0 and Python-2.0 with a dev-only caniuse-lite exception; `web.FS()` hides dot-paths) and decision 27 (accepted implementation deviations); decision 6 amended so sign-in's own 401 does not redirect.
 - **Amended 2026-10-18 (owner approval of audit/identity):** from M1 `/sign-in` redirects to `/accounts/sign-in` (keeping the query) and the sign-in screen, `shell/identity.ts` and the `shell.signin.*` keys move to `web/src/core/accounts/` (`core.accounts.*`); the session body and store gain `accountId`, `passwordChangeRequired`, `expiresAt`, `signupOpen`; a restricted session is sent to `/accounts/password?returnTo=` from every route outside `/accounts/`; the header shows `shell.account.anonymous` ("Account") when `playa_name` is empty; `web/src/core/audit/` is a core area folder with the M2 audit screen (identity.md Proposed change 2, audit.md Proposed change 14).
+- **Amended 2026-10-18 (owner approval of authz/people):** `session.permissions` holds `p` (site-wide) and `p@<department-id>`; `NavEntry.access: string[]` matches an entry when the session holds `p` exactly or any `p@...`; the M1 placeholder that showed every permissioned entry when the list was empty is removed (an empty list now means none); `web/src/core/access/` and `web/src/core/people/` are core areas (decision 3); after a session is established the frame calls `GET /api/people/me` once, applies `language` (mirrored to `localStorage["bms.lang"]`), sends a session with an empty `playa_name` (not the superuser) to `/people/me?first=1` once per session, and writes a signed-in person's language change with `PUT /api/people/me {language}`; `@/api` exports a `useMe()` hook limited to `core/people` and the frame; `@/ui` gains a date-only input helper; the smoke run adds "grant a role and see the menu change" and the two people flows, all at the phone viewport (authz.md Proposed change 7, people.md Proposed change 7).
 - **Amended 2026-10-18 (M1 build, accepted deviations):** implementation deviations recorded in Behavior, "Accepted implementation deviations (M1 build, 2026-10-18)"; the Interface gains the `@/api` additions and `ErrorState`'s `message` prop; the restricted-session gate holds the person on `/accounts/password` only.
 - **Package:** `web/` (pnpm workspace; `web/src/...`), plus the Go package `web`
   (`web/embed.go`, Go module `github.com/zedgama3/bms/web`) that embeds the built files for
@@ -47,7 +48,7 @@
 **Key decisions:**
 - D1 modules mount under `/<name>/` in the browser; reserved names `api, assets, admin, account, sign-in, healthz, readyz, modules, core`.
 - D2 an untranslated field code shows the server's English `reason` inside the translated `field.unknown` wrapper in `<span lang="en">` and is reported (owner 2026-10-17); a top-level unknown code shows `error.unknown`.
-- D3 core areas register through the same `ScreenSet` (`kind: "core"`, always enabled); from M1 `web/src/core/accounts/` (sign-in, sign-up, password, account admin; identity.md) and from M2 `web/src/core/audit/` (the audit log; audit.md) are the first two.
+- D3 core areas register through the same `ScreenSet` (`kind: "core"`, always enabled); from M1 `web/src/core/accounts/` (sign-in, sign-up, password, account admin; identity.md) and from M2 `web/src/core/audit/` (the audit log; audit.md), `web/src/core/access/` (roles, grants; authz.md) and `web/src/core/people/` (profile, people, deletion requests; people.md).
 - D4 module isolation enforced by ESLint and `scripts/check-web-module-imports.sh` (under `make imports`); a literal `"/api/<other>/"` is refused.
 - D5 client generated from the server's document, committed; `make openapi-check` regenerates via `bms openapi`; `fetch` only in `@/api` and the reporter.
 - D6 every call: fresh `traceparent` (flags `01`), same-origin credentials, 35 s timeout, one `ApiError`, three hooks; `401` (except the session endpoint and sign-in's own) signs out and goes to `/sign-in?returnTo=`.
@@ -74,7 +75,7 @@
 
 **Expects of dependencies:** api (problem body with `fields[].code/params/reason`, `X-Read-Only`, `X-Trace-Id`, `GET /api/modules` and `/api/admin/modules` shapes, `POST /api/client-errors`, CSP, `Options.UI`); telemetry (intake wire form and limits, `Ref`, `traceparent` form, token grammar for `screen` and `api.route`); module-contract (name grammar, message-key derivation, admin graph); identity (`GET /api/accounts/session`, `POST /api/accounts/sign-in|sign-out`; M0 answers 404 and the shell is signed out); authz (`permissions` in the session response); settings (`GET /api/settings/public`, `/theme.css`); lib-core (field codes `required, range, positive, one_of, url, host_port, malformed`).
 
-**Pending proposed changes:** items 5 (identity endpoints), 6 (authz session permissions), 7 (settings public endpoint, theme, `language.detect_browser`), 13 (people `language` field), 15 (`docs/operating.md`) wait on targets not yet written; the rest are applied.
+**Pending proposed changes:** items 5 (identity endpoints), 7 (settings public endpoint, theme, `language.detect_browser`), 15 (`docs/operating.md`) wait on targets not yet written; items 6 and 13 applied 2026-10-18; the rest are applied.
 
 ## Purpose
 
@@ -122,7 +123,7 @@ Host every module's screens in one browser application.
 | The error body, the codes, the status table | `api.md`; mirrored here in TypeScript, never redefined |
 | Validating, limiting, scrubbing and logging client reports | `telemetry.md` (`intake`). The shell sends what `intake` accepts and nothing it would scrub |
 | The regional's name, logo, colours, default language, available languages, terminology | `settings.md` (row 15). Until it exists the shell ships defaults (decision 7, Proposed change 7) |
-| A person's saved language | `people.md` (row 8), as a profile field (Proposed change 13). Until then: the browser's one stored key (decision 7) |
+| A person's saved language | `people.md` (row 8), as a profile field read from `GET /api/people/me` (Proposed change 13, applied). Before M2: the browser's one stored key (decision 7) |
 | Offline use, a service worker, cached data on the device | Q-OFFLINE (D27). Nothing here caches API data on disk (decision 11) |
 | Configurable forms | D32: forms are code, fixed per module |
 | Charts and reporting screens | a later extension point (D19) and the `dataviz` guidance when one exists |
@@ -182,9 +183,10 @@ export interface NavEntry {
   /** `main`: the primary navigation. `admin`: the "Administration" group. */
   readonly area: "main" | "admin";
   /** Who sees it before the server decides: `public` (always), `signed-in` (default), or
-   *  the permissions of which the person needs any one (from session.permissions, M2;
-   *  before M2 a permission requirement shows the entry to every signed-in person and the
-   *  screen shows its forbidden state). */
+   *  the permissions of which the person needs any one (from session.permissions): an
+   *  entry matches when the session holds `p` exactly or any `p@<department-id>`; an empty
+   *  list means none, so the entry is hidden (M2; the M1 placeholder that showed every
+   *  permissioned entry is gone). */
   readonly access?: "public" | "signed-in" | readonly string[];
 }
 
@@ -439,7 +441,7 @@ from the session to show or hide:
 |---|---|---|---|---|
 | `GET /api/modules` at boot | none (public, api decision 27) | — | anyone | names and enablement only |
 | `GET /api/accounts/session` at boot and after sign-in/out | none (public; `{signed_in:false}` is a `200`) | — | anyone | Proposed change 5 |
-| `GET /api/admin/modules` (admin "modules" screen) | `core.modules.read` (api) | site | every site-admin starter role | the entry shows when `session.permissions` has it (M2+); the screen's forbidden state handles a `403` |
+| `GET /api/admin/modules` (admin "modules" screen) | `core.modules.read` (api) | site | every site-admin starter role | the entry shows when `session.permissions` has it (M2+; `p` exactly or any `p@...`); the screen's forbidden state handles a `403` |
 | `POST /api/client-errors` | none (public, telemetry decision 9) | — | anyone | the reporter, within the limits |
 | Showing a `NavEntry` or mounting a route | `access` on the entry or route: `public`, `signed-in`, or any of the named permissions | — | — | a hidden entry is a convenience; the module's service still decides |
 | Any module call | the module's own | — | — | the shell passes the cookie and nothing else |
@@ -1093,7 +1095,7 @@ entry appears and its screen calls `GET /api/hello/public-greeting`; with
 set `default_transaction_read_only = on` the banner appears after the first call and the
 server's `X-Read-Only` is `true`; a forced `GET /api/hello/greeting` without a session lands
 on `/sign-in?returnTo=/hello` (M0: F28 state); the CSP header is present on `/` and no
-console CSP violation is logged during the run.
+console CSP violation is logged during the run. From M2 the run adds "grant a role and see the menu change" and the two people flows (a new account is sent to `/people/me?first=1`, fills in a playa name and sees it in the header; a language change survives a reload), at the phone viewport.
 
 **Lint:** ESLint (boundaries, `jsx-a11y`, `react-hooks`, `no-console` except the reporter,
 no `style` prop, no `dangerouslySetInnerHTML`, no `fetch` outside `@/api` and the reporter,
@@ -1167,7 +1169,7 @@ requirement (decision 21).
    (`204`; works on a read-only copy). The sign-in screen lives in `web/src/core/accounts/`
    as a `ScreenSet` named `accounts`; `/sign-in` is a shell alias to it. The shell never
    reads the cookie. `401` handling is decision 6 here.
-6. **`plan/design/authz.md` (row 7)** (pending: target not written): fill `permissions` in the session response (09 §4:
+6. **`plan/design/authz.md` (row 7)** (applied 2026-10-18, by authz.md Proposed change 7: `permissions` holds `p` and `p@<department-id>`, `access` matches `p` exactly or any `p@...`, the M1 placeholder is removed, `web/src/core/access/` is a core area, the smoke run adds "grant a role and see the menu change", `ui` gains a date-only input helper): fill `permissions` in the session response (09 §4:
    "once per page load") with the names the person holds site-wide plus, for
    department-scoped grants, `"<permission>@<department-id>"`, so a `NavEntry.access`
    can name a permission and a department screen can test its own; the server still
@@ -1226,8 +1228,8 @@ requirement (decision 21).
     plus the module's own, `module.<name>.*`), `screens/`, `components/`; §3 adds "a
     module's screens call only `/api/<name>/` and the core's routes; another module's data
     comes through a contract the owning module renders".
-13. **`plan/design/people.md` (row 8)** (pending: target not written): a profile field `language` (`internal`, optional, a
-    BCP 47 tag from the offered list) that the shell reads from the session response and
+13. **`plan/design/people.md` (row 8)** (applied 2026-10-18, by people.md Proposed change 7: the language is read from `GET /api/people/me`, called once by the frame after the session is established, not from the session response; a signed-in change is written with `PUT /api/people/me {language}`; an empty `playa_name` sends the person to `/people/me?first=1` once per session; `useMe()` in `@/api`): a profile field `language` (`internal`, optional, a
+    BCP 47 tag from the offered list) that the shell reads from `GET /api/people/me` and
     writes when a signed-in person changes the language; the browser key mirrors it.
 14. **`plan/09-core-features.md`, "Ground rules", §1 "Done when" and §7** (applied 2026-10-17): "WCAG 2.1 AA" → "WCAG 2.2 AA" (principle
     4 already says 2.2); "Mobile first" becomes a hard requirement in the owner's words

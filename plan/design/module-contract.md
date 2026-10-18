@@ -3,6 +3,7 @@
 - **Status:** Implemented (2026-10-17); Approved (2026-10-16)
 - **Amended 2026-10-17 (owner):** `moduletest.Conformance` takes options (`WithCapability`, `WithSeed`/`WithoutPersonData`) and gains five rules; `Set.Start` rolls back under `StartRollbackTimeout`; `SettingDecl.Check` replaces `Validate`; `module.IsCoreArea` exported; wording fixes (Graph edges, Resolve kind, Build step 3).
 - **Amended 2026-10-18 (owner approval of audit/identity):** `Deps.Audit audit.Recorder` is available from M1 and scoped per module (actions are prefixed `<name>.`, another prefix fails `Invalid`); `moduletest.Conformance` fills a nil `Deps.Audit` with `audittest.NewFake(manifest.Name)` and the leak rule scans the recorded entries' `Reason` and `Fields` (audit.md Proposed change 2); the actor is `identity.PersonFrom(ctx)`, taken as a seam, and no `Deps` field is added (identity.md Proposed change 5).
+- **Amended 2026-10-18 (owner approval of authz/people):** `Deps.Authz authz.Authorizer` and `Deps.People people.Directory` are available from M2 (unscoped; `Provision` sets them); `authz.PermissionDecl` gains `StarterRoles []string` (each a valid ident, unique; `Validate` reports `starter_roles[j]`); `moduletest.Conformance` fills a nil `Deps.Authz` with `authztest.NewFake()` (denies everything) and a nil `Deps.People` with `peopletest.NewFake()`; new rules for module authors: a list, search, count or export use case filters by `ExtentOf`, a single-record use case uses `AllowIn` (department records) or `Allow`, and a foreign key to `core.person(id)` is allowed with `ON DELETE RESTRICT` because `people` calls the module's `DeletePerson` first; `Env.CoreExtensionPoints` carries `people.person-page` and `Env.CoreSignals` the three `people.*` names (authz.md Proposed change 2, people.md Proposed change 2).
 - **Amended 2026-10-18 (M1 build, accepted deviations):** implementation deviations recorded in Behavior, "Accepted implementation deviations (M1 build, 2026-10-18)".
 - **Package:** `internal/core/module` (Go module `github.com/zedgama3/bms`), plus the test
   helper package `internal/core/module/moduletest`. **UI:** none of its own; the admin
@@ -70,7 +71,7 @@ Exported names (package `module`):
   `PersonData() []ModulePersonData`, `Start(ctx)`, `Stop(ctx)` (reverse order, continues).
 - Leaf types placed elsewhere, defined here: `authz.Permission` (`<module>.<ident>(.<ident>)*`,
   `.Module()`), `authz.Scope` (`ScopeSite|ScopeDepartment`), `authz.PermissionDecl{Name, Scope,
-  Reaches model.Sensitivity}`; `signals.Name` (now signals.md's).
+  Reaches model.Sensitivity, StarterRoles []string}` (M2); `signals.Name` (now signals.md's).
 - `moduletest.Conformance(t, manifest, factory, provision, opts ...Option)`: named subtests
   (`manifest_valid`, `start_read_only`, `delete_read_only`, `no_personal_data_in_logs`, ...).
   Options (owner-approved 2026-10-17): `WithCapability(name, impl)` (mandatory per `Requires`);
@@ -111,7 +112,7 @@ Expects of dependencies: lib-errs (kinds, `errs.E`/`Is`); lib-core (`clock.Clock
 `telemetrytest`, `Scrub`'s `[email]` token); signals (`Bus`, `Name`, `signalstest.NewFake`).
 Of consumers: `app` supplies `Env`, `Provision`, the checker and the order Build, Start, Stop;
 `api` mounts `Set.Routes`; `authz`/`settings` take `Plan.Permissions`/`Plan.Settings`; `people` runs `Set.PersonData`.
-Proposed changes: 1, 3, 4, 6, 7, 9–12, 14 applied; 2, 5, 8, 13 pending (targets unwritten);
+Proposed changes: 1, 3, 4, 6, 7, 9–12, 14 applied; 2 and 8 applied 2026-10-18; 5, 13 pending (targets unwritten);
 15–17 (hello, skills; none for telemetry or app) applied 2026-10-17.
 
 ## Purpose
@@ -459,8 +460,8 @@ type Deps struct {
 
 	// Added by later specs, named here so modules know where to look:
 	// Settings settings.Reader   settings.md (row 15)
-	// Authz    authz.Authorizer  authz.md (row 7)
-	// People   people.Directory  people.md (row 8)
+	// Authz    authz.Authorizer  authz.md (row 7): M2; unscoped; Provision sets it
+	// People   people.Directory  people.md (row 8): M2; unscoped; Provision sets it
 	// Audit    audit.Recorder    audit.md (row 12): M1; scoped per module, actions prefixed "<name>."
 	// Jobs     jobs.Registrar    jobs.md (row 14)
 	// Notify   notify.Notifier   notify.md (row 11)
@@ -867,10 +868,14 @@ type PermissionDecl struct {
 	// it in separation-of-duties rules; a permission that reaches sensitive data stands
 	// out in the role editor.
 	Reaches model.Sensitivity
+	// StarterRoles are the keys of the starter roles this permission is seeded into once
+	// by `bms migrate` (authz.md decision 12). Each is a valid ident, unique.
+	StarterRoles []string
 }
 
 // Validate fails with errs.Invalid joining a FieldError per problem: Name invalid, Scope
-// zero or out of range, Reaches failing model.Sensitivity.Validate.
+// zero or out of range, Reaches failing model.Sensitivity.Validate, starter_roles[j]
+// not a valid ident or repeated.
 func (d PermissionDecl) Validate() error
 ```
 
@@ -900,9 +905,9 @@ func (n Name) Publisher() string
 | `DB` | `db.md` | the module's schema is its own responsibility; `db` reports read-only | M0 |
 | `Signals` | `signals.md` | publishing a name not in `Publishes`, or subscribing to one not in `Subscribes`, fails with `errs.Invalid` | M0 |
 | `Settings` | `settings.md` | keys prefixed `<name>.`; reads only the module's declared keys and the core's retention keys for it | M2 |
-| `Authz` | `authz.md` | shared; the module passes its own permission names | M2 |
+| `Authz` | `authz.md` | shared (unscoped); the module passes its own permission names; a list, search, count or export use case filters by `ExtentOf`, a single-record use case uses `AllowIn` (department records) or `Allow`; `Conformance` supplies `authztest.NewFake()` when `Provision` leaves it nil (it denies everything, so a module that forgets its check fails its tests) | M2 |
 | `Audit` | `audit.md` | scoped per module with `Scoped(<name>)`: actions are prefixed `<name>.`, another prefix fails `Invalid`; `Conformance` supplies `audittest.NewFake(manifest.Name)` when `Provision` leaves it nil and its leak rule scans the recorded entries' `Reason` and `Fields` for the seed markers and `[email]` | M1 |
-| `People` | `people.md` | shared | M2 |
+| `People` | `people.md` | shared (unscoped); `NamesOf`, `ConsentOf`; `Conformance` supplies `peopletest.NewFake()` when nil; a foreign key to `core.person(id)` is allowed and uses `ON DELETE RESTRICT` (`people` calls the module's `DeletePerson` first) | M2 |
 | `Jobs` | `jobs.md` | job names prefixed `<name>.`; jobs run only on the writing copy | M4 |
 | `Notify` | `notify.md` | templates prefixed `<name>.` | M4 |
 | `Files` | `files.md` | shared | Later |
@@ -926,7 +931,7 @@ specs expose on this spec's data:
 | Permission | Allows | Scoped by | Default roles | Declared by |
 |---|---|---|---|---|
 | `core.modules.read` | read the module graph and schema versions (`GET /api/admin/modules`, 09 §7); the enabled names alone are public on `GET /api/modules` (api.md decision 27) | site | every site-admin starter role | `api.md` (`api.PermissionModulesRead`, declared where it is checked), registered with `authz` by `app` (api.md Proposed change 10) |
-| `people.data.export`, `people.data.delete` | run `PersonData` across modules for one person | site | account admin (09 §11) | `people.md` (Proposed change 8) |
+| `people.data.export`, `people.data.delete` | run `PersonData` across modules for one person | site | account admin (09 §11) | `people.md` (Proposed change 8, applied 2026-10-18) |
 
 Every module's own routes name their permissions in the module's spec.
 
@@ -1338,7 +1343,7 @@ with the proposed answer:
    core graph: it imports core contracts; no core package imports it." Add to the `authz`
    entry: owns the `Permission`, `Scope` and `PermissionDecl` types; to the `signals` entry:
    owns the `Name` type. Note that module names are letters and digits only (`afterreports`).
-2. **`plan/design/authz.md` (row 7):** (pending: target not written) adopt `authz.Permission`, `authz.Scope` and
+2. **`plan/design/authz.md` (row 7):** (applied 2026-10-18, by authz.md: `Reaches` shown in the editor, rules may refer to it, `core.modules.read` is api's) adopt `authz.Permission`, `authz.Scope` and
    `authz.PermissionDecl` as defined in this spec's "Types"; receive `Plan.Permissions()`
    from `app` at start-up; show `Reaches` in the role editor and allow separation-of-duties
    rules to refer to it ("may never hold a permission reaching sensitive"); declare
@@ -1383,7 +1388,7 @@ with the proposed answer:
    manifest through a generated JSON, or the check runs in Go against the catalogue files);
    show a module's navigation and screens only when `GET /api/modules` lists it as enabled;
    the admin "modules" screen renders the graph with its warnings.
-8. **`plan/design/people.md` (row 8):** (pending: target not written) orchestrate export and deletion over
+8. **`plan/design/people.md` (row 8):** (applied 2026-10-18, by people.md) orchestrate export and deletion over
    `Set.PersonData()` behind `people.data.export` and `people.data.delete`, in one audited
    operation; assemble `{ "<module>": <Export.Data>, ... }`; report `Deletion` per module;
    declare the person-page extension point (`people.person-page`, with its `Accepts`) in

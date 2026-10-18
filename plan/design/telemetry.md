@@ -3,6 +3,7 @@
 - **Status:** Implemented (2026-10-17); Approved (2026-10-16)
 - **Amended 2026-10-17 (owner):** decisions 21 to 25 (intake `api.code` is any token, client reports carry `origin=client`, `IsToken` and `Collect` and the accepted implementation deviations, `client.stack` cap, debug logging keeps scrubbing on); the Data section now says `New` reads the OTLP certificate and key files.
 - **Amended 2026-10-18 (owner approval of audit/identity):** `intake.ErrRateLimited` is, or wraps, the shared `httpx.ErrRateLimited` (api.md, identity.md Proposed change 1); instrument rows for `bms.audit.*` and `bms.identity.*` added (audit.md Proposed change 8, identity.md Proposed change 15); `TraceIDFrom` is recorded on every audit entry (Proposed change 7 applied).
+- **Amended 2026-10-18 (owner approval of authz/people):** instrument rows for `bms.authz.decisions` and `bms.people.*` added (authz.md Proposed change 15, people.md Proposed change 13).
 - **Package:** `internal/core/telemetry` (Go module `github.com/zedgama3/bms`), plus the
   sub-package `internal/core/telemetry/intake` (client error reports) and the test helper
   package `internal/core/telemetry/telemetrytest`. **UI:** none of its own; the error
@@ -1074,6 +1075,10 @@ One record at `warn`, message `client error`, attributes: `origin=client`,
 | `bms.identity.logins` | counter, `{login}` | `outcome` = `ok`, `superuser`, `bad_credentials`, `disabled`, `rate_limited`, `restricted` | `identity` |
 | `bms.identity.sessions_rejected` | counter, `{request}` | `reason` = `malformed`, `expired`, `revoked`, `disabled`, `unknown` | `identity` |
 | `bms.identity.rate_limited` | counter, `{request}` | `bucket` = `address` or `email` | `identity` |
+| `bms.authz.decisions` | counter, `{decision}` | `outcome` = `allowed`, `denied`, `superuser`, `unauthenticated`, `error` | `authz` |
+| `bms.people.exports` | counter, `{export}` | `outcome` (a token: `ok` or the failure's kind) | `people` |
+| `bms.people.deletions` | counter, `{deletion}` | `outcome` (a token: `ok` or the failure's kind) | `people` |
+| `bms.people.sections` | counter, `{section}` | `module` (the module name), `outcome` (a token: `ok` or the failure's kind) | `people` |
 | `bms.signals.published`, `bms.signals.delivered`, `bms.jobs.runs` | counter | `signal`/`job` (token), `module`, `outcome` (`delivered`: `ok`, `failed`, `deferred`, `read_only`, `panicked`; `published` has none) | `signals` (signals.md "Telemetry"), `jobs` (Proposed change 6) |
 
 Rates, errors and durations per route also come from Tempo's metrics generator over the

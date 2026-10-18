@@ -3,6 +3,7 @@
 - **Status:** Implemented (2026-10-17); Approved (2026-10-16)
 - Amended 2026-10-17 (owner): `Write` begins with plain `BEGIN` so the session's `default_transaction_read_only` applies (server answers 25006); a NULL uuid scans into `*model.ID[E]`; accepted implementation deviations recorded in Behavior, "Accepted implementation deviations".
 - **Amended 2026-10-18 (owner approval of audit/identity):** Proposed change 10 applied for `audit` and `identity` (`postgres.Migrations`, `audit.Set`, `identity.Set`, schema `core`); audit's guard deviates from "insert and select only": `UPDATE` and `TRUNCATE` are revoked from the application role and a trigger refuses `UPDATE`, `DELETE` and `TRUNCATE`, with `DELETE` allowed only inside `core.audit_purge` through a transaction-local flag, because the installation has one role and a plain grant cannot tell the retention job from the app (audit decision 9).
+- **Amended 2026-10-18 (owner approval of authz/people):** Proposed change 10 applied for `authz` and `people` (`postgres.Migrations`, `authz.Set`, `people.Set`, schema `core`, set names `authz` and `people` already in the fixed order); people's migration `0001` reads `core.account` once to backfill a person row per existing account, the one read across sets (authz.md Proposed change 16, people.md Proposed change 10). The transaction seam is not changed here.
 - **Package:** `internal/core/db` (Go module `github.com/zedgama3/bms`), plus the test
   helper package `internal/core/db/dbtest`. **UI:** none of its own; the "this copy is
   read-only" banner and `/readyz` are `web-shell.md`'s and `api.md`'s, fed by `ReadOnly()`
@@ -1158,7 +1159,7 @@ target to be written and are carried by this list until then.
    its own constant policy; note beside `Retryable` that `db.ErrReadOnly` is `Unavailable`
    and a loop around a write must check the sentinel first (decision 9).
 10. **Every core spec with tables (`identity`, `people`, `departments-events`, `authz`,
-    `audit`, `settings`, `jobs`, `files`)** (applied 2026-10-18 for `audit` and `identity`: `postgres.Migrations`, `audit.Set`/`identity.Set`, schema `core`; pending for the rest: specs not written): export `var Migrations fs.FS` from its
+    `audit`, `settings`, `jobs`, `files`)** (applied 2026-10-18 for `audit`, `identity`, `authz` and `people`: `postgres.Migrations`, `audit.Set`/`identity.Set`/`authz.Set`/`people.Set`, schema `core`, set names `authz` and `people` in the fixed order; people's `0001` backfills one person row per existing account, the one migration-time read of `core.account` by another set; pending for the rest: specs not written): export `var Migrations fs.FS` from its
     `postgres/` package (or a `db.Set`), schema `core`, set name equal to the package name;
     the set names are reserved module names already (module-contract "Reserved module
     names"); `audit`'s migration revokes `UPDATE` and `TRUNCATE` from the application role and

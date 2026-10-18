@@ -3,6 +3,7 @@
 - **Status:** Implemented (2026-10-17); Approved (2026-10-17)
 - **Amended 2026-10-17 (owner):** decisions 19 and 24 reworded, decisions 28 to 30 added (mapper span error carries only op and kind below 500; cookie guard refuses `bms_session_dev` unless `AllowPlaintext`; port 0 in tests, CSP on every UI-handler response, status 499 for a gone client; accepted implementation deviations).
 - **Amended 2026-10-18 (owner approval of audit/identity):** `httpx.ErrRateLimited` is added to `lib/httpx` (identity and intake both use it): the mapper answers `429 rate_limited` with `Retry-After: 60` for anything wrapping it, and `intake.ErrRateLimited` is, or wraps, it; `Authenticator` is implemented by identity as in Proposed change 9 (identity.md Proposed change 1).
+- **Amended 2026-10-18 (owner approval of authz/people):** the mapper emits `fields` (from `validate.FieldError`) for a `409 conflict` as it does for `400 invalid`, so a duplicate can name its field (sign-up's `taken` names `email`; identity.md F15); `authz.Allow` satisfies `PermissionChecker` and refuses the actor inside `signals.InDelivery`; the declaration of `core.modules.read` gains `StarterRoles: authz.SiteAdminRoles` (authz.md Proposed change 6, Proposed change 10 applied).
 - **Package:** `internal/api` (Go module `github.com/zedgama3/bms`), plus the foundation
   helper package `internal/lib/httpx` that this spec owns (decision 2): the wire form of an
   error, the kind-to-status table, and the three calls a handler makes (`ReadJSON`,
@@ -41,7 +42,7 @@
 **Purpose:** expose the core's and the modules' routes over HTTP through one request pipeline. Two packages: `internal/lib/httpx` (what any handler may import) and `internal/api` (the shell; imports core contracts, model, lib; never a module, `app`, `config`, otel or pgx).
 
 **Exported, `httpx` (stdlib + errs + validate only):**
-- `Problem{Status, Code, Ref, Fields []Field}`, `Field{Field, Code, Params, Reason}`, `ContentTypeProblem` (`application/problem+json`, RFC 9457).
+- `Problem{Status, Code, Ref, Fields []Field}` (`Fields` for `invalid` and `conflict`), `Field{Field, Code, Params, Reason}`, `ContentTypeProblem` (`application/problem+json`, RFC 9457).
 - Shell codes (pinned strings): `read_only`(503), `rate_limited`(429), `shutting_down`(503), `payload_too_large`(413), `unsupported_media_type`(415), `cross_origin`(403), `misdirected`(403), `method_not_allowed`(405), `not_found`(404); otherwise the `errs.Kind` name.
 - `StatusOf(errs.Kind) int` (Invalid 400, Unauthenticated 401, Permission 403, NotFound 404, Conflict 409, Unavailable 503, Timeout 504, Canceled 503, Unsupported 501, Internal 500).
 - `Fail(w, r, err)` hands any error to the shell's mapper (falls back to the same table without one); `Failer`, `WithFailer`.
@@ -83,6 +84,7 @@
 - D28 for status < 500 the mapper records on the span an error carrying only `op` and kind; 5xx keeps the scrubbed message (owner 2026-10-17).
 - D29 `Options.Validate` accepts port 0 (tests; config still refuses it). Every UI-handler response carries the CSP (404/405 bodies and assets included); `/api/` JSON carries none. Client gone and `ErrAbortHandler` record status 499 on span and histogram (owner 2026-10-17).
 - D30 accepted deviations: F10/F11/F14 are checked in `Options.Validate`; the request deadline uses `time.Now`, not the injected clock; the base context comes from `context.Background()` in `New`; a field's `UnmarshalJSON`/`UnmarshalText` failure is reported on `body.<path>` with code `malformed` and no echoed input; `Shutdown` closes a listener `Serve` never took.
+- D31 the mapper emits `fields` for a `409 conflict` that carries `validate.FieldError`s, as for `400 invalid`, so a duplicate names its field (owner, 2026-10-18).
 
 **Errors callers handle:** `Options.Validate`/`New`: `Invalid` (fields `http.addr`, `http.request_timeout`, `http.max_body_bytes`, `http.trusted_proxies`, `api.*`), `Conflict` (pattern or schema-name clash), `Invalid` for route/fragment mismatch or bad route token; `Listen`: `Unavailable` (in use), `Invalid`, `Conflict`; `Serve`: `Internal` (no Listen), `Unavailable`; `Shutdown`: `Timeout`/`Canceled` (late handlers may still run). `ReadJSON`: `Invalid` (wrapping `ErrUnsupportedMediaType` for 415; field `body` or JSON path), `*http.MaxBytesError` returned unchanged (413), `Timeout`, `Canceled`, `Internal` (bad dst). `WriteJSON`: `Internal` (unencodable), `Canceled` (write failed). Mapper checks sentinels before kind: `db.ErrReadOnly`, `intake.ErrRateLimited` (429, `Retry-After: 60`), `httpx.ErrUnsupportedMediaType`, `*http.MaxBytesError`. `Unavailable` adds `Retry-After: 5`.
 
@@ -188,7 +190,7 @@ type Problem struct {
 	Status int     `json:"status"`           // the HTTP status, repeated for clients that lose it
 	Code   string  `json:"code"`             // an errs.Kind name, or one of the shell codes (Behavior: "Codes")
 	Ref    string  `json:"ref,omitempty"`    // telemetry.Ref "XXXX-XXXX"; absent when no trace
-	Fields []Field `json:"fields,omitempty"` // for code "invalid": one per validate.FieldError, in order
+	Fields []Field `json:"fields,omitempty"` // for codes "invalid" and "conflict": one per validate.FieldError, in order
 }
 
 // Field is one validation problem, from validate.FieldError (decision 25).
@@ -357,7 +359,8 @@ type SchemaStatus func(ctx context.Context) ([]db.Status, error)
 
 // PermissionModulesRead guards GET /api/admin/modules (module-contract "Permissions").
 // It is declared here, where it is checked; app hands it to authz with the core's other
-// declarations (Proposed change 10). Scope site; reaches internal.
+// declarations (Proposed change 10). Scope site; reaches internal; the declaration carries
+// StarterRoles: authz.SiteAdminRoles (seeded into the six admin starter roles, authz.md).
 const PermissionModulesRead authz.Permission = "core.modules.read"
 
 // ---- Options and Server ----
@@ -1156,7 +1159,7 @@ this derivation is logged; the warning in step 1 names no address.
 | 403 | `misdirected` | decision 9 |
 | 404 | `not_found` | `errs.NotFound`, including a record the caller may not know exists (the service's choice, privacy-data); an unmatched or unclean `/api/` path; a UI file path with an extension that does not exist |
 | 405 | `method_not_allowed` | the path exists for other methods; `Allow` lists them |
-| 409 | `conflict` | `errs.Conflict` |
+| 409 | `conflict` | `errs.Conflict`, with `fields` when the error carries `validate.FieldError`s (a duplicate names its field: sign-up's `taken` on `email`) |
 | 413 | `payload_too_large` | the body cap |
 | 415 | `unsupported_media_type` | `ReadJSON` on a non-JSON body |
 | 429 | `rate_limited` | `httpx.ErrRateLimited` (`intake.ErrRateLimited` is, or wraps, it; identity's limiters wrap it) |
@@ -1287,7 +1290,7 @@ library (`bytes`, `context`, `encoding/json`, `errors`, `fmt`, `io`, `mime`, `ne
 | F37 | mapper | `httpx.ErrRateLimited` (directly, or through `intake.ErrRateLimited`) | `429 rate_limited`, `Retry-After: 60` | back off | `TestMapper_RateLimited_429RetryAfter` |
 | F38 | mapper | kind `Canceled`, client gone | nothing written; debug log; span not failed | — | `TestMapper_CanceledClientGone_WritesNothing` |
 | F39 | mapper | kind `Canceled` while draining | `503 shutting_down`, `Connection: close` | retry against the new instance | `TestMapper_CanceledWhileDraining_503ShuttingDown` |
-| F40 | mapper | every other kind, including an unkinded error | `StatusOf(kind)`, code `Kind.String()`, `ref`, `fields` for `invalid`; one log record at the level of decision 4, with `error.message` (scrubbed, capped) for a 5xx only; `err.Error()` absent from the body | per the code | `TestMapper_KindTable` (ten kinds), `TestMapper_BodyNeverCarriesErrorText`, `TestMapper_LogLevel_Table` (5xx error; signed-in 4xx warn; anonymous 4xx debug), `TestMapper_ErrorMessage_5xxOnlyAndScrubbed` (a marker e-mail in the error text is absent from the capture) |
+| F40 | mapper | every other kind, including an unkinded error | `StatusOf(kind)`, code `Kind.String()`, `ref`, `fields` for `invalid` and for `conflict` when the error carries `validate.FieldError`s; one log record at the level of decision 4, with `error.message` (scrubbed, capped) for a 5xx only; `err.Error()` absent from the body | per the code | `TestMapper_KindTable` (ten kinds), `TestMapper_BodyNeverCarriesErrorText`, `TestMapper_LogLevel_Table` (5xx error; signed-in 4xx warn; anonymous 4xx debug), `TestMapper_ErrorMessage_5xxOnlyAndScrubbed` (a marker e-mail in the error text is absent from the capture) |
 | F41 | router | an unmatched `/api/` path; an unclean `/api/` path or one the mux would redirect | `404 not_found` as JSON, never `301`; debug log; route token `/{unmatched}` | fix the URL | `TestRouter_UnknownPath_404JSON`, `TestRouter_UncleanOrRedirectPath_404NotRedirect` (`/api/alpha//x`, `/api/alpha/./x`, `/api/alpha` when `/api/alpha/{$}` exists) |
 | F42 | router | a known path with another method | `405 method_not_allowed` with `Allow` from the probe, in the fixed order; debug log | fix the method | `TestRouter_WrongMethod_405WithAllow` over exactly `GET /shifts/{id}` and `POST /shifts/bulk` in set `alpha`: `PUT /api/alpha/shifts/7` → `Allow: GET, HEAD`; `PUT /api/alpha/shifts/bulk` → `Allow: GET, HEAD, POST`; `DELETE /api/alpha/nothing` → `404` |
 | F43 | `/readyz` | `Database.Ping` fails or exceeds 2 s | `503 {"database":"unavailable"}`; warn with the kind; the failure is cached for the same second | the orchestrator waits | `TestReadyz_PingFails_503` |
@@ -1377,7 +1380,8 @@ bodies, query strings, cookies and `User-Agent`, asserted absent with
   F49, F50, F51, F53, F55–F57.
 - Mapper: `TestMapper_ErrorLogRecordFields` (the field set per status);
   `TestMapper_FieldsFromValidateErrors` (three problems → three fields in order, each
-  with `field`, `code`, `params` and `reason`; `params` absent when the check set none);
+  with `field`, `code`, `params` and `reason`; `params` absent when the check set none),
+  `TestMapper_ConflictWithFields_EmitsFields` (a `Conflict` wrapping a `FieldError` answers 409 with the field; a bare `Conflict` has none);
   `TestMapper_UnavailableRetryAfter`; F34, F36–F40.
 - Shell routes: `TestHealthz_OK` (body is exactly `{"status":"ok"}`, no version);
   `TestReadyz_ReadWriteAndReadOnly`; `TestModules_PublicListsNamesAndEnabled` (disabled
@@ -1561,7 +1565,7 @@ this list until then. Item 17 needs nothing.
    wrapping its own sentinel that the mapper learns then (or `intake.ErrRateLimited`
    moved to a shared place); document that the session value is request-scoped
    (signals.md Proposed change 7).
-10. **`plan/design/authz.md` (row 7)** (pending: target not written): satisfy `api.PermissionChecker` with its
+10. **`plan/design/authz.md` (row 7)** (applied 2026-10-18, by authz.md Proposed change 6): satisfy `api.PermissionChecker` with its
     `Authorizer` (site-scoped `Allow`); receive `api.PermissionModulesRead` from `app`
     among the core's declarations (`PermissionDecl{Name: "core.modules.read", Scope:
     ScopeSite, Reaches: SensitivityInternal}`), granted to every site-admin starter role

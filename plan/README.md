@@ -90,7 +90,10 @@ copy and can fork it. Features are modules.
      real server).
      Done 2026-10-18: `audit` (order 10) and `identity` (order 11) are Approved (D35).
      Done 2026-10-18: M1 implemented on feat/m1.
-     Next: M2, with the specs authz and people.
+     Done 2026-10-18: `authz` and `people` are Approved (D36), with the owner's answers to
+     their recommendations.
+     Next: the spec amendments (db, audit, api, identity, per D36), then the M1 follow-up
+     fixes, then the M2 build.
      Open follow-ups:
      - (a) Confirm D34 as D20's debug-level exception.
      - (b) The M3 part name `departments-events` is not a core area name for `module.IsCoreArea`
@@ -103,15 +106,24 @@ copy and can fork it. Features are modules.
        branch; waiting for the first push.
      - (e) audit: entries spooled inside a caller's transaction can outlive a rollback. Needs a
        db seam (for example `db.TxMode(ctx)`) and an audit amendment, both by the architect.
+       Decided 2026-10-18 (D36): the architect amends `db` and `audit` with a seam (for example
+       `db.TxMode(ctx)`), so audit never spools while ctx carries a transaction.
      - (f) audit F36: an import insert that fails Invalid keeps retrying the file forever.
        Recommendation: set it aside as `.failed`.
+       Decided 2026-10-18 (D36): an import insert that fails with Invalid sets the file aside
+       as `.failed`.
      - (g) api: a 409 Conflict carries no `fields`, so sign-up `taken` can't name the field.
        Recommendation: the mapper emits fields for conflict too. The web already copes either way.
+       Decided 2026-10-18 (D36): the mapper also emits `fields` for a 409 Conflict, so sign-up
+       `taken` names the e-mail field.
      - (h) identity limiter defaults: the per-client-address limit of 10 failures per 15 minutes
        may lock out a shared gate uplink. Recommendation: raise the address bucket to about 100
        and keep the per-account limit at 10.
+       Decided 2026-10-18 (D36): the per-client-address bucket rises to about 100 failures per
+       15 minutes; the per-account bucket stays at 10.
      - (i) Two behaviours added beyond the identity spec are pending the owner's review:
        ChangePassword shares the sign-in limiter buckets, and IPv6 addresses are keyed by /64.
+       Decided 2026-10-18 (D36): both are kept. No longer pending.
      - (j) Spec drift: app.md gives notify a migration set, but db.md's set order has none
        (architect).
      - (k) The password hint hard-codes the 12-character minimum. The minimum should reach the

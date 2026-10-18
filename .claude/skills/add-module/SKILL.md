@@ -18,7 +18,8 @@ cover:
 - the jobs to be done, by role (participant, lead, admin, ...)
 - the tables, in schema `<name>`, with a sensitivity level for each personal-data column
 - the permissions it declares, their scopes (department, event, own records), the Reaches
-  level of each permission, and the default roles that get them
+  level of each permission, and the starter roles that get them (a "Starter roles" column
+  in the Permissions table, mapping to `PermissionDecl.StarterRoles`, keys from `authz.Role*`)
 - a table per published signal: name, when it is published, payload keys and their ID
   types (`signals.Payload` holds record references only, so no personal data can travel
   on a signal); for each subscription, what the handler does, that it runs as the system,
@@ -45,7 +46,9 @@ internal/modules/<name>/
                    The module list is one line in internal/app/modules.go:
                    _ "github.com/zedgama3/bms/internal/modules/<name>" (plus the web
                    line, D31)
-  service.go       use cases; each one checks its permission via authz first. Declares the
+  service.go       use cases; each one checks its permission via authz first (M2: `deps.Authz`;
+                   `Allow` site-wide, `AllowIn` for one department's record, `ExtentOf` to
+                   filter a list, search, count or export). Declares the
                    storage interface it needs (no SQL or driver types in it)
                    Until identity, authz and settings exist (M0), the service takes three seams
                    (an actor function, a permission checker, a setting source) wired to "no
@@ -78,6 +81,8 @@ internal/modules/<name>/
   signals.go       the payload key constants, the NewPayload(signals.Ref(...)) calls for
                    each published signal, and the handlers for each subscription
   privacy.go       implements module.PersonData: export and delete for one person
+                   (`people` calls it; DeletePerson runs inside people's transaction on the
+                   ctx it is given; a foreign key to core.person(id) uses ON DELETE RESTRICT)
   <name>_test.go   black-box tests (test-author); calls moduletest.Conformance
                    with WithSeed (or WithoutPersonData) and WithCapability
                    for each required or used capability
@@ -130,7 +135,11 @@ The template to copy is the `hello` reference module (`plan/design/module-hello.
 - **Never read or write another module's schema.** Foreign keys go only to your own tables
   and core tables.
 - **Permissions are declared, not hard-coded to role names.** A regional decides which roles
-  get them.
+  get them. `PermissionDecl.StarterRoles` only seeds a starter role once at `bms migrate`.
+- **Contributing to the person page** (M2): set `ContributesTo: personpage.Point`
+  (`people.person-page`), return a `personpage.Provider` from `Contributions()`, add catalogue
+  keys `module.<name>.section.<ident>.title`; the provider checks the viewer's permission and
+  audits what it shows. Tests use `Deps.People` with `peopletest.NewFake()`, and `authztest.NewFake()` for `Deps.Authz`.
 - **Terminology comes from settings.** A regional that calls them "theme villages" instead of
   "theme camps" changes a setting, not code.
 - **The module works with zero optional settings changed.** Defaults are sensible.

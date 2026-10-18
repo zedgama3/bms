@@ -3,6 +3,7 @@
 - **Status:** Implemented (2026-10-17); Approved (2026-10-17)
 - **Amended 2026-10-17 (owner):** `SettingDecl.Check` replaces `Validate`; Conformance is called with a factory over the in-memory fake store and `moduletest.WithSeed(seed)` (module-contract Proposed change 15). Reviewer wording corrections: `Start` validates banner keys before subscribing; `hello.greeting` gains `updated_at`, a byte-length check and named constraints; `DeletePerson` runs in `db.Transact(Write)`; `handleGreeted` waits for the counter's acknowledgement; `Stop` is nil when already stopped; module tests use a bare `ServeMux` only and the api-shell and OpenAPI-versus-routes tests live in `internal/app`; handlers `httpx.Fail` on a non-Canceled write failure; `Greet` trims the source word.
 - **Amended 2026-10-18 (owner approval of audit/identity):** the M1 step of decision 2 is named: `actor` is `identity.PersonFrom` (false with no session, for a restricted session and inside a signal delivery); `GET /api/hello/greeting` with a session is `403` until the owner's base role exists (M2), and the request-driven `deliver:hello.greeted` assertion lands then (identity.md Proposed change 4).
+- **Amended 2026-10-18 (owner approval of authz/people):** the M2 step of decision 2 is named: `permissionChecker` is `deps.Authz`; both permissions declare `StarterRoles: []string{authz.RoleParticipant}` (decision 11); the app e2e asserts `GET /api/hello/greeting` is `200` for a signed-in participant and `POST /api/hello/greetings` drives `deliver:hello.greeted`; migration `0002` adds `FOREIGN KEY (person_id) REFERENCES core.person(id) ON DELETE RESTRICT` (replacing the "on delete cascade" sketch: `people` calls `DeletePerson` first and a cascade would hide a module that forgot something); `Manifest.Subscribes` may add `people.person-deleted` to reset the counter (optional, deferred); the e2e export shows `hello` inside the document (authz.md Proposed change 3, people.md Proposed change 8).
 - **Package:** `internal/modules/hello` (with `internal/modules/hello/greeting`,
   `internal/modules/hello/postgres`) and `internal/contracts/greeter`
   **UI:** `web/src/modules/hello`
@@ -51,7 +52,7 @@ per use case, named `hello.<use-case>`, integer attributes only. 7 `POST /greeti
 no body: `hello` has no input to read, so `httpx.ReadJSON` and `model.ParseID` are shown
 by `api.md`, not here. 8 no retention setting in M0 (settings and jobs do not exist);
 rows are kept until `DeletePerson`. 9 no FK to a person row until the core has one (M2,
-migration `0002`). 10 the `greeter` capability has no consumer in M0; it exists so
+migration `0002`: `REFERENCES core.person(id) ON DELETE RESTRICT`). 10 the `greeter` capability has no consumer in M0; it exists so
 `Plan.Build` resolves a real provider and authors see the shape.
 
 **Errs kinds a caller handles.** `New`: `Invalid` (nil dependency). `Start`: `Invalid`
@@ -87,7 +88,7 @@ compiled in and enabled by default through Phase 1; regionals set `BMS_MODULES_D
 revisit when `volunteers` is Implemented.
 
 **Open questions:** None. **Proposed changes elsewhere:** all applied 2026-10-17 (item 9 is
-README row 4b); identity.md's Proposed change 4 (the M1 step: `actor: identity.PersonFrom`) applied 2026-10-18.
+README row 4b); identity.md's Proposed change 4 (the M1 step: `actor: identity.PersonFrom`) applied 2026-10-18; authz.md's Proposed change 3 and people.md's Proposed change 8 (the M2 step: `deps.Authz`, `StarterRoles`, migration `0002`) applied 2026-10-18.
 
 ## Purpose
 
@@ -456,7 +457,7 @@ Schema `hello`, created by `db`'s migrator; migration `postgres/migrations/0001_
 | `updated_at` | `timestamptz` not null default now() | `internal` | every table has it (postgres-sql) | with the row |
 
 Index `greeting_person_created_idx (person_id, created_at)`. No foreign key: the core has no
-person table in M0; migration `0002` adds `references core.person(id) on delete cascade`
+person table in M0; migration `0002` adds `references core.person(id) on delete restrict`
 when `people.md` ships its table (M2), with `DeletePerson` staying the explicit path
 (people runs it before deleting the person). No `audit` reads: nothing here is `personal`
 or `sensitive`. Nothing is tied to an event: there is no carry-over to a new event and no
@@ -472,7 +473,7 @@ checks and audits; the read-only public route reads no row.
 
 | Permission | Allows | Scoped by | Reaches | Default roles |
 |---|---|---|---|---|
-| `hello.greetings.read` | `GET /greeting`: see one's own greeting count and the process counter | site; the data is own records only | internal | none shipped; proposed: every signed-in person's base role once `authz` defines roles (Open question 1). Until M2 the shell shows the entry to every signed-in person and the screen shows its forbidden state |
+| `hello.greetings.read` | `GET /greeting`: see one's own greeting count and the process counter | site; the data is own records only | internal | `StarterRoles: {authz.RoleParticipant}` from M2 (decision 11): every signed-in person's base role. Until M2 the shell shows the entry to every signed-in person and the screen shows its forbidden state |
 | `hello.greetings.write` | `POST /greetings`: save a greeting as oneself | site; writes only the actor's row | internal | as above |
 
 Two permissions, not one (decision 1): module-contract's hello paragraph predates the

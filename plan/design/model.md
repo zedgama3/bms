@@ -3,6 +3,7 @@
 - **Status:** Implemented (2026-10-17); Approved (2026-10-16)
 - Amended 2026-10-17 (owner): Email also rejects invalid UTF-8 and Unicode format characters (Cf); `Email.LogValue` redacts only a directly logged Email (never log a struct holding one; the app never logs addresses); a NULL uuid column scans into `*model.ID[E]` (Proposed change 4).
 - **Amended 2026-10-18 (owner approval of audit/identity):** Proposed change 5 applied for identity: the address is stored as entered and unique on `lower(email)` (`email_canonical`, a generated column), lookup by the canonical form (identity.md Proposed change 13, decision 16); `people` still pending.
+- **Amended 2026-10-18 (owner approval of authz/people):** Proposed change 5 applied for people: `contact_email` (an account-less person's address) is stored as entered, searched by `Canonical()`, and not unique (two account-less people may share a household address) (people.md Proposed change 9).
 - **Package:** `internal/model` (Go module `github.com/zedgama3/bms`; foundation, not a bms
   module). **UI:** none.
 - **Depends on specs:** `lib-errs.md` (Implemented): `errs.E`, `errs.Is`, kinds `Invalid`
@@ -510,7 +511,7 @@ None. The two questions in the first draft were answered by the owner on 2026-10
 4. **`plan/design/db.md` (row 5):** the integration test proves pgx scans and encodes
    `model.ID[E]` into `uuid` columns and `model.Email` into `text` columns by underlying
    type, and that a NULL uuid column scans into `*model.ID[E]` (nil = none) rather than a zero ID (owner, 2026-10-17), and documents the explicit `[16]byte` conversion as the fallback.
-5. **`plan/design/identity.md` (row 6)** (applied 2026-10-18, by identity.md Proposed change 13) **and `people.md` (row 8)** (pending: target not written)**:** store the address as
+5. **`plan/design/identity.md` (row 6)** (applied 2026-10-18, by identity.md Proposed change 13) **and `people.md` (row 8)** (applied 2026-10-18, by people.md Proposed change 9: `contact_email` stored as entered, searched by `Canonical()`, not unique)**:** store the address as
    entered and index `Email.Canonical()` uniquely (D21); the login lookup is by canonical
    form.
 6. **`plan/design/api.md` (row 16)** (applied 2026-10-17: `model.ParseID` in handlers

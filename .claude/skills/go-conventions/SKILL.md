@@ -47,7 +47,7 @@ interface it needs), `postgres/` (the only place with SQL and the driver: `store
 (`<name>/<record>/`, importing only `model` and `lib`): the module root imports `postgres/` to
 build the store, so `postgres/` cannot import the root. Until identity, authz and settings
 exist (M0), the service takes an actor function, a permission checker and a setting source
-wired to "no actor", "deny" and "the declared default", so it fails closed. From M1 the actor is `identity.PersonFrom(ctx)` (false inside a signal delivery and for a restricted session), imported from `core/identity` and taken as a seam (`actorFunc`) so tests use `identity.WithSession`; `Deps` gains no field for it. Audit: every read of `personal` fields about someone else and every `sensitive` read calls `deps.Audit.Record` after loading and before returning; a change records inside its `Write` transaction, never inside a `Read` transaction; actions are `<module>.<record>.<verb>`; a `Record` error fails the use case. The `hello`
+wired to "no actor", "deny" and "the declared default", so it fails closed. From M2 the permission checker seam is `deps.Authz` (an `authz.Authorizer`) and each use case checks its permission first in one of three shapes: `Allow` (a site-wide permission), `AllowIn` (a single record belonging to a department), or `ExtentOf` (a list, search, count or export filters by the returned extent: `WHERE department_id = ANY($1)`, or everything when `Site`). `deps.People` (`NamesOf`, `ConsentOf`) is the directory; a foreign key to `core.person(id)` is allowed and uses `ON DELETE RESTRICT`, because `people` calls the module's `DeletePerson` first and, inside people's transaction, a module uses the ctx it was given and never starts a new `Transact(Write)` on another ctx. From M1 the actor is `identity.PersonFrom(ctx)` (false inside a signal delivery and for a restricted session), imported from `core/identity` and taken as a seam (`actorFunc`) so tests use `identity.WithSession`; `Deps` gains no field for it. Audit: every read of `personal` fields about someone else and every `sensitive` read calls `deps.Audit.Record` after loading and before returning; a change records inside its `Write` transaction, never inside a `Read` transaction; actions are `<module>.<record>.<verb>`; a `Record` error fails the use case. The `hello`
 module (`plan/design/module-hello.md`) is the template. `Start` registers signal handlers and jobs and never writes, so it
 succeeds on a read-only copy. `New` needs no database read, because `bms openapi` and
 `bms check` build every module against a `DB` that refuses every statement (app.md decision
@@ -196,7 +196,9 @@ func (r *reader) query(ctx context.Context) (out []Row, err error) {
   `signalstest.NewFake(Manifest.Name, Manifest.Publishes, Manifest.Subscribes)` for
   `Deps.Signals` (it records what a use case published after commit, enforces the
   manifest's names, and `Deliver` runs a handler with the handler's error returned
-  unchanged).
+  unchanged). From M2: `authztest.NewFake()` as `Deps.Authz` (denies everything until
+  `Fake.Grant(person, p)`, `GrantIn(person, p, dept)` or `Superuser(person)`) and
+  `peopletest.NewFake()` as `Deps.People` (`Fake.Add(id, name)`, `Fake.Consent(id, purpose, granted)`).
 - Time comes from `lib/clock`. Tests use a fake clock. **No `time.Sleep` in tests.**
 - Tests that need a real database: `//go:build integration`, using containers from
   `lib/testkit` (or the running `deploy/compose` stack). Unit tests must pass with no

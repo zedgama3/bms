@@ -143,18 +143,31 @@ Rules (enforced by depguard and `make imports`):
 
 ### authz: may they do this?
 - **Purpose:** decide whether a person may perform an action on a resource.
-- **Owns:** roles, grants (site-wide or scoped to one department, with an optional end date),
-  separation-of-duties rules (D23), the permissions modules declare, the `Authorizer`, and
-  the `Permission`, `Scope` and `PermissionDecl` types.
+- **Owns:** the permission catalogue (declared by the core and modules, with scope and
+  `Reaches`); roles (site or department scoped, the base role, the starter roles seeded once
+  from `PermissionDecl.StarterRoles`); grants (site-wide or for one department, optional end
+  date); separation-of-duties rules (D23) checked at grant time and on every decision; the
+  `Authorizer` (`Allow`, `AllowIn`, `ExtentOf` as the batch primitive); `PermissionsOf` for the
+  session and `TitlesOf` for audit; the `access` routes and screens; signals
+  `access.grant-created|revoked`; and the `Permission`, `Scope` and `PermissionDecl` types.
 - **Doesn't do:** authentication, audit logging, creating or marking the superuser
-  (`identity`). `authz` allows the superuser by the flag identity supplies; it bypasses
+  (`identity`); own-record checks (each service, through `identity.PersonFrom`); whether a
+  person or department exists (`people`, `departments-events`); positions and qualifications
+  (`volunteers`). `authz` allows the superuser by the flag identity supplies; it bypasses
   `authz` by design and is audited.
 
 ### people: the directory of participants
 - **Purpose:** hold each person's profile and contact details, with consent.
-- **Owns:** profiles (playa name, legal name, contacts, emergency contact), consent records,
-  export and deletion of a person's data across modules (through the module contract).
-- **Doesn't do:** module-specific data about a person.
+- **Owns:** profiles (playa name, pronouns, language; legal name, phone, a contact address for
+  people without an account), emergency contacts, consents by purpose, the person row behind
+  every account (`identity.account-created`) and account-less people with `LinkAccount`, name
+  lookup and search, the person page with `people.person-page`, export and deletion across
+  identity, authz and every module (`PersonData`) with deletion requests, the `export` and
+  `delete` commands, the `people` routes and screens, signals
+  `people.person-created|deleted|deletion-requested`, and the contract `contracts/personpage`.
+- **Doesn't do:** module-specific data about a person; the login address (`identity`); who may
+  see a profile (`authz`); the person's own view of who read their data (`audit`, Later);
+  department membership (`volunteers`).
 
 ### departments and events
 - **Purpose:** the regional's standing departments (archivable, with their leadership) and

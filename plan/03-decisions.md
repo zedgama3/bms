@@ -439,3 +439,37 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
   - Temporary passwords are in M1.
   - The login rate limit is in memory, per process, keyed by client address and submitted
     address.
+
+## D36. authz and people specs approved, with their answers; M1 follow-ups decided
+
+- **Status:** Accepted (2026-10-18). Owner answered "Approved with recommendations" to 17
+  questions, accepting every recommendation. The authz and people specs are Approved.
+- **M1 follow-ups** (plan/README.md, follow-ups (e)–(i)):
+  - (e) A spooled audit entry can outlive a caller's rollback. The architect amends `db` and
+    `audit` with a seam (for example `db.TxMode(ctx)`), so audit never spools while ctx
+    carries a transaction.
+  - (f) audit F36: an import insert that fails with Invalid sets the file aside as `.failed`.
+  - (g) api: the mapper also emits `fields` for a 409 Conflict, so sign-up `taken` names the
+    e-mail field.
+  - (h) identity limiter defaults: the per-client-address bucket rises to about 100 failures
+    per 15 minutes; the per-account bucket stays at 10.
+  - (i) Both kept: ChangePassword shares the sign-in limiter buckets, and IPv6 is keyed by
+    /64. No longer pending.
+- **authz:**
+  - "May not grant a permission they don't hold" binds only department-scoped granters, not
+    site-wide access admins.
+  - Self-grant and self-revoke are refused (`self`); the superuser is exempt.
+  - A regional may delete any starter role except the base role.
+  - Roles and rules may name permissions no enabled module declares; they are shown as
+    "not available".
+  - Grants to the superuser's own person are not blocked.
+- **people:**
+  - Export, deletion requests, admin export and delete, and the `bms export` and `bms delete`
+    commands ship in M2.
+  - In M2, `people.contacts.read` goes to `account-admin` only, not `department-admin`.
+  - The person row is created from the `identity.account-created` signal, with a repair on
+    first save.
+  - The base role does not get `people.directory.read` by default; a regional can add it.
+  - Self export is an immediate, audited download with a 10-minute cooldown.
+  - The consent table and `ConsentOf` stay in M2.
+  - Legal name is one field.

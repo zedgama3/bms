@@ -3,6 +3,7 @@
 - **Status:** Implemented (2026-10-17); Approved (2026-10-16)
 - Amended 2026-10-17 (owner): records accepted, reviewer-approved implementation deviations: published counted after commit, Close waits again, Deferrer gets a fresh deadline, span attrs, `!repeated` key, Fake stamps `clock.Real()`, late deliveries dropped, Redeliver after Close (see Summary, "Accepted deviations").
 - **Amended 2026-10-18 (owner approval of audit/identity):** Proposed change 7 applied for identity (`PersonFrom` is false inside a delivery; the session value is request-scoped; authz still pending); `Env.CoreSignals` gains `identity.account-created` (payload `account`, `person`) (identity.md Proposed change 12).
+- **Amended 2026-10-18 (owner approval of authz/people):** Proposed change 7 applied for authz (inside `InDelivery` every decision answers `Unauthenticated`, so a handler runs as the system and uses its spec's system path; authz decision 7); Proposed change 8 applied for people; `Env.CoreSignals` gains `access.grant-created` and `access.grant-revoked` (`grant`, `person`, `role`, `department?`) and `people.person-created {person}`, `people.person-deleted {person}`, `people.deletion-requested {request, person}`; the core's scope `people` subscribes to `identity.account-created` (authz.md Proposed change 8, people.md Proposed change 6). `departments-events` is still pending.
 - **Package:** `internal/core/signals` (Go module `github.com/zedgama3/bms`), plus the test
   helper package `internal/core/signals/signalstest`. **UI:** none of its own; the admin
   "modules" screen (`web-shell.md`) shows each module's published and subscribed names from
@@ -80,7 +81,7 @@ Owns: no routes, permissions, settings or signals of its own; names come from ma
 config-like value is `HandlerTimeout` (app passes 5 s). Metrics `bms.signals.published{signal,
 module}` and `bms.signals.delivered{signal,module,outcome}`; never the payload on a log, span
 or metric. Core publishers get their own `Scope` from `app` (`people`, `departments`,
-`events`); in M0 the core publishes none (`Env.CoreSignals` empty; from M1 it lists `identity.account-created`); `hello.greeted` carries
+`events`); in M0 the core publishes none (`Env.CoreSignals` empty; from M1 it lists `identity.account-created`; from M2 also `access.grant-created`, `access.grant-revoked`, `people.person-created`, `people.person-deleted`, `people.deletion-requested`); `hello.greeted` carries
 `{person}`.
 
 Rules for modules: declare names in the manifest; subscribe once per name in `Module.Start`
@@ -98,8 +99,7 @@ failure); telemetry (`Tracer` Producer/Consumer spans, `Meter` counters,
 
 Accepted deviations (2026-10-17, reviewer-approved): `bms.signals.published` is counted in the after-commit hook (rollback counts nothing); `Close` while deliveries run waits again and returns Timeout/Canceled, nil only once nothing is in flight (F32); the `Deferrer` gets the handler's trace and in-delivery marker but a fresh `HandlerTimeout` deadline (up to 2x per subscriber); consumer spans carry `Int` depth, producer spans `Int` subscribers; `NewPayload` records a repeated key under reserved key `!repeated`, which `Validate` reports as F4 on `payload`; `signalstest.Fake` stamps `At` with `clock.Real()`; a delivery arriving after `Close` is dropped with one warn and not counted; `Redeliver` after `Close` is `Unavailable`.
 
-Pending proposed changes (targets not written): 6 jobs.md (implement `Deferrer`, call `Redeliver`), 7 authz (ignore
-the session when `InDelivery`; identity applied 2026-10-18), 8 people/departments-events (declare their signals). Items 1, 2, 3, 4, 5, 9, 10, 11 are applied.
+Pending proposed changes (targets not written): 6 jobs.md (implement `Deferrer`, call `Redeliver`), 8 departments-events (declare its signals). Items 1, 2, 3, 4, 5, 7, 9, 10, 11 are applied, and 8 for people (2026-10-18).
 
 ## Purpose
 
@@ -469,10 +469,7 @@ Nothing from `core/module` (it imports this package).
 
 ### Payload keys of the core's signals
 
-None in M0: the core publishes no signal yet, so `Env.CoreSignals` is empty. From M1 it lists `identity.account-created` (payload `{account: AccountID, person: PersonID}`; published inside the `Write` transaction of sign-up and of the superuser's creation; no personal data, identity.md "Signals"). `people.md`
-and `departments-events.md` declare theirs when written (Proposed change 8); the names the
-plan already uses are `people.person-created` and `people.person-deleted` (payload
-`{person}`) and the `departments-events` signals (`{department}`, `{event}`). The `hello`
+None in M0: the core publishes no signal yet, so `Env.CoreSignals` is empty. From M1 it lists `identity.account-created` (payload `{account: AccountID, person: PersonID}`; published inside the `Write` transaction of sign-up and of the superuser's creation; no personal data, identity.md "Signals"). From M2 it also lists `access.grant-created` and `access.grant-revoked` (`{grant, person, role, department?}`; authz.md), and `people.person-created {person}`, `people.person-deleted {person}` and `people.deletion-requested {request, person}` (people.md). `departments-events.md` declares its own when written (Proposed change 8); the `departments-events` signals (`{department}`, `{event}`). The `hello`
 module's `hello.greeted` carries `{person}`.
 
 ## Data
@@ -859,7 +856,7 @@ references only; synchronous delivery with 5 s per handler) were answered by the
 
 ## Proposed changes elsewhere
 
-Status as of 2026-10-17: items 1, 2, 3, 4, 5, 9 and 10 are applied. Items 6, 7 (for authz), 8 and 11
+Status as of 2026-10-18: items 1, 2, 3, 4, 5, 7, 9 and 10 are applied, and 8 for people. Items 6, 8 (for departments-events) and 11
 wait for their target to be written and are carried by this list until then.
 
 1. **`plan/design/module-contract.md` (row 4)** (applied 2026-10-16): `Deps.Signals` is `signals.Bus` as
@@ -909,12 +906,12 @@ wait for their target to be written and are carried by this list until then.
    db.ErrReadOnly)` as "stop until the next probe" (db.md Proposed change 13); state the
    give-up count; a handler is called again with the same `Signal.ID`, so the module's spec
    says how its handler is idempotent.
-7. **`plan/design/authz.md` (row 7)** (pending: target not written) **and `identity.md` (row 6)** (applied 2026-10-18, by identity.md Proposed change 12 and `PersonFrom` returning false inside `signals.InDelivery`): a handler's ctx may carry
+7. **`plan/design/authz.md` (row 7)** (applied 2026-10-18, by authz.md Proposed change 8: `Unauthenticated` inside `InDelivery`) **and `identity.md` (row 6)** (applied 2026-10-18, by identity.md Proposed change 12 and `PersonFrom` returning false inside `signals.InDelivery`): a handler's ctx may carry
    the request's session value (signals decision 6); `authz` must not treat it as the actor
    when `signals.InDelivery(ctx)` is true (the decision there is `Permission` or an explicit
    "system" path the module's spec names), and `identity` should document that the
    session value is a request-scoped value only.
-8. **`plan/design/people.md` (row 8) and `departments-events.md` (row 9)** (pending: targets not written): declare their
+8. **`plan/design/people.md` (row 8)** (applied 2026-10-18, by people.md Proposed change 6) **and `departments-events.md` (row 9)** (pending: target not written): declare their
    signal names and payload keys in a "Signals" table (name, when, keys and ID types):
    `people.person-created {person}`, `people.person-deleted {person}` (published after the
    deletion across modules commits), and the department and event signals; obtain a scoped

@@ -57,20 +57,20 @@ Each milestone is something the owner can try on bms-vm, not just code.
 |---|---|---|
 | **M0. Skeleton** | 1 | install with `bms migrate`, start it, see the empty shell, see its traces in Grafana; a "hello" module shows up |
 | **M1. Accounts** | 2, 8 (basic) | create the superuser by command, sign up, sign in and out, change a password, sign out everywhere else, disable and re-enable an account, set a temporary password |
-| **M2. People and permissions** | 3, 4, 9 (basic) | edit a profile, give someone an admin job, see menus change, see who viewed whose contact details |
+| **M2. People and permissions** | 3, 4, 9 (basic), 11 (basic) | edit a profile, give someone an admin job, see menus change, see who viewed whose contact details, download your own data, request deletion, export or delete one person (screen or command) |
 | **M3. Departments and events** | 5, 7 | set up departments and an event, appoint a department's leadership, have that department manage itself, archive a department |
-| **M4. Ready for a module** | 6, 11 (basic) | receive e-mail, reset a forgotten password by e-mail, export or delete one person by command; start `volunteers` |
+| **M4. Ready for a module** | 6 | receive e-mail, reset a forgotten password by e-mail; start `volunteers` |
 
 ```
  M0  1. Installer and harness
       │
  M1  2. Accounts and login ──────── 8. Audit log (writes start here)
       │
- M2  3. People and profiles ─▶ 4. Roles, permissions, separation of duties    9. Settings (basic)
+ M2  3. People and profiles ─▶ 4. Roles, permissions, separation of duties    9. Settings (basic) · 11. Export and deletion (basic)
       │
  M3  5. Departments and events ─▶ 7. Admin screens
       │
- M4  6. Notifications ─▶ e-mail password reset · 11. Export and deletion (basic)
+ M4  6. Notifications ─▶ e-mail password reset
       │
       ▼ volunteers module (Phase 1)
 
@@ -195,7 +195,7 @@ training and certificates come with qualifications (Q-QUAL), not as profile fiel
 - Profile sections from modules appear and disappear with the module.
 - A person can be created without an account (by an admin) and linked to one later.
 
-**Specs:** `people`, plus the person-page extension point in `contracts/people`.
+**Specs:** `people`, plus the person-page extension point in `contracts/personpage`.
 
 ## 4. Roles, permissions and separation of duties (MVP, M2)
 
@@ -217,7 +217,7 @@ training and certificates come with qualifications (Q-QUAL), not as profile fiel
   |---|---|
   | Account admin | manage accounts: disable, re-enable, temporary passwords |
   | Access admin | manage roles, grants and separation-of-duties rules |
-  | Department steward | create and archive departments, set and reset a department's leadership |
+  | Department steward | create and archive departments, set and reset a department's leadership (holds `access.department-grants.manage`, so it can grant department roles without holding each permission) |
   | Event admin | create, change and close events |
   | Settings admin | branding, terminology, module settings, SMTP |
   | Audit reviewer | search the audit log; export who viewed a person's data |
@@ -231,8 +231,10 @@ training and certificates come with qualifications (Q-QUAL), not as profile fiel
 - **The superuser** bypasses roles and rules. It isn't a role and can't be granted (D23).
 - A grant can have an end date (for example, a regional that has leads re-apply every year
   sets the end date when it appoints them; Q-CORE11). Nothing renews automatically.
-- A person can't grant a permission they don't hold, or outside the department they hold it
-  for. At least one person must keep the access admin role.
+- A department admin can't grant a permission they don't hold, nor outside their department;
+  site-wide access admins grant any role within the separation-of-duties rules (owner,
+  2026-10-18). Nobody grants or revokes their own roles (the superuser excepted). At least one
+  person must keep the access admin role.
 - The `Authorizer` answers in batches ("which of these 50 records may this person see?") so
   lists don't make a query per row.
 - Granting and revoking are audited.
@@ -263,7 +265,7 @@ training and certificates come with qualifications (Q-QUAL), not as profile fiel
   (Q-QUAL). Department leads check off (verify) the qualifications related to their department.
 - An archived department keeps its history, takes no new work, and disappears from lists
   except to stewards. A department with nothing for an event simply shows nothing for it.
-- Leadership is a department-scoped grant (step 4); there's no separate leads table.
+- Leadership is a department-scoped grant (step 4) of the `department-admin` role; there's no separate leads table.
 - **An event is a gathering the regional puts on** (Q-CORE8, Q-CORE13): usually a burn, but
   also, for example, a decompression party. An event has its own dates and a kind (burn,
   decompression, other) the regional can name.
@@ -360,11 +362,12 @@ Local disk first, S3-compatible storage optional. Files follow the data to the o
 
 ## 11. Data export and deletion
 
-- **MVP (M4):** an account admin exports one person's data (JSON, every module through the
-  extension point) or deletes it, by command, with the action audited.
-- **Later:** a person downloads their data from their page; asks for deletion, which an admin
-  reviews; retention periods set by the regional (default: keep forever, D30) delete data
-  automatically.
+- **MVP (M2):** an account admin exports one person's data (JSON, every module through the
+  extension point) or deletes it, by screen or command, with the action audited. A person
+  downloads their own data from their page (immediate, audited, with a cooldown) and asks for
+  deletion, which an admin reviews (owner, 2026-10-18).
+- **Later:** retention periods set by the regional (default: keep forever, D30) delete data
+  automatically; an export request kind.
 
 **Specs:** part of `people` (the extension point), `jobs` (retention).
 
