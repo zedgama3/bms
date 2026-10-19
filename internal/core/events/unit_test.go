@@ -484,6 +484,31 @@ func TestRunSetup_Self_ReturnsInvalid(t *testing.T) {
 	u.noStatements(t, "a self copy")
 }
 
+// D38 (ac): the order is actor, input, permission, so a caller without events.manage is
+// told about a malformed call as Invalid, and a caller with no actor is Unauthenticated.
+func TestRunSetup_BadInputWithoutManage_ReturnsInvalidNotPermission(t *testing.T) {
+	id := newEvent()
+	tests := []struct {
+		name     string
+		ctx      func(t *testing.T) context.Context
+		from     model.EventID
+		wantKind errs.Kind
+	}{
+		{"self, no grants", func(t *testing.T) context.Context { return asPerson(ctxT(t), newPerson()) }, id, errs.Invalid},
+		{"zero from, no grants", func(t *testing.T) context.Context { return asPerson(ctxT(t), newPerson()) }, model.EventID{}, errs.Invalid},
+		{"self, no actor", func(t *testing.T) context.Context { return ctxT(t) }, id, errs.Unauthenticated},
+		{"well-formed, no grants", func(t *testing.T) context.Context { return asPerson(ctxT(t), newPerson()) }, newEvent(), errs.Permission},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			u := newUnit(t)
+			_, err := u.svc.RunSetup(tc.ctx(t), id, tc.from)
+			wantKind(t, err, tc.wantKind)
+			u.noStatements(t, "a refused call")
+		})
+	}
+}
+
 func TestRunSetup_ZeroFrom_ReturnsInvalid(t *testing.T) {
 	u := newUnit(t)
 	ctx, _ := u.manager()

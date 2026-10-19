@@ -24,7 +24,7 @@
 - Constants `MaxNameBytes = 100`, `MaxKindKeyBytes = 32`, `MaxKindNameBytes = 60`, `MaxLabelBytes = 100`, `MaxZoneBytes = 64`, `MaxScheduleItems = 100`, `MaxEventDuration = 366 * 24h`, `MaxInfo = 200`, `DefaultSetupTimeout = 10s`. Permission `events.manage` (site, internal; starter `event-admin`); `Permissions`. Signals `events.event-created {event, copied-from?}`, `events.event-changed`, `events.event-closed`, `events.event-reopened {event}`. Extension point `events.event-setup`. Audit actions `events.event.created|changed|closed|reopened`, `events.kind.created|changed`, `events.schedule-item.created|changed|deleted`, `events.setup.ran`. `Set = db.Set{Name: "events", Schema: "core"}`, `postgres.Migrations`. `eventstest.NewFake()` (`Add(Info)`).
 - `eventsetup` (contract): `Point = "events.event-setup"`, `Request{Event, CopyFrom model.EventID}`, `Result{Items int}`, `Provider{SetUp(ctx, Request) (Result, error)}`.
 
-**Key decisions.** 1 two packages and two `app` parts named `departments` and `events` (both reserved core areas, so `module.IsCoreArea` passes; app F28, not amended), one spec file (row 9); jobs, notify, files become parts 8-10 (owner, 2026-10-18, D37): everything else (migration sets, route sets, audit areas, signal scopes, screen sets) was already per area. 2 active departments and all events are `internal` data readable by any signed-in person without a permission, like `people.NamesOf` (owner, 2026-10-18, D37): modules label records by them everywhere, and a removable permission would break those labels. 3 archived departments are visible only to holders of `departments.manage` (any list) and, one at a time, to holders of `departments.details.manage@D`; to anyone else `Get` is `NotFound`; `NamesOf` keeps answering for archived departments so history stays labelled. 4 archiving leaves grants in place (restore keeps the leadership; authz Proposed change 10), flips `Active` to false (authz refuses new department grants; modules refuse writes), and is reversible; departments are never deleted. 5 leadership = granting `department-admin` at D through authz (`access.department-grants.manage` for the steward, `access.grants.manage@D` for the department's own admins); no leads table, no leadership route; the department page links to `/access/grants?department=D`. 6 renaming needs `departments.manage` (history and module labels change), details need `departments.details.manage@D`; one `Update` decides by the fields set. 7 a department's contact address is a shared mailbox, `internal`, never a person's address (the form says "the department's shared mailbox, never a person's address"; owner, 2026-10-18, D37). 8 an event has instants (`TimeRange`) plus an IANA zone, validated with `time.LoadLocation` (app embeds `time/tzdata`); the UI renders in the event's zone (model Proposed change 8). 9 event kinds are rows a regional can add and rename (`burn`, `decompression`, `other` seeded, `Builtin`; the seeded three keep catalogue keys for translation); never deleted (owner, 2026-10-18, D37). 10 the schedule inside an event is a list of items (a window or a moment, an optional token `Key` unique per event such as `temple-burn`) with no containment rule: the screen warns when an item falls outside the dates; schedule items ship in M3 (owner, 2026-10-18, D37). 11 closing is a flag (`closed_at`), reversible with `Reopen`, audited; a closed event accepts no changes (`Conflict closed`); modules decide what "closed" means for them (volunteers: no new sign-ups). 12 `Create` with `CopyFrom` commits the event first, then calls every `events.event-setup` provider in build order, each under `SetupTimeout`, in the caller's ctx (the provider checks the caller's permission); a provider failure never undoes the event, it is reported in `Created.Setup`, counted, and the admin can `RunSetup` again; providers are idempotent per (event, module). 13 the signal `events.event-created` and the point are the same occurrence seen two ways: the point for work with a visible result, the signal for reactions. 14 no pagination on either list: a regional has tens of departments and events. 15 names are unique ignoring case among all departments and among all events (archived and closed included), so a restore never collides. 16 nothing here is personal data: no `PersonData`, no export, nothing to delete; audit holds who changed what. 17 regional differences are data (department names, kinds, zones, leadership terms through grant end dates): no settings owned. 18 no event scope in authz (authz decision 18): a module scopes by department and filters by event itself. 19 the department page's Leadership card shows only to holders of `access.grants.read` (and department admins at that department) in M3; a participant sees the contact mailbox; a `HoldersOf(ctx, dept, roleKey)` seam in authz is Later (owner, 2026-10-18, D37).
+**Key decisions.** 1 two packages and two `app` parts named `departments` and `events` (both reserved core areas, so `module.IsCoreArea` passes; app F28, not amended), one spec file (row 9); jobs, notify, files become parts 8-10 (owner, 2026-10-18, D37): everything else (migration sets, route sets, audit areas, signal scopes, screen sets) was already per area. 2 active departments and all events are `internal` data readable by any signed-in person without a permission, like `people.NamesOf` (owner, 2026-10-18, D37): modules label records by them everywhere, and a removable permission would break those labels. 3 archived departments are visible only to holders of `departments.manage` (any list) and, one at a time, to holders of `departments.details.manage@D`; to anyone else `Get` is `NotFound`; `NamesOf` keeps answering for archived departments so history stays labelled. 4 archiving leaves grants in place (restore keeps the leadership; authz Proposed change 10), flips `Active` to false (authz refuses new department grants; modules refuse writes), and is reversible; departments are never deleted. 5 leadership = granting `department-admin` at D through authz (`access.department-grants.manage` for the steward, `access.grants.manage@D` for the department's own admins); no leads table, no leadership route; the department page links to `/access/grants?department=D`. 6 renaming needs `departments.manage` (history and module labels change), details need `departments.details.manage@D`; one `Update` decides by the fields set. 7 a department's contact address is a shared mailbox, `internal`, never a person's address (the form says "the department's shared mailbox, never a person's address"; owner, 2026-10-18, D37). 8 an event has instants (`TimeRange`) plus an IANA zone, validated with `time.LoadLocation` (app embeds `time/tzdata`); the UI renders in the event's zone (model Proposed change 8). 9 event kinds are rows a regional can add and rename (`burn`, `decompression`, `other` seeded, `Builtin`; the seeded three keep catalogue keys for translation); never deleted (owner, 2026-10-18, D37). 10 the schedule inside an event is a list of items (a window or a moment, an optional token `Key` unique per event such as `temple-burn`) with no containment rule: the screen warns when an item falls outside the dates; schedule items ship in M3 (owner, 2026-10-18, D37). 11 closing is a flag (`closed_at`), reversible with `Reopen`, audited; a closed event accepts no changes (`Conflict closed`); modules decide what "closed" means for them (volunteers: no new sign-ups). 12 `Create` with `CopyFrom` commits the event first, then calls every `events.event-setup` provider in build order, each under `SetupTimeout`, in the caller's ctx (the provider checks the caller's permission); a provider failure never undoes the event, it is reported in `Created.Setup`, counted, and the admin can `RunSetup` again; providers are idempotent per (event, module). 13 the signal `events.event-created` and the point are the same occurrence seen two ways: the point for work with a visible result, the signal for reactions. 14 no pagination on either list: a regional has tens of departments and events. 15 names are unique ignoring case among all departments and among all events (archived and closed included), so a restore never collides. 16 nothing here is personal data: no `PersonData`, no export, nothing to delete; audit holds who changed what. 17 regional differences are data (department names, kinds, zones, leadership terms through grant end dates): no settings owned. 18 no event scope in authz (authz decision 18): a module scopes by department and filters by event itself. 19 the department page's Leadership card shows only to holders of `access.grants.read` (and department admins at that department) in M3; a participant sees the contact mailbox; a `HoldersOf(ctx, dept, roleKey)` seam in authz is Later (owner, 2026-10-18, D37); `department-steward` now holds site-wide `access.grants.read`, so stewards see the card at every department (D38, supersedes D37(q)). 20 (D38) `RunSetup` checks in the order actor, input, permission. 21 (D38) `events.setup.ran` is recorded with `context.WithoutCancel(ctx)` under a 5s deadline, so an expired request deadline does not lose it. 22 (D38) a provider returning `Timeout` counts as metric outcome `timeout`; one that returns success after its deadline passed is reported as success with its items; a panic is logged once, with its stack. 23 (D38) an empty zone fails `required`, a non-IANA zone `malformed`. 24 (D38) kind names may repeat (only the key is unique); a builtin kind shows its catalogue label until renamed, then its stored name everywhere. 25 (D38) the kind audit `Ref` is a fixed ID from sha256(`events.kind:`+key) truncated to 16 bytes, `Reason` `key:<key>`. 26 (D38) `RunSetup` with no provider linked records nothing. 27 (D38) deferred: (af) to `settings` in M4; (ai) until a module contributes set-up.
 
 **Errs kinds callers handle.** Every use case: `Unauthenticated` (no actor; `NamesOf`, `Active`, `InfoOf` excepted), store kinds (`Unavailable`, `Timeout`, `Canceled`), `Unavailable` wrapping `db.ErrReadOnly` on writes. `Permission` (`departments.manage`, `departments.details.manage@D`, `events.manage`). `NotFound` (unknown ID; archived department outside the caller's reach). `Invalid` with field codes `required`, `too_long {max}`, `control_chars`, `malformed`, `range`, `unknown`, `self`, `too_many {max}`, `one_of`. `Conflict` with codes `taken` (name, kind key), `archived`, `not_archived`, `closed`, `open`, `duplicate` (schedule key). `Link`: `Internal`. `New`/`Options.Validate`: `Invalid` with fields `departments.*` / `events.*`. No sentinels.
 
@@ -32,7 +32,7 @@
 
 **Expects of dependencies.** `app`: parts 6 `departments` and 7 `events` (jobs, notify, files move to 8–10); `lazyDepartments{a}` as authz's `Departments`; `events`' `link` over `a.set.Contributors(eventsetup.Point)`; `import _ "time/tzdata"`. `authz`: `Allow`, `AllowIn`, `DepartmentSource` semantics (`false, nil` for unknown and archived), `StarterRoles` seeding. `audit`: a `Recorder` per area; `Subject` may be zero when `Record` is set. `signals`: scoped `Bus`; `InDelivery`. `db`: `Transact`, `AfterCommit`, `Wrap`, `*Error.Constraint`, `ErrReadOnly`. `module-contract`: `Deps.Departments`, `Deps.Events`, `Env.CoreExtensionPoints` with `events.event-setup`, fakes in `moduletest`. `web-shell`: `useFormat` zone rendering, `NavEntry.access`. `people`: nothing (the grant screens already use its names route).
 
-**Open questions:** none; the six were answered 2026-10-18 (D37) and are folded into decisions 1, 2, 7, 9, 10 and 19. **Proposed changes elsewhere:** 13, listed at the end; 12 applied 2026-10-18 (D37), item 11 (`settings.md`) pending: target not written.
+**Open questions:** none; the six were answered 2026-10-18 (D37) and are folded into decisions 1, 2, 7, 9, 10 and 19; the D38 follow-ups (2026-10-19) are decisions 19 and 20 to 27. **Proposed changes elsewhere:** 13, listed at the end; 12 applied 2026-10-18 (D37), item 11 (`settings.md`) pending: target not written.
 
 ## Purpose
 
@@ -240,7 +240,8 @@ var (
 package events
 
 // Kind is a named kind of event. The three seeded kinds are Builtin: the UI shows
-// them through catalogue keys core.events.kind.<key>; custom kinds show Name.
+// them through catalogue keys core.events.kind.<key> until renamed (then Name, D38);
+// custom kinds show Name. Names may repeat; only Key is unique (D38).
 type Kind struct {
 	Key       string    `json:"key"`
 	Name      string    `json:"name"`
@@ -430,7 +431,12 @@ func (s *Service) Close(ctx context.Context, id model.EventID) (Event, error)
 func (s *Service) Reopen(ctx context.Context, id model.EventID) (Event, error)
 
 // RunSetup needs events.manage; the event must be open; from must exist and differ.
-// Runs every provider again (they are idempotent) and records events.setup.ran.
+// Runs every provider again (they are idempotent) and records events.setup.ran (not
+// when no provider is linked or none ran). Checks run in the order actor, input,
+// permission (D38). If ctx ends partway, each provider not yet run is reported Failed
+// (Code "timeout" or "canceled", Items 0), no metric is counted for it, events.setup.ran
+// is recorded (Failed, Fields the failed modules) when at least one provider ran, and
+// the ctx error is returned.
 // Fails Unauthenticated, Permission, NotFound, Invalid (copy_from), Conflict (closed),
 // Unavailable, store kinds.
 func (s *Service) RunSetup(ctx context.Context, id, from model.EventID) ([]SetupResult, error)
@@ -549,7 +555,7 @@ never deleted). No column references `core.person`.
 | Column | Type | Notes |
 |---|---|---|
 | `id` | `uuid` PK | `model.DepartmentID` |
-| `name` | `text` NOT NULL, `octet_length` 1..100, no control characters | unique ignoring case: `CREATE UNIQUE INDEX department_name_key ON core.department (lower(name))` (decision 15); the store maps constraint `department_name_key` to `Conflict taken` on field `name` |
+| `name` | `text` NOT NULL, `octet_length` 1..100, no control characters | unique ignoring case: `CREATE UNIQUE INDEX department_name_key ON core.department (lower(name))` (decision 15); the store maps constraint `department_name_key` to `Conflict taken` on field `name` (by constraint name, D38) |
 | `description` | `text` NOT NULL DEFAULT `''`, `octet_length` <= 2000 | |
 | `contact_email` | `text` NOT NULL DEFAULT `''`, `octet_length` <= 254 | the department's shared mailbox, stored as entered (shape checked by `model.ParseEmail`); `internal` (decision 7) |
 | `archived_at` | `timestamptz` NULL | NULL = active |
@@ -563,7 +569,7 @@ is not needed at this size; `List` scans the table.
 | Column | Type | Notes |
 |---|---|---|
 | `key` | `text` PK, `CHECK (key ~ '^[a-z][a-z0-9]*(-[a-z0-9]+)*$' AND octet_length(key) <= 32)` | |
-| `name` | `text` NOT NULL, `octet_length` 1..60 | |
+| `name` | `text` NOT NULL, `octet_length` 1..60 | not unique: names may repeat (D38) |
 | `builtin` | `boolean` NOT NULL DEFAULT false | true for the three rows `0001` inserts: `burn` "Burn", `decompression` "Decompression", `other` "Other" |
 | `created_at`, `updated_at` | `timestamptz` NOT NULL | the seed rows use the migration's `now()` (the one time a core migration writes data besides authz's starter roles) |
 
@@ -611,7 +617,7 @@ Reads of active departments, of all events and of kinds need a session and no pe
 `internal` data to code that already passed its own permission check or runs as the system.
 Leadership needs nothing here (decision 5). The base role `participant` holds none of the
 three. Starter role contents after `Seed` on M3: `department-steward` gains
-`departments.manage` and `departments.details.manage`; `event-admin` gains
+`departments.manage` and `departments.details.manage` (and, D38, authz's `access.grants.read`); `event-admin` gains
 `events.manage`; `department-admin` gains `departments.details.manage` (authz's table,
 Proposed change 1).
 
@@ -673,7 +679,7 @@ Nav: main area **Departments** (`/departments`, `signed-in`) and **Events** (`/e
   site-wide; **Rename**, **Archive** / **Restore** (confirm dialogs; archive explains "its
   leads keep their roles; modules stop new work for it; you can restore it") for
   `departments.manage`. A **Leadership** card for holders of `access.grants.read` (site or
-  at this department) links to `/access/grants?department=<id>&role=department-admin` and
+  at this department; stewards hold it site-wide, D38) has a "See roles here" link to `/access/grants?department=<id>&role=department-admin` (the grants list filtered to `department-admin` at that department; `role` takes a key, D38) and
   "Appoint a lead" to `/access/grants/new?department=<id>` for holders of
   `access.department-grants.manage` or `access.grants.manage@<id>`; others see the contact
   mailbox only (decision 19). *Archived:* a banner "Archived on <date>"; edit buttons
@@ -702,7 +708,7 @@ Nav: main area **Departments** (`/departments`, `signed-in`) and **Events** (`/e
   item, **Run set-up again** (choose the source event). *Closed:* a banner; edit buttons
   hidden except Reopen.
 - **Event kinds** (`/events/kinds`, `events.manage`): cards with key and name; "New kind"
-  (key, name); rename inline. No delete (decision 9). Errors `malformed` (key), `taken`.
+  (key, name; names may repeat, D38); rename inline. No delete (decision 9). A builtin kind shows its catalogue label until renamed, then its stored name everywhere, in the kinds screen, the new-event form and event cards (D38). Errors `malformed` (key), `taken`.
 - **authz's grant screens** unhide their department filter and department roles once
   `GET /api/departments` exists (authz.md "UI"); the picker lists active departments by
   name.
@@ -726,7 +732,7 @@ checks run when both kinds of field are set; no field set → `Invalid body requ
 update, close, reopen, schedule changes), check state (`Conflict archived|not_archived|
 closed|open`), write, `Audit.Record` inside the transaction (`Record` the row's `Ref`:
 kinds `departments.department`, `events.event`, `events.kind`, `events.schedule-item`;
-`Subject` zero; `Fields` the names of the fields that changed; `Level` internal), then
+`Subject` zero; `Fields` the names of the fields that changed; `Level` internal; for `events.kind` the `Ref` is a fixed ID from sha256(`"events.kind:"+key`) truncated to 16 bytes and `Reason` is `key:<key>`, D38), then
 `Signals.Publish` (delivered after commit). A read-only copy fails with `Unavailable`
 wrapping `db.ErrReadOnly` from the first statement. The unique-name and schedule-key
 constraints are the serialisation: no advisory lock is needed.
@@ -737,14 +743,14 @@ no provider is linked, return `Created{Event, Setup: []}`. Otherwise, for each p
 link order: `ctx, cancel := context.WithTimeout(ctx, SetupTimeout)`; span `events.setup`
 with `module` token; call `SetUp`; a result or an error becomes a `SetupResult` (`Code` =
 `errs.KindOf(err)` name; a panic is recovered and reported as `internal`); count
-`bms.events.setup{module, outcome}` (`ok`, `failed`, `timeout`, `permission`). Then
-transaction 2: `Audit.Record` `events.setup.ran` (`Outcome` Succeeded when every provider
+`bms.events.setup{module, outcome}` (`ok`, `failed`, `timeout`, `permission`; a provider error of kind `Timeout` is `timeout`; a provider that returns success after its deadline passed is `ok` with its items; a panic is logged once, with its stack; D38). Then
+transaction 2, run with `context.WithoutCancel(ctx)` under a 5s deadline so an expired request deadline does not lose it (D38): `Audit.Record` `events.setup.ran` (`Outcome` Succeeded when every provider
 succeeded, else Failed; `Reason` `copy_from:<id>`; `Fields` the module names that failed).
 If transaction 2 fails, `Create` returns the error even though the event exists (F64): the
 UI shows it and a reload shows the event. Providers run with the caller's ctx and actor, so
 a module that needs a permission the event admin lacks answers `Permission` and the result
 says so; the module's own leads can run its copy from its own screens later. `RunSetup`
-repeats the loop and transaction 2 for an open event.
+repeats the loop and transaction 2 for an open event. If the caller's ctx ends partway through the loop (D38), each provider that has not run yet is reported as failed (`Code` `timeout` or `canceled`, `Items` 0) and no metric is counted for it; transaction 2 still records `events.setup.ran` on the detached ctx with Outcome Failed and `Fields` the failed modules, whenever at least one provider ran, and then the ctx error is returned; nothing is recorded if no provider ran.
 
 **`Get` of an archived department.** Load the row; if archived, `Allow(departments.manage)`
 and, failing that, `AllowIn(departments.details.manage, id)`; if neither, `NotFound` (never
@@ -756,7 +762,7 @@ and, failing that, `AllowIn(departments.details.manage, id)`; if neither, `NotFo
 statement with `= ANY($1)`, and answer a map.
 
 **Zone and dates.** `Validate` loads the zone with `time.LoadLocation` (`Invalid zone
-malformed` on failure or for `""`/`"Local"`); `app` imports `time/tzdata` so a container
+required` for `""`; `malformed` on failure or for `"Local"`; D38); `app` imports `time/tzdata` so a container
 without a zone database still works (Proposed change 2). Dates are validated by
 `model.TimeRange.Validate` (fields prefixed `dates.`) and `Duration() <= MaxEventDuration`
 (`Invalid dates.end range`). Schedule items are not checked against the dates (decision
@@ -855,12 +861,12 @@ wrapping `db.ErrReadOnly` applies to every write and is tested once per package
 | F46 | `Create` | kind unknown or malformed | Invalid (`kind` `unknown`/`malformed`) | field error | `TestCreate_UnknownKind_ReturnsInvalid` |
 | F47 | `Create` | start or end zero; end not after start | Invalid (`dates.start`/`dates.end` `required`/`range`) | field error | `TestCreate_BadDates_ReturnsInvalid` |
 | F48 | `Create` | longer than `MaxEventDuration` | Invalid (`dates.end` `range`) | field error | `TestCreate_TooLong_ReturnsInvalid` |
-| F49 | `Create` | zone empty, `Local`, unknown to `time.LoadLocation`, or too long | Invalid (`zone` `malformed`/`too_long`) | field error | `TestCreate_BadZone_ReturnsInvalid` |
+| F49 | `Create` | zone empty (`required`), `Local` or not an IANA name (`malformed`), or too long (`too_long`) (D38) | Invalid (`zone` `required`/`malformed`/`too_long`) | field error | `TestCreate_BadZone_ReturnsInvalid` |
 | F50 | `Create` | `CopyFrom` unknown | Invalid (`copy_from` `unknown`) | field error | `TestCreate_UnknownCopyFrom_ReturnsInvalid` |
 | F51 | `Create` | name taken | Conflict (`name` `taken`) | field error | `TestCreate_NameTaken_ReturnsConflict` |
 | F52 | `Create` | a provider returns an error | — (`SetupResult{Failed, Code}`; event kept) | show the card | `TestCreate_ProviderFails_ReportsAndKeepsEvent` |
-| F53 | `Create` | a provider exceeds `SetupTimeout` | — (`Code: "timeout"`) | show; retry later | `TestCreate_ProviderTimesOut_Reported` |
-| F54 | `Create` | a provider panics | — (`Code: "internal"`, logged with stack) | show | `TestCreate_ProviderPanics_Recovered` |
+| F53 | `Create` | a provider exceeds `SetupTimeout` or returns `Timeout` (metric outcome `timeout`, D38) | — (`Code: "timeout"`) | show; retry later | `TestCreate_ProviderTimesOut_Reported` |
+| F54 | `Create` | a provider panics | — (`Code: "internal"`, logged once with stack, D38) | show | `TestCreate_ProviderPanics_Recovered` |
 | F55 | `Create` | a provider fails `Permission` (admin lacks the module's permission) | — (`Code: "permission"`) | show; the module's leads copy later | `TestCreate_ProviderPermission_Reported` |
 | F56 | `Create` | `CopyFrom` zero | — (no provider called, `Setup` empty) | nothing | `TestCreate_NoCopy_RunsNoProvider` |
 | F57 | `Update` | event closed | Conflict (`closed`) | show the banner | `TestUpdate_Closed_ReturnsConflict` |
@@ -871,7 +877,11 @@ wrapping `db.ErrReadOnly` applies to every write and is tested once per package
 | F62 | `RunSetup` | `from` equals `id` | Invalid (`copy_from` `self`) | fix the form | `TestRunSetup_Self_ReturnsInvalid` |
 | F63 | `RunSetup` | event closed; `from` unknown; no permission | Conflict (`closed`); Invalid (`copy_from` `unknown`); Permission | as above | `TestRunSetup_Closed_ReturnsConflict`, `TestRunSetup_UnknownFrom_ReturnsInvalid`, `TestRunSetup_WithoutManage_ReturnsPermission` |
 | F64 | `Create`/`RunSetup` | the `events.setup.ran` audit write fails after providers ran | the audit error (event and copies stand) | show the error; reload | `TestCreate_SetupAuditFails_ReturnsErrorEventExists` |
-| F65 | `RunSetup` | no provider linked | — (empty result) | show "nothing to set up" | `TestRunSetup_NoProviders_Empty` |
+| F65 | `RunSetup` | no provider linked | — (empty result; nothing recorded, D38) | show "nothing to set up" | `TestRunSetup_NoProviders_Empty` (asserts no `events.setup.ran`) |
+| F65a | `Create`/`RunSetup` | the request ctx is cancelled or past its deadline when `events.setup.ran` is written (D38) | the entry is still recorded (`WithoutCancel`, 5s deadline); if that write also fails, F64 | none | `TestRunSetup_ExpiredRequestCtx_StillRecordsSetupRan` |
+| F65b | `RunSetup` | the order of checks (D38) | no actor → Unauthenticated; then bad input (`copy_from`) → Invalid; then no `events.manage` → Permission | as above | `TestRunSetup_BadInputWithoutManage_ReturnsInvalidNotPermission` (unit), `TestRunSetup_BadInputWithoutManage_ReturnsInvalidBeforePermission` (integration) |
+| F65c | `Create`/`RunSetup` | a provider returns success after its deadline (D38) | — (reported as success with its items, outcome `ok`) | none | `TestCreate_ProviderSucceedsAfterDeadline_ReportedAsSuccess` |
+| F65d | `Create`/`RunSetup` | the request ctx ends partway through the provider loop (D38) | the ctx error (`Timeout` or `Canceled`); unrun providers reported Failed (`Code` `timeout`/`canceled`, `Items` 0), no metric for them; `events.setup.ran` recorded (Failed) if at least one provider ran, else nothing | show; run set-up again | `TestRunSetup_RequestCtxExpiresMidLoop_RecordsRanProvidersAndReportsSkipped` |
 | F66 | `CreateKind` | key malformed or too long; name empty or too long | Invalid (`key` `malformed`/`too_long`; `name` `required`/`too_long`) | field error | `TestCreateKind_BadInput_ReturnsInvalid` |
 | F67 | `CreateKind` | key exists | Conflict (`key` `taken`) | field error | `TestCreateKind_Taken_ReturnsConflict` |
 | F68 | `UpdateKind` | unknown key | NotFound | not-found | `TestUpdateKind_Unknown_ReturnsNotFound` |
@@ -928,7 +938,7 @@ BSD-licensed, embedded). Nothing to replace.
 
 None; answered 2026-10-18 (D37), each as its recommendation: (1) two parts `departments` (6) and
 `events` (7), one spec file, jobs/notify/files become 8-10, app F28 not amended (decision 1);
-(2) the contact address is `internal`, a shared mailbox (decision 7); (3) the Leadership card
+(2) the contact address is `internal`, a shared mailbox (decision 7); (3) the Leadership card (stewards also, D38)
 only for `access.grants.read` holders and department admins there, `HoldersOf` Later
 (decision 19); (4) every signed-in person lists active departments and all events without a
 permission (decision 2); (5) event kinds are editable rows, the seeded three keep catalogue

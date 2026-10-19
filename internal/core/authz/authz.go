@@ -3,6 +3,7 @@ package authz
 import (
 	"context"
 	"encoding/base64"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -29,6 +30,9 @@ const (
 	MaxPageSize         = 200 // GrantQuery.Limit
 	DefaultPageSize     = 50  // GrantQuery.Limit when 0
 )
+
+// maxRoleKeyBytes is the longest role key (migration 0001, role_key_chk).
+const maxRoleKeyBytes = 64
 
 // The starter role keys migration 0001 creates (decision 12), re-exported from package perm,
 // where audit can name them without importing authz. RoleParticipant is the base role: every
@@ -65,7 +69,7 @@ var Permissions = []PermissionDecl{
 	{Name: PermissionRolesRead, Scope: ScopeSite, Reaches: model.SensitivityInternal, StarterRoles: []string{RoleAccessAdmin}},
 	{Name: PermissionRolesManage, Scope: ScopeSite, Reaches: model.SensitivityInternal, StarterRoles: []string{RoleAccessAdmin}},
 	{Name: PermissionRulesManage, Scope: ScopeSite, Reaches: model.SensitivityInternal, StarterRoles: []string{RoleAccessAdmin}},
-	{Name: PermissionGrantsRead, Scope: ScopeDepartment, Reaches: model.SensitivityInternal, StarterRoles: []string{RoleAccessAdmin, RoleDepartmentAdmin}},
+	{Name: PermissionGrantsRead, Scope: ScopeDepartment, Reaches: model.SensitivityInternal, StarterRoles: []string{RoleAccessAdmin, RoleDepartmentSteward, RoleDepartmentAdmin}},
 	{Name: PermissionGrantsManage, Scope: ScopeDepartment, Reaches: model.SensitivityInternal, StarterRoles: []string{RoleAccessAdmin, RoleDepartmentAdmin}},
 	{Name: PermissionDepartmentGrantsManage, Scope: ScopeSite, Reaches: model.SensitivityInternal, StarterRoles: []string{RoleDepartmentSteward}},
 }
@@ -297,6 +301,7 @@ func (in GrantInput) Validate() error {
 type GrantQuery struct {
 	Person       model.PersonID
 	Role         RoleID
+	RoleKey      string // a starter role's key instead of its ID ("department-admin"); at most one of Role and RoleKey. An unknown key matches nothing, as an unknown Role does
 	Department   model.DepartmentID
 	Permission   Permission // grants of roles holding it ("everyone who holds a permission")
 	IncludeEnded bool
@@ -304,10 +309,20 @@ type GrantQuery struct {
 	Limit        int // 0 = DefaultPageSize; 1..MaxPageSize
 }
 
+// roleKeyPattern is the grammar of a starter role's key (migration 0001, role_key_chk).
+var roleKeyPattern = regexp.MustCompile(`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`)
+
 // Validate fails errs.Invalid joining a validate.FieldError per problem: "permission"
-// (malformed), "after" (malformed: not a cursor this service made), "limit" (range).
+// (malformed), "role" (malformed: RoleKey is not a role key; one_of: both Role and RoleKey
+// set), "after" (malformed: not a cursor this service made), "limit" (range).
 func (q GrantQuery) Validate() error {
 	v := validate.Errors{Op: "authz.GrantQuery.Validate"}
+	switch {
+	case q.RoleKey != "" && !q.Role.IsZero():
+		v.Addf("role", codeOneOf, "set a role ID or a role key, not both")
+	case q.RoleKey != "" && (len(q.RoleKey) > maxRoleKeyBytes || !roleKeyPattern.MatchString(q.RoleKey)):
+		v.Addf("role", codeMalformed, "must be a role ID or a role key such as department-admin")
+	}
 	if q.Permission != "" && q.Permission.Validate() != nil {
 		v.Addf("permission", codeMalformed, "must be <module>.<ident>(.<ident>)*")
 	}

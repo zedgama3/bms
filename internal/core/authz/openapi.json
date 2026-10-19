@@ -211,9 +211,10 @@
             "name": "role",
             "in": "query",
             "schema": {
-              "$ref": "#/components/schemas/ID"
+              "type": "string",
+              "description": "A role ID, or a role key such as department-admin."
             },
-            "description": "Only grants of this role."
+            "description": "Only grants of this role, named by its ID or by its key (for example department-admin). An unknown ID or key matches nothing; a value that is neither a UUID nor a role key is 400 (field role, code malformed)."
           },
           {
             "name": "department",

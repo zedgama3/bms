@@ -25,7 +25,7 @@ copy and can fork it. Features are modules.
 ## Status
 
 - **Phase:** 0, foundations
-- **Last updated:** 2026-10-18
+- **Last updated:** 2026-10-19
 - **Done 2026-10-16:**
   - Repo scaffolded: plan, agents, skills, lint rules, dev compose. Methodology carried over
     from Sojourn (D7).
@@ -109,6 +109,8 @@ copy and can fork it. Features are modules.
        failure modes are tested in integration tests rather than in unit tests over an
        in-memory store (as in M2). Not pushed.
      Next milestone: M4 (see 09-core-features.md).
+     Owner approved drafting the M4 specs (`notify`, `settings`) on 2026-10-19 (D38); that is
+     the next step.
      Open follow-ups (all waiting on the owner or architect):
      - (a) Confirm D34 as D20's debug-level exception.
      - (b) The M3 part name `departments-events` is not a core area name for `module.IsCoreArea`
@@ -165,6 +167,9 @@ copy and can fork it. Features are modules.
        in their department" can't be expressed. Options: give steward site-wide
        `access.grants.read`, or take another route to the Leadership card. Recommendation:
        site-wide, since stewards already manage every department.
+       Decided 2026-10-19 (D38): site-wide `access.grants.read` for department-steward. This
+       supersedes the D37(q) scope to their department, which can't be expressed for a
+       site-scoped role.
      - (r) people: a language-only `PUT /me` is held to the required fields. Recommendation:
        exempt it.
        Decided 2026-10-18 (D37): exempt.
@@ -173,6 +178,8 @@ copy and can fork it. Features are modules.
        Decided 2026-10-18 (D37): yes.
        Spec amendment pending owner approval (2026-10-18): the consent Reason `granted:<purpose>`
        / `withdrawn:<purpose>`. Recommendation: approve.
+       Decided 2026-10-19 (D38): spec amendment approved; the consent Reason is
+       `granted:<purpose>` / `withdrawn:<purpose>`.
      - (t) people: clear a walk-on's `contact_email` when an account is linked. Recommendation:
        yes.
        Decided 2026-10-18 (D37): yes.
@@ -180,6 +187,8 @@ copy and can fork it. Features are modules.
        Decided 2026-10-18 (D37): yes.
        Spec amendment pending owner approval (2026-10-18): one `people.request.read` entry per
        request, with Subject = the requester. Recommendation: approve.
+       Decided 2026-10-19 (D38): spec amendment approved; one `people.request.read` entry per
+       returned request, with a note and Subject = the requester.
      - (v) people: data rights for an account holder with no `core.person` row. Recommendation:
        run the identity and authz steps anyway.
        Decided 2026-10-18 (D37): run the identity and authz steps anyway.
@@ -192,25 +201,43 @@ copy and can fork it. Features are modules.
        12-character minimum; and CI waiting for the first push.
      - (y) M3 review: `events.setup.ran` is lost when the request deadline expires mid-run.
        Recommendation: record with `context.WithoutCancel` and a short deadline.
+       Decided 2026-10-19 (D38): record `events.setup.ran` with `context.WithoutCancel` and a
+       short deadline, so it survives an expired request deadline.
      - (z) M3 review: the setup metric outcome for a provider returning Timeout. Recommendation:
        map it to `timeout`.
+       Decided 2026-10-19 (D38): a provider returning kind Timeout gets metric outcome `timeout`.
      - (aa) M3 review: a late provider success is reported as a timeout. Recommendation: report
        what happened.
+       Decided 2026-10-19 (D38): a late provider success is reported as what happened, success
+       with its items.
      - (ab) M3 review: a panic is logged twice. Recommendation: log once.
+       Decided 2026-10-19 (D38): a provider panic is logged once.
      - (ac) M3 review: `RunSetup` checks permission before input. Recommendation: validate first.
+       Decided 2026-10-19 (D38): RunSetup validates input before checking permission.
      - (ad) M3 review: an empty zone gives code `required` where the spec says `malformed`.
        Recommendation: align the spec on `required`.
+       Decided 2026-10-19 (D38): the spec aligns on `required` for an empty zone.
      - (ae) M3 review: `departments` maps conflicts by kind, not by constraint name.
        Recommendation: match by name.
+       Decided 2026-10-19 (D38): `departments` matches conflicts by constraint name.
      - (af) Web: page titles are literal "Departments" and "Events", since terms have no plural
        or title-case form. Recommendation: add plural and title term keys in settings.
+       Decided 2026-10-19 (D38): add plural and title-case term keys. This belongs to the
+       settings spec (M4) and is deferred to it.
      - (ag) Web: the "See roles here" link has no role filter, because `GrantList` filters by
        role ID. Recommendation: let `GrantList` accept a role key.
+       Decided 2026-10-19 (D38): `GrantList` accepts a role key, and "See roles here" filters
+       to department-admin.
      - (ah) Web: a renamed builtin kind still shows its catalogue label elsewhere, a
        contradiction in the spec. Recommendation: show the stored name once renamed.
+       Decided 2026-10-19 (D38): once a builtin kind is renamed, its stored name is shown
+       everywhere.
      - (ai) Web e2e lacks the "grant department-admin to a second person" and "copy set-up at
        phone width" flows. Recommendation: add them when a module contributes set-up.
+       Decided 2026-10-19 (D38): add the e2e flows once a module contributes set-up. Deferred
+       until then.
      - (aj) Kind names are not unique. Recommendation: allow it.
+       Decided 2026-10-19 (D38): kind names may repeat. No change.
   3. Local dev database (half-reset): the `authz` and `hello` version-2 rows in
      `core.schema_migration` have to be deleted by the owner, then `make migrate` run again.
      The alternative is `make down && make up`. Still half-reset on 2026-10-18; the owner's

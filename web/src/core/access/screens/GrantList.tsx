@@ -42,6 +42,7 @@ export function GrantList() {
   const canRead = holds(session, "access.grants.read");
   const selfOnly = !canRead && session.signedIn;
   const person = selfOnly && session.signedIn ? session.personId : (params.get("person") ?? "");
+  // `role` is a role ID or a starter role's key (the server accepts both).
   const role = params.get("role") ?? "";
   const department = params.get("department") ?? "";
   const permission = params.get("permission") ?? "";
@@ -66,6 +67,9 @@ export function GrantList() {
     enabled: !selfOnly,
     queryFn: ({ signal }) => api.GET("/api/access/roles", { signal }),
   });
+  // The select's options are role IDs: a key-valued filter selects the starter role with that key.
+  const roleOptionValue =
+    (rolesQ.data?.roles ?? []).find((r) => r.id === role || (r.key && r.key === role))?.id ?? role;
   const catQ = useQuery({
     queryKey: ["access", "permissions"],
     enabled: !selfOnly,
@@ -174,7 +178,7 @@ export function GrantList() {
               <select
                 {...control}
                 className={controlClass}
-                value={role}
+                value={roleOptionValue}
                 onChange={(e) => setParam("role", e.target.value)}
               >
                 <option value="">{t("core.access.grants.any_role")}</option>

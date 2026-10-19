@@ -194,7 +194,7 @@ func queryID[T ~[16]byte](vals url.Values, name string) (T, error) {
 	return id, nil
 }
 
-// parseGrantQuery reads ?person=&role=&department=&permission=&include_ended=&after=&limit=.
+// parseGrantQuery reads ?person=&role= (an ID or a key)&department=&permission=&include_ended=&after=&limit=.
 func parseGrantQuery(vals url.Values) (GrantQuery, error) {
 	const op = "authz.parseGrantQuery"
 	var (
@@ -204,8 +204,11 @@ func parseGrantQuery(vals url.Values) (GrantQuery, error) {
 	if q.Person, err = queryID[model.PersonID](vals, "person"); err != nil {
 		return GrantQuery{}, err
 	}
-	if q.Role, err = queryID[RoleID](vals, "role"); err != nil {
-		return GrantQuery{}, err
+	// ?role= is a role ID or a role key (department-admin); an ID wins when the text is one.
+	if raw := vals.Get("role"); raw != "" {
+		if q.Role, err = model.ParseID[RoleID](raw); err != nil {
+			q.Role, q.RoleKey = RoleID{}, raw
+		}
 	}
 	if q.Department, err = queryID[model.DepartmentID](vals, "department"); err != nil {
 		return GrantQuery{}, err

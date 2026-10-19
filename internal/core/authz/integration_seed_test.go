@@ -65,6 +65,9 @@ func TestSeed_FillsStarterRolesOnce(t *testing.T) {
 	if !hasPerm(r.roleKey(authz.RoleDepartmentSteward), pDeptGrants) {
 		t.Error("department-steward lacks department-grants.manage")
 	}
+	if !hasPerm(r.roleKey(authz.RoleDepartmentSteward), pGrantsRead) {
+		t.Error("department-steward lacks access.grants.read (D38 q)")
+	}
 	da := r.roleKey(authz.RoleDepartmentAdmin)
 	if !hasPerm(da, pGrantsRead) || !hasPerm(da, pGrantsMgmt) {
 		t.Error("department-admin lacks access.grants.read/manage")
@@ -205,5 +208,45 @@ func TestSeed_AddsPermissions_RecordsOneRoleChangePerPermission(t *testing.T) {
 	wantNoErr(t, err)
 	if res.Added != 0 || len(r.entries("access.role.changed")) != len(es) {
 		t.Errorf("repeat Added = %d, entries = %d", res.Added, len(r.entries("access.role.changed")))
+	}
+}
+
+// D38 (q): an existing installation seeded before the steward held access.grants.read gains
+// it at the next Seed, and the upgrade is audited.
+func TestSeed_StewardGainsGrantsRead_OnUpgrade_Audited(t *testing.T) {
+	r := newRigNoSeed(t)
+	old := slices.Clone(r.opts.Declared)
+	for i, d := range old {
+		if d.Name == pGrantsRead {
+			old[i].StarterRoles = slices.DeleteFunc(slices.Clone(d.StarterRoles), func(k string) bool { return k == authz.RoleDepartmentSteward })
+		}
+	}
+	_, err := r.svc.Seed(r.sctx(), old)
+	wantNoErr(t, err)
+	if hasPerm(r.roleKey(authz.RoleDepartmentSteward), pGrantsRead) {
+		t.Fatal("the old declarations already give the steward access.grants.read")
+	}
+	before := len(r.entries("access.role.changed"))
+	res, err := r.svc.Seed(r.sctx(), r.opts.Declared)
+	wantNoErr(t, err)
+	if res.Added != 1 {
+		t.Fatalf("Added = %d, want 1 (steward, access.grants.read)", res.Added)
+	}
+	if !hasPerm(r.roleKey(authz.RoleDepartmentSteward), pGrantsRead) {
+		t.Error("the steward did not gain access.grants.read")
+	}
+	es := r.entries("access.role.changed")
+	if len(es) != before+1 {
+		t.Fatalf("role.changed entries = %d, want %d", len(es), before+1)
+	}
+	steward := r.roleKey(authz.RoleDepartmentSteward)
+	var found bool
+	for _, e := range es {
+		if e.Reason == "seed:"+string(pGrantsRead) && e.Actor.Kind == audit.ActorOperator && e.Record == audit.RefOf("access.role", steward.ID) {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("no operator-audited seed:access.grants.read entry")
 	}
 }

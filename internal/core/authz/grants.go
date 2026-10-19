@@ -23,7 +23,9 @@ func grantOf(g rows.Grant) Grant {
 // ListGrants needs access.grants.read in some extent, or q.Person to be the actor ("my
 // roles"). The result is limited to the caller's extent: a department-only reader sees
 // only grants for their departments, which is a filter, never an error. Newest first,
-// keyset-paged. Works on a read-only copy. Fails errs.Invalid (bad cursor or limit, F34),
+// keyset-paged. q.RoleKey names a role by key; an unknown key gives an empty page, as an
+// unknown q.Role does. Works on a read-only copy. Fails errs.Invalid (bad cursor, limit or
+// role key, F34),
 // errs.Permission (F31) and store kinds.
 func (s *Service) ListGrants(ctx context.Context, q GrantQuery) (_ GrantPage, err error) {
 	const op = "authz.Service.ListGrants"
@@ -59,6 +61,19 @@ func (s *Service) ListGrants(ctx context.Context, q GrantQuery) (_ GrantPage, er
 			return GrantPage{}, denied(op, PermissionGrantsRead, "the permission")
 		}
 		f.WholeSite, f.Departments = ext.Site, ext.Departments
+	}
+	if q.RoleKey != "" {
+		// Resolved after the permission check, so a caller who may not list is refused before
+		// anything is learned. A key names a role as an ID does; an unknown key matches
+		// nothing, as an unknown ID does (an empty page, never an error).
+		id, found, err := s.roleIDOfKey(ctx, op, q.RoleKey)
+		if err != nil {
+			return GrantPage{}, err
+		}
+		if !found {
+			return GrantPage{Grants: []Grant{}}, nil
+		}
+		f.Role = id
 	}
 	gs, err := s.store.ListGrants(ctx, f)
 	if err != nil {
@@ -99,6 +114,25 @@ func (s *Service) ListGrants(ctx context.Context, q GrantQuery) (_ GrantPage, er
 	}
 	span.SetAttrs(telemetry.Int("grants", len(page.Grants)))
 	return page, nil
+}
+
+// roleIDOfKey resolves a starter role's key to its role ID in a read transaction of its
+// own. found is false for a key no role has (a starter role a regional deleted too).
+func (s *Service) roleIDOfKey(ctx context.Context, op, key string) (id RoleID, found bool, err error) {
+	err = s.inTx(ctx, db.Read, func(ctx context.Context) error {
+		rs, err := s.store.ListRoles(ctx, "")
+		if err != nil {
+			return wrap(op, err)
+		}
+		for _, r := range rs {
+			if r.Key == key {
+				id, found = r.ID, true
+				return nil
+			}
+		}
+		return nil
+	})
+	return id, found, err
 }
 
 // mayGrant says whether the actor may make (or revoke) a grant of role r, with department

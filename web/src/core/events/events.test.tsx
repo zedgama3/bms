@@ -559,6 +559,26 @@ describe("/events/kinds", () => {
     await screen.findByText("Renamed");
   });
 
+  it("shows the translated label for an unrenamed builtin and the stored name once renamed", async () => {
+    mountApp({
+      path: "/events/kinds",
+      session: ident(["events.manage"]),
+      routes: base({
+        "GET /api/events/kinds": () =>
+          json({
+            kinds: [
+              kinds[0],
+              { ...kinds[1], name: "Chill-out" },
+              { ...kinds[1], key: "other", name: "Other" },
+            ],
+          }),
+      }),
+    });
+    expect(await screen.findByRole("heading", { name: "Burn" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Chill-out" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Decompression" })).not.toBeInTheDocument();
+  });
+
   it("cancelling a rename returns focus to that card's Rename button; keys turn off autocorrect", async () => {
     mountApp({ path: "/events/kinds", session: ident(["events.manage"]), routes: base() });
     const rename = await screen.findByRole("button", { name: /^Rename\s*Workshop weekend/ });

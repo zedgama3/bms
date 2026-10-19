@@ -514,6 +514,20 @@ describe("/access/grants", () => {
     expect(router()!.state.location.search).not.toMatch(/Pat|Dust/);
   });
 
+  it("passes a key-valued role filter to the API and shows that starter role selected", async () => {
+    const { fetchMock } = mountApp({
+      path: "/access/grants?role=access-admin",
+      session: ident(ALL),
+      routes: withGrants(),
+    });
+    const select = await screen.findByRole("combobox", { name: "Role" });
+    await waitFor(() => expect(select).toHaveValue(R_ADMIN));
+    const call = fetchMock.mock.calls.find(
+      ([r]) => new URL(r.url).pathname === "/api/access/grants",
+    );
+    expect(new URL(call![0].url).searchParams.get("role")).toBe("access-admin");
+  });
+
   it("filters by department, listing active departments by name, and names them on the cards", async () => {
     const { fetchMock, router } = mountApp({
       path: "/access/grants",

@@ -1642,8 +1642,8 @@ export interface operations {
             query?: {
                 /** @description Only this person's grants. */
                 person?: components["schemas"]["ID"];
-                /** @description Only grants of this role. */
-                role?: components["schemas"]["ID"];
+                /** @description Only grants of this role, named by its ID or by its key (for example department-admin). An unknown ID or key matches nothing; a value that is neither a UUID nor a role key is 400 (field role, code malformed). */
+                role?: string;
                 /** @description Only grants for this department. */
                 department?: components["schemas"]["ID"];
                 /** @description Only grants of roles that hold this permission. */

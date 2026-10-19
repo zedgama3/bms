@@ -3,6 +3,7 @@ package authz
 import (
 	"context"
 	"encoding/json"
+	"net/url"
 	"slices"
 	"strings"
 	"testing"
@@ -380,5 +381,32 @@ func TestCursor_RoundTrip(t *testing.T) {
 	at, id, err := c.position()
 	if err != nil || id != g.ID || !at.Equal(g.CreatedAt) {
 		t.Errorf("position = %v %v %v, want %v %v", at, id, err, g.CreatedAt, g.ID)
+	}
+}
+
+// D38 (ag).
+func TestParseGrantQuery_RoleIDOrKey(t *testing.T) {
+	id := model.NewID[model.PersonID]().String() // any UUID
+	tests := []struct {
+		name    string
+		raw     string
+		wantID  bool
+		wantKey string
+	}{
+		{"none", "", false, ""},
+		{"an ID", id, true, ""},
+		{"a key", "department-admin", false, "department-admin"},
+		{"an unknown key", "no-such-role", false, "no-such-role"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			q, err := parseGrantQuery(url.Values{"role": {tc.raw}})
+			if err != nil {
+				t.Fatalf("parseGrantQuery: %v", err)
+			}
+			if q.Role.IsZero() == tc.wantID || q.RoleKey != tc.wantKey {
+				t.Errorf("Role = %v, RoleKey = %q", q.Role, q.RoleKey)
+			}
+		})
 	}
 }

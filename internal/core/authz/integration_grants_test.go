@@ -843,6 +843,47 @@ func TestListGrants_Filters(t *testing.T) {
 	}
 }
 
+// D38 (ag): a role key filters like the role's ID; an unknown key gives what an unknown ID
+// gives, an empty page.
+func TestListGrants_RoleKey_FiltersLikeTheID(t *testing.T) {
+	r := newRig(t)
+	da := r.roleKey(authz.RoleDepartmentAdmin)
+	other := r.mkRole(authz.ScopeSite, pMedRead)
+	p1, p2 := r.person(), r.person()
+	g := r.give(p1, da, r.d1, time.Time{})
+	r.give(p2, other, noDept, time.Time{})
+	ids := func(q authz.GrantQuery) []authz.GrantID {
+		page, err := r.svc.ListGrants(r.sctx(), q)
+		wantNoErr(t, err)
+		var out []authz.GrantID
+		for _, g := range page.Grants {
+			out = append(out, g.ID)
+		}
+		return out
+	}
+	byKey := ids(authz.GrantQuery{RoleKey: authz.RoleDepartmentAdmin})
+	if want := ids(authz.GrantQuery{Role: da.ID}); !slices.Equal(byKey, want) || !slices.Equal(byKey, []authz.GrantID{g.ID}) {
+		t.Errorf("by key %v, by ID %v, want [%v]", byKey, want, g.ID)
+	}
+	if got := ids(authz.GrantQuery{RoleKey: "no-such-role"}); len(got) != 0 {
+		t.Errorf("unknown key listed %v", got)
+	}
+	if got := ids(authz.GrantQuery{Role: authz.RoleID(r.person())}); len(got) != 0 {
+		t.Errorf("unknown ID listed %v", got)
+	}
+	// The key does not widen the caller's extent: a department admin still sees only theirs.
+	da2 := r.person()
+	r.give(da2, da, r.d2, time.Time{})
+	page, err := r.svc.ListGrants(r.pctx(da2), authz.GrantQuery{RoleKey: authz.RoleDepartmentAdmin})
+	wantNoErr(t, err)
+	if len(page.Grants) != 1 || page.Grants[0].Department != r.d2 {
+		t.Errorf("department admin saw %+v, want only the grant for their department", page.Grants)
+	}
+	// And a caller without access.grants.read is refused whatever the key.
+	_, err = r.svc.ListGrants(r.pctx(r.person()), authz.GrantQuery{RoleKey: "no-such-role"})
+	wantKind(t, err, errs.Permission)
+}
+
 func TestListGrants_EndedHiddenUnlessIncluded(t *testing.T) {
 	r := newRig(t)
 	p := r.person()

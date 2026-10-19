@@ -180,7 +180,7 @@ func TestPermissions_Declared_MatchSpecTable(t *testing.T) {
 		pRolesRead:   {authz.ScopeSite, []string{authz.RoleAccessAdmin}},
 		pRolesManage: {authz.ScopeSite, []string{authz.RoleAccessAdmin}},
 		pRulesManage: {authz.ScopeSite, []string{authz.RoleAccessAdmin}},
-		pGrantsRead:  {authz.ScopeDepartment, []string{authz.RoleAccessAdmin, authz.RoleDepartmentAdmin}},
+		pGrantsRead:  {authz.ScopeDepartment, []string{authz.RoleAccessAdmin, authz.RoleDepartmentSteward, authz.RoleDepartmentAdmin}},
 		pGrantsMgmt:  {authz.ScopeDepartment, []string{authz.RoleAccessAdmin, authz.RoleDepartmentAdmin}},
 		pDeptGrants:  {authz.ScopeSite, []string{authz.RoleDepartmentSteward}},
 	}

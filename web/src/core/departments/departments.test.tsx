@@ -260,7 +260,7 @@ describe("/departments/:department", () => {
     expect(within(card).getAllByRole("listitem")).toHaveLength(1);
     expect(within(card).getByRole("link", { name: "See roles here" })).toHaveAttribute(
       "href",
-      `/access/grants?department=${D1}`,
+      `/access/grants?department=${D1}&role=department-admin`,
     );
     expect(within(card).getByRole("link", { name: "Appoint a lead" })).toHaveAttribute(
       "href",
@@ -269,7 +269,7 @@ describe("/departments/:department", () => {
     const call = fetchMock.mock.calls.find(
       ([r]) => new URL(r.url).pathname === "/api/access/grants",
     );
-    expect(new URL(call![0].url).search).toBe(`?department=${D1}`);
+    expect(new URL(call![0].url).search).toBe(`?department=${D1}&role=department-admin`);
   });
 
   it("a department admin at it can edit details but not rename or archive", async () => {

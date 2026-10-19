@@ -84,7 +84,7 @@ type lazyDepartments struct{ a *assembly }
 // Active asks the departments service when there is one, else fails errs.Unsupported.
 func (l lazyDepartments) Active(ctx context.Context, d model.DepartmentID) (bool, error) {
 	if l.a.departments == nil {
-		return false, errs.E("app.Active", errs.Unsupported, errors.New("no departments service is wired"))
+		return false, errs.E("app.lazyDepartments.Active", errs.Unsupported, errors.New("no departments service is wired"))
 	}
 	return l.a.departments.Active(ctx, d) //nolint:wrapcheck // the service's own error
 }

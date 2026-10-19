@@ -498,10 +498,39 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
     `last_access_admin`.
   - (o) authz Seed records an audit entry when an upgrade adds a permission to a starter role.
   - (p) DeletePerson publishes `access.grant-revoked` for removed grants.
-  - (q) Department stewards get `access.grants.read` scoped to their department.
+  - (q) Department stewards get `access.grants.read` scoped to their department. Superseded by D38 (site-wide).
   - (r) A language-only `PUT /me` is exempt from the required-fields check.
   - (s) The consent audit records the purpose and direction.
   - (t) A walk-on's `contact_email` is cleared when an account is linked.
   - (u) Reads of deletion-request notes are audited.
   - (v) Data rights for an account holder with no `core.person` row run the identity and authz
     steps anyway.
+
+## D38. Open items from the M2 and M3 reviews and the web review decided; M4 specs to be drafted
+
+- **Status:** Accepted (2026-10-19). Owner answered "approve all with recommendations" to the
+  open items in [plan/README.md](README.md).
+- **M2 follow-ups (q), (s), (u):**
+  - (q) department-steward gets site-wide `access.grants.read`. This supersedes D37(q)'s
+    "scoped to their department", which can't be expressed for a site-scoped role.
+  - (s) Spec amendment approved: the consent audit Reason is `granted:<purpose>` /
+    `withdrawn:<purpose>`.
+  - (u) Spec amendment approved: one `people.request.read` entry per returned request with a
+    note, Subject = the requester.
+- **M3 review (y)–(ae):**
+  - (y) `events.setup.ran` is recorded with `context.WithoutCancel` and a short deadline, so it
+    survives an expired request deadline.
+  - (z) A provider returning kind Timeout gets metric outcome `timeout`.
+  - (aa) A late provider success is reported as what happened: success, with its items.
+  - (ab) A provider panic is logged once.
+  - (ac) RunSetup validates input before checking permission.
+  - (ad) The spec aligns on `required` for an empty zone.
+  - (ae) departments maps conflicts by constraint name.
+- **Web review (af)–(ai):**
+  - (af) Plural and title-case term keys are added. Deferred to the settings spec (M4).
+  - (ag) GrantList accepts a role key, and "See roles here" filters to department-admin.
+  - (ah) Once a builtin kind is renamed, its stored name is shown everywhere.
+  - (ai) The e2e flows (grant department-admin to a second person; copy set-up at phone width)
+    are added once a module contributes set-up. Deferred.
+- **(aj)** Kind names may repeat. No change.
+- **Next:** draft the M4 specs, `notify` and `settings`. The owner approved drafting them.

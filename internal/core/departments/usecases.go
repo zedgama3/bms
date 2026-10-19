@@ -2,6 +2,7 @@ package departments
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/zedgama3/bms/internal/core/audit"
@@ -137,11 +138,15 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (_ Department, err
 	return departmentOf(row), nil
 }
 
-// takenOr turns a unique violation into Conflict (name, taken); the only unique
-// constraints that can fire on the department table are its name index and its key, and the
-// key is a fresh random ID. Any other error keeps its own kind.
+// conDepartmentName is the unique index on lower(name) (migration 0001); its violation is
+// the only Conflict that means "name taken".
+const conDepartmentName = "department_name_key"
+
+// takenOr turns a violation of department_name_key into Conflict (name, taken). Any other
+// error, a Conflict from another constraint too, keeps its own kind and stays generic.
 func takenOr(op string, err error) error {
-	if errs.Is(err, errs.Conflict) {
+	var pe *db.Error
+	if errs.Is(err, errs.Conflict) && errors.As(err, &pe) && pe.Constraint == conDepartmentName {
 		return fieldConflict(op, fieldName, codeTaken, "another department has this name")
 	}
 	return wrap(op, err)

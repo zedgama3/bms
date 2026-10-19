@@ -63,7 +63,13 @@ function Leads({ department, canAppoint }: { department: Department; canAppoint:
       for (let page = 0; page < MAX_PAGES; page++) {
         const out = await api.GET("/api/access/grants", {
           signal,
-          params: { query: { department: department.id, ...(after ? { after } : {}) } },
+          params: {
+            query: {
+              department: department.id,
+              role: "department-admin",
+              ...(after ? { after } : {}),
+            },
+          },
         });
         grants.push(...out.grants);
         if (!out.next) break;
@@ -104,7 +110,7 @@ function Leads({ department, canAppoint }: { department: Department; canAppoint:
       ) : null}
       <div className="flex flex-wrap gap-3">
         <Link
-          to={`/access/grants?department=${department.id}`}
+          to={`/access/grants?department=${department.id}&role=department-admin`}
           className={linkButtonClass("secondary")}
         >
           {t("core.departments.leadership.see_grants")}

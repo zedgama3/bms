@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/db"
+	"github.com/zedgama3/bms/internal/lib/errs"
 )
 
 // serve mounts the service's routes under /api/access as app does.
@@ -138,4 +140,28 @@ func TestOpenAPI_IsJSONWithAccessSchemas(t *testing.T) {
 			t.Errorf("OpenAPI lacks schema %s", name)
 		}
 	}
+}
+
+// D38 (ag): ?role= takes a role ID or a role key; anything else is a 400 on field role, and
+// the check happens before any store is reached (the rig's database refuses every statement).
+func TestHandlers_ListGrants_BadRole_Returns400(t *testing.T) {
+	r := newUnitRig(t, db.None())
+	mux := serve(t, r.svc)
+	ctx := asSuper(t.Context(), newPerson())
+	for _, role := range []string{"Department_Admin", "-leading", "trailing-", "double--hyphen", "has space", strings.Repeat("a", 65)} {
+		t.Run(role, func(t *testing.T) {
+			w := doReq(mux, ctx, "GET", "/api/access/grants?role="+url.QueryEscape(role), "")
+			if w.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400; body %s", w.Code, w.Body.String())
+			}
+			if !strings.Contains(w.Body.String(), `"role"`) {
+				t.Errorf("body does not name the role field: %s", w.Body.String())
+			}
+		})
+	}
+}
+
+func TestGrantQuery_RoleAndKey_ReturnsInvalid(t *testing.T) {
+	q := authz.GrantQuery{Role: authz.RoleID(newPerson()), RoleKey: "department-admin"}
+	wantKind(t, q.Validate(), errs.Invalid)
 }

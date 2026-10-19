@@ -6,8 +6,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/events"
 	"github.com/zedgama3/bms/internal/core/identity"
+	"github.com/zedgama3/bms/internal/core/telemetry"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/model"
 )
@@ -38,6 +41,40 @@ func setupMeasures(r *irig, module string) []string {
 		}
 	}
 	return out
+}
+
+// expiringCtx is a request context the test ends by hand, with the error it picks
+// (context.DeadlineExceeded for a Timeout, context.Canceled for a Canceled). It lets a provider
+// make "the request ran out" happen at an exact point, with no wall-clock deadline that a slow
+// runner could trip early. Contexts derived from it (WithTimeout, WithoutCancel) behave as with
+// any parent: they see Done close and take its Err.
+type expiringCtx struct {
+	context.Context
+	mu   sync.Mutex
+	err  error
+	done chan struct{}
+}
+
+func newExpiringCtx(parent context.Context) *expiringCtx {
+	return &expiringCtx{Context: parent, done: make(chan struct{})}
+}
+
+func (c *expiringCtx) Done() <-chan struct{} { return c.done }
+
+func (c *expiringCtx) Err() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.err
+}
+
+// expire ends the context with err; later calls do nothing.
+func (c *expiringCtx) expire(err error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.err == nil {
+		c.err = err
+		close(c.done)
+	}
 }
 
 // F56
@@ -278,6 +315,10 @@ func TestCreate_ProviderReportsTimeoutKind_Reported(t *testing.T) {
 	if len(c.Setup) != 1 || !c.Setup[0].Failed || c.Setup[0].Code != "timeout" {
 		t.Errorf("Setup = %+v", c.Setup)
 	}
+	// D38 (z): the metric says "timeout" too, not "failed".
+	if got := setupMeasures(r, "alpha"); !slices.Equal(got, []string{"timeout"}) {
+		t.Errorf("metric outcomes = %v, want [timeout]", got)
+	}
 }
 
 // F54
@@ -299,6 +340,16 @@ func TestCreate_ProviderPanics_Recovered(t *testing.T) {
 	}
 	if _, err := r.svc.Get(r.sctx(), c.Event.ID); err != nil {
 		t.Errorf("the event is gone after a provider panic: %v", err)
+	}
+	// D38 (ab): the panic is logged once, at error level, with its stack; no second record.
+	var logged []telemetry.LogRecord
+	for _, rec := range r.cap.Records() {
+		if rec.Attrs["module"] == "boom" {
+			logged = append(logged, rec)
+		}
+	}
+	if len(logged) != 1 || logged[0].Level != slog.LevelError || logged[0].Attrs["stack"] == "" {
+		t.Errorf("log records for the panicking provider = %+v, want one error record with a stack", logged)
 	}
 	// The panic value never reaches the result the admin sees.
 	raw, merr := json.Marshal(c)
@@ -541,5 +592,124 @@ func TestCreate_ZeroCopyFrom_IsNoCopy(t *testing.T) {
 	wantNoErr(t, err)
 	if len(c.Setup) != 0 || p.calls() != 0 {
 		t.Errorf("Setup = %+v, calls %d", c.Setup, p.calls())
+	}
+}
+
+// D38 (aa): a provider that returns success after its deadline passed is reported as a
+// success with its items, not as a timeout. The deadline here is the provider's own
+// (SetupTimeout, 1s at the least), which starts when the provider is called, so no slow
+// step before it can trip it; the request's context has no deadline.
+func TestCreate_ProviderSucceedsAfterDeadline_ReportedAsSuccess(t *testing.T) {
+	late := &fakeProvider{module: "late", fn: func(ctx context.Context, _ eventsetup.Request) (eventsetup.Result, error) {
+		<-ctx.Done()                            // the provider's deadline passes ...
+		return eventsetup.Result{Items: 4}, nil // ... and it reports success anyway
+	}}
+	r := newIRig(t, []events.SetupProvider{late.sp()}, func(o *events.Options) { o.SetupTimeout = time.Second })
+	in := validCreate("Burn 2027")
+	in.CopyFrom = r.mk("Burn 2026").ID
+	c, err := r.svc.Create(r.sctx(), in)
+	wantNoErr(t, err)
+	if len(c.Setup) != 1 || c.Setup[0].Failed || c.Setup[0].Items != 4 || c.Setup[0].Code != "" {
+		t.Fatalf("Setup = %+v, want a success with 4 items", c.Setup)
+	}
+	if got := setupMeasures(r, "late"); !slices.Equal(got, []string{"ok"}) {
+		t.Errorf("metric outcomes = %v, want [ok]", got)
+	}
+	if es := setupEntries(r); len(es) != 1 || es[0].Outcome != audit.Succeeded {
+		t.Errorf("setup.ran = %+v, want one succeeded entry", es)
+	}
+}
+
+// D38 (y): the request's context is done by the time the providers have run; events.setup.ran
+// is still recorded (on a detached context), the results come back, and the error says the
+// request ran out.
+func TestRunSetup_ExpiredRequestCtx_StillRecordsSetupRan(t *testing.T) {
+	tests := []struct {
+		name string
+		with error
+		kind errs.Kind
+	}{
+		{"deadline passes", context.DeadlineExceeded, errs.Timeout},
+		{"caller cancels", context.Canceled, errs.Canceled},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var request *expiringCtx // providers run on the caller's goroutine
+			p := &fakeProvider{module: "alpha", fn: func(ctx context.Context, _ eventsetup.Request) (eventsetup.Result, error) {
+				request.expire(tc.with) // the request runs out while the provider works
+				<-ctx.Done()
+				return eventsetup.Result{Items: 3}, nil
+			}}
+			r := newIRig(t, []events.SetupProvider{p.sp()})
+			src, target := r.mk("Burn 2026"), r.mk("Burn 2027")
+			request = newExpiringCtx(r.sctx())
+			res, err := r.svc.RunSetup(request, target.ID, src.ID)
+			wantKind(t, err, tc.kind)
+			if len(res) != 1 || res[0].Failed || res[0].Items != 3 {
+				t.Errorf("results = %+v, want the provider's success", res)
+			}
+			es := setupEntries(r)
+			if len(es) != 1 || es[0].Outcome != audit.Succeeded {
+				t.Errorf("setup.ran = %+v, want one succeeded entry despite the done context", es)
+			}
+		})
+	}
+}
+
+// D38 (ac): the order is actor, input, permission. A caller without events.manage who sends
+// a malformed call is told it is malformed; and no store is reached.
+func TestRunSetup_BadInputWithoutManage_ReturnsInvalidBeforePermission(t *testing.T) {
+	p := provider("alpha", nil, 1)
+	r := newIRig(t, []events.SetupProvider{p.sp()})
+	ev := r.mk("Burn 2026")
+	ctx := asPerson(ctxT(t), newPerson()) // signed in, holds nothing
+	_, err := r.svc.RunSetup(ctx, ev.ID, ev.ID)
+	wantKind(t, err, errs.Invalid)
+	_, err = r.svc.RunSetup(ctx, ev.ID, model.EventID{})
+	wantKind(t, err, errs.Invalid)
+	// A well-formed call from the same caller is still refused.
+	_, err = r.svc.RunSetup(ctx, ev.ID, r.mk("Burn 2027").ID)
+	wantKind(t, err, errs.Permission)
+	// And with no actor at all the answer is Unauthenticated, ahead of the input.
+	_, err = r.svc.RunSetup(ctxT(t), ev.ID, ev.ID)
+	wantKind(t, err, errs.Unauthenticated)
+	if p.calls() != 0 {
+		t.Error("a provider ran for a refused call")
+	}
+}
+
+// D38 (y), the mid-loop case: the request's context expires while an early provider runs, so
+// the later ones never run. The providers that ran are still recorded in events.setup.ran,
+// the others are reported as failed with the ctx error's kind, and the ctx error is returned.
+func TestRunSetup_RequestCtxExpiresMidLoop_RecordsRanProvidersAndReportsSkipped(t *testing.T) {
+	var request *expiringCtx // providers run on the caller's goroutine
+	hang := &fakeProvider{module: "alpha", fn: func(ctx context.Context, _ eventsetup.Request) (eventsetup.Result, error) {
+		request.expire(context.DeadlineExceeded) // the request runs out while this provider works
+		<-ctx.Done()
+		return eventsetup.Result{}, ctx.Err() //nolint:wrapcheck // the raw context error is the point
+	}}
+	b, c, d := provider("beta", nil, 1), provider("gamma", nil, 1), provider("delta", nil, 1)
+	r := newIRig(t, []events.SetupProvider{hang.sp(), b.sp(), c.sp(), d.sp()})
+	src, target := r.mk("Burn 2026"), r.mk("Burn 2027")
+	request = newExpiringCtx(r.sctx())
+	res, err := r.svc.RunSetup(request, target.ID, src.ID)
+	wantKind(t, err, errs.Timeout)
+	if want := []string{"alpha", "beta", "gamma", "delta"}; !slices.Equal(moduleOf(res), want) {
+		t.Fatalf("results = %+v, want one per provider in link order", res)
+	}
+	for i, got := range res {
+		if !got.Failed || got.Code != "timeout" || got.Items != 0 {
+			t.Errorf("results[%d] = %+v, want failed with code timeout", i, got)
+		}
+	}
+	if b.calls() != 0 || c.calls() != 0 || d.calls() != 0 {
+		t.Errorf("providers after the expiry ran: %d, %d, %d", b.calls(), c.calls(), d.calls())
+	}
+	es := setupEntries(r)
+	if len(es) != 1 || es[0].Outcome != audit.Failed || !slices.Equal(es[0].Fields, []string{"alpha", "beta", "gamma", "delta"}) {
+		t.Errorf("setup.ran = %+v, want one failed entry naming all four modules", es)
+	}
+	if got := setupMeasures(r, "beta"); len(got) != 0 {
+		t.Errorf("a provider that did not run was counted: %v", got)
 	}
 }

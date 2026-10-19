@@ -23,6 +23,7 @@ import { ScreenError } from "../ScreenError";
 import { text } from "../text";
 import type { EventKind } from "../types";
 import { useAction } from "../useAction";
+import { useKindTitle } from "../useKindLabel";
 
 /** `/events/kinds` (`events.manage`): the kinds as cards, a new kind, and rename in place. A kind
  *  is never deleted. */
@@ -44,6 +45,7 @@ export function EventKinds() {
     queryFn: ({ signal }) => api.GET("/api/events/kinds", { signal }),
   });
   const kinds = q.data?.kinds ?? [];
+  const title = useKindTitle();
   const error = q.error instanceof ApiError ? q.error : null;
 
   if (!allowed) return <Forbidden title={t("core.events.kinds.title")} />;
@@ -104,7 +106,7 @@ export function EventKinds() {
                 />
               ) : (
                 <>
-                  <h2 className="break-words text-lg font-bold">{k.name}</h2>
+                  <h2 className="break-words text-lg font-bold">{title(k)}</h2>
                   <p className="text-muted">
                     <code>{k.key}</code>
                   </p>
@@ -116,7 +118,7 @@ export function EventKinds() {
                       {...(readOnly ? { "aria-describedby": "kinds-readonly" } : {})}
                       onClick={() => setRenaming(k.key)}
                     >
-                      {t("core.events.kinds.rename")} <span className="sr-only">{k.name}</span>
+                      {t("core.events.kinds.rename")} <span className="sr-only">{title(k)}</span>
                     </Button>
                   </div>
                 </>
@@ -190,6 +192,7 @@ function RenameKind({
   const client = useQueryClient();
   const formRef = useRef<HTMLFormElement>(null);
   const act = useAction();
+  const title = useKindTitle();
   const fieldErrors = useFieldErrors(act.error);
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -213,7 +216,7 @@ function RenameKind({
         required
         maxLength={60}
         autoComplete="off"
-        defaultValue={kind.name}
+        defaultValue={title(kind)}
         error={fieldErrors["name"]}
       />
       <div className="flex flex-wrap gap-3">
