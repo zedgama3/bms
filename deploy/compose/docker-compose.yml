@@ -29,6 +29,11 @@ services:
   # SMTP catcher for notification tests. Web UI on :8025.
   mailpit:
     image: axllent/mailpit:latest
+    # Accept any SMTP AUTH credentials, also on a plaintext connection, so integration
+    # tests cover the AUTH path (notify.md, Q-MAILPIT-AUTH). Development only.
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
     ports: ["${SMTP_PORT:-1025}:1025", "${MAILPIT_UI_PORT:-8025}:8025"]
 
   # Local OIDC provider for login tests (stands in for any OIDC provider).

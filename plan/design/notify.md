@@ -49,7 +49,7 @@ Deliver a notification to a person through a channel.
 - **Templates.** Keep each owner's default templates per language, a settings admin's overrides, the rendering (`text/template`, the site's name, URL and terminology, the recipient's playa name, the caller's `Vars` and `Link`), and the language choice.
 - **The outbox.** Durable rows written on the caller's transaction, idempotent on `Key`, with status, attempts and a lease; the person's export and deletion of those rows; retention.
 - **The sender.** One loop on the writing copy that leases due rows, resolves the address, hands the envelope to the channel, and records the outcome with backoff.
-- **The SMTP channel.** RFC 5322 text messages over `net/smtp` with STARTTLS, implicit TLS or plaintext, PLAIN or CRAM-MD5 auth, a deadline per conversation; `Ping` for `bms check` and the admin screen.
+- **The SMTP channel.** RFC 5322 text messages over `net/smtp` with STARTTLS, implicit TLS or plaintext, PLAIN or CRAM-MD5 auth, a deadline per conversation; `Ping` for `bms check` and the admin screen (Implementation, 2026-10-20: with security `none`, credentials are sent only to a loopback host, as `net/smtp` requires; to any other host the attempt fails as `auth`. PLAIN is preferred when offered, so Mailpit covers PLAIN; CRAM-MD5 needs a fake server offering only it.)
 - **The admin surface.** Templates (list, edit, reset, preview), a test message to oneself, the outbox (counts, recent failures, retry, cancel), each behind its permission and audited.
 
 ## Not responsible for
