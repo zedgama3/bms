@@ -26,6 +26,20 @@ const (
 	DefaultPageSize         = 50
 	ClockSkew               = 5 * time.Minute // a token issued further in the future is malformed
 	PasswordResetTokenBytes = 32              // random bytes of a password-reset token, before base64url (D39)
+
+	// Password-reset requests are limited in buckets of their own, apart from sign-in's, and
+	// by a cooldown per account (identity.md decision 22, D40). The figures are proposed in
+	// the spec and await the owner's confirmation; they are constants on purpose, so a
+	// change is one line here (and in the spec).
+
+	// ResetClientLimit is the reset requests one client address may make per
+	// Policy.LoginFailureWindow.
+	ResetClientLimit = 20
+	// ResetAddressLimit is the reset requests one canonical submitted address may receive
+	// per Policy.LoginFailureWindow.
+	ResetAddressLimit = 5
+	// PasswordResetCooldown is the shortest gap between two reset e-mails to one account.
+	PasswordResetCooldown = 5 * time.Minute
 )
 
 // generatedAlphabet has no look-alike characters (no i, l, o, 0, 1) and no upper case, so a

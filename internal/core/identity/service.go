@@ -64,6 +64,12 @@ type store interface {
 	// ResetByHash finds a token by its hash without locking anything; NotFound when there
 	// is none.
 	ResetByHash(ctx context.Context, hash []byte) (account.ResetRow, error)
+	// ResetState locks the account row (the order ReplaceResetToken uses) and returns the
+	// newest created_at among the account's reset rows (used or not; zero when none: the
+	// cooldown, D40) with the account's disabled and superuser flags read under the lock.
+	// NotFound when the account is gone. Call it inside the Write transaction that goes on
+	// to replace the token.
+	ResetState(ctx context.Context, acct model.AccountID) (account.ResetState, error)
 	// CompleteReset locks the account row (the order ReplaceResetToken uses), refuses
 	// (NotFound) an account that is now disabled or the superuser's, marks the
 	// token used and then sets the account's password (clearing password_change_required
@@ -143,9 +149,11 @@ type Service struct {
 
 	common  map[string]struct{}
 	dummy   secret.Secret // verified when no account matched, so the answer costs the same
-	limiter *limiter
-	sem     chan struct{} // HashConcurrency slots; a hash holds one while it runs
-	rand    io.Reader     // crypto/rand.Reader; tests replace it to fail
+	limiter *limiter      // sign-in, sign-up and ChangePassword
+	// resetLimiter holds the buckets of password-reset requests only (D40).
+	resetLimiter *limiter
+	sem          chan struct{} // HashConcurrency slots; a hash holds one while it runs
+	rand         io.Reader     // crypto/rand.Reader; tests replace it to fail
 	// dummyHook is called once per dummy verification of a reset request; tests count with it.
 	dummyHook func()
 	metrics   metrics
@@ -194,7 +202,7 @@ func newService(o Options, st store) (*Service, error) {
 		key: key, allowPlaintext: o.AllowPlaintext, audit: o.Audit, signals: o.Signals,
 		policySource: o.Policy, perms: o.Permissions, lister: o.Lister, names: o.Names, alerter: o.Alerter,
 		notify: o.Notify,
-		common: common, dummy: dummyHash(), limiter: newLimiter(), sem: make(chan struct{}, HashConcurrency),
+		common: common, dummy: dummyHash(), limiter: newLimiter(), resetLimiter: newResetLimiter(), sem: make(chan struct{}, HashConcurrency),
 		rand: rand.Reader, metrics: m,
 	}, nil
 }
@@ -254,7 +262,7 @@ func newMetrics(m telemetry.Meter) (metrics, error) {
 		return metrics{}, fmt.Errorf("identity.New: %w", err)
 	}
 	if out.limited, err = m.Counter("bms.identity.rate_limited", telemetry.WithUnit("{request}"),
-		telemetry.WithDescription("Sign-in and sign-up attempts refused by the failure limiter, by bucket.")); err != nil {
+		telemetry.WithDescription("Sign-in, sign-up and password-reset attempts refused by the limiter, by bucket.")); err != nil {
 		return metrics{}, fmt.Errorf("identity.New: %w", err)
 	}
 	if out.alertFailed, err = m.Counter("bms.identity.alert_failures", telemetry.WithUnit("{alert}"),

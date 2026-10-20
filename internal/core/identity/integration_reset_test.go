@@ -156,8 +156,11 @@ func TestRequestPasswordReset_Known_StoresHashAndSends(t *testing.T) {
 	if len(m.To) != 1 || m.To[0] != u.sess.Person {
 		t.Errorf("To = %v, want the account's person", m.To)
 	}
-	if got := m.Vars["lifetime"]; got != "60 minutes" {
-		t.Errorf("lifetime = %q, want %q", got, "60 minutes")
+	if got := m.Vars["lifetime_minutes"]; got != "60" {
+		t.Errorf("lifetime_minutes = %q, want %q (a bare number, D40)", got, "60")
+	}
+	if _, old := m.Vars["lifetime"]; old {
+		t.Error("the old lifetime var is still sent")
 	}
 	if !strings.HasPrefix(m.Link, "/accounts/password-reset?token=") {
 		t.Errorf("link = %q", m.Link)
@@ -222,7 +225,7 @@ func TestRequestPasswordReset_LifetimeFollowsPolicy(t *testing.T) {
 	r := newResetRig(t, withPolicy(ps))
 	u := r.signUp("ada.quill")
 	wantNoErr(t, r.request(u.email))
-	if got := r.n.Sent()[0].Vars["lifetime"]; got != "90 minutes" {
+	if got := r.n.Sent()[0].Vars["lifetime_minutes"]; got != "90" {
 		t.Errorf("lifetime = %q", got)
 	}
 	if want := r.clk.Now().Add(90 * time.Minute); !r.rows()[0].Expires.Equal(want) {
@@ -230,9 +233,9 @@ func TestRequestPasswordReset_LifetimeFollowsPolicy(t *testing.T) {
 	}
 	// a changed lifetime applies to tokens minted after the change
 	ps.set(func(p *identity.Policy) { p.PasswordResetLifetime = 10 * time.Minute })
-	wantNoErr(t, r.clk.Advance(time.Minute))
+	wantNoErr(t, r.clk.Advance(identity.PasswordResetCooldown))
 	wantNoErr(t, r.request(u.email))
-	if got := r.n.Sent()[1].Vars["lifetime"]; got != "10 minutes" {
+	if got := r.n.Sent()[1].Vars["lifetime_minutes"]; got != "10" {
 		t.Errorf("lifetime = %q", got)
 	}
 }
@@ -369,7 +372,9 @@ func TestRequestPasswordReset_DummyVerifiedOncePerRequest(t *testing.T) {
 		{"unknown", unknown, nil, false},
 		{"disabled", disabled, nil, false},
 		{"superuser", super, nil, false},
+		{"known, inside the cooldown", known, nil, false},
 		{"F72 send unsupported after the probe", known, func() {
+			wantNoErr(t, r.clk.Advance(identity.PasswordResetCooldown)) // past the cooldown, so the send is reached
 			probe.set(func(p *probeNotifier) { p.sendErr = errs.E("test.send", errs.Unsupported, notify.ErrNotConfigured) })
 		}, false},
 		{"read-only, known", known, func() {
@@ -435,7 +440,7 @@ func TestRequestPasswordReset_Twice_OnlyNewestValid(t *testing.T) {
 	r := newResetRig(t)
 	u := r.signUp("ada.quill")
 	first := r.requestToken(u)
-	wantNoErr(t, r.clk.Advance(time.Minute))
+	wantNoErr(t, r.clk.Advance(identity.PasswordResetCooldown))
 	second := r.requestToken(u)
 	if first == second {
 		t.Fatal("two requests minted the same token")
@@ -455,7 +460,7 @@ func TestRequestPasswordReset_PurgesUsedAndExpired(t *testing.T) {
 	if rows := r.rows(); len(rows) != 1 || rows[0].Used == nil {
 		t.Fatalf("rows after a redemption = %+v", rows)
 	}
-	wantNoErr(t, r.clk.Advance(time.Minute))
+	wantNoErr(t, r.clk.Advance(identity.PasswordResetCooldown))
 	_ = r.requestToken(u)
 	if rows := r.rows(); len(rows) != 1 || rows[0].Used != nil {
 		t.Errorf("rows after the next request = %+v, want one unused", rows)
@@ -522,7 +527,7 @@ func TestRequestPasswordReset_SendFails_EarlierTokenStillValid(t *testing.T) {
 	r := newResetRig(t)
 	u := r.signUp("ada.quill")
 	old := r.requestToken(u)
-	wantNoErr(t, r.clk.Advance(time.Minute))
+	wantNoErr(t, r.clk.Advance(identity.PasswordResetCooldown))
 	r.n.Fail(errDown)
 	wantKind(t, r.request(u.email), errs.Unavailable)
 	r.n.Fail(nil)
@@ -595,7 +600,12 @@ func TestResetRequestAndComplete_Racing_NoDeadlock(t *testing.T) {
 	r := newResetRig(t, func(o *identity.Options) { o.Policy = ps })
 	u := r.signUp("ada.quill")
 	for round := range 8 {
+		// each round spends 5 of the address's reset requests: move past the window (and so the cooldown)
+		wantNoErr(t, r.clk.Advance(16*time.Minute))
 		tok := r.requestToken(u)
+		// past the cooldown, so the concurrent requests really race the redemption
+		wantNoErr(t, r.clk.Advance(identity.PasswordResetCooldown))
+		sentBefore := len(r.n.Sent())
 		const n = 4
 		var wg sync.WaitGroup
 		results := make([]error, 2*n)
@@ -624,7 +634,35 @@ func TestResetRequestAndComplete_Racing_NoDeadlock(t *testing.T) {
 			}
 			wantField(t, err, "token", "invalid")
 		}
+		// the four requests are one cooldown window: exactly one of them sent
+		if got := len(r.n.Sent()) - sentBefore; got != 1 {
+			t.Fatalf("round %d: %d new messages from %d concurrent requests, want exactly 1", round, got, n)
+		}
 	}
+}
+
+// An admin disables the account after the request looked it up and before its Write
+// transaction: the same 202 (nil), no token, no e-mail.
+func TestRequestPasswordReset_DisabledBetweenLookupAndTransaction_NoEmail(t *testing.T) {
+	r := newResetRig(t)
+	u := r.signUp("ada.quill")
+	var hook *hookDB
+	svc := r.other(func(o *identity.Options) {
+		hook = &hookDB{DB: o.DB}
+		o.DB = hook
+	})
+	hook.before = func() { r.disable(u) }
+	wantNoErr(t, keep(svc.RequestPasswordReset(from(ctxT(t), nextIP()), u.email)))
+	if hook.before != nil {
+		t.Fatal("the disable step never ran: the test did not exercise the window")
+	}
+	if len(r.n.Sent()) != 0 {
+		t.Errorf("%d messages sent to a disabled account", len(r.n.Sent()))
+	}
+	if len(r.rows()) != 0 {
+		t.Error("a token was minted for a disabled account")
+	}
+	r.noLeak(string(u.email))
 }
 
 // ---- Complete: F79-F86 -----------------------------------------------------------------

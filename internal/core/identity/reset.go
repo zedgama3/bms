@@ -32,6 +32,8 @@ const (
 	resetKeyPrefix = "password-reset:"
 	// resetTokenLen is the length of a token in base64url without padding.
 	resetTokenLen = 43 // base64.RawURLEncoding.EncodedLen(PasswordResetTokenBytes)
+	// reasonCooldown is the Reason of the Denied entry of a request inside the cooldown.
+	reasonCooldown = "cooldown"
 )
 
 var (
@@ -75,15 +77,19 @@ func (s *Service) newResetToken() (string, error) {
 
 // RequestPasswordReset asks for a reset link for the account with this address. No session
 // and no permission. Steps: validate the address (Invalid, field email, F69); count the
-// request in both limiter buckets whatever its outcome (Unavailable wrapping
-// httpx.ErrRateLimited, F70); Notify nil, or Notify.Configured false: Unsupported before
+// request in the reset limiter's two buckets (ResetClientLimit per client address and
+// ResetAddressLimit per submitted address inside Policy.LoginFailureWindow; apart from
+// sign-in's buckets) whatever its outcome (Unavailable wrapping httpx.ErrRateLimited, F70); Notify nil, or Notify.Configured false: Unsupported before
 // the account lookup, for every address alike (F71), and a Configured failure fails with
 // its kind, also before the lookup (F91); verify the dummy hash, exactly once for every
 // request that gets this far, so no path costs less than another; a read-only copy fails
 // Unavailable wrapping db.ErrReadOnly for every address alike (F78); look the account up.
 // An unknown, a disabled and a superuser address record identity.password.reset-requested
 // with Outcome Denied, send nothing and return nil (F73). Otherwise, in one Write
-// transaction: replace the account's tokens by one (the SHA-256 of a fresh random token is
+// transaction: lock the account row and read its flags and its newest reset row; an account disabled or made the superuser's since the lookup is answered like the denied paths (Denied entry, nothing sent); one younger than
+// PasswordResetCooldown records the request with Outcome Denied and Reason "cooldown",
+// sends nothing, keeps the earlier token and returns nil, the same answer as any other
+// silent path (F92); else replace the account's tokens by one (the SHA-256 of a fresh random token is
 // stored, never the token), enqueue identity.password-reset with the link and the lifetime,
 // and record the request; a Send (other than the cases below) or Record failure rolls
 // everything back and fails with its kind (F76, F77). If Send answers Unsupported (the
@@ -108,9 +114,10 @@ func (s *Service) RequestPasswordReset(ctx context.Context, email model.Email) (
 	if err := v.Err(); err != nil {
 		return err //nolint:wrapcheck // Err already carries Op and errs.Invalid
 	}
-	// The same two buckets as sign-in, and every request counts once: nothing is taken
-	// back, so the count cannot tell a known address from an unknown one.
-	rv, err := s.reserve(ctx, op, pol, addr)
+	// The reset limiter's own two buckets, apart from sign-in's (D40, F93), and every
+	// request counts once: nothing is taken back, so the count cannot tell a known address
+	// from an unknown one.
+	rv, err := s.reserveIn(ctx, op, s.resetLimiter, addr, ResetClientLimit, ResetAddressLimit, pol.LoginFailureWindow)
 	if err != nil {
 		return err
 	}
@@ -159,13 +166,20 @@ func (s *Service) spendDummy(ctx context.Context) error {
 	return nil
 }
 
-// resetDenied records the request of an address that gets no e-mail and returns nil.
-func (s *Service) resetDenied(ctx context.Context, op string, rec account.Record, matched bool) error {
+// deniedEntry is the audit entry of a reset request that gets no e-mail; it names the
+// account only when the address matched one.
+func deniedEntry(rec account.Record, matched bool) audit.Entry {
 	e := audit.Entry{Action: actionResetRequested, Outcome: audit.Denied, Actor: audit.Actor{Kind: audit.ActorAnonymous}}
 	if matched {
 		e.Subject = rec.Person
 		e.Record = audit.RefOf(kindAccount, rec.ID)
 	}
+	return e
+}
+
+// resetDenied records the request of an address that gets no e-mail and returns nil.
+func (s *Service) resetDenied(ctx context.Context, op string, rec account.Record, matched bool) error {
+	e := deniedEntry(rec, matched)
 	err := s.db.Transact(ctx, db.Write, func(ctx context.Context) error { return s.record(ctx, e) })
 	if err != nil {
 		return fmt.Errorf("%s: %w", op, err)
@@ -184,6 +198,23 @@ func (s *Service) resetSend(ctx context.Context, op string, pol Policy, rec acco
 	expires := s.now().Add(lifetime)
 	var refused error
 	err = s.db.Transact(ctx, db.Write, func(ctx context.Context) error {
+		// The account row is locked by the read, so two requests at once cannot both pass
+		// the cooldown (F92). The silent answer does the same work as the unknown-address
+		// path: one transaction, one Denied entry.
+		st, err := s.store.ResetState(ctx, rec.ID)
+		if err != nil {
+			return wrap(op, err)
+		}
+		if st.Disabled || st.Superuser {
+			// Disabled (or made the superuser's) since the lookup: the same silent answer
+			// as the lookup would have given.
+			return s.record(ctx, deniedEntry(rec, true))
+		}
+		if !st.NewestAt.IsZero() && st.NewestAt.After(s.now().Add(-PasswordResetCooldown)) {
+			e := deniedEntry(rec, true)
+			e.Reason = reasonCooldown
+			return s.record(ctx, e)
+		}
 		id, err := s.store.ReplaceResetToken(ctx, rec.ID, tokenHash(token), expires, s.now())
 		if err != nil {
 			return wrap(op, err)
@@ -193,8 +224,9 @@ func (s *Service) resetSend(ctx context.Context, op string, pol Policy, rec acco
 			To:       []model.PersonID{rec.Person},
 			Key:      resetKeyPrefix + id.String(),
 			Link:     resetLinkPath + token,
-			Vars:     map[string]string{"lifetime": strconv.Itoa(int(lifetime/time.Minute)) + " minutes"},
-			TTL:      lifetime,
+			// A bare number: each language's template words the unit (D40).
+			Vars: map[string]string{"lifetime_minutes": strconv.Itoa(int(lifetime / time.Minute))},
+			TTL:  lifetime,
 		})
 		switch {
 		case errs.Is(err, errs.Unsupported), errs.Is(err, errs.Invalid), errs.Is(err, errs.NotFound):

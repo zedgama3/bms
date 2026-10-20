@@ -10,6 +10,9 @@ import (
 const (
 	bucketAddress = "address"
 	bucketEmail   = "email"
+	// The buckets of password-reset requests, which are separate from sign-in's (D40).
+	bucketResetAddress = "reset_address"
+	bucketResetEmail   = "reset_email"
 )
 
 // limiter slows down guessing: failures counted per client address and per submitted
@@ -20,10 +23,24 @@ type limiter struct {
 	maxKeys int
 	addr    *failBucket
 	email   *failBucket
+	// addrName and emailName are what reserve reports (and the metric spells) for a full
+	// client-address and a full submitted-address bucket.
+	addrName, emailName string
 }
 
+// newLimiter returns the sign-in limiter: the buckets sign-in, sign-up and ChangePassword
+// share (D36(i)).
 func newLimiter() *limiter {
-	return &limiter{maxKeys: MaxTrackedKeys, addr: newFailBucket(), email: newFailBucket()}
+	return &limiter{maxKeys: MaxTrackedKeys, addr: newFailBucket(), email: newFailBucket(),
+		addrName: bucketAddress, emailName: bucketEmail}
+}
+
+// newResetLimiter returns the limiter of password-reset requests, a second pair of buckets
+// of the same type, so reset traffic never locks anyone out of signing in and failed
+// sign-ins never block a reset (D40, F93).
+func newResetLimiter() *limiter {
+	return &limiter{maxKeys: MaxTrackedKeys, addr: newFailBucket(), email: newFailBucket(),
+		addrName: bucketResetAddress, emailName: bucketResetEmail}
 }
 
 // failBucket maps a key to the times of its recent failures. The entries form a list from
@@ -203,10 +220,10 @@ func (l *limiter) reserve(a netip.Addr, email string, clock func() time.Time, ad
 	l.email.sweep(now, window)
 	ak, haveAddr := addrKey(a)
 	if haveAddr && l.addr.count(ak, now, window) >= addrLimit {
-		return now, bucketAddress, false
+		return now, l.addrName, false
 	}
 	if email != "" && l.email.count(email, now, window) >= emailLimit {
-		return now, bucketEmail, false
+		return now, l.emailName, false
 	}
 	if haveAddr {
 		l.addr.add(ak, now, window, addrLimit, l.maxKeys)

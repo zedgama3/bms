@@ -19,6 +19,7 @@ var (
 	sqlInsertReset      = mustSQL("insert_password_reset.sql")
 	sqlResetByHash      = mustSQL("peek_password_reset_by_hash.sql")
 	sqlMarkResetUsed    = mustSQL("mark_password_reset_used.sql")
+	sqlNewestReset      = mustSQL("newest_password_reset.sql")
 )
 
 // lockAccount takes the account row lock and reads the flags a reset depends on. Fails
@@ -56,6 +57,37 @@ func (s *Store) ReplaceResetToken(ctx context.Context, acct model.AccountID, has
 		return account.ResetID{}, err //nolint:wrapcheck // every statement's error went through db.Wrap
 	}
 	return id, nil
+}
+
+// ResetState locks the account row (the order ReplaceResetToken and CompleteReset use, so
+// none of them can deadlock with it) and returns, as read under that lock, the creation time
+// of the account's newest reset row (used or not; zero when it has none) and the account's
+// disabled and superuser flags. Run it in the Write transaction that goes on to replace the
+// token: the lock is what keeps two concurrent requests from both passing the cooldown, and
+// what keeps an account disabled meanwhile from getting an e-mail. Fails errs.NotFound when
+// the account is gone, errs.Unavailable wrapping db.ErrReadOnly on a read-only copy.
+func (s *Store) ResetState(ctx context.Context, acct model.AccountID) (account.ResetState, error) {
+	const op = "identity.postgres.ResetState"
+	var st account.ResetState
+	err := s.db.Transact(ctx, db.Write, func(ctx context.Context) error {
+		disabled, superuser, err := s.lockAccount(ctx, op, acct)
+		if err != nil {
+			return err
+		}
+		var at *time.Time
+		if err := s.db.QueryRow(ctx, sqlNewestReset, [16]byte(acct)).Scan(&at); err != nil {
+			return db.Wrap(op, err)
+		}
+		st = account.ResetState{Disabled: disabled, Superuser: superuser}
+		if at != nil {
+			st.NewestAt = at.UTC()
+		}
+		return nil
+	})
+	if err != nil {
+		return account.ResetState{}, err //nolint:wrapcheck // every statement's error went through db.Wrap
+	}
+	return st, nil
 }
 
 // ResetByHash returns the reset row whose token hash is hash, locking nothing: the

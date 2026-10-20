@@ -49,9 +49,16 @@ type reservation struct {
 // canonical address (limit Policy.LoginFailureLimit), or fails errs.Unavailable wrapping
 // httpx.ErrRateLimited when either bucket is full (F14, F18).
 func (s *Service) reserve(ctx context.Context, op string, pol Policy, email model.Email) (*reservation, error) {
+	return s.reserveIn(ctx, op, s.limiter, email, pol.ClientFailureLimit, pol.LoginFailureLimit, pol.LoginFailureWindow)
+}
+
+// reserveIn counts an attempt in the buckets of l, with the given limits per client address
+// and per canonical address inside window, or fails errs.Unavailable wrapping
+// httpx.ErrRateLimited when either bucket is full. The metric names the bucket that was.
+func (s *Service) reserveIn(ctx context.Context, op string, l *limiter, email model.Email, addrLimit, emailLimit int, window time.Duration) (*reservation, error) {
 	addr, _ := httpx.ClientAddrFrom(ctx)
-	rv := &reservation{l: s.limiter, addr: addr, email: string(email.Canonical())}
-	at, bucket, ok := s.limiter.reserve(rv.addr, rv.email, s.now, pol.ClientFailureLimit, pol.LoginFailureLimit, pol.LoginFailureWindow)
+	rv := &reservation{l: l, addr: addr, email: string(email.Canonical())}
+	at, bucket, ok := l.reserve(rv.addr, rv.email, s.now, addrLimit, emailLimit, window)
 	if !ok {
 		s.metrics.limit(ctx, bucket)
 		return nil, errs.E(op, errs.Unavailable, httpx.ErrRateLimited)

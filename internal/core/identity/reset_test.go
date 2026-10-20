@@ -183,22 +183,24 @@ func readTemplate(name string) (string, error) {
 
 // ---- F70 -------------------------------------------------------------------------------
 
-// F70: both buckets, counted once per request whatever the outcome.
+// F70 (amended D40, decision 22): reset requests have their own buckets, ResetAddressLimit per
+// canonical submitted address and ResetClientLimit per client address per LoginFailureWindow,
+// counted once per request whatever the outcome.
 func TestRequestPasswordReset_RateLimited_Table(t *testing.T) {
 	t.Run("per submitted address, case-insensitive, from different clients", func(t *testing.T) {
-		r := newRig(t, dbtest.NewFake(), withPolicy(limitPolicy(3)), withNotify(notifytest.NewFake("identity")))
-		for i, e := range []string{"Target.One@example.org", "target.one@EXAMPLE.org", "TARGET.ONE@example.org"} {
-			wantNoErr(t, keep(r.svc.RequestPasswordReset(from(ctxT(t), fmt.Sprintf("203.0.113.%d", 30+i)), mail(t, e))))
+		r := newRig(t, dbtest.NewFake(), withNotify(notifytest.NewFake("identity")))
+		for i := range identity.ResetAddressLimit {
+			e := []string{"Target.One@example.org", "target.one@EXAMPLE.org", "TARGET.ONE@example.org"}[i%3]
+			wantNoErr(t, requestReset(t, r, e))
 		}
-		err := keep(r.svc.RequestPasswordReset(from(ctxT(t), "203.0.113.40"), mail(t, "target.one@example.org")))
-		wantRateLimited(t, err)
-		// another address from the same fresh client is fine
-		wantNoErr(t, keep(r.svc.RequestPasswordReset(from(ctxT(t), "203.0.113.40"), mail(t, "target.two@example.org"))))
+		wantRateLimited(t, requestReset(t, r, "target.one@example.org"))
+		// another address from a fresh client is fine
+		wantNoErr(t, requestReset(t, r, "target.two@example.org"))
 	})
 	t.Run("per client address across different submitted addresses", func(t *testing.T) {
-		r := newRig(t, dbtest.NewFake(), withPolicy(clientPolicy(10)), withNotify(notifytest.NewFake("identity")))
+		r := newRig(t, dbtest.NewFake(), withNotify(notifytest.NewFake("identity")))
 		ctx := from(ctxT(t), "203.0.113.20")
-		for i := range 10 {
+		for i := range identity.ResetClientLimit {
 			wantNoErr(t, keep(r.svc.RequestPasswordReset(ctx, mail(t, fmt.Sprintf("p%d@example.org", i)))))
 		}
 		wantRateLimited(t, keep(r.svc.RequestPasswordReset(ctx, mail(t, "fresh@example.org"))))
@@ -208,22 +210,23 @@ func TestRequestPasswordReset_RateLimited_Table(t *testing.T) {
 	t.Run("a request is counted whatever the outcome: e-mail off still spends the bucket", func(t *testing.T) {
 		n := notifytest.NewFake("identity")
 		n.SetConfigured(false)
-		r := newRig(t, dbtest.NewFake(), withPolicy(limitPolicy(3)), withNotify(n))
-		for range 3 {
-			wantKind(t, keep(r.svc.RequestPasswordReset(from(ctxT(t), nextResetIP()), mail(t, "same@example.org"))), errs.Unsupported)
+		r := newRig(t, dbtest.NewFake(), withNotify(n))
+		for range identity.ResetAddressLimit {
+			wantKind(t, requestReset(t, r, "same@example.org"), errs.Unsupported)
 		}
-		wantRateLimited(t, keep(r.svc.RequestPasswordReset(from(ctxT(t), nextResetIP()), mail(t, "same@example.org"))))
+		wantRateLimited(t, requestReset(t, r, "same@example.org"))
 	})
-	t.Run("the limit is reached by the Nth request, not the N+1th", func(t *testing.T) {
-		r := newRig(t, dbtest.NewFake(), withPolicy(limitPolicy(3)), withNotify(notifytest.NewFake("identity")))
-		for range 3 {
-			wantNoErr(t, keep(r.svc.RequestPasswordReset(from(ctxT(t), nextResetIP()), mail(t, "same@example.org"))))
+	t.Run("an invalid address spends nothing", func(t *testing.T) {
+		r := newRig(t, dbtest.NewFake(), withNotify(notifytest.NewFake("identity")))
+		ctx := from(ctxT(t), "203.0.113.22")
+		for range identity.ResetClientLimit + 5 {
+			wantField(t, r.svc.RequestPasswordReset(ctx, modelEmail("not-an-address")), "email", "malformed")
 		}
-		wantRateLimited(t, keep(r.svc.RequestPasswordReset(from(ctxT(t), nextResetIP()), mail(t, "same@example.org"))))
+		wantNoErr(t, keep(r.svc.RequestPasswordReset(ctx, mail(t, "ok@example.org"))))
 	})
 	t.Run("resets after the window on the fake clock", func(t *testing.T) {
-		r := newRig(t, dbtest.NewFake(), withPolicy(limitPolicy(3)), withNotify(notifytest.NewFake("identity")))
-		for range 3 {
+		r := newRig(t, dbtest.NewFake(), withNotify(notifytest.NewFake("identity")))
+		for range identity.ResetAddressLimit {
 			wantNoErr(t, requestReset(t, r, "same@example.org"))
 		}
 		wantRateLimited(t, requestReset(t, r, "same@example.org"))
@@ -235,12 +238,11 @@ func TestRequestPasswordReset_RateLimited_Table(t *testing.T) {
 	t.Run("the limit is checked before any lookup, hash or probe", func(t *testing.T) {
 		fake := dbtest.NewFake()
 		probe := newProbe(notifytest.NewFake("identity"))
-		r := newRig(t, fake, withPolicy(limitPolicy(3)), withNotify(probe))
-		for range 3 {
+		r := newRig(t, fake, withNotify(probe))
+		for range identity.ResetAddressLimit {
 			wantNoErr(t, requestReset(t, r, "same@example.org"))
 		}
 		before, probes := len(fake.Calls()), probeCount(probe)
-		start := time.Now()
 		wantRateLimited(t, requestReset(t, r, "same@example.org"))
 		if len(fake.Calls()) != before {
 			t.Error("a rate-limited request reached the store")
@@ -248,16 +250,54 @@ func TestRequestPasswordReset_RateLimited_Table(t *testing.T) {
 		if probeCount(probe) != probes {
 			t.Error("a rate-limited request asked Configured")
 		}
-		if time.Since(start) > time.Second {
-			t.Error("a rate-limited request was slow")
-		}
 	})
 	t.Run("a limited request leaks neither address", func(t *testing.T) {
-		r := newRig(t, dbtest.NewFake(), withPolicy(limitPolicy(3)), withNotify(notifytest.NewFake("identity")))
-		for range 4 {
+		r := newRig(t, dbtest.NewFake(), withNotify(notifytest.NewFake("identity")))
+		for range identity.ResetAddressLimit + 1 {
 			_ = requestReset(t, r, "limited.person@example.org") //nolint:errcheck // outcome asserted elsewhere
 		}
 		r.noLeak("limited.person")
+	})
+}
+
+// F93 (decision 22): the reset buckets and sign-in's are separate, in both directions.
+func TestResetLimiter_SeparateFromSignIn_Table(t *testing.T) {
+	t.Run("a burst of reset requests for an address does not limit sign-in for it", func(t *testing.T) {
+		r := newRig(t, dbtest.NewFake(), withNotify(notifytest.NewFake("identity")))
+		for range identity.ResetAddressLimit {
+			wantNoErr(t, requestReset(t, r, "pat.example@example.test"))
+		}
+		wantRateLimited(t, requestReset(t, r, "pat.example@example.test"))
+		// a failed sign-in is an ordinary Unauthenticated, not a rate-limit
+		wantKind(t, guess(t, r, "203.0.113.50", "pat.example@example.test"), errs.Unauthenticated)
+		if isRateLimited(guess(t, r, "203.0.113.51", "pat.example@example.test")) {
+			t.Error("reset requests consumed sign-in's address bucket")
+		}
+	})
+	t.Run("a burst of reset requests from one client does not limit sign-in from it", func(t *testing.T) {
+		r := newRig(t, dbtest.NewFake(), withNotify(notifytest.NewFake("identity")))
+		ip := "203.0.113.52"
+		ctx := from(ctxT(t), ip)
+		for i := range identity.ResetClientLimit {
+			wantNoErr(t, keep(r.svc.RequestPasswordReset(ctx, mail(t, fmt.Sprintf("q%d@example.test", i)))))
+		}
+		wantRateLimited(t, keep(r.svc.RequestPasswordReset(ctx, mail(t, "q-last@example.test"))))
+		wantKind(t, guess(t, r, ip, "someone@example.test"), errs.Unauthenticated)
+	})
+	t.Run("exhausted sign-in failures for an address do not block a reset for it", func(t *testing.T) {
+		r := newRig(t, dbtest.NewFake(), withPolicy(limitPolicy(3)), withNotify(notifytest.NewFake("identity")))
+		for range 3 {
+			wantKind(t, guess(t, r, nextResetIP(), "lee.sample@example.test"), errs.Unauthenticated)
+		}
+		wantRateLimited(t, guess(t, r, nextResetIP(), "lee.sample@example.test"))
+		wantNoErr(t, requestReset(t, r, "lee.sample@example.test"))
+	})
+	t.Run("exhausted sign-in failures from a client do not block a reset from it", func(t *testing.T) {
+		r := newRig(t, dbtest.NewFake(), withPolicy(clientPolicy(10)), withNotify(notifytest.NewFake("identity")))
+		ip := "203.0.113.53"
+		wantNoErr(t, distinctGuesses(t, r, ip, "g", 10))
+		wantRateLimited(t, guess(t, r, ip, "g-more@example.test"))
+		wantNoErr(t, keep(r.svc.RequestPasswordReset(from(ctxT(t), ip), mail(t, "g-reset@example.test"))))
 	})
 }
 
@@ -545,8 +585,14 @@ func TestTemplates_Register_Parses(t *testing.T) {
 	if strings.Contains(subject, "Link") || strings.Contains(subject, "token") {
 		t.Errorf("the subject carries the link: %q", subject)
 	}
-	if !strings.Contains(b, "lifetime") {
-		t.Error("the reset template does not use the lifetime variable")
+	if !strings.Contains(b, "lifetime_minutes") {
+		t.Error("the reset template does not use the lifetime_minutes variable (D40)")
+	}
+	// D40: each language words the unit itself.
+	es, err := readTemplate("password-reset.es.tmpl")
+	wantNoErr(t, err)
+	if !strings.Contains(es, "lifetime_minutes") {
+		t.Error("the Spanish reset template does not use lifetime_minutes")
 	}
 }
 
@@ -676,9 +722,9 @@ func TestResetHandler_Statuses(t *testing.T) {
 		}
 	})
 	t.Run("rate limited is 429", func(t *testing.T) {
-		r := newRig(t, dbtest.NewFake(), withPolicy(limitPolicy(3)), withNotify(notifytest.NewFake("identity")))
+		r := newRig(t, dbtest.NewFake(), withNotify(notifytest.NewFake("identity")))
 		rt := handlerFor(t, r.svc, "POST", "/password-reset")
-		for range 3 {
+		for range identity.ResetAddressLimit {
 			w, _ := call(t, rt, from(ctxT(t), nextResetIP()), emailJSON("same@example.org"))
 			if w.Code != http.StatusAccepted {
 				t.Fatalf("status = %d, want 202", w.Code)

@@ -23,3 +23,13 @@ type ResetRow struct {
 	CreatedAt       time.Time
 	AccountDisabled bool
 }
+
+// ResetState is what a password-reset request needs from the account row it has locked:
+// the creation time of the account's newest reset row (used or not; zero when it has none,
+// which is the cooldown's clock) and the flags that can change between the request's
+// lookup and its transaction.
+type ResetState struct {
+	NewestAt  time.Time
+	Disabled  bool
+	Superuser bool
+}
