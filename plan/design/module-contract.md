@@ -7,6 +7,7 @@
 - **Amended 2026-10-18 (M1 build, accepted deviations):** implementation deviations recorded in Behavior, "Accepted implementation deviations (M1 build, 2026-10-18)".
 - **Amended 2026-10-18 (D37; departments-events Proposed change 3, audit Proposed change 16):** `Deps.Departments departments.Directory` (`NamesOf`, `Active`) and `Deps.Events events.Directory` (`InfoOf`) are available from M3 (unscoped; `Provision` sets them); `moduletest.Conformance` fills a nil one with `departmentstest.NewFake()` / `eventstest.NewFake()`; `Env.CoreExtensionPoints` carries `events.event-setup` (the point is `events.event-setup`, not `events.event-created`) and `Env.CoreSignals` the seven `departments.*` and `events.*` names; module authors may declare a foreign key to `core.department(id)` or `core.event(id)` with `ON DELETE RESTRICT`, never read those tables directly, and keep an event-setup contribution idempotent per (event, module); `audittest.Fake` fails `Internal` on a `Record` inside a `db.Read` transaction, so a module whose read path records inside its `Transact(Read)` fails its own unit tests and the conformance run (record after the transaction, before returning).
 - **Amended 2026-10-18 (M2 build, accepted deviations):** implementation deviations recorded in Behavior, "Accepted implementation deviations (M2 build, 2026-10-18)": `Deps.Authz` and `Deps.People` in `module.go`; Conformance fills them with fakes.
+- **Amended 2026-10-19 (D39, owner approval of settings and notify):** `SettingKind` and `SettingDecl` move to `core/settings` and are aliased here (`SettingBool` ... `SettingEnum`, plus the new `SettingSecret`); the setting key grammar is `[a-z][a-z0-9]*(_[a-z0-9]+)*` (underscores, at most 64 bytes); `Deps.Settings settings.Reader` (M4, scoped per module, bare keys) and `Deps.Notify notify.Notifier` (M4, scoped per module) are available; `Manifest` gains `Templates fs.FS`; `regional` joins the reserved names; there are no automatic retention keys (the module that runs the job declares them); `moduletest.Conformance` supplies `settingstest.NewFake` and `notifytest.NewFake` and gains the rule `templates_register`. Proposed changes 5 and 13 (notify) applied.
 - **Package:** `internal/core/module` (Go module `github.com/zedgama3/bms`), plus the test
   helper package `internal/core/module/moduletest`. **UI:** none of its own; the admin
   "modules" screen is `web-shell.md`'s, fed by `GET /api/admin/modules` (`api.md`), both
@@ -45,9 +46,9 @@ Exported names (package `module`):
 - `Capability` (one ident; Go interface in `contracts/<name>`), `ExtensionPoint`
   (`<definer>.<ident>`, `.Definer()`), `ExtensionPointDecl{Name, Accepts func(any) bool}`;
   each has `Validate() error`; idents `[a-z][a-z0-9]*(-[a-z0-9]+)*`, at most 64 bytes.
-- `SettingKind` (`SettingBool|Int|Duration|Text|Enum`, zero invalid), `SettingDecl{Key, Kind,
-  Default, Options, Check func(string) error `json:"-"`}`.
-- `Manifest{Name, Migrations fs.FS, Permissions []authz.PermissionDecl, Settings, Publishes,
+- `SettingKind = settings.Kind` (`SettingBool|Int|Duration|Text|Enum|Secret`, zero invalid; the `Secret` kind is sealed at rest, D39), `SettingDecl = settings.Decl{Key, Kind,
+  Default, Options, Check func(string) error `json:"-"`}` (aliases; the types are `core/settings`'s because it cannot import `module`; setting keys are `[a-z][a-z0-9]*(_[a-z0-9]+)*`, at most 64 bytes, not the hyphenated ident).
+- `Manifest{Name, Migrations fs.FS, Templates fs.FS (D39; files `<ident>.<lang>.tmpl`, notify names them `<name>.<ident>`), Permissions []authz.PermissionDecl, Settings, Publishes,
   Subscribes []signals.Name, Provides/Requires/Uses []Capability, Defines
   []ExtensionPointDecl, ContributesTo []ExtensionPoint}`; `Validate()` joins every problem.
 - `Factory func(ctx, Deps) (Module, error)`; `Module` = `PersonData` + `Start(ctx) error` +
@@ -59,7 +60,7 @@ Exported names (package `module`):
 - `Route{Method, Pattern, Access, Handler}` (relative to `/api/<name>`; `Validate`),
   `Access` (`AccessSignedIn` zero default, `AccessPublic`). `Deps{Logger, Tracer
   telemetry.Tracer, Clock, Links *Links, DB db.DB, Signals signals.Bus}`; later fields
-  Settings, Authz, People, Departments, Events, Audit, Jobs, Notify, Files (Audit M1, scoped per module: actions are prefixed `<name>.`; Departments and Events M3, unscoped, D37; the rest M2 to Later). The actor is `identity.PersonFrom(ctx)` (false inside a signal delivery and for a restricted session), taken as a seam (`actorFunc`) so tests use `identity.WithSession`; no `Deps` field.
+  Settings, Authz, People, Departments, Events, Audit, Jobs, Notify, Files (Audit M1, scoped per module: actions are prefixed `<name>.`; Departments and Events M3, unscoped, D37; Settings (`settings.Reader`, bare keys) and Notify (`notify.Notifier`, templates prefixed `<name>.`) M4, scoped per module, D39; the rest M2 to Later). The actor is `identity.PersonFrom(ctx)` (false inside a signal delivery and for a restricted session), taken as a seam (`actorFunc`) so tests use `identity.WithSession`; no `Deps` field.
 - `Set.Contributors(point) ([]Contribution, error)` for core definers (`Invalid` unless point is in `Env.CoreExtensionPoints`); `Factory` needs no database read (`openapi`/`check` build against `db.None()`); `Build`/`Start` run under 30 s, `Stop` shares `http.shutdown_timeout`; decision 9: every module ships `messages/en.json`.
 - `Links.Capability(name) (any, error)`, `Links.Contributors(point) ([]Contribution, error)`, `Contribution{Module, Value}`; frozen after `Build`, safe for concurrent use.
 - `Registry`: `NewRegistry`, `Default`, package `Register(Manifest, Factory)` (in `init`),
@@ -79,7 +80,7 @@ Exported names (package `module`):
   Options (owner-approved 2026-10-17): `WithCapability(name, impl)` (mandatory per `Requires`);
   exactly one of `WithSeed(Seed)` / `WithoutPersonData()`; `Seed func(ctx, Module, Subject)
   error`; `Subject{Person, LegalName, Email, Phone, Note}` (markers; the unknown-person ID is
-  unexported and distinct); rules `rejects_wrong_capability_type`, `used_capability_absent_
+  unexported and distinct); rules (D39: `templates_register`; a nil `Deps.Settings` becomes `settingstest.NewFake(manifest.Name, manifest.Settings)` and a nil `Deps.Notify` `notifytest.NewFake(manifest.Name)`, and the leak rule also scans `Fake.Sent()` vars and links for the seed markers) `rejects_wrong_capability_type`, `used_capability_absent_
   builds_and_starts`, `seeded_person_exports_data`, `seeded_person_delete_counts_and_is_
   idempotent`; the leak rule also asserts no `[email]` and scans the `audittest.Fake`'s recorded entries (`Reason`, `Fields`) for the seed markers and `[email]`; a nil `Deps.Audit` becomes `audittest.NewFake(manifest.Name)`; `module.StartRollbackTimeout` (10 s).
 - `module.IsCoreArea(name) bool` (the core areas reserved by `Manifest.Validate`; app.md F28 uses it).
@@ -114,7 +115,7 @@ Expects of dependencies: lib-errs (kinds, `errs.E`/`Is`); lib-core (`clock.Clock
 `telemetrytest`, `Scrub`'s `[email]` token); signals (`Bus`, `Name`, `signalstest.NewFake`).
 Of consumers: `app` supplies `Env`, `Provision`, the checker and the order Build, Start, Stop;
 `api` mounts `Set.Routes`; `authz`/`settings` take `Plan.Permissions`/`Plan.Settings`; `people` runs `Set.PersonData`.
-Proposed changes: 1, 3, 4, 6, 7, 9–12, 14 applied; 2 and 8 applied 2026-10-18; 5, 13 pending (targets unwritten);
+Proposed changes: 1, 3, 4, 6, 7, 9–12, 14 applied; 2 and 8 applied 2026-10-18; 5 and 13 (notify) applied 2026-10-19 (D39), 13 (jobs) pending (target unwritten);
 15–17 (hello, skills; none for telemetry or app) applied 2026-10-17.
 
 **M2 build deviations (2026-10-18).** `Deps.Authz` and `Deps.People` are declared in `module.go`; `moduletest.Conformance` fills them with `authztest` and `peopletest` fakes.
@@ -222,40 +223,28 @@ func (d ExtensionPointDecl) Validate() error
 
 // ---- Settings ----
 
-// SettingKind is the type of a setting's value. The zero value is invalid.
-type SettingKind uint8
+// The declaration types live in core/settings (settings.md: settings cannot import
+// module, so they move there as authz.Permission and signals.Name did) and are aliased
+// here, so manifests are unchanged (D39).
+type SettingKind = settings.Kind
 
 const (
-	SettingBool     SettingKind = iota + 1 // "true" or "false"
-	SettingInt                             // a base-10 integer
-	SettingDuration                        // time.ParseDuration form, for example "72h"
-	SettingText                            // free text, up to 4096 bytes
-	SettingEnum                            // exactly one of Options
+	SettingBool     = settings.Bool     // "true" or "false"
+	SettingInt      = settings.Int      // a base-10 integer
+	SettingDuration = settings.Duration // time.ParseDuration form, for example "72h"
+	SettingText     = settings.Text     // free text, up to 4096 bytes
+	SettingEnum     = settings.Enum     // exactly one of Options
+	SettingSecret   = settings.Secret   // free text, sealed at rest, never returned; Default must be ""
 )
-
-// String returns "bool", "int", "duration", "text", "enum" or "SettingKind(<n>)". Cannot fail.
-func (k SettingKind) String() string
 
 // SettingDecl declares one runtime setting of a module (settings.md stores and edits it
 // under the key "<module>.<key>"). Its title and description are message keys, not text
-// (decision 8).
-type SettingDecl struct {
-	Key     string      // one ident
-	Kind    SettingKind // how Default and every value are parsed
-	Default string      // text form; must parse as Kind and pass Check
-	Options []string    // SettingEnum only: the allowed values, each one ident, at least two
-	// Check is an optional extra rule on the parsed text ("must be between 1 and 24");
-	// nil means the kind's parse is the whole rule. It must be pure and safe for
-	// concurrent use. It is not called Validate because Go forbids a field and a method
-	// of one name on a type that has Validate() error; it is not serialized (json:"-").
-	Check func(value string) error `json:"-"`
-}
-
-// Validate fails with errs.Invalid, joining one validate.FieldError per problem: Key not
-// an ident; Kind invalid; Options given for a kind other than enum, or fewer than two or
-// not idents or duplicated for enum; Default not parsable as Kind; Default rejected by
-// Check.
-func (d SettingDecl) Validate() error
+// (decision 8): module.<name>.setting.<key>.title|description|option.<opt>. The key grammar
+// is [a-z][a-z0-9]*(_[a-z0-9]+)*, at most 64 bytes (underscores, because ICU arguments
+// allow no hyphen); Check is optional, pure and safe for concurrent use. Validate is
+// settings.Decl.Validate: errs.Invalid joining one validate.FieldError per problem (key,
+// kind, options, default, a Secret with a Default or Options).
+type SettingDecl = settings.Decl
 
 // ---- Manifest ----
 
@@ -281,6 +270,11 @@ type Manifest struct {
 
 	// Settings this module declares. Keys are stored as "<Name>.<Key>" by settings.
 	Settings []SettingDecl
+
+	// Templates holds the module's notification templates (go:embed), files named
+	// <ident>.<lang>.tmpl with Subject:/Vars: headers; notify names them "<Name>.<ident>"
+	// and checks them at Register (D39). nil means the module sends nothing.
+	Templates fs.FS
 
 	// Publishes and Subscribes are signal names (D24). A published name starts with
 	// "<Name>."; a subscribed name is any valid name, declared by the core or by a module
@@ -463,14 +457,14 @@ type Deps struct {
 	Signals signals.Bus // signals.md (row 10): Provision sets disp.Scope(m.Name, m.Publishes, m.Subscribes)
 
 	// Added by later specs, named here so modules know where to look:
-	// Settings settings.Reader   settings.md (row 15)
+	// Settings settings.Reader   settings.md (row 15): M4; scoped per module (bare keys); Provision sets a.deps.Settings.Scoped(m.Name)
 	// Authz    authz.Authorizer  authz.md (row 7): M2; unscoped; Provision sets it
 	// People   people.Directory  people.md (row 8): M2; unscoped; Provision sets it
 	// Departments departments.Directory  departments-events.md (row 9): M3; unscoped; Provision sets it (D37)
 	// Events   events.Directory  departments-events.md (row 9): M3; unscoped; Provision sets it (D37)
 	// Audit    audit.Recorder    audit.md (row 12): M1; scoped per module, actions prefixed "<name>."
 	// Jobs     jobs.Registrar    jobs.md (row 14)
-	// Notify   notify.Notifier   notify.md (row 11)
+	// Notify   notify.Notifier   notify.md (row 11): M4; scoped per module (templates prefixed "<name>.")
 	// Files    files.Store       files.md (row 13)
 }
 
@@ -820,7 +814,7 @@ type Subject struct {
 
 ## Types
 
-Defines: `Capability`, `ExtensionPoint`, `ExtensionPointDecl`, `SettingKind`, `SettingDecl`,
+Defines: `Capability`, `ExtensionPoint`, `ExtensionPointDecl`, `SettingKind` and `SettingDecl` (aliases of `settings.Kind` and `settings.Decl`, D39),
 `Manifest`, `Factory`, `Module`, `PersonData`, `Export`, `Deletion`, `Kept`, `RouteProvider`,
 `Route`, `Access`, `APIDescriber`, `CapabilityProvider`, `Contributor`, `Deps`, `Links`,
 `Contribution`, `Registry`, `Env`, `Plan`, `ModuleSettings`, `Graph`, `Node`, `Edge`,
@@ -910,14 +904,14 @@ func (n Name) Publisher() string
 | `Links` | this spec | the module's own declarations | M0 |
 | `DB` | `db.md` | the module's schema is its own responsibility; `db` reports read-only | M0 |
 | `Signals` | `signals.md` | publishing a name not in `Publishes`, or subscribing to one not in `Subscribes`, fails with `errs.Invalid` | M0 |
-| `Settings` | `settings.md` | keys prefixed `<name>.`; reads only the module's declared keys and the core's retention keys for it | M2 |
+| `Settings` | `settings.md` | scoped to the module's area: bare keys, only the declared ones; `Bool`, `Int`, `Duration`, `Text` (text and enum), `Secret` (sealed); a read is a map lookup, so a module never caches a setting; `Conformance` supplies `settingstest.NewFake(manifest.Name, manifest.Settings)` when nil (D39) | M4 |
 | `Authz` | `authz.md` | shared (unscoped); the module passes its own permission names; a list, search, count or export use case filters by `ExtentOf`, a single-record use case uses `AllowIn` (department records) or `Allow`; `Conformance` supplies `authztest.NewFake()` when `Provision` leaves it nil (it denies everything, so a module that forgets its check fails its tests) | M2 |
 | `Audit` | `audit.md` | scoped per module with `Scoped(<name>)`: actions are prefixed `<name>.`, another prefix fails `Invalid`; `Conformance` supplies `audittest.NewFake(manifest.Name)` when `Provision` leaves it nil and its leak rule scans the recorded entries' `Reason` and `Fields` for the seed markers and `[email]` | M1 |
 | `People` | `people.md` | shared (unscoped); `NamesOf`, `ConsentOf`; `Conformance` supplies `peopletest.NewFake()` when nil; a foreign key to `core.person(id)` is allowed and uses `ON DELETE RESTRICT` (`people` calls the module's `DeletePerson` first) | M2 |
 | `Departments` | `departments-events.md` | shared (unscoped); `NamesOf`, `Active` (check `Active` before writing a department's record); `Conformance` supplies `departmentstest.NewFake()` when nil; a foreign key to `core.department(id)` is allowed with `ON DELETE RESTRICT`, the table is never read directly (D37) | M3 |
 | `Events` | `departments-events.md` | shared (unscoped); `InfoOf`; `Conformance` supplies `eventstest.NewFake()` when nil; a foreign key to `core.event(id)` is allowed with `ON DELETE RESTRICT`; an `events.event-setup` contribution is idempotent per (event, module) (D37) | M3 |
 | `Jobs` | `jobs.md` | job names prefixed `<name>.`; jobs run only on the writing copy | M4 |
-| `Notify` | `notify.md` | templates prefixed `<name>.` | M4 |
+| `Notify` | `notify.md` | scoped per module (templates prefixed `<name>.`, shipped in `Manifest.Templates`); `Conformance` supplies `notifytest.NewFake(manifest.Name)` when nil (D39) | M4 |
 | `Files` | `files.md` | shared | Later |
 
 The actor is not a `Deps` field. A module that needs the signed-in person calls `identity.PersonFrom(ctx)` (false when there is no session, for a restricted session and inside `signals.InDelivery`); it imports `core/identity` for that and takes it as a seam (`actorFunc`, as `hello` does) so tests use `identity.WithSession` (identity.md Proposed change 5).
@@ -956,11 +950,10 @@ runtime setting, because the schema an instance may touch must be fixed before `
 runs (D17) and must not change while a replica serves reads (Q-OFFLINE). Proposed knob
 (Proposed change 10): `modules.disabled`, a list of names, default empty, so every
 compiled-in module is on unless named (decision 7); a name not compiled in fails config
-validation. Retention settings per module and level (D30) are added by `settings` for every
-module, with the default "keep forever"; a module needs to declare nothing for them.
+validation. There are no automatic retention settings per module and level (D39, settings decision 11): the module whose spec has the job that enforces a retention declares its own `<name>.retention*` keys (default "keep forever", D30).
 
 Regional differences inside a module are that module's settings; this contract gives them
-one declaration (`SettingDecl`) with a default, a kind and validation, so `settings` can
+one declaration (`SettingDecl`, an alias of `settings.Decl`) with a default, a kind and validation, so `settings` can
 show and check every module's settings the same way.
 
 ## UI
@@ -1114,7 +1107,7 @@ None of its own. What this spec provides for screens elsewhere:
 
 `Manifest.Validate` rejects: the core areas (`core`, `people`, `accounts`, `access`,
 `identity`, `authz`, `departments`, `events`, `signals`, `notify`, `audit`, `files`, `jobs`,
-`settings`, `telemetry`, `db`, `module`, `modules`), the shell packages (`api`, `app`,
+`settings`, `telemetry`, `db`, `module`, `modules`), `regional` (the settings area of the regional's own values, D39; reserved so no module can declare `regional.*` keys; `IsCoreArea` is unchanged), the shell packages (`api`, `app`,
 `config`, `web`, `admin`, `client`), and PostgreSQL's (`public`, `information`, anything
 starting with `pg`). The list is a constant in the package and a test pins it. `func IsCoreArea(name string) bool`
 reports whether `name` is one of the core areas in the first group (decision 21); it cannot
@@ -1204,7 +1197,7 @@ Standard library (`context`, `encoding/json`, `errors`, `fmt`, `io/fs`, `log/slo
 | F3 | `Manifest.Validate` | a permission's `Reaches` fails `model.Sensitivity.Validate` (model.md Proposed change 3) | Invalid, `permissions[i].reaches` | fix the module | `TestManifestValidate_PermissionReachesUnset_ReturnsInvalid` |
 | F4 | `Manifest.Validate` | a permission's `Scope` is zero or out of range | Invalid, `permissions[i].scope` | fix the module | `TestManifestValidate_PermissionScopeInvalid_ReturnsInvalid` |
 | F5 | `Manifest.Validate` | duplicate permission, setting key, signal, capability or point within the manifest | Invalid, the second's field | fix the module | `TestManifestValidate_Duplicates_ReturnInvalid` |
-| F6 | `Manifest.Validate`, `SettingDecl.Validate` | setting: key not an ident; kind invalid; options wrong for the kind; default fails the kind's parse or `Check` | Invalid, `settings[i].<field>` | fix the module | `TestSettingDeclValidate_Table` |
+| F6 | `Manifest.Validate`, `SettingDecl.Validate` | setting: key not `[a-z][a-z0-9]*(_[a-z0-9]+)*` or over 64 bytes; kind invalid; options wrong for the kind; default fails the kind's parse or `Check`; a `Secret` with a `Default` or `Options` | Invalid, `settings[i].<field>` | fix the module | `TestSettingDeclValidate_Table` |
 | F7 | `Manifest.Validate` | a published signal fails `signals.Name.Validate` or its publisher is not `Name`; a subscribed signal fails `Validate` | Invalid, `publishes[i]` / `subscribes[i]` | fix the module | `TestManifestValidate_SignalNames_ReturnInvalid` |
 | F8 | `Manifest.Validate` | a capability fails `Validate`; a name in both `Requires` and `Uses`; a name in `Provides` and in `Requires` or `Uses` | Invalid, `requires[i]` etc. | fix the module | `TestManifestValidate_CapabilityConflicts_ReturnInvalid` |
 | F9 | `Manifest.Validate` | a defined point's definer is not `Name`, or its `Accepts` is nil; a `ContributesTo` fails `Validate` | Invalid, `defines[i]` / `contributesTo[i]` | fix the module | `TestManifestValidate_ExtensionPoints_ReturnInvalid` |
@@ -1257,6 +1250,8 @@ Standard library (`context`, `encoding/json`, `errors`, `fmt`, `io/fs`, `log/slo
 | F55 | `Conformance/seeded_person_exports_data` (obligation) | export of the seeded person is empty or not an object | the rule fails | wire the factory to the fake store the seed writes to; make `ExportPerson` cover every table | mutant `seedIgnored` |
 | F56 | `Conformance/seeded_person_delete_counts_and_is_idempotent` (obligation) | zero `Deletion` after a seed; a `Kept` with empty `Kind` or `Count < 1`; data still exported after a delete with no `Kept`; a second delete not zero | the rule fails | make `DeletePerson` cover every table and report counts | mutants `deleteKeepsSeeded`, `deleteReportsZero`, `deleteNotIdempotent` |
 | F57 | `Conformance/no_personal_data_in_logs` (obligation, privacy-data) | a marker, or `[email]`, in any captured message, attribute, span name or stdout; or any `Violation` at cleanup | the rule fails | log IDs, never fields | mutants `logsSeededName`, `logsSeededEmailUnderBenignKey` (caught as `[email]`), `logsSeededEmailUnderDeniedKey` (caught as a `Violation`), `logsSeededNote`, `spansSeededPhone` |
+| F58 | `Conformance/templates_register` (obligation, D39) | a `Manifest.Templates` file does not parse, has a bad header, is not named `<ident>.<lang>.tmpl`, or an ident lacks `en` | the rule fails naming the file | fix the template (the same checks as `notify.Register`) | `TestConformance_BadTemplate_FailsRule` |
+| F59 | `Conformance/no_personal_data_in_logs` (obligation, D39) | a seed marker or `[email]` in a `notifytest.Fake.Sent()` var or link | the rule fails | pass only the recipient's own data, never a marker-bearing value (notify decision 10) | `TestConformance_NotifyVarLeak_FailsRule` |
 
 Members that cannot fail, and why: `Definer`, `Publisher`, `Permission.Module` (string
 split); the `String` methods (name or `Kind(<n>)`); `NewRegistry`, `Default` (allocation);
@@ -1320,7 +1315,7 @@ one setting (`greeting`, text, default `"hello"`), publishes `hello.greeted` (pa
 `{person}`, inside the transaction that saves a greeting) and subscribes to it, provides
 capability `greeter` (`contracts/greeter`: `Greeter{Greeting(ctx) (string, error)}`) and
 defines point `hello.banner` (shape `greeter.Banner{Key}`), contributes to its own point,
-ships one migration creating `hello.greeting`, serves `GET /public-greeting` (public),
+ships one migration creating `hello.greeting`, one notification template `hello.greeted` (D39, sent from `Greet` so the reference covers the path; `module-hello.md` carries the detail), serves `GET /public-greeting` (public),
 `GET /greeting` (signed in) and `POST /greetings` (signed in) with an OpenAPI fragment,
 implements `PersonData` over the greetings a person saved, starts one goroutine (the
 counter), opens one span per use case in its service through `Deps.Tracer` (children of the
@@ -1376,7 +1371,7 @@ with the proposed answer:
    say "this copy is read-only" and `retry` would not hammer it); expose read-only state for
    `/readyz`. The `db` integration test proves pgx scans `model.ID[E]` (model.md Proposed
    change 4) and that `CheckSchema` works on an empty database.
-5. **`plan/design/settings.md` (row 15):** (pending: target not written) consume `Plan.Settings()` (`SettingDecl`: kinds,
+5. **`plan/design/settings.md` (row 15):** (applied 2026-10-19, D39, with one deviation: no automatic retention keys, the module that runs the job declares them, settings decision 11; the types are aliased from `core/settings`) consume `Plan.Settings()` (`SettingDecl`: kinds,
    defaults, options, `Validate`); store values under `<module>.<key>`; add the retention
    settings per module and sensitivity level automatically (D30, default keep forever);
    give modules a scoped `Deps.Settings`; show titles and descriptions through the message
@@ -1431,7 +1426,7 @@ with the proposed answer:
     permission" to the spec checklist.
 12. **`plan/design/README.md`:** (applied, verified 2026-10-17) add row `4b` `module-hello.md`, "the reference module
     (M0)", Not started; it depends on this spec, `db`, `signals` and `api`.
-13. **`plan/design/jobs.md` (row 14) and `notify.md` (row 11):** (pending: target not written) `Deps.Jobs` and
+13. **`plan/design/jobs.md` (row 14) and `notify.md` (row 11):** (notify applied 2026-10-19, D39: `Deps.Notify` scoped by name, `Manifest.Templates`, `notifytest.NewFake` in `Conformance`, the rule `templates_register`; jobs pending: target not written) `Deps.Jobs` and
     `Deps.Notify` are scoped to the module (job and template names prefixed `<name>.`); jobs
     are registered in `Module.Start` and run only on the writing copy.
 14. **`plan/02-scope.md`, `plan/09-core-features.md`:** (applied, verified 2026-10-17) note that `after-reports` is
@@ -1448,3 +1443,4 @@ with the proposed answer:
     `WithCapability` for each capability the module requires or uses".
 17. **`plan/design/telemetry.md`, `plan/design/app.md`:** none; decision 17 relies on `Scrub`'s
     documented `[email]` substitution as it stands, and decision 20 needs no app.md change.
+18. **`plan/design/settings.md` (row 15) and `notify.md` (row 11), the key grammar and the types (D39):** (applied 2026-10-19) see the Amended line, "Settings" and "Types" above: setting keys use underscores, `SettingKind`/`SettingDecl` are aliases of `settings.Kind`/`settings.Decl`, `regional` is reserved, `Manifest.Templates` is optional.

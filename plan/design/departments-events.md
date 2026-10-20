@@ -1,6 +1,7 @@
 # Departments and events
 
 - **Status:** Implemented (2026-10-18; approved D37)
+- **Amended 2026-10-19 (D39, owner approval of settings):** Proposed change 11 applied: the new-event form reads `regional.timezone` from `GET /api/settings/public` and falls back to the browser's zone when it is empty; the terms arrive as `term_department`, `term_event` and the `_plural`, `_title` and `_plural_title` forms. No behaviour of the services changes.
 - **Package:** `internal/core/departments`, `internal/core/events`, `internal/contracts/eventsetup`   **UI:** `web/src/core/departments/`, `web/src/core/events/`
 - **Depends on specs:** model, lib-errs, lib-core, db, signals, telemetry, audit, identity (the actor), authz (the `Authorizer`, `DepartmentSource`, starter roles), api (`httpx`), web-shell, app (parts), module-contract (`Deps`, extension points)   **Used by:** authz (`DepartmentSource`, the grant screens), every module from Phase 1 (`volunteers` first: `Deps.Departments`, `Deps.Events`, the `events.event-setup` point, the signals), the admin screens (09 §7)
 
@@ -32,7 +33,7 @@
 
 **Expects of dependencies.** `app`: parts 6 `departments` and 7 `events` (jobs, notify, files move to 8–10); `lazyDepartments{a}` as authz's `Departments`; `events`' `link` over `a.set.Contributors(eventsetup.Point)`; `import _ "time/tzdata"`. `authz`: `Allow`, `AllowIn`, `DepartmentSource` semantics (`false, nil` for unknown and archived), `StarterRoles` seeding. `audit`: a `Recorder` per area; `Subject` may be zero when `Record` is set. `signals`: scoped `Bus`; `InDelivery`. `db`: `Transact`, `AfterCommit`, `Wrap`, `*Error.Constraint`, `ErrReadOnly`. `module-contract`: `Deps.Departments`, `Deps.Events`, `Env.CoreExtensionPoints` with `events.event-setup`, fakes in `moduletest`. `web-shell`: `useFormat` zone rendering, `NavEntry.access`. `people`: nothing (the grant screens already use its names route).
 
-**Open questions:** none; the six were answered 2026-10-18 (D37) and are folded into decisions 1, 2, 7, 9, 10 and 19; the D38 follow-ups (2026-10-19) are decisions 19 and 20 to 27. **Proposed changes elsewhere:** 13, listed at the end; 12 applied 2026-10-18 (D37), item 11 (`settings.md`) pending: target not written.
+**Open questions:** none; the six were answered 2026-10-18 (D37) and are folded into decisions 1, 2, 7, 9, 10 and 19; the D38 follow-ups (2026-10-19) are decisions 19 and 20 to 27. **Proposed changes elsewhere:** 13, listed at the end; 12 applied 2026-10-18 (D37), item 11 (`settings.md`) applied 2026-10-19 (D39).
 
 ## Purpose
 
@@ -946,7 +947,7 @@ keys (decision 9); (6) schedule items in M3 (decision 10).
 
 ## Proposed changes elsewhere
 
-Status as of 2026-10-18 (D37): items 1 to 10, 12 and 13 are applied; item 11 (`settings.md`) is pending: target not written. The code halves of items 2, 3 and 7 (`internal/app`, `cmd/bms`, `internal/core/module`, `moduletest`, `web/src`) are left for the implementers. The `plan/README.md` part of item 13 is plan-keeper's.
+Status as of 2026-10-19 (D39): all 13 items are applied (1 to 10, 12 and 13 on 2026-10-18, D37; 11 on 2026-10-19). The code halves of items 2, 3 and 7 (`internal/app`, `cmd/bms`, `internal/core/module`, `moduletest`, `web/src`) are left for the implementers. The `plan/README.md` part of item 13 is plan-keeper's.
 
 1. (applied 2026-10-18 (D37)) **`plan/design/authz.md` (row 7):** mark Proposed change 10 applied: `*departments.Service`
    implements `DepartmentSource` (`Active` = exists and not archived); `app` passes
@@ -1010,9 +1011,9 @@ Status as of 2026-10-18 (D37): items 1 to 10, 12 and 13 are applied; item 11 (`s
     signals `events.event-created|changed|closed|reopened`." Doesn't do adds "leadership
     (authz grants), membership and positions (`volunteers`), work around an event
     (modules), personal data (none held)". Two packages, two parts.
-11. (pending: target not written) **`plan/design/settings.md` (row 15, unwritten):** a `regional.timezone` setting (IANA
+11. (applied 2026-10-19, D39, settings.md Proposed change 7) **`plan/design/settings.md` (row 15):** a `regional.timezone` setting (IANA
     name; default empty = the browser's) the new-event form reads through
-    `GET /api/settings/public`; terminology keys `term_department`, `term_event`.
+    `GET /api/settings/public`, falling back to the browser's zone when empty; terminology keys `term_department`, `term_event` and the forms `term_department_plural`, `term_department_title`, `term_department_plural_title` (likewise for `event`).
 12. (applied 2026-10-18 (D37)) **`plan/09-core-features.md` §5:** replace "how those are modelled is for
     `departments-events` to settle" with "schedule items: a labelled window or moment,
     with an optional key modules can anchor to"; note kinds are rows; §7 lists the four

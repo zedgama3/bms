@@ -6,6 +6,7 @@
 - **Amended 2026-10-18 (D37):** Proposed change 10 applied for `departments` and `events` (`postgres.Migrations`, `departments.Set`, `events.Set`, schema `core`, set names already in the fixed order); `events` `0001` inserts the three seeded kinds.
 - **Amended 2026-10-18 (owner approval of authz/people):** Proposed change 10 applied for `authz` and `people` (`postgres.Migrations`, `authz.Set`, `people.Set`, schema `core`, set names `authz` and `people` already in the fixed order); people's migration `0001` reads `core.account` once to backfill a person row per existing account, the one read across sets (authz.md Proposed change 16, people.md Proposed change 10). The transaction seam is not changed here.
 - **Amended 2026-10-18 (D36 (e); approved by the owner 2026-10-18, D37):** `TxMode(ctx) (Mode, bool)` added: reports whether ctx carries a transaction begun by any `DB` (`*Pool` or `dbtest.Fake`) and its mode, so `audit` never spools an entry while a transaction is in flight (audit.md, same amendment). A package function beside `AfterCommit`, reading the internal `txctx`; cannot fail; `db.None()` never puts a transaction in a ctx, so it reports none there. Decision 21; Summary, Interface, "Who needs each member", Test plan and Proposed changes 14 and 15 updated. Nothing else in the transaction seam changes.
+- **Amended 2026-10-19 (D39, owner approval of settings and notify):** the fixed migration-set order gains `notify` after `jobs` (`identity`, `people`, `authz`, `departments`, `events`, `audit`, `settings`, `jobs`, `notify`, `files`); Proposed change 10 applied for `settings` and `notify`, and Proposed change 13 applied for `notify` (jobs pending).
 - **Package:** `internal/core/db` (Go module `github.com/zedgama3/bms`), plus the test
   helper package `internal/core/db/dbtest`. **UI:** none of its own; the "this copy is
   read-only" banner and `/readyz` are `web-shell.md`'s and `api.md`'s, fed by `ReadOnly()`
@@ -26,7 +27,7 @@
   `Deps.DB`), `api` (`Ping` and `ReadOnly` for `/readyz`; the `ErrReadOnly` mapping),
   `core/module` (`SchemaChecker`, structurally), every core package with tables
   (`identity`, `people`, `departments-events`, `authz`, `audit`, `settings`, `jobs`,
-  `files`: each has a `postgres/` package over `DB` and a migration `Set`), every module's
+  `notify`, `files`: each has a `postgres/` package over `DB` and a migration `Set`), every module's
   `postgres/` package (`DB`, `Transact`, `Wrap`, `*Error`), `signals` (`AfterCommit`),
   `audit` (`TxMode`, and `audittest.Fake` through it), `moduletest` and module tests
   (`dbtest`).
@@ -107,8 +108,8 @@ once, calls `Close` after `Set.Stop` and the HTTP server; core packages export `
 
 Accepted deviations (2026-10-17, see Behavior): `Write` is plain `BEGIN`; the probe also reads `pg_db_role_setting` and the pool is Reset on a state change; a `25006` in a Read tx owned by the pool is `Internal` and flips nothing; a closed pool is `Unavailable`; `Write` nested in `Read` and `AfterCommit` after an ended tx are `Invalid`; `Migrate` returns the files applied so far with the error; `Wrap` keeps only `%T` for unknown errors.
 
-Pending proposed changes (targets not yet written): 10 core specs with tables export a migration `Set` (applied for `audit`, `identity`, `authz`, `people`, `departments` and `events`, 2026-10-18), 11
-`docs/operating.md`, 13 jobs/notify read `ReadOnly()` and stop on `ErrReadOnly`. Approved (D36 (e), D37) and applied 2026-10-18: 14 `TxMode` in 07's `db` "Owns", 15 the skills' audit sentence.
+Pending proposed changes (targets not yet written): 10 core specs with tables export a migration `Set` (applied for `audit`, `identity`, `authz`, `people`, `departments` and `events`, 2026-10-18, and for `settings` and `notify`, 2026-10-19, D39), 11
+`docs/operating.md`, 13 jobs/notify read `ReadOnly()` and stop on `ErrReadOnly` (applied for notify 2026-10-19, D39; jobs pending). Approved (D36 (e), D37) and applied 2026-10-18: 14 `TxMode` in 07's `db` "Owns", 15 the skills' audit sentence.
 
 ## Purpose
 
@@ -1186,7 +1187,7 @@ target to be written and are carried by this list until then. Items 14 and 15 (D
    `Set.Stop` and the HTTP server, within `http.shutdown_timeout`; build the migration
    sets as the `db` bootstrap (implicit), then each core package's exported `Set` in a
    fixed order (`identity`, `people`, `authz`, `departments`, `events`, `audit`,
-   `settings`, `jobs`, `files`, as each spec defines them), then `Plan.Order()` as
+   `settings`, `jobs`, `notify`, `files`, as each spec defines them), then `Plan.Order()` as
    `Set{Name: m.Name, Schema: m.Name, Files: m.Migrations}` for manifests with
    `Migrations != nil`; `bms migrate` runs under a 30 min deadline and prints each
    `Applied`; `bms check` prints `Status` per set and the names (never values) of any
@@ -1214,7 +1215,7 @@ target to be written and are carried by this list until then. Items 14 and 15 (D
    its own constant policy; note beside `Retryable` that `db.ErrReadOnly` is `Unavailable`
    and a loop around a write must check the sentinel first (decision 9).
 10. **Every core spec with tables (`identity`, `people`, `departments-events`, `authz`,
-    `audit`, `settings`, `jobs`, `files`)** (applied 2026-10-18 for `audit`, `identity`, `authz`, `people`, `departments` and `events` (D37: `postgres.Migrations`, `departments.Set`, `events.Set`, schema `core`, set names already in the fixed order; `events` `0001` inserts the three seeded kinds): `postgres.Migrations`, `audit.Set`/`identity.Set`/`authz.Set`/`people.Set`, schema `core`, set names `authz` and `people` in the fixed order; people's `0001` backfills one person row per existing account, the one migration-time read of `core.account` by another set; pending for the rest: specs not written): export `var Migrations fs.FS` from its
+    `audit`, `settings`, `jobs`, `files`)** (applied 2026-10-18 for `audit`, `identity`, `authz`, `people`, `departments` and `events`, and 2026-10-19 (D39) for `settings` (`settings.Set`, schema `core`, set name `settings`) and `notify` (`notify.Set`, schema `core`, set name `notify`, fixed order `... settings`, `jobs`, `notify`, `files`) (D37: `postgres.Migrations`, `departments.Set`, `events.Set`, schema `core`, set names already in the fixed order; `events` `0001` inserts the three seeded kinds): `postgres.Migrations`, `audit.Set`/`identity.Set`/`authz.Set`/`people.Set`, schema `core`, set names `authz` and `people` in the fixed order; people's `0001` backfills one person row per existing account, the one migration-time read of `core.account` by another set; pending for the rest: specs not written): export `var Migrations fs.FS` from its
     `postgres/` package (or a `db.Set`), schema `core`, set name equal to the package name;
     the set names are reserved module names already (module-contract "Reserved module
     names"); `audit`'s migration revokes `UPDATE` and `TRUNCATE` from the application role and
@@ -1236,7 +1237,7 @@ target to be written and are carried by this list until then. Items 14 and 15 (D
     added then. Answered: `Options.Tracer` and `Options.Meter` (nil means none), the
     `QueryTracer` adapter in `Open` step 2, `Pool.Stats()` and the three gauges in `Open`
     step 5, F56 and F57.
-13. **`plan/design/jobs.md` (row 14) and `notify.md` (row 11)** (pending: specs not written): read `ReadOnly()` before
+13. **`plan/design/jobs.md` (row 14) and `notify.md` (row 11)** (notify applied 2026-10-19, D39: the sender loop reads `ReadOnly()` before each tick and stops a batch on `ErrReadOnly`, notify.md Behavior; jobs pending: spec not written): read `ReadOnly()` before
     each run and send, and treat `errors.Is(err, db.ErrReadOnly)` as "stop until the next
     probe", not as a retryable failure.
 14. **`plan/07-abstractions.md`, `db` entry** (applied 2026-10-18, D37): in

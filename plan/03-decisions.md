@@ -534,3 +534,33 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
     are added once a module contributes set-up. Deferred.
 - **(aj)** Kind names may repeat. No change.
 - **Next:** draft the M4 specs, `notify` and `settings`. The owner approved drafting them.
+
+## D39. settings and notify specs approved, with their answers; M4 build is next
+
+- **Status:** Accepted (2026-10-19). Owner answered "The logo should wait for the file spec.
+  approve all with recommendations." [design/settings.md](design/settings.md) and
+  [design/notify.md](design/notify.md) are Approved, with the answers below. Their proposed
+  changes elsewhere are approved. Any logo-related change is dropped.
+- **settings:**
+  - The SMTP password lives in settings, sealed with a key that `bms migrate` generates
+    (`settings.sealing_key`).
+  - Four term forms are stored: singular, plural, singular_title, plural_title. This answers
+    D38(af).
+  - **Logo: deferred to the `files` spec.** No logo row, route or screen in M4. This is the
+    owner's own call, not the draft's recommendation.
+  - One brand colour per scheme, with a 4.5:1 contrast check.
+  - Retention keys are declared by the module that runs the job.
+  - `settings.read` goes to settings-admin only.
+  - The setting-key grammar changes to underscores.
+- **notify:**
+  - The SMTP password follows the settings answer above (sealed with `settings.sealing_key`).
+  - After a password reset, the person goes to the sign-in page; there is no automatic
+    sign-in.
+  - A reset token lasts 1h by default (a 10m–24h setting), is single use, and only the newest
+    one is valid.
+  - "Send me a test" sends only `notify.test`.
+  - notify doesn't depend on jobs.
+  - Its 12 proposed changes elsewhere are approved: the identity forgotten-password flow,
+    authz HoldersOf, the people notifier seam, Manifest.Templates and Deps.Notify, the db set
+    order, the app part row, telemetry, and the Mailpit URL for tests.
+- **Next:** the M4 build.

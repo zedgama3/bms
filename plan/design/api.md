@@ -1627,7 +1627,7 @@ this list until then. Item 17 needs nothing.
     host is not in trusted_proxies"; note that bms sends HSTS as `max-age=31536000` only
     and that a regional controlling every subdomain adds `includeSubDomains` (and
     `preload`) at the front end (decision 26).
-15. **`plan/design/settings.md` (row 15)** (pending: target not written): when the public URL exists (D18), `app` passes
+15. **`plan/design/settings.md` (row 15)** (still pending after the settings spec was approved 2026-10-19, D39: settings.md Proposed change 9 records that the trusted origin and the `Host` allowlist must come from a per-request read, since settings change without a restart, so this change will add `Options.PublicOrigin func(ctx) (string, error)` (a seam `app` fills over `settings.Regional`) when it is designed; it also asks which of two things holds for `GET /api/settings/public` and `/api/settings/theme.css`, which want `ETag` and `304` under the `/api/` `no-store` rule of decision 12: that a handler may set `Cache-Control` and `ETag` on its own response, or that those two paths are exempted like `/api/openapi.json` and `/api/modules`; the owner has not chosen): when the public URL exists (D18), `app` passes
     its origin to `api` as a trusted origin for cross-origin protection, so a front end
     that rewrites `Host` still works; until then the `Host`-preserving rule in 14 holds.
     This adds `Options.TrustedOrigins []string` to this spec at that time, and with it a

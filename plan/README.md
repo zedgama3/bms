@@ -108,9 +108,10 @@ copy and can fork it. Features are modules.
        Reason `key:<key>`; RunSetup with no providers records no `events.setup.ran` entry; most
        failure modes are tested in integration tests rather than in unit tests over an
        in-memory store (as in M2). Not pushed.
-     Next milestone: M4 (see 09-core-features.md).
-     Owner approved drafting the M4 specs (`notify`, `settings`) on 2026-10-19 (D38); that is
-     the next step.
+     Done 2026-10-19: M3 is recorded as done; the D38 answers are applied in commit c5056d5
+     on feat/m1.
+     Done 2026-10-19: `settings` and `notify` are Approved (D39), with the owner's answers.
+     Next milestone: M4 (see 09-core-features.md). The M4 build is next.
      Open follow-ups (all waiting on the owner or architect):
      - (a) Confirm D34 as D20's debug-level exception.
      - (b) The M3 part name `departments-events` is not a core area name for `module.IsCoreArea`
@@ -195,8 +196,10 @@ copy and can fork it. Features are modules.
      - (w) architect, app spec gaps: commands don't start modules, so `people.person-deleted`
        from `bms delete` reaches no module, and PersonData must work on an unstarted module.
        Migrate's seed must reuse serve's split sequence once `jobs` arrives. app.md vs db.md
-       notify set drift.
-     - (x) Earlier still-open items: (a) D34 as D20's debug-level exception; (j) notify drift (merge into w); (k) the
+       notify set drift. The notify set drift is resolved by notify's db.md proposed change
+       (D39).
+     - (x) Earlier still-open items: (a) D34 as D20's debug-level exception; (j) notify drift,
+       resolved 2026-10-19 by notify's db.md proposed change (D39); (k) the
        password hint hard-codes 12; (l) the common-password list barely applies at a
        12-character minimum; and CI waiting for the first push.
      - (y) M3 review: `events.setup.ran` is lost when the request deadline expires mid-run.
@@ -223,7 +226,8 @@ copy and can fork it. Features are modules.
      - (af) Web: page titles are literal "Departments" and "Events", since terms have no plural
        or title-case form. Recommendation: add plural and title term keys in settings.
        Decided 2026-10-19 (D38): add plural and title-case term keys. This belongs to the
-       settings spec (M4) and is deferred to it.
+       settings spec (M4) and is deferred to it. Answered 2026-10-19 (D39): four term forms
+       are stored: singular, plural, singular_title, plural_title.
      - (ag) Web: the "See roles here" link has no role filter, because `GrantList` filters by
        role ID. Recommendation: let `GrantList` accept a role key.
        Decided 2026-10-19 (D38): `GrantList` accepts a role key, and "See roles here" filters
@@ -238,6 +242,13 @@ copy and can fork it. Features are modules.
        until then.
      - (aj) Kind names are not unique. Recommendation: allow it.
        Decided 2026-10-19 (D38): kind names may repeat. No change.
+     - (ak) Web: whether a builtin event kind has been renamed is decided in the browser,
+       against the seeded English names. Recommendation: the server sends `renamed`.
+     - (al) Web: the kind-rename field is pre-filled with the translated label, so in another
+       language a no-change save counts as a rename. Recommendation: pre-fill with the stored
+       name, or skip unchanged saves.
+     - (am) `constraintOf` is duplicated in events, people and authz. Recommendation:
+       `db.ConstraintOf`.
   3. Local dev database (half-reset): the `authz` and `hello` version-2 rows in
      `core.schema_migration` have to be deleted by the owner, then `make migrate` run again.
      The alternative is `make down && make up`. Still half-reset on 2026-10-18; the owner's

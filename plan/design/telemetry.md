@@ -5,6 +5,7 @@
 - **Amended 2026-10-18 (owner approval of audit/identity):** `intake.ErrRateLimited` is, or wraps, the shared `httpx.ErrRateLimited` (api.md, identity.md Proposed change 1); instrument rows for `bms.audit.*` and `bms.identity.*` added (audit.md Proposed change 8, identity.md Proposed change 15); `TraceIDFrom` is recorded on every audit entry (Proposed change 7 applied).
 - **Amended 2026-10-18 (D37):** instrument row `bms.events.setup{module,outcome}` added; spans `departments.<use-case>`, `events.<use-case>` and `events.setup` are token names (departments-events.md Proposed change 9).
 - **Amended 2026-10-18 (owner approval of authz/people):** instrument rows for `bms.authz.decisions` and `bms.people.*` added (authz.md Proposed change 15, people.md Proposed change 13).
+- **Amended 2026-10-19 (D39, owner approval of notify):** instrument rows for `bms.notify.enqueued`, `bms.notify.delivered`, `bms.notify.outbox` and `bms.notify.purged` added, and span names `notify.send`, `notify.tick`, `notify.deliver`, `notify.<use-case>` listed (notify.md Proposed change 9).
 - **Package:** `internal/core/telemetry` (Go module `github.com/zedgama3/bms`), plus the
   sub-package `internal/core/telemetry/intake` (client error reports) and the test helper
   package `internal/core/telemetry/telemetrytest`. **UI:** none of its own; the error
@@ -1023,7 +1024,7 @@ context with flags cleared; anything else is a root. `End` computes `SpanData` f
 observer and ends the SDK span. `RecordError`: `error.kind`, `error.op` (first
 `*errs.Error` by `errors.As`), `exception.message` (scrubbed, capped); status Error unless
 the kind is `Canceled`. Span names are tokens, or the HTTP form `<METHOD> <route pattern>`
-(decision 19); instrument names are tokens; scope names are tokens of at most 64 bytes.
+(decision 19); instrument names are tokens; scope names are tokens of at most 64 bytes. `notify` (D39) uses the span names `notify.send` (Internal), `notify.tick`, `notify.deliver` (Client) and `notify.<use-case>`, with `Token`/`ID`/`Int` attributes only (never an address, subject, body, variable or link).
 
 ### `intake.Accept`, step by step
 
@@ -1081,6 +1082,10 @@ One record at `warn`, message `client error`, attributes: `origin=client`,
 | `bms.people.deletions` | counter, `{deletion}` | `outcome` (a token: `ok` or the failure's kind) | `people` |
 | `bms.events.setup` | counter, `{setup}` | `module` (the module name), `outcome` (a token: `ok` or the failure's kind) | `events` |
 | `bms.people.sections` | counter, `{section}` | `module` (the module name), `outcome` (a token: `ok` or the failure's kind) | `people` |
+| `bms.notify.enqueued` | counter, `{message}` | `owner` (the owner's name, a token) | `notify` (after commit) |
+| `bms.notify.delivered` | counter, `{message}` | `outcome` = `ok`, `retry`, `failed`, `rejected`, `no_address`, `no_smtp`, `read_only` | `notify` |
+| `bms.notify.outbox` | gauge, `{message}` | `status` = `queued`, `sending`, `sent`, `failed` | `notify` (after each tick) |
+| `bms.notify.purged` | counter, `{message}` | — | `notify` |
 | `bms.signals.published`, `bms.signals.delivered`, `bms.jobs.runs` | counter | `signal`/`job` (token), `module`, `outcome` (`delivered`: `ok`, `failed`, `deferred`, `read_only`, `panicked`; `published` has none) | `signals` (signals.md "Telemetry"), `jobs` (Proposed change 6) |
 
 Rates, errors and durations per route also come from Tempo's metrics generator over the
@@ -1399,3 +1404,4 @@ target to be written and are carried by this list until then.
 15. **`plan/design/config.md` (row 3), "Variables the process reads that are not in the
     catalogue"** (applied 2026-10-16): note that `OTEL_EXPORTER_OTLP_PROTOCOL` must be `http/protobuf` and that
     `telemetry` validates the `OTEL_*` variables it reads (this spec's table) at start.
+16. **`plan/design/notify.md` (row 11), the metric table:** (applied 2026-10-19, D39) add `bms.notify.enqueued{owner}`, `bms.notify.delivered{outcome}`, `bms.notify.outbox{status}` and `bms.notify.purged` to the instrument table, and the span names `notify.send`, `notify.tick`, `notify.deliver`, `notify.<use-case>` (Metrics table and Spans above).

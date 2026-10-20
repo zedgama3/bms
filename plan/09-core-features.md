@@ -290,17 +290,18 @@ training and certificates come with qualifications (Q-QUAL), not as profile fiel
   template; send a test e-mail.
 
 **Done when:**
-- Notifications are queued in the database and sent by `jobs`, only on the copy that's
-  writing (Q-OFFLINE), with retries, and never twice.
+- Notifications are queued in the database on the caller's transaction and sent by notify's own
+  sender loop, only on the copy that's writing (Q-OFFLINE), with retries and an idempotency key,
+  and never twice (`jobs` may host the tick later).
 - Templates use the regional's name and terminology; module templates have defaults the
   regional can override.
 - Notices carry no sensitive data: "you have a new message, sign in to read it", with a link
-  (privacy-data).
+  (privacy-data): they carry a link and the regional's name; no narrative, no other person's details.
 - E-mail password reset (single-use, expiring link) is added to accounts once this exists.
 
 **Later:** per-person preferences, digests, SMS or chat channels behind the same contract.
 
-**Specs:** `notify`, `jobs`.
+**Specs:** `notify` (and `jobs` for retention).
 
 ## 7. Admin screens (MVP, M3)
 
@@ -349,8 +350,9 @@ own spec (its screens, built as that core area's `ScreenSet` under `web/src/core
 ## 9. Settings and branding (MVP, basic, from M2)
 
 **People can:**
-- *Settings admin:* set the regional's name, logo, colors, contact address, public URL and
-  default language (D28); choose terminology; change each module's settings.
+- *Settings admin:* set the regional's name, colors, contact address, public URL and
+  default language (D28); choose terminology (four forms per word); change each module's
+  settings. The logo comes with `files` (Later).
 
 **Done when:**
 - Settings are typed, have defaults, and are validated before saving; a module declares its

@@ -3,6 +3,7 @@
 - **Status:** Implemented (2026-10-17); Approved 2026-10-16
 - Amended 2026-10-17 (owner): a `*_FILE` or secrets-file read error reports only the reason class (not found, permission denied, is a directory, unreadable), never the path (F8, F23); ctx is checked before and after each file read, it cannot interrupt a blocking open or read.
 - **Amended 2026-10-18 (owner approval of audit/identity):** Proposed change 6 applied in part for identity (HKDF info `bms identity session v1`, failed logins limited by `httpx.ClientAddrFrom`, rotation a later command, no new keys) and Proposed change 8 applied for audit (`Instance.Name` on every entry; the spool under `Data.Dir/audit/spool`, created by `Run` at start, failing `Invalid` under `data.dir`, printed by app as `BMS_DATA_DIR`).
+- **Amended 2026-10-19 (D39, owner approval of settings):** Proposed change 9 applied: catalogue key `settings.sealing_key` (`BMS_SETTINGS_SEALING_KEY`, `_FILE`, secrets-file field `settings_sealing_key`, `Generated`, when set 32..1024 bytes, no NUL), `Config.Settings{SealingKey secret.Secret}`, `bms migrate` generates it like the session key (decision 7); unset is not an error for any command (decision 17); failure rows F31 to F33.
 - **Package:** `internal/config` (Go module `github.com/zedgama3/bms`; foundation-level, not
   a bms module). **UI:** none.
 - **Depends on specs:** `lib-errs.md` (Implemented): `errs.E`, `errs.Is`, kinds `Invalid`,
@@ -21,12 +22,12 @@
 **Purpose.** Turn what the operator sets in the environment into one typed, validated `Config` the process starts from. Package `internal/config`; imports stdlib, `lib/errs`, `lib/validate`, `lib/secret` (depguard rule `config`); only `cmd/bms` and `app` may import it. Not runtime settings (`settings`), not `OTEL_*` (`telemetry`), not read-only detection (`db`). No tables, permissions, signals, routes or UI.
 
 **Exported names.**
-- `Prefix = "BMS_"`, `TestPrefix = "BMS_TEST_"` (never read by `Load`), `MaxSecretFileBytes = 64<<10`, `SecretsFileName = "secrets.json"`, `SecretsFieldSessionKey = "session_key"`.
+- `Prefix = "BMS_"`, `TestPrefix = "BMS_TEST_"` (never read by `Load`), `MaxSecretFileBytes = 64<<10`, `SecretsFileName = "secrets.json"`, `SecretsFieldSessionKey = "session_key"`, `SecretsFieldSettingsSealingKey = "settings_sealing_key"`.
 - `Key{Name, Env, Default, Required, Secret, Generated, Doc}` and `Keys() []Key` (copy of the single source of truth; `Env` = `BMS_` + upper-cased Name with `.` replaced by `_`).
-- `Config{Instance, DB, HTTP, Session, Secrets, Log, Data, Modules}`: immutable value, safe to log or marshal (credentials are `secret.Secret`). Sections: `Instance{Name}`, `DB{URL secret.Secret, MaxConns, ConnectTimeout, QueryTimeout}`, `HTTP{Addr, RequestTimeout, ShutdownTimeout, MaxBodyBytes int64, TrustedProxies []netip.Prefix, AllowPlaintext}`, `Session{Key secret.Secret}`, `Secrets{File}`, `Log{Level slog.Level, Format LogFormat}` (`LogJSON`, `LogText`), `Data{Dir}`, `Modules{Disabled []string}`.
+- `Config{Instance, DB, HTTP, Session, Settings, Secrets, Log, Data, Modules}`: immutable value, safe to log or marshal (credentials are `secret.Secret`). Sections: `Instance{Name}`, `DB{URL secret.Secret, MaxConns, ConnectTimeout, QueryTimeout}`, `HTTP{Addr, RequestTimeout, ShutdownTimeout, MaxBodyBytes int64, TrustedProxies []netip.Prefix, AllowPlaintext}`, `Session{Key secret.Secret}`, `Settings{SealingKey secret.Secret}`, `Secrets{File}`, `Log{Level slog.Level, Format LogFormat}` (`LogJSON`, `LogText`), `Data{Dir}`, `Modules{Disabled []string}`.
 - `Default() Config` (defaults applied, `db.url` unset, so `Validate` fails on `BMS_DB_URL` only); `Load(ctx, environ []string) (Config, error)`; `(Config) Validate() error` (no I/O).
 
-**Catalogue (variable: default, range).** `BMS_INSTANCE_NAME` main, 1..64 `[a-z0-9]([a-z0-9-]*[a-z0-9])?`; `BMS_DB_URL` (+`_FILE`) required secret, `postgres`/`postgresql` URL with host, <= 4096 bytes, no NUL; `BMS_DB_MAX_CONNS` 10, 1..1000; `BMS_DB_CONNECT_TIMEOUT` 30s, 1s..10m; `BMS_DB_QUERY_TIMEOUT` 10s, 100ms..10m; `BMS_HTTP_ADDR` 127.0.0.1:8080 (non-loopback needs trusted proxies or allow_plaintext); `BMS_HTTP_REQUEST_TIMEOUT` 30s, 1s..10m; `BMS_HTTP_SHUTDOWN_TIMEOUT` 15s, 1s..5m; `BMS_HTTP_MAX_BODY_BYTES` 1048576, 1024..1073741824; `BMS_HTTP_TRUSTED_PROXIES` empty, <= 64 prefixes or bare addresses, no zero-bit prefix; `BMS_HTTP_ALLOW_PLAINTEXT` false; `BMS_SESSION_KEY` (+`_FILE`, else secrets file) generated, when set 32..1024 bytes, no NUL; `BMS_SECRETS_FILE` `<data.dir>/secrets.json`; `BMS_LOG_LEVEL` info (debug|info|warn|error); `BMS_LOG_FORMAT` json (json|text); `BMS_DATA_DIR` data; `BMS_MODULES_DISABLED` empty list, <= 64 unique non-empty items.
+**Catalogue (variable: default, range).** `BMS_INSTANCE_NAME` main, 1..64 `[a-z0-9]([a-z0-9-]*[a-z0-9])?`; `BMS_DB_URL` (+`_FILE`) required secret, `postgres`/`postgresql` URL with host, <= 4096 bytes, no NUL; `BMS_DB_MAX_CONNS` 10, 1..1000; `BMS_DB_CONNECT_TIMEOUT` 30s, 1s..10m; `BMS_DB_QUERY_TIMEOUT` 10s, 100ms..10m; `BMS_HTTP_ADDR` 127.0.0.1:8080 (non-loopback needs trusted proxies or allow_plaintext); `BMS_HTTP_REQUEST_TIMEOUT` 30s, 1s..10m; `BMS_HTTP_SHUTDOWN_TIMEOUT` 15s, 1s..5m; `BMS_HTTP_MAX_BODY_BYTES` 1048576, 1024..1073741824; `BMS_HTTP_TRUSTED_PROXIES` empty, <= 64 prefixes or bare addresses, no zero-bit prefix; `BMS_HTTP_ALLOW_PLAINTEXT` false; `BMS_SESSION_KEY` (+`_FILE`, else secrets file) generated, when set 32..1024 bytes, no NUL; `BMS_SETTINGS_SEALING_KEY` (+`_FILE`, else the secrets file's `settings_sealing_key`) generated, when set 32..1024 bytes, no NUL, unset is never an error; `BMS_SECRETS_FILE` `<data.dir>/secrets.json`; `BMS_LOG_LEVEL` info (debug|info|warn|error); `BMS_LOG_FORMAT` json (json|text); `BMS_DATA_DIR` data; `BMS_MODULES_DISABLED` empty list, <= 64 unique non-empty items.
 
 **Key decisions.**
 1. Environment is the only source (no file, no `.env`). 2. No command-line flags for values.
@@ -43,6 +44,7 @@
 13. `Load` takes `[]string`. 14. Byte count is a plain integer.
 15. `log.format` offers `text` as well as JSON (owner, 2026-10-16).
 16. TLS is offloaded to a front end under stated conditions; bind rule F28 (non-loopback bind needs `trusted_proxies` or `allow_plaintext`), F30 (no zero-bit trusted prefix); loopback recognised by literal host, no DNS.
+17. (D39) the sealing key for settings' `Secret` values is the second generated field of the secrets file, read and generated exactly like the session key; unset is not an error for any command (a deployment that never stores a secret setting needs none), and `settings` answers `Unsupported` when a secret is set without it.
 
 **What callers handle.** `Load` returns the zero `Config` and one `errs.Invalid` joining every problem (catalogue order, unknown variables last), each a `validate.FieldError` named by env variable, never echoing a value (read with `validate.Fields`). Other kinds: `Internal` for an `environ` entry without `=` (F12); `Canceled`/`Timeout` if ctx is done before or after a file read (F13; ctx is checked around each read, it cannot interrupt a blocking open or read such as a FIFO with no writer). A `*_FILE` or secrets-file read error names only a reason class (not found, permission denied, is a directory, unreadable), never the path. A missing secrets file is not an error: `Session.Key` stays unset. Failure modes F1-F30; obligations on `app`: F22 (unknown disabled module, `Invalid` under `BMS_MODULES_DISABLED`, derive `module.Env.Enabled`) and F22b (commands that sign sessions refuse an unset key, naming the secrets file). Secrets-file problems (F23-F27) are `Invalid` under `BMS_SECRETS_FILE`/`BMS_SESSION_KEY`: not a regular file, group/other bits set (Unix), malformed JSON, bad key length, key in both env and file.
 
@@ -50,7 +52,7 @@
 
 **Expects of dependencies.** `lib-errs`: `E`, `Is`, kinds `Invalid`, `Internal`, `Canceled`, `Timeout`. `lib-core`: `validate.Errors`, `FieldError`, `Fields`, `NonEmpty`, `Range`, `OneOf`, `URL`, `ListenAddr` (holds no `retry.Policy`). `lib-secret`: `Secret`, `New`, `Value`, `IsSet`; a Secret decoded from the secrets file refuses the marker texts. `module-contract` decision 7 / Proposed change 10: opt-out enablement via `modules.disabled`, `Env.Enabled`. Expected of `app`: `Load` once per process, print `<Env>: <Reason>` per field (exit 2), `bms migrate` generates the secrets file via `app/secrets.Ensure`, copies sections into `db`, `api`, `identity`, `telemetry`, `audit` options.
 
-**Pending.** Proposed changes 1-13 to `.golangci.yml`, 07-abstractions, app, db, identity (applied in part), telemetry, audit (applied), settings (future `settings_sealing_key` generated key), lib-core row, deploy examples and D20 note; 3 and 5 are applied. Later keys (OIDC, trusted-proxy-header provider, S3 keys, TLS) are added by their specs.
+**Pending.** Proposed changes 1-13 to `.golangci.yml`, 07-abstractions, app, db, identity (applied in part), telemetry, audit (applied), settings (applied 2026-10-19, D39: the `settings_sealing_key` generated key), lib-core row, deploy examples and D20 note; 3 and 5 are applied. Later keys (OIDC, trusted-proxy-header provider, S3 keys, TLS) are added by their specs.
 
 ## Purpose
 
@@ -95,7 +97,7 @@ starts from.
 | pgx's `PGHOST`, `PGPASSWORD`, ... fallbacks | `db` decides whether to honour them when it parses `DB.URL`; `config` neither reads nor clears them. |
 | Trimming, size caps and the `_FILE` convention for secrets held elsewhere | this spec covers only its own keys; `settings` decides how it stores a secret a regional enters (lib-secret "Not responsible for"). |
 | Later keys: OIDC issuer, client ID and client secret; the trusted-proxy-header provider (D15); S3-compatible access keys (`files`); TLS certificate and key if the binary ever serves TLS | the spec that needs them adds a section here through "Proposed changes elsewhere"; the catalogue grows, the mechanism does not change. |
-| Later generated secrets (a sealing key if `settings` stores the SMTP password) | the same secrets file, a new field, added by `bms migrate` the same way (decision 7); `settings.md` proposes the field. |
+| Later generated secrets beyond the session key and the sealing key | the same secrets file, a new field, added by `bms migrate` the same way (decision 7). The sealing key for `settings`' `Secret` values (the SMTP password) is the second field (D39). |
 
 ## Sub-abstractions
 
@@ -103,7 +105,7 @@ starts from.
 |---|---|---|
 | `Key`, `Keys` | Name every value the process accepts, once, with its variable, default and kind. | The table `Load` walks; exported for `bms check` and the docs test. |
 | `Load` | Read the environment into a `Config`, reporting every problem at once. | `os.Environ()` in; `_FILE` for secrets; unknown `BMS_*` refused. |
-| Secrets file | Read the secrets `bms migrate` generated, from one file with a fixed shape and owner-only permissions. | `secrets.json`; JSON object; today one field, `session_key`. Read-only here. |
+| Secrets file | Read the secrets `bms migrate` generated, from one file with a fixed shape and owner-only permissions. | `secrets.json`; JSON object; two fields, `session_key` and `settings_sealing_key`. Read-only here. |
 | Grammars | Parse one text form per type, strictly. | Boolean, integer, duration, byte count, enum, list, CIDR list, listen address, URL. Unexported; pinned by tests. |
 | `Config` and sections | Carry the typed values to `app`, immutably. | `Instance`, `DB`, `HTTP`, `Session`, `Log`, `Data`, `Modules`. |
 | `Validate` | Check ranges and shapes, naming the variable and never the value. | Runs inside `Load`; callable on a hand-built `Config` in tests and `app`. |
@@ -140,10 +142,11 @@ const MaxSecretFileBytes = 64 << 10
 // The generated-secrets file (decision 7). bms migrate creates it under Data.Dir with
 // crypto/rand material, mode 0600, and never overwrites it; Load reads it. It is a JSON
 // object; unknown fields are preserved by migrate and ignored by Load, so a rollback to an
-// older binary still starts. Today it holds one field.
+// older binary still starts. It holds two fields.
 const (
-	SecretsFileName        = "secrets.json" // default: filepath.Join(Data.Dir, SecretsFileName)
-	SecretsFieldSessionKey = "session_key"  // string; the material Session.Key holds
+	SecretsFileName                = "secrets.json"        // default: filepath.Join(Data.Dir, SecretsFileName)
+	SecretsFieldSessionKey         = "session_key"         // string; the material Session.Key holds
+	SecretsFieldSettingsSealingKey = "settings_sealing_key" // string; the material Settings.SealingKey holds (D39)
 )
 
 // Key describes one configuration value. Keys() is the single source of truth: Load
@@ -172,6 +175,7 @@ type Config struct {
 	DB       DB
 	HTTP     HTTP
 	Session  Session
+	Settings Settings
 	Secrets  Secrets
 	Log      Log
 	Data     Data
@@ -240,6 +244,17 @@ type Session struct {
 	// accepts that, and the command that needs the key refuses to run (F22b in app). When
 	// set: 32..1024 bytes, no NUL. The same value on every copy of one installation.
 	Key secret.Secret
+}
+
+// Settings is what the settings service needs to seal secret values (D39).
+type Settings struct {
+	// SealingKey is the material settings derives its AES-256-GCM key from (HKDF-SHA256)
+	// to seal `Secret` values such as the SMTP password. Sources, in this order:
+	// BMS_SETTINGS_SEALING_KEY, BMS_SETTINGS_SEALING_KEY_FILE, the secrets file's
+	// "settings_sealing_key"; more than one source set is an error (F7, F27 shape).
+	// Unset when no source has it: Validate accepts that and no command refuses to run
+	// (decision 17). When set: 32..1024 bytes, no NUL. The same value on every copy.
+	SealingKey secret.Secret
 }
 
 // Secrets says where the generated-secrets file is.
@@ -318,6 +333,7 @@ func (c Config) Validate() error
 | `Instance.Name` | `audit` (which copy, 09 §8), `telemetry` (resource attribute `service.instance.id`), `app` (start-up log) | — | grammar above |
 | `DB` | `db` through `app` (`db.Options{URL, MaxConns, ConnectTimeout, QueryTimeout}`) | — | URL is a `postgres`/`postgresql` URL with a host |
 | `HTTP` | `api` through `app` (listen, request deadline, body cap, client address, the plaintext warning); `app` (shutdown deadline); `Validate` (F28) | — | ranges above; the bind rule of decision 16 |
+| `Settings.SealingKey` | `settings` through `app` (`settings.Options.SealingKey`); `bms migrate` generates it when unset | — | unset, or 32..1024 bytes |
 | `Session.Key` | `identity` through `app`; `app` (every command that signs or verifies a session requires it set, F22b; `bms migrate` generates it when unset) | — | unset, or 32..1024 bytes |
 | `Secrets.File` | `Load` (reads it); `app` (`bms migrate` creates it; the back-up notice names it) | — | a path |
 | `Log` | `telemetry` through `app` (logger) | — | one of the four levels; one of two formats |
@@ -329,7 +345,7 @@ func (c Config) Validate() error
 
 ## Types
 
-Defines `Key`, `Config`, `Instance`, `DB`, `HTTP`, `Session`, `Secrets`, `LogFormat`, `Log`,
+Defines `Key`, `Config`, `Instance`, `DB`, `HTTP`, `Session`, `Settings`, `Secrets`, `LogFormat`, `Log`,
 `Data`, `Modules`. Uses `secret.Secret` (lib-secret), `netip.Prefix`, `slog.Level`, `time.Duration`,
 `validate.FieldError` and `validate.Errors` (lib-core). Uses nothing from `model` (no key
 holds an ID, a sensitivity or an address) and nothing from `core/`.
@@ -350,6 +366,7 @@ holds an ID, a sensitivity or an address) and nothing from `core/`.
 | `http.trusted_proxies` | `BMS_HTTP_TRUSTED_PROXIES` | CIDR list | empty | each a prefix or an address; ≤ 64; no prefix of zero bits (F30); a front end on the same host is listed as `127.0.0.1/32`, otherwise all its clients share the loopback address | api, identity (rate limit by address) |
 | `http.allow_plaintext` | `BMS_HTTP_ALLOW_PLAINTEXT` | bool | `false` | `true` or `false` | config (F28), api (start-up warning) |
 | `session.key` | `BMS_SESSION_KEY` (+`_FILE`), else the secrets file | secret, generated | none: `bms migrate` generates it | when set: 32..1024 bytes, no NUL; one source only (F7, F27); unset refused by the commands that need it (F22b, app) | identity |
+| `settings.sealing_key` | `BMS_SETTINGS_SEALING_KEY` (+`_FILE`), else the secrets file | secret, generated | none: `bms migrate` generates it | when set: 32..1024 bytes, no NUL; one source only (F7, F32); unset is never an error (decision 17) | settings |
 | `secrets.file` | `BMS_SECRETS_FILE` | path | `<data.dir>/secrets.json` | non-empty; if the file exists: regular, owner-only permissions, ≤ 64 KiB, a JSON object (F23–F25) | config, app |
 | `log.level` | `BMS_LOG_LEVEL` | enum | `info` | `debug`, `info`, `warn`, `error` | telemetry |
 | `log.format` | `BMS_LOG_FORMAT` | enum | `json` | `json`, `text` | telemetry |
@@ -376,7 +393,7 @@ writer is `bms migrate` (`app.md`, Proposed change 3):
 
 | File | Path | Owner | Mode | Content |
 |---|---|---|---|---|
-| secrets file | `secrets.file` (default `<data.dir>/secrets.json`) | created by `bms migrate`, read by `config` | regular file, 0600; directory 0700 | a JSON object: `{"session_key": "<64 random bytes from crypto/rand, standard base64>"}`; later generated secrets are further fields; unknown fields preserved |
+| secrets file | `secrets.file` (default `<data.dir>/secrets.json`) | created by `bms migrate`, read by `config` | regular file, 0600; directory 0700 | a JSON object: `{"session_key": "<64 random bytes from crypto/rand, standard base64>", "settings_sealing_key": "<64 random bytes, standard base64>"}`; later generated secrets are further fields; unknown fields preserved |
 
 Nothing here is personal data. `DB.URL` and `Session.Key` are credentials: held in
 `secret.Secret` from the moment they are read, never echoed in a `FieldError.Reason`, never
@@ -486,7 +503,7 @@ notice when it creates that file.
      (Proposed change 3).
    - **The notice**, printed by `migrate` on stderr whenever it created the file or added a
      field, framed so it stands out from the migration log: "Created `<path>`. It holds
-     this installation's session key. Back it up separately from the database and copy it
+     this installation's session key and the key that seals settings' secret values. Back it up separately from the database and copy it
      to every copy of this installation; without it, every session is invalid and anything
      sealed with it is unreadable. Keep it readable by the bms user only." `bms check`
      prints the path of the secrets file in its summary so an operator can confirm what to
@@ -501,9 +518,12 @@ notice when it creates that file.
      backups contain everything: a key kept in the database travels with every dump, and a
      leaked dump would then mint sessions for any admin until someone rotates it. A file
      the operator backs up separately does not.
-   - **Future generated secrets** (a sealing key if `settings` stores the SMTP password)
-     are further fields of the same file, generated the same way by `migrate`, declared in
-     the catalogue as `Generated` keys and read by `Load`. One file to back up, one notice.
+   - **Further generated secrets** are further fields of the same file, generated the same
+     way by `migrate`, declared in the catalogue as `Generated` keys and read by `Load`. One
+     file to back up, one notice. The first is `settings_sealing_key` (D39), which seals
+     `settings`' `Secret` values: `migrate` adds it to an existing file that lacks it,
+     without touching `session_key`, and the notice names it ("the key that seals settings'
+     secret values"); losing it makes sealed values unreadable and the admin re-enters them.
    - **Rotation** is a later command (`bms rotate-secret session_key`), designed with
      `identity.md`; it is not needed for the MVP and the file format allows it (a new
      value, old sessions invalid).
@@ -688,8 +708,11 @@ change 1). `cmd/bms` and `internal/app` are the only packages allowed to import
 | F28 | `Validate` | `http.addr` binds a non-loopback host (an interface address or all interfaces) with `http.trusted_proxies` empty and `http.allow_plaintext` false | Invalid under `BMS_HTTP_ADDR`, reason gives the three ways out | add a front end and trust it, bind loopback, or allow plaintext for development | `TestValidate_NonLoopbackBindWithoutProxy_ReturnsInvalid` |
 | F29 | `Load` | a bool key is not exactly `true` or `false` (`1`, `yes`, `True`) | Invalid | fix the value | `TestLoad_BadBool_ReturnsInvalid` |
 | F30 | `Load`, `Validate` | a trusted-proxy prefix of zero bits (`0.0.0.0/0`, `::/0`) | Invalid under `BMS_HTTP_TRUSTED_PROXIES`, reason "trusts every peer: list the front end's addresses or networks" (api.md decision 8, 2026-10-17; `api.Options.Validate` repeats the check for options built by hand) | list the front end's addresses or networks | `TestValidate_ZeroBitTrustedProxy_ReturnsInvalid` |
+| F31 | `Validate` | `settings.sealing_key` shorter than 32 or longer than 1024 bytes, or contains NUL (D39) | Invalid under `BMS_SETTINGS_SEALING_KEY`; never echoed | generate a proper key | `TestValidate_SealingKey_ReturnsInvalidWithoutEcho` |
+| F32 | `Load` | `settings.sealing_key` set by the environment (either form) and also present in the secrets file, or both `BMS_SETTINGS_SEALING_KEY` and `_FILE` set (D39) | Invalid under `BMS_SETTINGS_SEALING_KEY`, reason names both sources | remove one | `TestLoad_SealingKeyInEnvAndSecretsFile_ReturnsInvalid` |
+| F33 | `Load` | the secrets file's `settings_sealing_key` fails F31, or is not a string (D39) | Invalid under `BMS_SECRETS_FILE` (not a string) or `BMS_SETTINGS_SEALING_KEY` (length, NUL); never echoed | restore the file from backup | `TestLoad_SecretsFileBadSealingKey_ReturnsInvalid` |
 
-A missing secrets file is not a failure of `Load` (decision 3): `TestLoad_SecretsFileAbsent_LeavesSessionKeyUnset`
+An unset `settings.sealing_key` is not a failure of `Load` or of any command (decision 17): `TestLoad_SealingKeyUnset_IsNotAnError`, `TestDefault_Validate_FailsOnlyOnRequired` (unchanged). A missing secrets file is not a failure of `Load` (decision 3): `TestLoad_SecretsFileAbsent_LeavesSessionKeyUnset`
 pins that `Load` succeeds and `Session.Key.IsSet()` is false.
 
 Members that cannot fail, and why: `Keys` (returns a copy of a package-level table that a
@@ -865,7 +888,7 @@ None. The three questions in the first draft were answered by the owner on 2026-
 8. **`plan/design/audit.md` (row 12):** (applied 2026-10-18, by audit.md Proposed change 9; the directory is created by `Run` at start, which is where `Start` is meant here) record `Instance.Name` as the "which copy" of every
    entry (09 §8); keep the read-only spool under `Data.Dir`, creating the directory at
    `Start` and failing with `errs.Invalid` under `BMS_DATA_DIR` if it cannot.
-9. **`plan/design/settings.md` (row 15):** adopt the configuration-versus-settings rule in
+9. **`plan/design/settings.md` (row 15):** (applied 2026-10-19, D39: the key, the field, the section and decision 17 above; `bms migrate` generation is `app/secrets.Ensure` with a second field) adopt the configuration-versus-settings rule in
    "Settings" above; hold the public URL (also the installation's identity, D18), default
    language, retention, terminology, branding, SMTP, sign-up mode, required profile fields
    and the D22 visibility level; if it stores a secret (the SMTP password), seal it with a

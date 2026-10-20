@@ -140,7 +140,7 @@ Rules (enforced by depguard and `make imports`):
 ### identity: who is this?
 - **Purpose:** authenticate a person and manage their session.
 - **Owns:** local accounts keyed by e-mail (D21), the password policy and Argon2id, the signed session token and cookie checked without a write, the `Authenticator` and the principal accessors (`SessionFrom`, `PersonFrom`), per-account revocation, failed-login limits, the superuser and `bms create-superuser` (D23), the `accounts` routes and screens, `identity.account-created`; providers (OIDC, trusted header; D15) Later behind the same service.
-- **Doesn't do:** decide what they may do (`authz`), hold their profile or the playa name (`people`), invitations and password reset until their milestones, e-mail (`notify`).
+- **Doesn't do:** decide what they may do (`authz`), hold their profile or the playa name (`people`), invitations until their milestone, e-mail delivery (`notify`). The forgotten-password flow (token, routes, screens; D39) is identity's, the e-mail is notify's.
 
 ### authz: may they do this?
 - **Purpose:** decide whether a person may perform an action on a resource.
@@ -197,8 +197,8 @@ Rules (enforced by depguard and `make imports`):
 
 ### notify: tell someone something
 - **Purpose:** deliver a notification to a person through a channel.
-- **Owns:** the notifier contract; e-mail first (SMTP), others later behind the same contract.
-- **Doesn't do:** decide who needs telling (modules do).
+- **Owns:** the `Notifier` contract (scoped per owner) and `AddressSender`; templates per language with regional overrides; the outbox (`core.notify_message`) written on the caller's transaction; the sender loop on the writing copy with retries; the SMTP channel (stdlib; Mailpit in development); the `notify` routes and screens; permissions `notify.templates.manage`, `notify.outbox.manage`; settings `notify.*`. E-mail first, others later behind the same `Channel`.
+- **Doesn't do:** decide who needs telling (modules do), subscribe to signals or pick recipients; HTML, attachments, SMS (Later behind `Channel`).
 
 ### audit: who did what, and who saw what
 - **Purpose:** append-only record of sensitive reads and of changes.
@@ -229,8 +229,10 @@ Rules (enforced by depguard and `make imports`):
 - **Spec:** [design/telemetry.md](design/telemetry.md), Approved.
 
 ### settings: what a regional configures at runtime
-- **Purpose:** typed, validated settings per module and for the core (terminology, branding,
+- **Purpose:** typed, validated settings per module and for the core (terminology, brand colours,
   default language (D28), retention periods (D30; default: keep forever)), editable by admins.
+- **Owns:** the declaration types (`Kind`, `Decl`, `Area`), `core.setting` and its revision, terminology (four forms per term per language), `regional.*`, the sealed `Secret` kind, scoped `Reader`s, `Regional` and `TermsFor`, the public document and `theme.css`, the settings screens.
+- **Doesn't do:** process configuration (`config`), the meaning of other areas' keys (their specs), enforcing retention (`jobs`), translations (web-shell), signals on change, the logo (comes with `files`).
 
 ## Delivery
 
