@@ -216,6 +216,12 @@ export interface GeneratedKeys {
   "core.accounts.setting.login_failure_window.title": true;
   "core.accounts.setting.password_min_length.description": true;
   "core.accounts.setting.password_min_length.title": true;
+  "core.accounts.setting.password_reset_address_limit.description": true;
+  "core.accounts.setting.password_reset_address_limit.title": true;
+  "core.accounts.setting.password_reset_client_limit.description": true;
+  "core.accounts.setting.password_reset_client_limit.title": true;
+  "core.accounts.setting.password_reset_cooldown.description": true;
+  "core.accounts.setting.password_reset_cooldown.title": true;
   "core.accounts.setting.password_reset_lifetime.description": true;
   "core.accounts.setting.password_reset_lifetime.title": true;
   "core.accounts.setting.session_lifetime.description": true;

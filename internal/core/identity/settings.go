@@ -33,27 +33,50 @@ var Settings = []settings.Decl{
 		Check: durationRange("login_failure_window", time.Minute, 24*time.Hour)},
 	{Key: "password_reset_lifetime", Kind: settings.Duration, Default: "1h",
 		Check: durationRange("password_reset_lifetime", 10*time.Minute, 24*time.Hour)},
+	{Key: "password_reset_client_limit", Kind: settings.Int, Default: "20",
+		Check: intRange("password_reset_client_limit", 5, 1000)},
+	{Key: "password_reset_address_limit", Kind: settings.Int, Default: "5",
+		Check: intRange("password_reset_address_limit", 1, 100)},
+	{Key: "password_reset_cooldown", Kind: settings.Duration, Default: "5m",
+		Check: durationRange("password_reset_cooldown", 0, time.Hour)},
 }
 
 // CheckSettings is the area's cross-field rule over the effective values (bare keys,
-// defaults filled in): accounts.client_failure_limit is never below
-// accounts.login_failure_limit, because many people share one client address at a venue.
-// It fails errs.Invalid with a validate.FieldError named by the bare key
-// ("client_failure_limit", code range). A value that does not parse is the per-key Check's
-// to report, so it is skipped here. Pure.
+// defaults filled in). Three rules, all reported together when several fail:
+// client_failure_limit is never below login_failure_limit, and (D41)
+// password_reset_client_limit is never below password_reset_address_limit, because many
+// people share one client address at a venue; password_reset_cooldown is never above
+// password_reset_lifetime, or a person whose link expired could not ask for another. It
+// fails errs.Invalid with one validate.FieldError per broken rule, named by the bare key of
+// the value that must move (code range, min and max as the bound). A value that does not
+// parse is the per-key Check's to report, so the rule that needs it is skipped. Pure.
 func CheckSettings(values map[string]string) error {
-	login, err := strconv.ParseInt(strings.TrimSpace(values["login_failure_limit"]), 10, 64)
+	v := validate.Errors{Op: "identity.CheckSettings"}
+	if login, client, ok := intPair(values, "login_failure_limit", "client_failure_limit"); ok && client < login {
+		v.Add(validate.Range("client_failure_limit", client, login, int64(1000)))
+	}
+	if addr, client, ok := intPair(values, "password_reset_address_limit", "password_reset_client_limit"); ok && client < addr {
+		v.Add(validate.Range("password_reset_client_limit", client, addr, int64(1000)))
+	}
+	cooldown, cerr := time.ParseDuration(strings.TrimSpace(values["password_reset_cooldown"]))
+	lifetime, lerr := time.ParseDuration(strings.TrimSpace(values["password_reset_lifetime"]))
+	if cerr == nil && lerr == nil && cooldown > lifetime {
+		v.Add(durationOutOfRange("password_reset_cooldown", cooldown, 0, lifetime))
+	}
+	return v.Err() //nolint:wrapcheck // Err already carries Op and errs.Invalid
+}
+
+// intPair parses two integer values by key; ok is false when either does not parse.
+func intPair(values map[string]string, a, b string) (x, y int64, ok bool) {
+	x, err := strconv.ParseInt(strings.TrimSpace(values[a]), 10, 64)
 	if err != nil {
-		return nil //nolint:nilerr // the key's own Check reports a value that does not parse
+		return 0, 0, false
 	}
-	client, err := strconv.ParseInt(strings.TrimSpace(values["client_failure_limit"]), 10, 64)
+	y, err = strconv.ParseInt(strings.TrimSpace(values[b]), 10, 64)
 	if err != nil {
-		return nil //nolint:nilerr // the key's own Check reports a value that does not parse
+		return 0, 0, false
 	}
-	if client < login {
-		return validate.Range("client_failure_limit", client, login, int64(1000)) //nolint:wrapcheck // a field error, re-fielded by settings
-	}
-	return nil
+	return x, y, true
 }
 
 // durationRange is a Check: the value parses as a duration within lo..hi. A value that does

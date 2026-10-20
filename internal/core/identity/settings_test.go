@@ -1,6 +1,7 @@
 package identity_test
 
 import (
+	"strconv"
 	"testing"
 	"time"
 
@@ -30,10 +31,17 @@ func TestSettings_DeclarationsAreValidAndDefaultToDefaultPolicy(t *testing.T) {
 		"client_failure_limit":       "100",
 		"login_failure_window":       def.LoginFailureWindow.String(),
 		"password_reset_lifetime":    def.PasswordResetLifetime.String(),
+		// D41: the reset limits default to DefaultPolicy's fields (20, 5, 5m).
+		"password_reset_client_limit":  strconv.Itoa(def.PasswordResetClientLimit),
+		"password_reset_address_limit": strconv.Itoa(def.PasswordResetAddressLimit),
+		"password_reset_cooldown":      def.PasswordResetCooldown.String(),
+	}
+	if want["password_reset_client_limit"] != "20" || want["password_reset_address_limit"] != "5" || def.PasswordResetCooldown != 5*time.Minute {
+		t.Errorf("DefaultPolicy reset limits = %s/%s/%v, want 20/5/5m", want["password_reset_client_limit"], want["password_reset_address_limit"], def.PasswordResetCooldown)
 	}
 	for k, w := range want {
 		g := got[k]
-		if k == "session_lifetime" || k == "superuser_session_lifetime" || k == "login_failure_window" || k == "password_reset_lifetime" {
+		if k == "session_lifetime" || k == "superuser_session_lifetime" || k == "login_failure_window" || k == "password_reset_lifetime" || k == "password_reset_cooldown" {
 			gd, gerr := time.ParseDuration(g)
 			wd, werr := time.ParseDuration(w)
 			if gerr != nil || werr != nil || gd != wd {
@@ -79,6 +87,20 @@ func TestSettings_Checks_AgreeWithPolicyValidate(t *testing.T) {
 		{"client_failure_limit", "9", false},
 		{"login_failure_window", "24h", true},
 		{"login_failure_window", "30s", false},
+		// D41: lo-1, lo, hi, hi+1 of the three reset keys.
+		{"password_reset_client_limit", "4", false},
+		{"password_reset_client_limit", "5", true},
+		{"password_reset_client_limit", "1000", true},
+		{"password_reset_client_limit", "1001", false},
+		{"password_reset_address_limit", "0", false},
+		{"password_reset_address_limit", "1", true},
+		{"password_reset_address_limit", "100", true},
+		{"password_reset_address_limit", "101", false},
+		{"password_reset_cooldown", "-1s", false},
+		{"password_reset_cooldown", "0s", true},
+		{"password_reset_cooldown", "0", true},
+		{"password_reset_cooldown", "1h", true},
+		{"password_reset_cooldown", "1h1s", false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.key+"="+tc.value, func(t *testing.T) {

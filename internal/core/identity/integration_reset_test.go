@@ -233,7 +233,7 @@ func TestRequestPasswordReset_LifetimeFollowsPolicy(t *testing.T) {
 	}
 	// a changed lifetime applies to tokens minted after the change
 	ps.set(func(p *identity.Policy) { p.PasswordResetLifetime = 10 * time.Minute })
-	wantNoErr(t, r.clk.Advance(identity.PasswordResetCooldown))
+	wantNoErr(t, r.clk.Advance(defaultCooldown))
 	wantNoErr(t, r.request(u.email))
 	if got := r.n.Sent()[1].Vars["lifetime_minutes"]; got != "10" {
 		t.Errorf("lifetime = %q", got)
@@ -374,7 +374,7 @@ func TestRequestPasswordReset_DummyVerifiedOncePerRequest(t *testing.T) {
 		{"superuser", super, nil, false},
 		{"known, inside the cooldown", known, nil, false},
 		{"F72 send unsupported after the probe", known, func() {
-			wantNoErr(t, r.clk.Advance(identity.PasswordResetCooldown)) // past the cooldown, so the send is reached
+			wantNoErr(t, r.clk.Advance(defaultCooldown)) // past the cooldown, so the send is reached
 			probe.set(func(p *probeNotifier) { p.sendErr = errs.E("test.send", errs.Unsupported, notify.ErrNotConfigured) })
 		}, false},
 		{"read-only, known", known, func() {
@@ -440,7 +440,7 @@ func TestRequestPasswordReset_Twice_OnlyNewestValid(t *testing.T) {
 	r := newResetRig(t)
 	u := r.signUp("ada.quill")
 	first := r.requestToken(u)
-	wantNoErr(t, r.clk.Advance(identity.PasswordResetCooldown))
+	wantNoErr(t, r.clk.Advance(defaultCooldown))
 	second := r.requestToken(u)
 	if first == second {
 		t.Fatal("two requests minted the same token")
@@ -460,7 +460,7 @@ func TestRequestPasswordReset_PurgesUsedAndExpired(t *testing.T) {
 	if rows := r.rows(); len(rows) != 1 || rows[0].Used == nil {
 		t.Fatalf("rows after a redemption = %+v", rows)
 	}
-	wantNoErr(t, r.clk.Advance(identity.PasswordResetCooldown))
+	wantNoErr(t, r.clk.Advance(defaultCooldown))
 	_ = r.requestToken(u)
 	if rows := r.rows(); len(rows) != 1 || rows[0].Used != nil {
 		t.Errorf("rows after the next request = %+v, want one unused", rows)
@@ -527,7 +527,7 @@ func TestRequestPasswordReset_SendFails_EarlierTokenStillValid(t *testing.T) {
 	r := newResetRig(t)
 	u := r.signUp("ada.quill")
 	old := r.requestToken(u)
-	wantNoErr(t, r.clk.Advance(identity.PasswordResetCooldown))
+	wantNoErr(t, r.clk.Advance(defaultCooldown))
 	r.n.Fail(errDown)
 	wantKind(t, r.request(u.email), errs.Unavailable)
 	r.n.Fail(nil)
@@ -604,7 +604,7 @@ func TestResetRequestAndComplete_Racing_NoDeadlock(t *testing.T) {
 		wantNoErr(t, r.clk.Advance(16*time.Minute))
 		tok := r.requestToken(u)
 		// past the cooldown, so the concurrent requests really race the redemption
-		wantNoErr(t, r.clk.Advance(identity.PasswordResetCooldown))
+		wantNoErr(t, r.clk.Advance(defaultCooldown))
 		sentBefore := len(r.n.Sent())
 		const n = 4
 		var wg sync.WaitGroup

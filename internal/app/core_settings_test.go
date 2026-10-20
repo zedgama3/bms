@@ -37,6 +37,9 @@ func TestSettingsPolicy_ReadsEveryKey(t *testing.T) {
 	r.Set("client_failure_limit", "50")
 	r.Set("login_failure_window", "10m")
 	r.Set("password_reset_lifetime", "2h")
+	r.Set("password_reset_client_limit", "40")
+	r.Set("password_reset_address_limit", "7")
+	r.Set("password_reset_cooldown", "10m")
 	got, err := settingsPolicy{r: r}.Policy(context.Background())
 	if err != nil {
 		t.Fatalf("Policy: %v", err)
@@ -45,7 +48,9 @@ func TestSettingsPolicy_ReadsEveryKey(t *testing.T) {
 		SignupMode: identity.SignupInvitation, SessionLifetime: 48 * time.Hour,
 		SuperuserSessionLifetime: 30 * time.Minute, PasswordMinLength: 16,
 		LoginFailureLimit: 5, ClientFailureLimit: 50, LoginFailureWindow: 10 * time.Minute,
-		PasswordResetLifetime: 2 * time.Hour,
+		PasswordResetLifetime:    2 * time.Hour,
+		PasswordResetClientLimit: 40, PasswordResetAddressLimit: 7,
+		PasswordResetCooldown: 10 * time.Minute,
 	}
 	if got != want {
 		t.Errorf("Policy = %+v, want %+v", got, want)

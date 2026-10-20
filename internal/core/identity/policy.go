@@ -30,6 +30,10 @@ type Policy struct {
 	ClientFailureLimit       int           // accounts.client_failure_limit (per client address; default 100)
 	LoginFailureWindow       time.Duration // accounts.login_failure_window
 	PasswordResetLifetime    time.Duration // accounts.password_reset_lifetime (how long a reset link works)
+
+	PasswordResetClientLimit  int           // accounts.password_reset_client_limit (D41; reset requests per client address per window; default 20)
+	PasswordResetAddressLimit int           // accounts.password_reset_address_limit (D41; per canonical submitted address per window; default 5)
+	PasswordResetCooldown     time.Duration // accounts.password_reset_cooldown (D41; shortest gap between reset e-mails to one account; default 5m; 0 = off)
 }
 
 // DefaultPolicy returns the shipped defaults (Settings table). Cannot fail.
@@ -43,12 +47,19 @@ func DefaultPolicy() Policy {
 		ClientFailureLimit:       100,
 		LoginFailureWindow:       15 * time.Minute,
 		PasswordResetLifetime:    time.Hour,
+
+		PasswordResetClientLimit:  20,
+		PasswordResetAddressLimit: 5,
+		PasswordResetCooldown:     5 * time.Minute,
 	}
 }
 
 // Validate fails errs.Invalid with a validate.FieldError per key out of its range; the
 // field is the settings key ("accounts.signup", ...). accounts.client_failure_limit must be
-// 10..1000 and at least accounts.login_failure_limit.
+// 10..1000 and at least accounts.login_failure_limit. The reset limits (D41) follow the same
+// shape: accounts.password_reset_client_limit is 5..1000 and at least
+// accounts.password_reset_address_limit (1..100), and accounts.password_reset_cooldown is
+// 0..1h (0 = off) and never above accounts.password_reset_lifetime.
 func (p Policy) Validate() error {
 	v := validate.Errors{Op: "identity.Policy.Validate"}
 	if p.SignupMode != SignupOpen && p.SignupMode != SignupInvitation {
@@ -63,6 +74,9 @@ func (p Policy) Validate() error {
 	v.Add(validate.Range("accounts.client_failure_limit", p.ClientFailureLimit, min(max(10, p.LoginFailureLimit), 1000), 1000))
 	v.Add(validate.Range("accounts.login_failure_window", p.LoginFailureWindow, time.Minute, 24*time.Hour))
 	v.Add(validate.Range("accounts.password_reset_lifetime", p.PasswordResetLifetime, 10*time.Minute, 24*time.Hour))
+	v.Add(validate.Range("accounts.password_reset_address_limit", p.PasswordResetAddressLimit, 1, 100))
+	v.Add(validate.Range("accounts.password_reset_client_limit", p.PasswordResetClientLimit, min(max(5, p.PasswordResetAddressLimit), 1000), 1000))
+	v.Add(validate.Range("accounts.password_reset_cooldown", p.PasswordResetCooldown, 0, min(time.Hour, p.PasswordResetLifetime)))
 	return v.Err() //nolint:wrapcheck // Err already carries Op and errs.Invalid
 }
 

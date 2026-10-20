@@ -134,14 +134,17 @@ func TestDeclarations_PermissionsSignalSet(t *testing.T) {
 func TestDefaultPolicy_Values(t *testing.T) {
 	p := identity.DefaultPolicy()
 	want := identity.Policy{
-		SignupMode:               identity.SignupOpen,
-		SessionLifetime:          720 * time.Hour,
-		SuperuserSessionLifetime: time.Hour,
-		PasswordMinLength:        12,
-		LoginFailureLimit:        10,
-		ClientFailureLimit:       100,
-		LoginFailureWindow:       15 * time.Minute,
-		PasswordResetLifetime:    time.Hour,
+		SignupMode:                identity.SignupOpen,
+		SessionLifetime:           720 * time.Hour,
+		SuperuserSessionLifetime:  time.Hour,
+		PasswordMinLength:         12,
+		LoginFailureLimit:         10,
+		ClientFailureLimit:        100,
+		LoginFailureWindow:        15 * time.Minute,
+		PasswordResetLifetime:     time.Hour,
+		PasswordResetClientLimit:  20,
+		PasswordResetAddressLimit: 5,
+		PasswordResetCooldown:     5 * time.Minute,
 	}
 	if p != want {
 		t.Errorf("DefaultPolicy = %+v, want %+v", p, want)

@@ -61,7 +61,7 @@ func TestRequestPasswordReset_AfterCooldown_Sends(t *testing.T) {
 	u := r.signUp("ada.quill")
 	first := r.requestToken(u)
 
-	wantNoErr(t, r.clk.Advance(identity.PasswordResetCooldown-time.Second))
+	wantNoErr(t, r.clk.Advance(defaultCooldown-time.Second))
 	wantNoErr(t, r.request(u.email))
 	if len(r.n.Sent()) != 1 {
 		t.Fatalf("one second inside the cooldown sent a message")
@@ -164,7 +164,7 @@ func TestRequestPasswordReset_FirstRequest_NoCooldownEntry(t *testing.T) {
 func TestResetRequests_DoNotSpendChangePasswordOrSignInBuckets(t *testing.T) {
 	r := newResetRig(t)
 	u := r.signUp("ada.quill")
-	for range identity.ResetAddressLimit {
+	for range identity.DefaultPolicy().PasswordResetAddressLimit {
 		wantNoErr(t, r.request(u.email))
 	}
 	wantRateLimited(t, r.request(u.email))

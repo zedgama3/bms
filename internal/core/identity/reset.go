@@ -77,8 +77,9 @@ func (s *Service) newResetToken() (string, error) {
 
 // RequestPasswordReset asks for a reset link for the account with this address. No session
 // and no permission. Steps: validate the address (Invalid, field email, F69); count the
-// request in the reset limiter's two buckets (ResetClientLimit per client address and
-// ResetAddressLimit per submitted address inside Policy.LoginFailureWindow; apart from
+// request in the reset limiter's two buckets (Policy.PasswordResetClientLimit per client
+// address and Policy.PasswordResetAddressLimit per submitted address inside
+// Policy.LoginFailureWindow, read on this request (D41); apart from
 // sign-in's buckets) whatever its outcome (Unavailable wrapping httpx.ErrRateLimited, F70); Notify nil, or Notify.Configured false: Unsupported before
 // the account lookup, for every address alike (F71), and a Configured failure fails with
 // its kind, also before the lookup (F91); verify the dummy hash, exactly once for every
@@ -87,7 +88,7 @@ func (s *Service) newResetToken() (string, error) {
 // An unknown, a disabled and a superuser address record identity.password.reset-requested
 // with Outcome Denied, send nothing and return nil (F73). Otherwise, in one Write
 // transaction: lock the account row and read its flags and its newest reset row; an account disabled or made the superuser's since the lookup is answered like the denied paths (Denied entry, nothing sent); one younger than
-// PasswordResetCooldown records the request with Outcome Denied and Reason "cooldown",
+// Policy.PasswordResetCooldown (when positive; 0 skips the comparison but not the read, D41) records the request with Outcome Denied and Reason "cooldown",
 // sends nothing, keeps the earlier token and returns nil, the same answer as any other
 // silent path (F92); else replace the account's tokens by one (the SHA-256 of a fresh random token is
 // stored, never the token), enqueue identity.password-reset with the link and the lifetime,
@@ -117,7 +118,7 @@ func (s *Service) RequestPasswordReset(ctx context.Context, email model.Email) (
 	// The reset limiter's own two buckets, apart from sign-in's (D40, F93), and every
 	// request counts once: nothing is taken back, so the count cannot tell a known address
 	// from an unknown one.
-	rv, err := s.reserveIn(ctx, op, s.resetLimiter, addr, ResetClientLimit, ResetAddressLimit, pol.LoginFailureWindow)
+	rv, err := s.reserveIn(ctx, op, s.resetLimiter, addr, pol.PasswordResetClientLimit, pol.PasswordResetAddressLimit, pol.LoginFailureWindow)
 	if err != nil {
 		return err
 	}
@@ -210,7 +211,9 @@ func (s *Service) resetSend(ctx context.Context, op string, pol Policy, rec acco
 			// as the lookup would have given.
 			return s.record(ctx, deniedEntry(rec, true))
 		}
-		if !st.NewestAt.IsZero() && st.NewestAt.After(s.now().Add(-PasswordResetCooldown)) {
+		// A cooldown of 0 is off: the state is still read and the row still locked, so the
+		// silent and the sending paths keep one shape (D41).
+		if pol.PasswordResetCooldown > 0 && !st.NewestAt.IsZero() && st.NewestAt.After(s.now().Add(-pol.PasswordResetCooldown)) {
 			e := deniedEntry(rec, true)
 			e.Reason = reasonCooldown
 			return s.record(ctx, e)

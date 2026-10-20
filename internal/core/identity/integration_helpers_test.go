@@ -257,3 +257,6 @@ func (f *faultDB) statements() []string {
 	defer f.mu.Unlock()
 	return append([]string(nil), f.sqls...)
 }
+
+// defaultCooldown is the policy default (5m), read from DefaultPolicy rather than a constant.
+var defaultCooldown = identity.DefaultPolicy().PasswordResetCooldown

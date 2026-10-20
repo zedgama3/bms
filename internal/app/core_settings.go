@@ -174,7 +174,7 @@ func (r *refresher) stop(ctx context.Context) error {
 // maps the accounts.* keys onto Policy, one read each. Identity validates what it returns.
 type settingsPolicy struct{ r settings.Reader }
 
-// Policy reads the eight keys. It fails with the Reader's kinds.
+// Policy reads the eleven keys. It fails with the Reader's kinds.
 func (p settingsPolicy) Policy(ctx context.Context) (identity.Policy, error) {
 	const op = "app.settingsPolicy.Policy"
 	var pol identity.Policy
@@ -191,6 +191,7 @@ func (p settingsPolicy) Policy(ctx context.Context) (identity.Policy, error) {
 		{"superuser_session_lifetime", &pol.SuperuserSessionLifetime},
 		{"login_failure_window", &pol.LoginFailureWindow},
 		{"password_reset_lifetime", &pol.PasswordResetLifetime},
+		{"password_reset_cooldown", &pol.PasswordResetCooldown},
 	} {
 		if *f.dst, err = p.r.Duration(ctx, f.key); err != nil {
 			return identity.Policy{}, fmt.Errorf("%s: accounts.%s: %w", op, f.key, err)
@@ -203,6 +204,8 @@ func (p settingsPolicy) Policy(ctx context.Context) (identity.Policy, error) {
 		{"password_min_length", &pol.PasswordMinLength},
 		{"login_failure_limit", &pol.LoginFailureLimit},
 		{"client_failure_limit", &pol.ClientFailureLimit},
+		{"password_reset_client_limit", &pol.PasswordResetClientLimit},
+		{"password_reset_address_limit", &pol.PasswordResetAddressLimit},
 	} {
 		n, err := p.r.Int(ctx, f.key)
 		if err != nil {
