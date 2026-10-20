@@ -19,12 +19,17 @@ const (
 	assetCache = "public, max-age=31536000, immutable"
 	noCache    = "no-cache"
 	indexName  = "index.html"
+
+	// passwordResetPath is the SPA route whose URL carries a one-time token in the query. Its
+	// document response sends no referrer at all (api.md pipeline step 4, F60; D40).
+	passwordResetPath = "/accounts/password-reset"
 )
 
 // serveUI serves the built web shell (decision 12): a file that exists is sent with a
 // cache header by prefix; a path with no file and no extension is the SPA's and gets
 // index.html; a path with an extension and no file is 404. Every text/html response
-// carries the CSP.
+// carries the CSP, and the document for /accounts/password-reset also carries
+// Referrer-Policy: no-referrer.
 func (s *Server) serveUI(w http.ResponseWriter, r *http.Request) {
 	// Every response of the UI handler carries the policy, whatever it holds: a type the
 	// browser sniffs (extensionless) or renders as a document (.svg, .xhtml) must not
@@ -50,6 +55,11 @@ func (s *Server) serveUI(w http.ResponseWriter, r *http.Request) {
 		if info, err = fs.Stat(s.ui, name); err != nil || !info.Mode().IsRegular() {
 			s.uiNotFound(w)
 			return
+		}
+		if path.Clean(r.URL.Path) == passwordResetPath {
+			// Replaces the pipeline's strict-origin-when-cross-origin for this one document,
+			// so the token URL is never sent as a referrer, even if a link is added later.
+			w.Header().Set("Referrer-Policy", "no-referrer")
 		}
 	}
 	s.sendFile(w, r, name, info)
