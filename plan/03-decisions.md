@@ -607,3 +607,15 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
     can certify that the document is authentic.
   - The shape (a `qualifications` capability, D19) is for the architect to decide in the
     `volunteers` spec. The certificate upload depends on `files`.
+
+## D41. Owner's answers of 2026-10-20: reset limits as settings, qualification verification
+
+- **Status:** Accepted (2026-10-20), decided by the owner.
+- **Password-reset limits (refines D40, Q-RESET-RATE):** the limits built as constants (20
+  reset requests per client address and 5 per submitted address per login-failure window,
+  15 minutes by default; a 5-minute per-account cooldown) become `accounts.*` regional
+  settings with those defaults. The owner's answer: "Make it a setting. The defaults are good."
+  The identity amendment that specifies the keys and ranges is being drafted by the architect.
+- **Qualification verification (refines D40, Q-QUAL):** only department leads verify
+  qualifications. A department-specific qualification is verified by that department's leads.
+  An org-wide qualification (for example ICS100) is verified by any department lead.

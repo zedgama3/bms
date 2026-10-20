@@ -271,11 +271,11 @@ training and certificates come with qualifications (§5, Q-QUAL), not as profile
   ranger department's field training or medical lead training) or is org-wide (for example
   ICS-100). Two ways in: (a) a lead records it from their own training records (for example
   the last training date the person took); (b) the person uploads a copy of their certificate
-  (needs `files`, Later) and a lead verifies the document is authentic. Any lead can verify an
-  org-wide qualification; for a department-scoped one, that department's leads do.
-  *Assumption for the architect:* the owner said "any lead" only for the org-wide certificate;
-  the department-leads-only rule for department qualifications is inferred from the earlier
-  answer (2026-10-16), so confirm it. The capability shape and the data model are for the
+  (needs `files`, Later) and a lead verifies the document is authentic. Any department lead
+  can verify an org-wide qualification (D40).
+  **Only department leads verify qualifications** (owner, 2026-10-20, D41): never ordinary
+  volunteers, and never self-attested. A department-scoped qualification is verified only by a
+  lead of that department. The capability shape and the data model are for the
   architect, with the `volunteers` spec; the core only provides departments, permissions and
   (later) `files`.
 - An archived department keeps its history, takes no new work, and disappears from lists

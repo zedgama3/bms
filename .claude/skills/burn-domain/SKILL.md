@@ -161,6 +161,9 @@ mark should be checked too.
   by software: departments keep training records, and a lead looks up the person's last
   training and applies it to them. A recorded qualification has the date acquired, the date it
   expires (or none, indefinite) and who approved it.
+- **Only department leads verify qualifications** (owner, 2026-10-20). Never ordinary
+  volunteers, and never self-attested. A department-specific qualification is verified only by
+  a lead of that department; an org-wide one can be verified by any department lead.
 - **Department-specific or org-wide.** Some qualifications belong to one department, such as
   a ranger department's field training or medical lead training; others are org-wide, such as
   ICS-100.

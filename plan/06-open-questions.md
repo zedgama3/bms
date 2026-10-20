@@ -85,6 +85,8 @@ here, copy it into the document it affects, and tick the box.
       certificate and any lead certifies it. The shape (a `qualifications` capability, D19) is
       for the architect in the `volunteers` spec; the certificate upload depends on `files`.
       → D40
+      Refined 2026-10-20: only department leads verify qualifications; department-specific
+      ones by that department's leads, org-wide ones (e.g. ICS100) by any department lead. → D41
 - [x] **Q-GOV1:** Governance: the code of conduct is the Contributor Covenant. Who can merge and
       how maintainers are added: the owner merges for now; nothing more decided. → D40
 - [x] **Q-GOV2:** Contribution sign-off: DCO (`Signed-off-by`), no CLA. → D40
@@ -93,6 +95,8 @@ here, copy it into the document it affects, and tick the box.
       breaking changes only in a major version, additions in minor, fixes in patch. → D40
 - [x] **Q-AMEND1:** Pending spec amendments (1)–(5) approved with recommendations. → D40
 - [x] **Q-RESET-RATE:** Reset requests: own limit buckets plus a per-account cooldown. → D40
+      Refined 2026-10-20: the limits become `accounts.*` regional settings with the current
+      defaults (the keys and ranges are in the identity amendment, being drafted). → D41
 - [x] **Q-RESET-LIFE:** Templates get the reset lifetime as a number; each template words the
       unit. → D40
 - [x] **Q-SETTINGS-REVIEW:** Settings review points (1)–(4) approved as recommended. → D40
