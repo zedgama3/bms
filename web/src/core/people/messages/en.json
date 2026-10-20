@@ -167,5 +167,6 @@
   "core.people.setting.emergency_contacts.title": "Emergency contacts",
   "core.people.setting.emergency_contacts.description": "Whether the profile asks for people to call in an emergency. They are never required.",
   "core.people.setting.emergency_contacts.option.hidden": "Not asked",
-  "core.people.setting.emergency_contacts.option.optional": "Asked, but optional"
+  "core.people.setting.emergency_contacts.option.optional": "Asked, but optional",
+  "core.people.template.deletion-requested.title": "Deletion request waiting"
 }

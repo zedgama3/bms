@@ -135,6 +135,15 @@ describe("the frame for accounts", () => {
     },
   );
 
+  it("stays on the reset screen for a restricted session, with no returnTo", async () => {
+    const { router } = mountApp({
+      path: "/accounts/password-reset?token=abc",
+      session: { ...ident, password_change_required: true },
+    });
+    await waitFor(() => expect(router()!.state.location.pathname).toBe("/accounts/password-reset"));
+    expect(router()!.state.location.search).not.toContain("returnTo");
+  });
+
   it("does not redirect an ordinary session", async () => {
     const { router } = mountApp({ path: "/hello", session: ident });
     await screen.findByRole("heading", { level: 1, name: "Hello!" });

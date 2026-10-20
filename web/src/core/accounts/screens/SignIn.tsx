@@ -1,9 +1,9 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router";
 import { api, refreshSession, safeReturnTo, setSessionEnded, useSession } from "@/api";
 import { useT } from "@/i18n";
-import { Button, ErrorSummary, linkButtonClass, useFieldErrors, useToast } from "@/ui";
+import { Banner, Button, ErrorSummary, linkButtonClass, useFieldErrors, useToast } from "@/ui";
 import { Field } from "@/ui";
 import { PasswordField } from "../PasswordField";
 import { text } from "../text";
@@ -25,6 +25,8 @@ export function SignIn() {
   const query = params.get("returnTo") ? `?returnTo=${encodeURIComponent(returnTo)}` : "";
 
   const ended = (location.state as { ended?: boolean } | null)?.ended === true;
+  const flagged = (location.state as { passwordReset?: boolean } | null)?.passwordReset === true;
+  const [resetDone] = useState(flagged);
   const toasted = useRef(false);
   useEffect(() => {
     if (ended && !toasted.current) {
@@ -33,6 +35,15 @@ export function SignIn() {
       toast.show(t("error.unauthenticated"));
     }
   }, [ended, toast, t]);
+
+  // The notice is shown once: replace the history entry without the flag so Back doesn't repeat it.
+  useEffect(() => {
+    if (flagged)
+      void navigate(
+        { pathname: location.pathname, search: location.search },
+        { replace: true, state: null },
+      );
+  }, [flagged, navigate, location.pathname, location.search]);
 
   if (session.signedIn) return <Navigate to={returnTo} replace />;
 
@@ -51,6 +62,7 @@ export function SignIn() {
   return (
     <div className="mx-auto flex max-w-md flex-col gap-4">
       <h1 className="text-2xl font-bold">{t("core.accounts.signin.title")}</h1>
+      {resetDone ? <Banner>{t("core.accounts.signin.reset_done")}</Banner> : null}
       <form ref={formRef} onSubmit={submit} className="flex flex-col gap-4" noValidate>
         <ErrorSummary
           error={action.error}
@@ -78,6 +90,9 @@ export function SignIn() {
           {t("core.accounts.signin.submit")}
         </Button>
       </form>
+      <Link to="/accounts/password-reset" className={linkButtonClass("secondary")}>
+        {t("core.accounts.signin.forgot")}
+      </Link>
       {session.signupOpen ? (
         <Link to={`/accounts/sign-up${query}`} className={linkButtonClass("secondary")}>
           {t("core.accounts.signin.signup")}

@@ -1,6 +1,6 @@
 import type { ScreenSet } from "@/registry/types";
 
-/** The accounts screens (identity.md "UI"): sign in, sign up, change password, and the
+/** The accounts screens (identity.md "UI"): sign in, sign up, forgotten password, change password, and the
  *  account admin's list and detail. Routes are relative to `/accounts/`. */
 export const ui: ScreenSet = {
   name: "accounts",
@@ -29,6 +29,14 @@ export const ui: ScreenSet = {
         return { Component: SignUp };
       },
       handle: { title: "core.accounts.signup.title", access: "public" },
+    },
+    {
+      path: "password-reset",
+      lazy: async () => {
+        const { PasswordReset } = await import("./screens/PasswordReset");
+        return { Component: PasswordReset };
+      },
+      handle: { title: "core.accounts.reset.title", access: "public" },
     },
     {
       path: "password",

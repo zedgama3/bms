@@ -29,6 +29,7 @@
   "core.settings.area.accounts": "Accounts",
   "core.settings.area.people": "People",
   "core.settings.area.audit": "Audit log",
+  "core.settings.area.notify": "E-mail",
   "core.settings.area.fallback": "{area}",
   "core.settings.row.default": "Default: {value}",
   "core.settings.row.default_empty": "Default: none",

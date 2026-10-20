@@ -11,6 +11,9 @@ import { useRegionalName } from "./regional";
 import { getSessionEnded, useSession } from "./session";
 
 const PASSWORD_PATH = "/accounts/password";
+// The reset screens work with or without a session; a restricted session opening a reset link
+// must reach them, so the token is spent and dropped from the URL (not carried in returnTo).
+const RESET_PATH = "/accounts/password-reset";
 
 /** The page: skip link, header and navigation, banners, `<main id="content">`, footer. It
  *  is also the gate: a signed-in route visited signed out redirects to sign-in before any call (F35). */
@@ -31,7 +34,9 @@ export function Frame() {
     session.signedIn &&
     session.passwordChangeRequired &&
     location.pathname !== PASSWORD_PATH &&
-    !location.pathname.startsWith(`${PASSWORD_PATH}/`);
+    !location.pathname.startsWith(`${PASSWORD_PATH}/`) &&
+    location.pathname !== RESET_PATH &&
+    !location.pathname.startsWith(`${RESET_PATH}/`);
 
   return (
     <div className="flex min-h-dvh flex-col">

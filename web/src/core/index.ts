@@ -6,6 +6,7 @@ import { ui as accounts } from "./accounts";
 import { ui as audit } from "./audit";
 import { ui as departments } from "./departments";
 import { ui as events } from "./events";
+import { ui as notify } from "./notify";
 import { ui as people } from "./people";
 import { ui as settings } from "./settings";
 
@@ -17,4 +18,5 @@ export const coreSets: readonly ScreenSet[] = [
   departments,
   events,
   settings,
+  notify,
 ];
