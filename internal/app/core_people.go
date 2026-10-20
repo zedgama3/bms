@@ -92,6 +92,8 @@ func buildPeople(_ context.Context, a *assembly) error {
 		Access:     a.authz,
 		AuditCount: a.deps.audit,
 		Policy:     lazyPeoplePolicy{a: a},
+		Notify:     lazyNotifier{a: a, owner: peopleArea},
+		Holders:    a.authz,
 	})
 	if err != nil {
 		return err //nolint:wrapcheck // people.New names itself
@@ -127,6 +129,9 @@ func linkPeople(_ context.Context, a *assembly) error {
 	var sources []people.Source
 	for _, pd := range a.set.PersonData() {
 		sources = append(sources, people.Source{Name: pd.Module, Exporter: personData{pd.PersonData}})
+	}
+	if a.notify != nil {
+		sources = append(sources, notifySource(a.notify))
 	}
 	contribs, err := a.set.Contributors(personpage.Point)
 	if err != nil {

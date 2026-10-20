@@ -17,6 +17,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/db/dbtest"
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/module"
+	"github.com/zedgama3/bms/internal/core/notify/notifytest"
 	"github.com/zedgama3/bms/internal/core/signals/signalstest"
 	"github.com/zedgama3/bms/internal/core/telemetry/intake"
 	"github.com/zedgama3/bms/internal/core/telemetry/telemetrytest"
@@ -66,7 +67,7 @@ func hsServerWith(t *testing.T, auth api.Authenticator, az authz.Authorizer) *ap
 		if err != nil {
 			t.Fatalf("signalstest.NewFake: %v", err)
 		}
-		return module.Deps{Logger: c.Logger(), Tracer: c.Tracer("module." + m.Name), Clock: clk, DB: dbtest.NewFake(), Signals: sig, Authz: az}, nil
+		return module.Deps{Logger: c.Logger(), Tracer: c.Tracer("module." + m.Name), Clock: clk, DB: dbtest.NewFake(), Signals: sig, Authz: az, Notify: notifytest.NewFake(m.Name)}, nil
 	})
 	if err != nil {
 		t.Fatalf("Build: %v", err)

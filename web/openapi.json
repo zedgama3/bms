@@ -389,6 +389,33 @@
         ],
         "type": "object"
       },
+      "AccountsPasswordResetComplete": {
+        "properties": {
+          "new_password": {
+            "type": "string"
+          },
+          "token": {
+            "description": "The token from the e-mailed link. Never logged.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "new_password"
+        ],
+        "type": "object"
+      },
+      "AccountsPasswordResetRequest": {
+        "properties": {
+          "email": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "type": "object"
+      },
       "AccountsSession": {
         "properties": {
           "account_id": {
@@ -1346,6 +1373,238 @@
         },
         "required": [
           "modules"
+        ],
+        "type": "object"
+      },
+      "NotifyLanguageInfo": {
+        "properties": {
+          "language": {
+            "type": "string"
+          },
+          "overridden": {
+            "type": "boolean"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "language",
+          "overridden"
+        ],
+        "type": "object"
+      },
+      "NotifyMessageRef": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "NotifyOutbox": {
+        "properties": {
+          "configured": {
+            "type": "boolean"
+          },
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Rows by status.",
+            "type": "object"
+          },
+          "recent": {
+            "items": {
+              "$ref": "#/components/schemas/NotifyRecord"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "configured",
+          "counts",
+          "recent"
+        ],
+        "type": "object"
+      },
+      "NotifyRecord": {
+        "properties": {
+          "attempts": {
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "expires_at": {
+            "description": "After this the text is gone and the message cannot be retried.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "failed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          },
+          "last_error": {
+            "description": "A short token such as connect, auth, timeout, smtp_4xx, rejected, no_address or expired.",
+            "type": "string"
+          },
+          "leased_until": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "next_attempt_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "person_id": {
+            "description": "Absent for a message to an explicit address.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "sent_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "sending",
+              "sent",
+              "failed"
+            ],
+            "type": "string"
+          },
+          "template": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "owner",
+          "template",
+          "language",
+          "status",
+          "attempts",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "NotifyRendered": {
+        "properties": {
+          "body": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject",
+          "body"
+        ],
+        "type": "object"
+      },
+      "NotifyTemplateInfo": {
+        "properties": {
+          "available": {
+            "description": "False for an override whose template nobody registers in this installation.",
+            "type": "boolean"
+          },
+          "languages": {
+            "items": {
+              "$ref": "#/components/schemas/NotifyLanguageInfo"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          },
+          "vars": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "vars",
+          "languages",
+          "available"
+        ],
+        "type": "object"
+      },
+      "NotifyTemplateList": {
+        "items": {
+          "$ref": "#/components/schemas/NotifyTemplateInfo"
+        },
+        "type": "array"
+      },
+      "NotifyTemplateText": {
+        "properties": {
+          "body": {
+            "description": "A text/template.",
+            "type": "string"
+          },
+          "subject": {
+            "description": "A text/template; one line.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject",
+          "body"
+        ],
+        "type": "object"
+      },
+      "NotifyTemplateView": {
+        "properties": {
+          "current": {
+            "$ref": "#/components/schemas/NotifyTemplateText"
+          },
+          "default": {
+            "$ref": "#/components/schemas/NotifyTemplateText"
+          },
+          "language": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "overridden": {
+            "type": "boolean"
+          },
+          "vars": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "language",
+          "default",
+          "current",
+          "overridden",
+          "vars"
         ],
         "type": "object"
       },
@@ -2912,6 +3171,74 @@
           }
         },
         "summary": "Change your own password. Allowed for a session that must change its password. Ends every other session and sets a new cookie.",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/accounts/password-reset": {
+      "post": {
+        "operationId": "accountsRequestPasswordReset",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountsPasswordResetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted. If an account exists for the address, an e-mail is on its way. No body."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Ask for a password-reset e-mail. Public. 202 with no body for a known, an unknown, a disabled and a superuser address alike; 501 for every address when e-mail is not set up; 429 when rate-limited (the sign-in buckets).",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/accounts/password-reset/complete": {
+      "post": {
+        "operationId": "accountsCompletePasswordReset",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountsPasswordResetComplete"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Password changed; no cookie is set. Sign in with the new password."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Redeem a reset token and set a new password. Public; single use; only the newest token works. 400 with field token (invalid or expired) or new_password (too_short, too_long, common). Ends every session of the account; signs nobody in.",
         "tags": [
           "accounts"
         ]
@@ -4487,6 +4814,406 @@
         ]
       }
     },
+    "/api/notify/outbox": {
+      "get": {
+        "operationId": "notifyOutbox",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotifyOutbox"
+                }
+              }
+            },
+            "description": "The outbox."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Counts by status, whether e-mail is configured, and the newest queued, sending and failed rows. Never an address, subject or body. Needs notify.outbox.manage.",
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/api/notify/outbox/check": {
+      "post": {
+        "operationId": "notifyCheckConnection",
+        "responses": {
+          "204": {
+            "description": "The server answered."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Connect, greet and authenticate against the SMTP server, then quit. Needs notify.outbox.manage. 501 when e-mail is not configured; 503 or 504 when the server cannot be reached.",
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/api/notify/outbox/{message}/cancel": {
+      "post": {
+        "operationId": "notifyCancelMessage",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "message",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Canceled."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Delete a queued or failed message. 409 when it is being sent or was sent. Needs notify.outbox.manage.",
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/api/notify/outbox/{message}/retry": {
+      "post": {
+        "operationId": "notifyRetryMessage",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "message",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Requeued."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Requeue a failed message that still holds its text. 409 when the message is not failed (code conflict) or its text has expired (code expired). Needs notify.outbox.manage.",
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/api/notify/templates": {
+      "get": {
+        "operationId": "notifyListTemplates",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotifyTemplateList"
+                }
+              }
+            },
+            "description": "The templates."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Every registered template with its languages and which are overridden, then overrides of templates no longer registered (available false). Needs notify.templates.manage.",
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/api/notify/templates/{name}/{lang}": {
+      "delete": {
+        "operationId": "notifyResetTemplate",
+        "parameters": [
+          {
+            "description": "Template name, \u003cowner\u003e.\u003cident\u003e.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Language tag, such as en.",
+            "in": "path",
+            "name": "lang",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Reset."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Remove an override, back to the shipped text. Idempotent. Needs notify.templates.manage.",
+        "tags": [
+          "notify"
+        ]
+      },
+      "get": {
+        "operationId": "notifyGetTemplate",
+        "parameters": [
+          {
+            "description": "Template name, \u003cowner\u003e.\u003cident\u003e.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Language tag, such as en.",
+            "in": "path",
+            "name": "lang",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotifyTemplateView"
+                }
+              }
+            },
+            "description": "The template."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "One template in one language: the shipped text and the current text. Needs notify.templates.manage.",
+        "tags": [
+          "notify"
+        ]
+      },
+      "put": {
+        "operationId": "notifyPutTemplate",
+        "parameters": [
+          {
+            "description": "Template name, \u003cowner\u003e.\u003cident\u003e.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Language tag, such as en.",
+            "in": "path",
+            "name": "lang",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotifyTemplateText"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotifyTemplateView"
+                }
+              }
+            },
+            "description": "The template after the change."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Save an override. Field errors name subject or body with code required, too_long, control_chars or parse (the parser's message with its line). Needs notify.templates.manage; 503 read_only on a read-only copy.",
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/api/notify/templates/{name}/{lang}/preview": {
+      "post": {
+        "operationId": "notifyPreviewTemplate",
+        "parameters": [
+          {
+            "description": "Template name, \u003cowner\u003e.\u003cident\u003e.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Language tag, such as en.",
+            "in": "path",
+            "name": "lang",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotifyTemplateText"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotifyRendered"
+                }
+              }
+            },
+            "description": "The rendered subject and body."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Render the given text with placeholder values; nothing is saved. Needs notify.templates.manage.",
+        "tags": [
+          "notify"
+        ]
+      }
+    },
+    "/api/notify/test": {
+      "post": {
+        "operationId": "notifySendTest",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotifyMessageRef"
+                }
+              }
+            },
+            "description": "The message was queued."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Queue the notify.test message to the signed-in person. Needs notify.templates.manage. 501 when e-mail is not configured.",
+        "tags": [
+          "notify"
+        ]
+      }
+    },
     "/api/openapi.json": {
       "get": {
         "operationId": "openapi",
@@ -5888,6 +6615,10 @@
     {
       "description": "The events the regional puts on: dates and zone, kinds, schedule, closing, and the modules' set-up.",
       "name": "events"
+    },
+    {
+      "description": "Notifications: template wording, a test message and the outbox. Every route needs a signed-in person; the permission is noted per route.",
+      "name": "notify"
     }
   ]
 }

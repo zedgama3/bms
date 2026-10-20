@@ -21,6 +21,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/events"
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/module"
+	"github.com/zedgama3/bms/internal/core/notify"
 	"github.com/zedgama3/bms/internal/core/people"
 	"github.com/zedgama3/bms/internal/core/settings"
 	"github.com/zedgama3/bms/internal/core/signals"
@@ -115,10 +116,12 @@ type assembly struct {
 
 	settings *settings.Service // the settings part's service (the PolicySource adapters); nil before its build
 
-	departments *departments.Service // the departments part's service; nil before its build
-	events      *events.Service      // the events part's service; nil before its build
-	stdout      io.Writer            // the command's standard output (migrate's seed line)
-	operator    bool                 // a command that acts as the operator is running (auditActor)
+	departments *departments.Service       // the departments part's service; nil before its build
+	events      *events.Service            // the events part's service; nil before its build
+	notify      *notify.Service            // the notify part's service (the alert, the outbox in export); nil before its build
+	notifiers   map[string]notify.Notifier // the Notifiers notify scoped for identity and people (Scoped fails once Run started); nil before its build
+	stdout      io.Writer                  // the command's standard output (migrate's seed line)
+	operator    bool                       // a command that acts as the operator is running (auditActor)
 	parts       []part
 	started     []runnable
 	srv         httpServer
@@ -315,6 +318,11 @@ func (a *assembly) provision(_ context.Context, m module.Manifest) (module.Deps,
 		// A module that declares no setting has no area and no key to read: its Reader stays nil.
 		if deps.Settings, err = a.deps.settings.Scoped(m.Name); err != nil {
 			return module.Deps{}, fmt.Errorf("module %s: settings scope: %w", m.Name, err)
+		}
+	}
+	if a.deps.notify != nil {
+		if deps.Notify, err = a.deps.notify.Scoped(m.Name); err != nil {
+			return module.Deps{}, fmt.Errorf("module %s: notify scope: %w", m.Name, err)
 		}
 	}
 	deps.Authz = a.deps.authz

@@ -10,6 +10,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/audit/auditsettings"
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/module"
+	"github.com/zedgama3/bms/internal/core/notify"
 	"github.com/zedgama3/bms/internal/core/people"
 	"github.com/zedgama3/bms/internal/core/settings"
 	"github.com/zedgama3/bms/internal/lib/errs"
@@ -97,6 +98,7 @@ func settingsAreas(a *assembly) []settings.Area {
 		{Name: accountsSettings, Core: true, Decls: identity.Settings, Check: identity.CheckSettings},
 		{Name: peopleSettings, Core: true, Decls: people.Settings},
 		{Name: auditSettings, Core: true, Decls: auditsettings.Settings},
+		{Name: notifySettings, Core: true, Decls: notify.Settings},
 	}
 	if a.plan == nil {
 		return areas
@@ -172,7 +174,7 @@ func (r *refresher) stop(ctx context.Context) error {
 // maps the accounts.* keys onto Policy, one read each. Identity validates what it returns.
 type settingsPolicy struct{ r settings.Reader }
 
-// Policy reads the seven keys. It fails with the Reader's kinds.
+// Policy reads the eight keys. It fails with the Reader's kinds.
 func (p settingsPolicy) Policy(ctx context.Context) (identity.Policy, error) {
 	const op = "app.settingsPolicy.Policy"
 	var pol identity.Policy
@@ -188,6 +190,7 @@ func (p settingsPolicy) Policy(ctx context.Context) (identity.Policy, error) {
 		{"session_lifetime", &pol.SessionLifetime},
 		{"superuser_session_lifetime", &pol.SuperuserSessionLifetime},
 		{"login_failure_window", &pol.LoginFailureWindow},
+		{"password_reset_lifetime", &pol.PasswordResetLifetime},
 	} {
 		if *f.dst, err = p.r.Duration(ctx, f.key); err != nil {
 			return identity.Policy{}, fmt.Errorf("%s: accounts.%s: %w", op, f.key, err)

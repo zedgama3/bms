@@ -162,6 +162,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/accounts/password-reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ask for a password-reset e-mail. Public. 202 with no body for a known, an unknown, a disabled and a superuser address alike; 501 for every address when e-mail is not set up; 429 when rate-limited (the sign-in buckets). */
+        post: operations["accountsRequestPasswordReset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/password-reset/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Redeem a reset token and set a new password. Public; single use; only the newest token works. 400 with field token (invalid or expired) or new_password (too_short, too_long, common). Ends every session of the account; signs nobody in. */
+        post: operations["accountsCompletePasswordReset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/accounts/session": {
         parameters: {
             query?: never;
@@ -672,6 +706,144 @@ export interface paths {
         get: operations["listModules"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notify/outbox": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Counts by status, whether e-mail is configured, and the newest queued, sending and failed rows. Never an address, subject or body. Needs notify.outbox.manage. */
+        get: operations["notifyOutbox"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notify/outbox/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Connect, greet and authenticate against the SMTP server, then quit. Needs notify.outbox.manage. 501 when e-mail is not configured; 503 or 504 when the server cannot be reached. */
+        post: operations["notifyCheckConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notify/outbox/{message}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Delete a queued or failed message. 409 when it is being sent or was sent. Needs notify.outbox.manage. */
+        post: operations["notifyCancelMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notify/outbox/{message}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Requeue a failed message that still holds its text. 409 when the message is not failed (code conflict) or its text has expired (code expired). Needs notify.outbox.manage. */
+        post: operations["notifyRetryMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notify/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every registered template with its languages and which are overridden, then overrides of templates no longer registered (available false). Needs notify.templates.manage. */
+        get: operations["notifyListTemplates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notify/templates/{name}/{lang}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One template in one language: the shipped text and the current text. Needs notify.templates.manage. */
+        get: operations["notifyGetTemplate"];
+        /** Save an override. Field errors name subject or body with code required, too_long, control_chars or parse (the parser's message with its line). Needs notify.templates.manage; 503 read_only on a read-only copy. */
+        put: operations["notifyPutTemplate"];
+        post?: never;
+        /** Remove an override, back to the shipped text. Idempotent. Needs notify.templates.manage. */
+        delete: operations["notifyResetTemplate"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notify/templates/{name}/{lang}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Render the given text with placeholder values; nothing is saved. Needs notify.templates.manage. */
+        post: operations["notifyPreviewTemplate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notify/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Queue the notify.test message to the signed-in person. Needs notify.templates.manage. 501 when e-mail is not configured. */
+        post: operations["notifySendTest"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1262,6 +1434,14 @@ export interface components {
             current_password: string;
             new_password: string;
         };
+        AccountsPasswordResetComplete: {
+            new_password: string;
+            /** @description The token from the e-mailed link. Never logged. */
+            token: string;
+        };
+        AccountsPasswordResetRequest: {
+            email: string;
+        };
         AccountsSession: {
             account_id?: components["schemas"]["ID"];
             /** Format: date-time */
@@ -1549,6 +1729,82 @@ export interface components {
                 enabled: boolean;
                 name: string;
             }[];
+        };
+        NotifyLanguageInfo: {
+            language: string;
+            overridden: boolean;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        NotifyMessageRef: {
+            /** Format: uuid */
+            id: string;
+        };
+        NotifyOutbox: {
+            configured: boolean;
+            /** @description Rows by status. */
+            counts: {
+                [key: string]: number;
+            };
+            recent: components["schemas"]["NotifyRecord"][];
+        };
+        NotifyRecord: {
+            attempts: number;
+            /** Format: date-time */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description After this the text is gone and the message cannot be retried.
+             */
+            expires_at?: string;
+            /** Format: date-time */
+            failed_at?: string;
+            /** Format: uuid */
+            id: string;
+            language: string;
+            /** @description A short token such as connect, auth, timeout, smtp_4xx, rejected, no_address or expired. */
+            last_error?: string;
+            /** Format: date-time */
+            leased_until?: string;
+            /** Format: date-time */
+            next_attempt_at?: string;
+            owner: string;
+            /**
+             * Format: uuid
+             * @description Absent for a message to an explicit address.
+             */
+            person_id?: string;
+            /** Format: date-time */
+            sent_at?: string;
+            /** @enum {string} */
+            status: "queued" | "sending" | "sent" | "failed";
+            template: string;
+        };
+        NotifyRendered: {
+            body: string;
+            subject: string;
+        };
+        NotifyTemplateInfo: {
+            /** @description False for an override whose template nobody registers in this installation. */
+            available: boolean;
+            languages: components["schemas"]["NotifyLanguageInfo"][];
+            name: string;
+            vars: string[];
+        };
+        NotifyTemplateList: components["schemas"]["NotifyTemplateInfo"][];
+        NotifyTemplateText: {
+            /** @description A text/template. */
+            body: string;
+            /** @description A text/template; one line. */
+            subject: string;
+        };
+        NotifyTemplateView: {
+            current: components["schemas"]["NotifyTemplateText"];
+            default: components["schemas"]["NotifyTemplateText"];
+            language: string;
+            name: string;
+            overridden: boolean;
+            vars: string[];
         };
         PeopleCan: {
             delete: boolean;
@@ -2265,6 +2521,68 @@ export interface operations {
         };
         responses: {
             /** @description Changed; a new session cookie is set. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    accountsRequestPasswordReset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountsPasswordResetRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted. If an account exists for the address, an e-mail is on its way. No body. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    accountsCompletePasswordReset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountsPasswordResetComplete"];
+            };
+        };
+        responses: {
+            /** @description Password changed; no cookie is set. Sign in with the new password. */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -3454,6 +3772,320 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ModulesResponse"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    notifyOutbox: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The outbox. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotifyOutbox"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    notifyCheckConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The server answered. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    notifyCancelMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                message: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Canceled. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    notifyRetryMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                message: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Requeued. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    notifyListTemplates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The templates. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotifyTemplateList"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    notifyGetTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Template name, <owner>.<ident>. */
+                name: string;
+                /** @description Language tag, such as en. */
+                lang: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The template. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotifyTemplateView"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    notifyPutTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Template name, <owner>.<ident>. */
+                name: string;
+                /** @description Language tag, such as en. */
+                lang: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotifyTemplateText"];
+            };
+        };
+        responses: {
+            /** @description The template after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotifyTemplateView"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    notifyResetTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Template name, <owner>.<ident>. */
+                name: string;
+                /** @description Language tag, such as en. */
+                lang: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reset. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    notifyPreviewTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Template name, <owner>.<ident>. */
+                name: string;
+                /** @description Language tag, such as en. */
+                lang: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotifyTemplateText"];
+            };
+        };
+        responses: {
+            /** @description The rendered subject and body. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotifyRendered"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    notifySendTest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The message was queued. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotifyMessageRef"];
                 };
             };
             /** @description An error. The body is a Problem. */

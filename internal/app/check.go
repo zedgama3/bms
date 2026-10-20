@@ -15,6 +15,10 @@ import (
 	"github.com/zedgama3/bms/internal/config"
 	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/db"
+	"github.com/zedgama3/bms/internal/core/notify"
+	notifypg "github.com/zedgama3/bms/internal/core/notify/postgres"
+	"github.com/zedgama3/bms/internal/core/notify/smtp"
+	"github.com/zedgama3/bms/internal/core/settings"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/lib/secret"
 	"github.com/zedgama3/bms/internal/lib/validate"
@@ -103,6 +107,7 @@ func runCheck(ctx context.Context, p *process) int {
 			r.printf("api: skipped (the modules did not resolve)\n")
 		}
 	}
+	r.email(ctx, a)
 	r.auditSpool(cfg)
 	r.ui()
 
@@ -392,6 +397,105 @@ func (r *checkReport) api(ctx context.Context, a *assembly) {
 		return
 	}
 	r.printf("api: %d operations\n", n)
+}
+
+// email prints the state of e-mail (notify.md "Concurrency and lifecycle"): whether SMTP is
+// configured and how the connection is secured, the outbox counts and whether the server
+// accepts a conversation. It reads the settings and the outbox through the real pool (the
+// services check built are on a database that refuses every statement), prints no address,
+// user name or password, and never fails the check: a missing database or schema or an
+// unreachable server is a line, not a problem.
+func (r *checkReport) email(ctx context.Context, a *assembly) {
+	if a.pool == nil || a.deps.audit == nil {
+		r.printf("e-mail: skipped (no database)\n")
+		return
+	}
+	var st emailState
+	st.cfg, st.cfgErr = r.smtpConfig(ctx, a)
+	if st.cfgErr == nil {
+		cctx, cancel := context.WithTimeout(ctx, checkTimeout)
+		defer cancel()
+		store, err := notifypg.NewStore(a.pool)
+		if err == nil {
+			st.counts, err = store.CountByStatus(cctx)
+		}
+		st.countErr = err
+		if st.cfg.Configured() {
+			ch, err := smtp.New(st.cfg, smtp.Options{SendTimeout: notify.DefaultSendTimeout, Hostname: a.cfg.Instance.Name, Clock: a.clock})
+			if err == nil {
+				err = ch.Ping(cctx)
+			}
+			st.pinged, st.pingErr = true, err
+		}
+	}
+	r.printEmail(st)
+}
+
+// emailState is what the e-mail step found.
+type emailState struct {
+	cfg      notify.SMTPConfig
+	cfgErr   error
+	counts   map[notify.Status]int
+	countErr error
+	pinged   bool // a conversation was tried
+	pingErr  error
+}
+
+// printEmail prints the e-mail lines for st. It prints the host, port and security, never
+// the user name, the password or an address, and never records a problem.
+func (r *checkReport) printEmail(st emailState) {
+	if st.cfgErr != nil {
+		r.printf("e-mail: unknown: %s: %s\n", errs.KindOf(st.cfgErr), indent(st.cfgErr.Error()))
+		return
+	}
+	if !st.cfg.Configured() {
+		r.printf("e-mail: not configured\n")
+	} else {
+		r.printf("e-mail: configured %s:%d (%s)\n", st.cfg.Host, st.cfg.Port, st.cfg.Security)
+		if st.cfg.Security == notify.None {
+			r.printf("  warning: security is none; the connection and the password are not encrypted (use it only for a local relay)\n")
+		}
+	}
+	if st.countErr != nil {
+		r.printf("outbox: unavailable: %s\n", errs.KindOf(st.countErr))
+	} else {
+		r.printf("outbox: queued %d, sending %d, sent %d, failed %d\n",
+			st.counts[notify.Queued], st.counts[notify.Sending], st.counts[notify.StatusSent], st.counts[notify.Failed])
+	}
+	switch {
+	case !st.pinged:
+	case st.pingErr != nil:
+		r.printf("smtp: %s\n", errs.KindOf(st.pingErr))
+	default:
+		r.printf("smtp: ok\n")
+	}
+}
+
+// smtpConfig reads the SMTP settings from the database through a settings service of its
+// own over the pool.
+func (r *checkReport) smtpConfig(ctx context.Context, a *assembly) (notify.SMTPConfig, error) {
+	rec, err := a.deps.audit.Scoped(settingsArea)
+	if err != nil {
+		return notify.SMTPConfig{}, err //nolint:wrapcheck // printed with its kind
+	}
+	tr, m, err := a.scopes("settings")
+	if err != nil {
+		return notify.SMTPConfig{}, err
+	}
+	svc, err := settings.New(settings.Options{
+		DB: a.pool, Clock: a.clock, Logger: a.component("settings"), Tracer: tr, Meter: m, Audit: rec,
+		Authz: lazyAuthorizer{a: a}, Actor: authzActor, Areas: settingsAreas(a), SealingKey: a.cfg.Settings.SealingKey,
+	})
+	if err != nil {
+		return notify.SMTPConfig{}, err //nolint:wrapcheck // printed with its kind
+	}
+	rd, err := svc.Scoped(notifySettings)
+	if err != nil {
+		return notify.SMTPConfig{}, err //nolint:wrapcheck // printed with its kind
+	}
+	sctx, cancel := context.WithTimeout(ctx, checkTimeout)
+	defer cancel()
+	return smtpSource{r: rd}.SMTP(sctx)
 }
 
 // auditSpool prints how many audit spool files wait to be imported and how many the

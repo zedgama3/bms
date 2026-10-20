@@ -703,8 +703,8 @@ func TestCoreParts_Declare_SetsPermissionsSignalAndCommand(t *testing.T) {
 	for _, s := range a.coreSets {
 		sets = append(sets, s.Name)
 	}
-	if got := strings.Join(sets, ","); got != "identity,people,authz,departments,events,audit,settings" {
-		t.Errorf("core migration sets = %s, want identity,people,authz,departments,events,audit,settings (db.md order, not part order)", got)
+	if got := strings.Join(sets, ","); got != "identity,people,authz,departments,events,audit,settings,notify" {
+		t.Errorf("core migration sets = %s, want identity,people,authz,departments,events,audit,settings,notify (db.md order, not part order)", got)
 	}
 	var perms []string
 	for _, d := range a.corePerms {
@@ -714,7 +714,8 @@ func TestCoreParts_Declare_SetsPermissionsSignalAndCommand(t *testing.T) {
 		"settings.read,settings.manage," +
 		"access.roles.read,access.roles.manage,access.rules.manage,access.grants.read,access.grants.manage,access.department-grants.manage," +
 		"people.directory.read,people.contacts.read,people.profiles.manage,people.data.export,people.data.delete," +
-		"departments.manage,departments.details.manage,events.manage"
+		"departments.manage,departments.details.manage,events.manage," +
+		"notify.templates.manage,notify.outbox.manage"
 	if got := strings.Join(perms, ","); got != want {
 		t.Errorf("corePerms = %s, want %s (api first, then each part's in part order)", got, want)
 	}
@@ -885,15 +886,15 @@ func TestBuildParts_AgainstNoDatabase_SetsAuthenticatorRoutesAndRunnable(t *test
 			t.Errorf("route set %s has %d routes and %d bytes of fragment", rs.Module, len(rs.Routes), len(rs.OpenAPI))
 		}
 	}
-	if strings.Join(areas, ",") != "audit,accounts,settings,access,people,departments,events" {
-		t.Errorf("route sets = %v, want audit, accounts, settings, access, people, departments, events", areas)
+	if strings.Join(areas, ",") != "audit,accounts,settings,access,people,departments,events,notify" {
+		t.Errorf("route sets = %v, want audit, accounts, settings, access, people, departments, events, notify", areas)
 	}
 	var runnables []string
 	for _, r := range a.runnables {
 		runnables = append(runnables, r.name)
 	}
-	if strings.Join(runnables, ",") != "audit,settings" {
-		t.Errorf("runnables = %v, want the audit importer, then the settings refresher", runnables)
+	if strings.Join(runnables, ",") != "audit,settings,notify" {
+		t.Errorf("runnables = %v, want the audit importer, then the settings refresher, then the notify sender", runnables)
 	}
 	if a.settings == nil || a.deps.settings != a.settings {
 		t.Errorf("settings = %v, deps.settings = %v, want the one service in both", a.settings, a.deps.settings)
@@ -1004,8 +1005,8 @@ func TestCheckSchemas_CoreAndModuleSets_ReportedTogether(t *testing.T) {
 	if !errs.Is(err, errs.Conflict) {
 		t.Fatalf("err = %v, want Conflict", err)
 	}
-	if got := strings.Join(checked, ","); got != "identity,people,authz,departments,events,audit,settings,zqmod" {
-		t.Errorf("checked = %s, want identity,people,authz,departments,events,audit,settings,zqmod (every set, none stopped the rest, no schema-less module)", got)
+	if got := strings.Join(checked, ","); got != "identity,people,authz,departments,events,audit,settings,notify,zqmod" {
+		t.Errorf("checked = %s, want identity,people,authz,departments,events,audit,settings,notify,zqmod (every set, none stopped the rest, no schema-less module)", got)
 	}
 	// The first problem that is not a Conflict decides the kind, not the last.
 	mixed := schemaFunc(func(_ context.Context, name string, _ fs.FS) error {
@@ -1029,7 +1030,7 @@ func TestCheckSchemas_CoreAndModuleSets_ReportedTogether(t *testing.T) {
 	if err := a.checkSchemas(context.Background(), core, []module.Manifest{{Name: "zqmod", Migrations: fstest.MapFS{}}}); err != nil {
 		t.Errorf("current core sets: %v", err)
 	}
-	if got := strings.Join(checked, ","); got != "identity,people,authz,departments,events,audit,settings" {
+	if got := strings.Join(checked, ","); got != "identity,people,authz,departments,events,audit,settings,notify" {
 		t.Errorf("checked = %s, want only the core sets when they are current", got)
 	}
 	unavailable := schemaFunc(func(context.Context, string, fs.FS) error {
