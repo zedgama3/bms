@@ -23,6 +23,8 @@ import (
 	"github.com/zedgama3/bms/internal/core/db/dbtest"
 	"github.com/zedgama3/bms/internal/core/departments/departmentstest"
 	"github.com/zedgama3/bms/internal/core/events/eventstest"
+	"github.com/zedgama3/bms/internal/core/jobs"
+	"github.com/zedgama3/bms/internal/core/jobs/jobstest"
 	"github.com/zedgama3/bms/internal/core/module"
 	"github.com/zedgama3/bms/internal/core/notify"
 	"github.com/zedgama3/bms/internal/core/notify/notifytest"
@@ -216,11 +218,12 @@ func resolveOptions(m module.Manifest, opts []Option) (options, []string) {
 // Authz with authztest.NewFake() (it denies everything) and a nil People with
 // peopletest.NewFake(), a nil Departments with departmentstest.NewFake(), a nil Events with
 // eventstest.NewFake(), a nil Settings with settingstest.NewFake(Manifest.Name, Manifest.Settings), a nil Notify with
-// notifytest.NewFake(Manifest.Name), and sets Links through Plan.Build. A DB, Signals,
-// Audit or Notify that is not a dbtest.Fake, signalstest.Fake, audittest.Fake or
-// notifytest.Fake fails t (t.Fatalf), naming the module, because the rules need to make the
-// database read-only, to read back the subscriptions and to scan the audit entries and the
-// messages the module recorded for personal data (no_personal_data_in_logs).
+// notifytest.NewFake(Manifest.Name), a nil Jobs with jobstest.NewFake(Manifest.Name), and sets
+// Links through Plan.Build. A DB, Signals, Audit, Notify or Jobs that is not a dbtest.Fake,
+// signalstest.Fake, audittest.Fake, notifytest.Fake or jobstest.Fake fails t (t.Fatalf),
+// naming the module, because the rules need to make the database read-only, to read back the
+// subscriptions and the registered jobs and to scan the audit entries, the messages and the
+// jobs the module recorded for personal data (no_personal_data_in_logs).
 //
 // opts supply what the rules cannot learn from the manifest: the value behind each
 // capability the module requires or uses (WithCapability), and how to put a known person's
@@ -232,7 +235,7 @@ func resolveOptions(m module.Manifest, opts []Option) (options, []string) {
 // the first that fails, so the failing subtest's name is the broken rule: manifest_valid,
 // templates_register, registers_under_its_name, implements_declared, rejects_wrong_capability_type,
 // used_capability_absent_builds_and_starts, start_read_only, subscribes_every_declared_name,
-// stop_honors_context, stop_without_start_is_nil, export_zero_id, delete_zero_id,
+// jobs_register_scoped, stop_honors_context, stop_without_start_is_nil, export_zero_id, delete_zero_id,
 // export_unknown_person_is_empty, delete_unknown_person_is_zero_and_idempotent,
 // delete_read_only, export_is_json_object, seeded_person_exports_data,
 // seeded_person_delete_counts_and_is_idempotent, routes_under_prefix and
@@ -259,6 +262,7 @@ func Conformance(t *testing.T, m module.Manifest, f module.Factory, provision mo
 		{"used_capability_absent_builds_and_starts", ruleUsedCapabilityAbsent},
 		{"start_read_only", ruleStartReadOnly},
 		{"subscribes_every_declared_name", ruleSubscribes},
+		{"jobs_register_scoped", ruleJobsScoped},
 		{"stop_honors_context", ruleStopHonorsContext},
 		{"stop_without_start_is_nil", ruleStopWithoutStart},
 		{"export_zero_id", ruleExportZeroID},
@@ -329,6 +333,7 @@ type harness struct {
 	sig     *signalstest.Fake
 	audit   *audittest.Fake  // the module under test's recorder
 	notify  *notifytest.Fake // the module under test's notifier
+	jobs    *jobstest.Fake   // the module under test's job registrar
 	capture *telemetrytest.Capture
 	started bool
 	stopped bool
@@ -447,9 +452,17 @@ func (h *harness) provisioner(readOnly bool) module.Provision {
 			out = notifytest.NewFake(m.Name)
 		}
 		d.Notify = out
+		jf, ok := d.Jobs.(*jobstest.Fake)
+		if d.Jobs != nil && !ok {
+			h.t.Fatalf("the provision for %q returned a Jobs of type %T; Conformance needs a *jobstest.Fake (or nil) to scan what was registered and enqueued", m.Name, d.Jobs)
+		}
+		if !ok {
+			jf = jobstest.NewFake(m.Name)
+		}
+		d.Jobs = jf
 		if m.Name == r.m.Name {
 			fake.SetReadOnly(readOnly)
-			h.db, h.sig, h.audit, h.notify = fake, bus, rec, out
+			h.db, h.sig, h.audit, h.notify, h.jobs = fake, bus, rec, out, jf
 		}
 		return d, nil
 	}
@@ -659,6 +672,20 @@ func ruleSubscribes(t *testing.T, r *rig) {
 	got := h.sig.Handlers()
 	if !slices.Equal(got, want) {
 		t.Fatalf("after Start the module subscribed to %v, but its manifest declares %v", got, want)
+	}
+}
+
+// ruleJobsScoped proves the module's job names carry its own prefix: every job it registered
+// in Start is "<name>.<ident>". The Registrar it was given refuses another owner's name, so a
+// module that registered a foreign name has already failed Start; this rule also names the
+// jobs it declared when they are wrong in a way the scope check let through.
+func ruleJobsScoped(t *testing.T, r *rig) {
+	h := r.build(t, false)
+	h.start(r.ctx(t))
+	for _, d := range h.jobs.Registered() {
+		if d.Name.Owner() != r.m.Name {
+			t.Errorf("the module registered job %q, whose owner is %q; a module's jobs are named %s.<ident>", d.Name, d.Name.Owner(), r.m.Name)
+		}
 	}
 }
 
@@ -872,6 +899,31 @@ func ruleNoPersonalDataInLogs(t *testing.T, r *rig) {
 	if err := sentLeak(h.notify.Sent()); err != nil {
 		t.Fatal(err)
 	}
+	if err := enqueuedLeak(h.jobs.Enqueued()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// enqueuedLeak returns an error when a job a module enqueued carries a seed marker or
+// "[email]" in its key or its arguments' keys or identifiers: a job holds record references
+// only (jobs decision 5). The arguments are IDs, so this guards a future change of Args.
+func enqueuedLeak(reqs []jobs.Request) error {
+	markers := []string{subject.LegalName, subject.Phone, subject.Note, subject.Email, scrubbedEmail}
+	for i, req := range reqs {
+		texts := []string{req.Key}
+		for _, k := range slices.Sorted(maps.Keys(req.Args)) {
+			texts = append(texts, k, req.Args[k].String())
+		}
+		for _, text := range texts {
+			for _, marker := range markers {
+				if strings.Contains(text, marker) {
+					// The marker is invented, so quoting it leaks nothing.
+					return fmt.Errorf("enqueued job %d (%s) holds personal data (%q) in its key or arguments; pass record references only", i, req.Name, marker)
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // sentLeak returns an error when a message a module queued carries a seed marker or

@@ -1,0 +1,134 @@
+{
+  "tags": [
+    {
+      "name": "jobs",
+      "description": "Background work: what is registered, what ran last, what waits and what failed, and three admin actions. Every route needs a signed-in person; the permission is noted per route."
+    }
+  ],
+  "paths": {
+    "/": {
+      "get": {
+        "tags": ["jobs"],
+        "operationId": "jobsStatus",
+        "summary": "The registered job names with each one's last run and next due time, the queue counts by status, and the most recent failed and waiting rows (at most 50). Works on a read-only copy. Needs jobs.read.",
+        "responses": {
+          "200": {
+            "description": "The status.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/JobsStatus"}}}
+          }
+        }
+      }
+    },
+    "/registered/{name}/run": {
+      "post": {
+        "tags": ["jobs"],
+        "operationId": "jobsRunNow",
+        "summary": "Run a scheduled job now. 400 for an on-demand name (code on_demand), 404 for a name not registered on this copy, 409 while a run of it waits or runs (code running), 503 read_only on a read-only copy. Needs jobs.manage.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "string"},
+            "description": "Job name, <owner>.<ident>."
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "The run was queued; it starts at the next tick.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/JobsRunRef"}}}
+          }
+        }
+      }
+    },
+    "/queue/{job}/retry": {
+      "post": {
+        "tags": ["jobs"],
+        "operationId": "jobsRetry",
+        "summary": "Put a failed job back in the queue, due now, with its attempts reset. 409 when the job is not failed (code status). Needs jobs.manage.",
+        "parameters": [
+          {
+            "name": "job",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "string", "format": "uuid"}
+          }
+        ],
+        "responses": {
+          "204": {"description": "Queued again."}
+        }
+      }
+    },
+    "/queue/{job}/cancel": {
+      "post": {
+        "tags": ["jobs"],
+        "operationId": "jobsCancel",
+        "summary": "Cancel a waiting job. 409 when the job is not waiting (code status). Needs jobs.manage.",
+        "parameters": [
+          {
+            "name": "job",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "string", "format": "uuid"}
+          }
+        ],
+        "responses": {
+          "204": {"description": "Canceled."}
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "JobsRunRef": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {"id": {"type": "string", "format": "uuid"}}
+      },
+      "JobsRecord": {
+        "type": "object",
+        "description": "One job row. Arguments are never shown.",
+        "required": ["id", "name", "status", "attempts", "run_at"],
+        "properties": {
+          "id": {"type": "string", "format": "uuid"},
+          "name": {"type": "string", "description": "<owner>.<ident>."},
+          "key": {"type": "string", "description": "The dedupe key, when the row has one."},
+          "status": {"type": "string", "enum": ["queued", "running", "done", "failed", "canceled"]},
+          "attempts": {"type": "integer"},
+          "run_at": {"type": "string", "format": "date-time"},
+          "started_at": {"type": "string", "format": "date-time"},
+          "finished_at": {"type": "string", "format": "date-time"},
+          "last_error": {"type": "string", "description": "A token: an error kind in lower case, or panic, no_handler, lost_lease, gave_up, canceled."},
+          "instance": {"type": "string", "description": "The copy that ran it last."},
+          "trace_id": {"type": "string"}
+        }
+      },
+      "JobsRegistered": {
+        "type": "object",
+        "required": ["name", "owner", "every_seconds", "timeout_seconds"],
+        "properties": {
+          "name": {"type": "string"},
+          "owner": {"type": "string"},
+          "every_seconds": {"type": "integer", "description": "0 for a job that runs on demand only."},
+          "timeout_seconds": {"type": "integer"},
+          "last": {"$ref": "#/components/schemas/JobsRecord"},
+          "next_due": {"type": "string", "format": "date-time", "description": "The next slot; absent for an on-demand job."}
+        }
+      },
+      "JobsStatus": {
+        "type": "object",
+        "required": ["read_only", "registered", "counts", "recent"],
+        "properties": {
+          "read_only": {"type": "boolean", "description": "True when this copy runs no jobs."},
+          "registered": {"type": "array", "items": {"$ref": "#/components/schemas/JobsRegistered"}},
+          "counts": {
+            "type": "object",
+            "description": "Rows by status.",
+            "additionalProperties": {"type": "integer"}
+          },
+          "recent": {"type": "array", "items": {"$ref": "#/components/schemas/JobsRecord"}}
+        }
+      }
+    }
+  }
+}

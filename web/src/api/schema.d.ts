@@ -695,6 +695,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/jobs/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The registered job names with each one's last run and next due time, the queue counts by status, and the most recent failed and waiting rows (at most 50). Works on a read-only copy. Needs jobs.read. */
+        get: operations["jobsStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/queue/{job}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel a waiting job. 409 when the job is not waiting (code status). Needs jobs.manage. */
+        post: operations["jobsCancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/queue/{job}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Put a failed job back in the queue, due now, with its attempts reset. 409 when the job is not failed (code status). Needs jobs.manage. */
+        post: operations["jobsRetry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/registered/{name}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run a scheduled job now. 400 for an on-demand name (code on_demand), 404 for a name not registered on this copy, 409 while a run of it waits or runs (code running), 503 read_only on a read-only copy. Needs jobs.manage. */
+        post: operations["jobsRunNow"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/modules": {
         parameters: {
             query?: never;
@@ -1724,6 +1792,56 @@ export interface components {
          * @description A record identifier in canonical UUID form.
          */
         ID: string;
+        /** @description One job row. Arguments are never shown. */
+        JobsRecord: {
+            attempts: number;
+            /** Format: date-time */
+            finished_at?: string;
+            /** Format: uuid */
+            id: string;
+            /** @description The copy that ran it last. */
+            instance?: string;
+            /** @description The dedupe key, when the row has one. */
+            key?: string;
+            /** @description A token: an error kind in lower case, or panic, no_handler, lost_lease, gave_up, canceled. */
+            last_error?: string;
+            /** @description <owner>.<ident>. */
+            name: string;
+            /** Format: date-time */
+            run_at: string;
+            /** Format: date-time */
+            started_at?: string;
+            /** @enum {string} */
+            status: "queued" | "running" | "done" | "failed" | "canceled";
+            trace_id?: string;
+        };
+        JobsRegistered: {
+            /** @description 0 for a job that runs on demand only. */
+            every_seconds: number;
+            last?: components["schemas"]["JobsRecord"];
+            name: string;
+            /**
+             * Format: date-time
+             * @description The next slot; absent for an on-demand job.
+             */
+            next_due?: string;
+            owner: string;
+            timeout_seconds: number;
+        };
+        JobsRunRef: {
+            /** Format: uuid */
+            id: string;
+        };
+        JobsStatus: {
+            /** @description Rows by status. */
+            counts: {
+                [key: string]: number;
+            };
+            /** @description True when this copy runs no jobs. */
+            read_only: boolean;
+            recent: components["schemas"]["JobsRecord"][];
+            registered: components["schemas"]["JobsRegistered"][];
+        };
         ModulesResponse: {
             modules: {
                 enabled: boolean;
@@ -3743,6 +3861,125 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HelloPublicGreeting"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    jobsStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobsStatus"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    jobsCancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Canceled. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    jobsRetry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Queued again. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    jobsRunNow: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Job name, <owner>.<ident>. */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The run was queued; it starts at the next tick. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobsRunRef"];
                 };
             };
             /** @description An error. The body is a Problem. */

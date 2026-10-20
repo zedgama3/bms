@@ -1,0 +1,336 @@
+import { useQueryClient } from "@tanstack/react-query";
+import type { ReactNode } from "react";
+import { useState } from "react";
+import { api, ApiError, useReadOnly, useSession } from "@/api";
+import type { components } from "@/api";
+import { isMessageKey, useFormat, useT } from "@/i18n";
+import { Banner, Button, EmptyState, ErrorState, Loading, Table, useToast } from "@/ui";
+import type { Column } from "@/ui";
+import { ConfirmDialog } from "../ConfirmDialog";
+import { focusSoon } from "../focus";
+import { Forbidden } from "../Forbidden";
+import { byId, holdsSite, secondsBetween, spanOf, splitName } from "../helpers";
+import { JOBS_KEY, useJobsStatus } from "../queries";
+import { ScreenError } from "../ScreenError";
+import { useAction } from "../useAction";
+
+type Record = components["schemas"]["JobsRecord"];
+type Registered = components["schemas"]["JobsRegistered"];
+
+const cardId = (name: string) => `job-${name}`;
+
+/** `/jobs` (`jobs.read`): what is registered, when it last ran, what waits or failed. Run now,
+ *  Retry and Cancel need `jobs.manage` and are hidden on a read-only copy. A job's arguments are
+ *  never shown (the API doesn't send them). */
+export function Jobs() {
+  const t = useT();
+  const format = useFormat();
+  const session = useSession();
+  const toast = useToast();
+  const client = useQueryClient();
+  const { readOnly: headerReadOnly } = useReadOnly();
+  const allowed = holdsSite(session, "jobs.read");
+  const q = useJobsStatus(allowed);
+  const run = useAction();
+  const [runName, setRunName] = useState<string | null>(null);
+  const row = useAction();
+  const [rowId, setRowId] = useState<string | null>(null);
+  const cancel = useAction();
+  const [canceling, setCanceling] = useState<Record | null>(null);
+
+  if (!allowed) return <Forbidden title={t("core.jobs.title")} />;
+
+  const error = q.error instanceof ApiError ? q.error : null;
+  const data = q.data;
+  const readOnly = (data?.read_only ?? false) || headerReadOnly;
+  const manage = holdsSite(session, "jobs.manage") && !readOnly;
+  const refresh = () => client.invalidateQueries({ queryKey: JOBS_KEY });
+
+  const open = (name: string) =>
+    (data?.recent ?? []).some(
+      (r) => r.name === name && (r.status === "queued" || r.status === "running"),
+    ) ||
+    (data?.registered ?? []).some(
+      (r) => r.name === name && (r.last?.status === "queued" || r.last?.status === "running"),
+    );
+
+  const runNow = (name: string) => {
+    setRunName(name);
+    void run
+      .run(async () => {
+        await api.POST("/api/jobs/registered/{name}/run", { params: { path: { name } } });
+        toast.show(t("core.jobs.run_started"));
+      })
+      .then((ok) => {
+        void refresh();
+        if (ok) focusSoon(byId(cardId(name))); // the button is disabled now
+      });
+  };
+
+  const retry = (r: Record) => {
+    setRowId(r.id);
+    void row
+      .run(async () => {
+        await api.POST("/api/jobs/queue/{job}/retry", { params: { path: { job: r.id } } });
+        toast.show(t("core.jobs.retried"));
+      })
+      .then((ok) => {
+        void refresh();
+        if (ok) focusSoon("#jobs-title"); // the row changes and the pressed button is gone
+      });
+  };
+
+  const doCancel = () => {
+    const r = canceling;
+    if (r === null) return;
+    void cancel
+      .run(async () => {
+        await api.POST("/api/jobs/queue/{job}/cancel", { params: { path: { job: r.id } } });
+        toast.show(t("core.jobs.canceled"));
+      })
+      .then((ok) => {
+        void refresh();
+        if (ok) {
+          setCanceling(null);
+          focusSoon("#jobs-title"); // the row is gone with the dialog
+        }
+      });
+  };
+
+  /** The sentence for a refused action; undefined leaves the shell's sentence for its code. */
+  const actionMessage = (e: ApiError, what: "run" | "queue"): string | undefined => {
+    const code = e.fields.find((f) => f.field === "name" || f.field === "status")?.code ?? e.code;
+    if (what === "run") {
+      if (e.code === "conflict" || code === "running") return t("core.jobs.run_conflict");
+      if (code === "on_demand") return t("core.jobs.run_on_demand");
+      if (e.code === "not_found") return t("core.jobs.run_unknown");
+      return undefined;
+    }
+    if (e.code === "conflict") return t("core.jobs.not_open");
+    if (e.code === "not_found") return t("core.jobs.gone");
+    return undefined;
+  };
+
+  /** The catalogue's title for a job or its owner; none when no catalogue has one. */
+  const look = (...keys: string[]): string | null => {
+    for (const k of keys) if (isMessageKey(k)) return t(k);
+    return null;
+  };
+  const ownerTitle = (owner: string) =>
+    look(`module.${owner}.title`, `core.${owner}.title`) ?? owner;
+  const jobTitle = (name: string): ReactNode => {
+    const { owner, ident } = splitName(name);
+    const title = look(`module.${owner}.job.${ident}.title`, `core.${owner}.job.${ident}.title`);
+    return title ?? <code translate="no">{name}</code>;
+  };
+  const statusText = (s: Record["status"]) => t(`core.jobs.status.${s}`);
+  /** A known token in words; an unknown one as it came. */
+  const errorText = (token: string): ReactNode => {
+    const key = `core.jobs.error.${token}`;
+    return isMessageKey(key) ? t(key) : <code translate="no">{token}</code>;
+  };
+  const span = (seconds: number) => spanOf(seconds);
+
+  const columns: Column<Record>[] = [
+    { header: t("core.jobs.col.name"), rowHeader: true, cell: (r) => jobTitle(r.name) },
+    {
+      header: t("core.jobs.col.key"),
+      cell: (r) => (r.key ? <code className="break-all">{r.key}</code> : t("core.jobs.none")),
+    },
+    { header: t("core.jobs.col.status"), cell: (r) => statusText(r.status) },
+    { header: t("core.jobs.col.attempts"), cell: (r) => format.number(r.attempts) },
+    { header: t("core.jobs.col.due"), cell: (r) => format.dateTime(r.run_at) },
+    {
+      header: t("core.jobs.col.error"),
+      cell: (r) => (r.last_error ? errorText(r.last_error) : t("core.jobs.none")),
+    },
+    ...(manage
+      ? [
+          {
+            header: t("core.jobs.col.actions"),
+            cell: (r: Record) => {
+              const label = { name: r.name, when: format.dateTime(r.run_at) };
+              return (
+                <div className="flex flex-wrap gap-2">
+                  {r.status === "failed" ? (
+                    <Button
+                      variant="secondary"
+                      busy={row.busy && rowId === r.id}
+                      disabled={row.busy && rowId !== r.id}
+                      aria-label={t("core.jobs.retry_label", label)}
+                      onClick={() => retry(r)}
+                    >
+                      {t("core.jobs.retry")}
+                    </Button>
+                  ) : null}
+                  {r.status === "queued" ? (
+                    <Button
+                      variant="danger"
+                      aria-label={t("core.jobs.cancel_label", label)}
+                      onClick={() => {
+                        cancel.clear();
+                        setCanceling(r);
+                      }}
+                    >
+                      {t("core.jobs.cancel")}
+                    </Button>
+                  ) : null}
+                </div>
+              );
+            },
+          } satisfies Column<Record>,
+        ]
+      : []),
+  ];
+
+  const owners = [...new Set((data?.registered ?? []).map((r) => r.owner))].sort();
+  const card = (r: Registered) => {
+    const waiting = open(r.name);
+    const onDemand = r.every_seconds === 0;
+    const took = secondsBetween(r.last?.started_at, r.last?.finished_at);
+    const runError = run.error && runName === r.name ? run.error : null;
+    const waitId = `${cardId(r.name)}-waiting`;
+    return (
+      <li key={r.name} className="flex flex-col gap-2 rounded-md border border-border p-4">
+        <h4 id={cardId(r.name)} tabIndex={-1} className="font-bold focus:outline-none">
+          {jobTitle(r.name)}
+        </h4>
+        <p className="text-sm text-muted">
+          <code translate="no" className="break-all">
+            {r.name}
+          </code>
+        </p>
+        <p>
+          {onDemand
+            ? t("core.jobs.registered.on_demand")
+            : t("core.jobs.registered.every", { ...span(r.every_seconds) })}
+        </p>
+        {r.last ? (
+          <>
+            <p>
+              {t(took !== null ? "core.jobs.registered.last_took" : "core.jobs.registered.last", {
+                status: statusText(r.last.status),
+                when: format.dateTime(r.last.finished_at ?? r.last.started_at ?? r.last.run_at),
+                ...span(took ?? 0),
+              })}
+            </p>
+            {r.last.instance ? (
+              <p className="text-sm">
+                {t("core.jobs.registered.instance", { instance: r.last.instance })}
+              </p>
+            ) : null}
+            {r.last.last_error ? (
+              <p>
+                {t("core.jobs.registered.error")} {errorText(r.last.last_error)}
+              </p>
+            ) : null}
+          </>
+        ) : (
+          <p>{t("core.jobs.registered.never")}</p>
+        )}
+        {r.next_due ? (
+          <p>{t("core.jobs.registered.next", { when: format.dateTime(r.next_due) })}</p>
+        ) : null}
+        {manage && !onDemand ? (
+          <div className="flex flex-col items-start gap-2">
+            <Button
+              variant="secondary"
+              busy={run.busy && runName === r.name}
+              disabled={waiting || (run.busy && runName !== r.name)}
+              {...(waiting ? { "aria-describedby": waitId } : {})}
+              aria-label={t("core.jobs.run_label", { name: r.name })}
+              onClick={() => runNow(r.name)}
+            >
+              {t("core.jobs.run")}
+            </Button>
+            {waiting ? (
+              <p id={waitId} className="text-sm font-semibold">
+                {t("core.jobs.run_waiting")}
+              </p>
+            ) : null}
+            {runError ? (
+              <ErrorState error={runError} {...msg(actionMessage(runError, "run"))} />
+            ) : null}
+          </div>
+        ) : null}
+      </li>
+    );
+  };
+
+  return (
+    <div className="flex flex-col gap-6" aria-busy={q.isPending || undefined}>
+      <h1 id="jobs-title" tabIndex={-1} className="text-2xl font-bold focus:outline-none">
+        {t("core.jobs.title")}
+      </h1>
+      <p>{t("core.jobs.intro")}</p>
+      {q.isPending ? <Loading /> : null}
+      {error ? <ScreenError error={error} onRetry={() => void q.refetch()} /> : null}
+      {data ? (
+        <>
+          {readOnly ? <Banner tone="warn">{t("core.jobs.readonly_banner")}</Banner> : null}
+          <div>
+            <Button variant="secondary" onClick={() => void q.refetch()}>
+              {t("core.jobs.refresh")}
+            </Button>
+          </div>
+          <section aria-labelledby="jobs-registered" className="flex flex-col gap-4">
+            <h2 id="jobs-registered" className="text-xl font-bold">
+              {t("core.jobs.registered.title")}
+            </h2>
+            {data.registered.length === 0 ? (
+              <EmptyState>{t("core.jobs.registered.empty")}</EmptyState>
+            ) : (
+              owners.map((owner) => (
+                <section
+                  key={owner}
+                  aria-labelledby={`jobs-owner-${owner}`}
+                  className="flex flex-col gap-3"
+                >
+                  <h3 id={`jobs-owner-${owner}`} className="text-lg font-bold">
+                    {ownerTitle(owner)}
+                  </h3>
+                  <ul className="grid gap-3 sm:grid-cols-2">
+                    {data.registered.filter((r) => r.owner === owner).map(card)}
+                  </ul>
+                </section>
+              ))
+            )}
+          </section>
+          <section aria-labelledby="jobs-recent" className="flex flex-col gap-3">
+            <h2 id="jobs-recent" className="text-xl font-bold">
+              {t("core.jobs.recent.title")}
+            </h2>
+            {row.error ? (
+              <ErrorState error={row.error} {...msg(actionMessage(row.error, "queue"))} />
+            ) : null}
+            {data.recent.length === 0 ? (
+              <EmptyState>{t("core.jobs.recent.empty")}</EmptyState>
+            ) : (
+              <Table
+                caption={t("core.jobs.recent.caption")}
+                columns={columns}
+                rows={data.recent}
+                rowKey={(r) => r.id}
+              />
+            )}
+          </section>
+        </>
+      ) : null}
+      <ConfirmDialog
+        open={canceling !== null}
+        title={t("core.jobs.cancel_title")}
+        body={t("core.jobs.cancel_body")}
+        confirm={t("core.jobs.cancel")}
+        busy={cancel.busy}
+        error={cancel.error}
+        {...msg(cancel.error ? actionMessage(cancel.error, "queue") : undefined)}
+        onConfirm={doCancel}
+        onClose={() => setCanceling(null)}
+      />
+    </div>
+  );
+}
+
+function msg(m: string | undefined): { message?: string } {
+  return m === undefined ? {} : { message: m };
+}

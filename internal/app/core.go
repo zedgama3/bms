@@ -11,6 +11,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/departments"
 	"github.com/zedgama3/bms/internal/core/events"
+	"github.com/zedgama3/bms/internal/core/jobs"
 	"github.com/zedgama3/bms/internal/core/notify"
 	"github.com/zedgama3/bms/internal/core/people"
 	"github.com/zedgama3/bms/internal/core/settings"
@@ -21,12 +22,12 @@ import (
 // Clock, Links, DB and Signals (module-contract "Deps fields by spec"). Each field is
 // added here, and copied in provision, when its spec is Approved:
 //
-//	Jobs     jobs.Registrar    (scoped per module by provision)    jobs.md
 //	Files    files.Store                                           files.md
 //
 // Audit (audit.md, M1) is held unscoped: provision scopes it per module with Scoped(m.Name),
 // and so is Settings (settings.md, M4: the service, scoped to settings.Reader per module).
-// Notify (notify.md, M4) is held as the service and scoped per module by provision.
+// Notify (notify.md, M4) is held as the service and scoped per module by provision, and so is
+// Jobs (jobs.md, M4).
 // Authz, People, Departments and Events (M2, M3) are shared: provision copies them to every module's Deps as they are.
 type coreDeps struct {
 	audit       *audit.Log            // set by the audit part's build; nil when no part builds one (tests)
@@ -36,6 +37,7 @@ type coreDeps struct {
 	departments departments.Directory // set by the departments part's build; nil when no part builds one
 	events      events.Directory      // set by the events part's build; nil when no part builds one
 	notify      *notify.Service       // set by the notify part's build; provision scopes it per module; nil when no part builds one
+	jobs        *jobs.Runner          // set by the jobs part's build; provision scopes it per module; nil when no part builds one
 }
 
 // coreSetOrder is the order of the core's migration sets (db.md Proposed change 10),
@@ -98,7 +100,7 @@ type runnable struct {
 // coreParts are the core services that plug in, in dependency order (audit, identity,
 // settings, authz, people, departments, events, jobs, notify, files; app.md "How later core
 // services plug in"). Each later core spec adds one file core_<name>.go and one line here.
-var coreParts = []part{auditPart, identityPart, settingsPart, authzPart, peoplePart, departmentsPart, eventsPart, notifyPart}
+var coreParts = []part{auditPart, identityPart, settingsPart, authzPart, peoplePart, departmentsPart, eventsPart, jobsPart, notifyPart}
 
 // declare runs every part's declare, in order (F28).
 func (a *assembly) declare() error {

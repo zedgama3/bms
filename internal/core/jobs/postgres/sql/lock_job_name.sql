@@ -1,0 +1,20 @@
+-- Store.LockName: serializes the "no row of this name is Queued or Running" test. Takes a
+-- transaction-scoped advisory lock keyed by the job name, so two writers (two Run nows, or a
+-- scheduler tick racing a Run now) inserting the same name run one after the other. Under READ
+-- COMMITTED the NOT EXISTS in run_now_job.sql and insert_scheduled_slot.sql cannot see
+-- another transaction's uncommitted insert; with this lock the second statement starts only
+-- after the first transaction committed, so its snapshot (taken per statement) sees the row.
+-- MUST run in the same Write transaction, immediately before run_now_job.sql or
+-- insert_scheduled_slot.sql for that name (the lock is released at commit or rollback, never
+-- earlier; outside a transaction it is released at once and protects nothing). Take locks of
+-- several names in one transaction in a fixed order (sorted by name) so two ticks cannot
+-- deadlock. The lock is on the name only: enqueue, lease, complete and the like never take it.
+-- Use Exec or QueryRow inside the Write transaction.
+-- Args: $1 name text.
+-- Columns, in order: one row, one empty column (void, scan into nothing; Exec is simplest).
+-- Key: hashtextextended('core.job:' || name, 0), a bigint; a collision with another user of
+-- advisory locks only makes two unrelated callers wait for each other, never skip a test.
+-- Does not fail on a read-only copy (advisory locks are allowed in a read-only transaction), so
+-- the insert that follows is what fails 25006. No table, no index.
+-- Constraint errors: none reachable.
+SELECT pg_advisory_xact_lock(hashtextextended('core.job:' || $1::text, 0))

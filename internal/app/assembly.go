@@ -20,6 +20,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/departments"
 	"github.com/zedgama3/bms/internal/core/events"
 	"github.com/zedgama3/bms/internal/core/identity"
+	"github.com/zedgama3/bms/internal/core/jobs"
 	"github.com/zedgama3/bms/internal/core/module"
 	"github.com/zedgama3/bms/internal/core/notify"
 	"github.com/zedgama3/bms/internal/core/people"
@@ -119,6 +120,7 @@ type assembly struct {
 	departments *departments.Service       // the departments part's service; nil before its build
 	events      *events.Service            // the events part's service; nil before its build
 	notify      *notify.Service            // the notify part's service (the alert, the outbox in export); nil before its build
+	jobs        *jobs.Runner               // the jobs part's runner (lazyDeferrer, audit.purge, bms check); nil before its build
 	notifiers   map[string]notify.Notifier // the Notifiers notify scoped for identity and people (Scoped fails once Run started); nil before its build
 	stdout      io.Writer                  // the command's standard output (migrate's seed line)
 	operator    bool                       // a command that acts as the operator is running (auditActor)
@@ -280,6 +282,7 @@ func (a *assembly) newDispatcher() error {
 		Meter:          m,
 		Clock:          a.clock,
 		HandlerTimeout: handlerTimeout,
+		Deferrer:       lazyDeferrer{a: a},
 	})
 	if err != nil {
 		return err //nolint:wrapcheck // signals.New names itself
@@ -323,6 +326,11 @@ func (a *assembly) provision(_ context.Context, m module.Manifest) (module.Deps,
 	if a.deps.notify != nil {
 		if deps.Notify, err = a.deps.notify.Scoped(m.Name); err != nil {
 			return module.Deps{}, fmt.Errorf("module %s: notify scope: %w", m.Name, err)
+		}
+	}
+	if a.deps.jobs != nil {
+		if deps.Jobs, err = a.deps.jobs.Scoped(m.Name); err != nil {
+			return module.Deps{}, fmt.Errorf("module %s: jobs scope: %w", m.Name, err)
 		}
 	}
 	deps.Authz = a.deps.authz

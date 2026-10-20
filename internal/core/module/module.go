@@ -10,6 +10,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/departments"
 	"github.com/zedgama3/bms/internal/core/events"
+	"github.com/zedgama3/bms/internal/core/jobs"
 	"github.com/zedgama3/bms/internal/core/notify"
 	"github.com/zedgama3/bms/internal/core/people"
 	"github.com/zedgama3/bms/internal/core/settings"
@@ -183,7 +184,15 @@ type Deps struct {
 	// notifytest.NewFake(Manifest.Name).
 	Notify notify.Notifier
 
+	// Jobs registers the module's background jobs and enqueues its deferred ones (jobs.md;
+	// M4): Register in Start with names "<name>.<ident>" (the declaration; no I/O, works on a
+	// read-only copy), Enqueue inside the use case's transaction with record references as
+	// arguments. Scoped to the module by Provision with Scoped(m.Name), so a name of another
+	// owner fails errs.Invalid (field "name", code "scope"). Handlers run as the system, are
+	// idempotent and may run more than once. Nil only in tests that register no job;
+	// moduletest.Conformance fills a nil one with jobstest.NewFake(Manifest.Name).
+	Jobs jobs.Registrar
+
 	// Added by later specs, named here so modules know where to look:
-	// Jobs     jobs.Registrar    jobs.md
 	// Files    files.Store       files.md
 }

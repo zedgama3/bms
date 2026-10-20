@@ -1350,6 +1350,145 @@
         "format": "uuid",
         "type": "string"
       },
+      "JobsRecord": {
+        "description": "One job row. Arguments are never shown.",
+        "properties": {
+          "attempts": {
+            "type": "integer"
+          },
+          "finished_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "instance": {
+            "description": "The copy that ran it last.",
+            "type": "string"
+          },
+          "key": {
+            "description": "The dedupe key, when the row has one.",
+            "type": "string"
+          },
+          "last_error": {
+            "description": "A token: an error kind in lower case, or panic, no_handler, lost_lease, gave_up, canceled.",
+            "type": "string"
+          },
+          "name": {
+            "description": "\u003cowner\u003e.\u003cident\u003e.",
+            "type": "string"
+          },
+          "run_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "done",
+              "failed",
+              "canceled"
+            ],
+            "type": "string"
+          },
+          "trace_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "status",
+          "attempts",
+          "run_at"
+        ],
+        "type": "object"
+      },
+      "JobsRegistered": {
+        "properties": {
+          "every_seconds": {
+            "description": "0 for a job that runs on demand only.",
+            "type": "integer"
+          },
+          "last": {
+            "$ref": "#/components/schemas/JobsRecord"
+          },
+          "name": {
+            "type": "string"
+          },
+          "next_due": {
+            "description": "The next slot; absent for an on-demand job.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "timeout_seconds": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "owner",
+          "every_seconds",
+          "timeout_seconds"
+        ],
+        "type": "object"
+      },
+      "JobsRunRef": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "JobsStatus": {
+        "properties": {
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Rows by status.",
+            "type": "object"
+          },
+          "read_only": {
+            "description": "True when this copy runs no jobs.",
+            "type": "boolean"
+          },
+          "recent": {
+            "items": {
+              "$ref": "#/components/schemas/JobsRecord"
+            },
+            "type": "array"
+          },
+          "registered": {
+            "items": {
+              "$ref": "#/components/schemas/JobsRegistered"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "read_only",
+          "registered",
+          "counts",
+          "recent"
+        ],
+        "type": "object"
+      },
       "ModulesResponse": {
         "properties": {
           "modules": {
@@ -4782,6 +4921,149 @@
         ]
       }
     },
+    "/api/jobs/": {
+      "get": {
+        "operationId": "jobsStatus",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobsStatus"
+                }
+              }
+            },
+            "description": "The status."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "The registered job names with each one's last run and next due time, the queue counts by status, and the most recent failed and waiting rows (at most 50). Works on a read-only copy. Needs jobs.read.",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/jobs/queue/{job}/cancel": {
+      "post": {
+        "operationId": "jobsCancel",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Canceled."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Cancel a waiting job. 409 when the job is not waiting (code status). Needs jobs.manage.",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/jobs/queue/{job}/retry": {
+      "post": {
+        "operationId": "jobsRetry",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Queued again."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Put a failed job back in the queue, due now, with its attempts reset. 409 when the job is not failed (code status). Needs jobs.manage.",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/jobs/registered/{name}/run": {
+      "post": {
+        "operationId": "jobsRunNow",
+        "parameters": [
+          {
+            "description": "Job name, \u003cowner\u003e.\u003cident\u003e.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobsRunRef"
+                }
+              }
+            },
+            "description": "The run was queued; it starts at the next tick."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Run a scheduled job now. 400 for an on-demand name (code on_demand), 404 for a name not registered on this copy, 409 while a run of it waits or runs (code running), 503 read_only on a read-only copy. Needs jobs.manage.",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
     "/api/modules": {
       "get": {
         "operationId": "listModules",
@@ -6615,6 +6897,10 @@
     {
       "description": "The events the regional puts on: dates and zone, kinds, schedule, closing, and the modules' set-up.",
       "name": "events"
+    },
+    {
+      "description": "Background work: what is registered, what ran last, what waits and what failed, and three admin actions. Every route needs a signed-in person; the permission is noted per route.",
+      "name": "jobs"
     },
     {
       "description": "Notifications: template wording, a test message and the outbox. Every route needs a signed-in person; the permission is noted per route.",

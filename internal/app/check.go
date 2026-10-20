@@ -397,6 +397,33 @@ func (r *checkReport) api(ctx context.Context, a *assembly) {
 		return
 	}
 	r.printf("api: %d operations\n", n)
+	r.jobs(ctx, a)
+}
+
+// jobs prints, under a "jobs" heading, each job name this build registers with its owner and
+// schedule (jobs.md): the runner's own, audit.purge and what each module registers in Start.
+// It starts the built modules to learn that (Start does no I/O and succeeds on a database that
+// refuses every statement; closeQuiet stops them) and reads no database. A module that fails
+// to start is a problem, as it would be for serve.
+func (r *checkReport) jobs(ctx context.Context, a *assembly) {
+	if a.jobs == nil || a.set == nil {
+		return
+	}
+	sctx, cancel := context.WithTimeout(ctx, checkTimeout)
+	defer cancel()
+	if err := a.set.Start(sctx); err != nil {
+		r.printf("jobs: modules did not start: %s\n", indent(problemText(err)))
+		r.record(ExitFailure)
+		return
+	}
+	r.printf("jobs\n")
+	for _, d := range a.jobs.Declared() {
+		schedule := "on demand"
+		if d.Every > 0 {
+			schedule = "every " + d.Every.String()
+		}
+		r.printf("  %s  owner %s  %s\n", d.Name, d.Owner, schedule)
+	}
 }
 
 // email prints the state of e-mail (notify.md "Concurrency and lifecycle"): whether SMTP is
