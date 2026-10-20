@@ -1,6 +1,6 @@
 # Settings
 
-- **Status:** Approved (2026-10-19, D39)
+- **Status:** Implemented (2026-10-19; approved D39; logo deferred to files)
 - **Amendment 2026-10-19 (pending owner approval):** three gaps found while applying D39: `Options.Authz` at part 3 is `app`'s `lazyAuthorizer` (no part reorder); `GET /public` and `/theme.css` keep the `/api/` `no-store` rule with their `ETag`; `api.Options.PublicOrigin` waits, with its shape fixed over `regional.public_url`. See "Amendment 2026-10-19 (pending owner approval): authz before authz, caching, the public origin" before Open questions.
 - **Package:** `internal/core/settings` (store in `internal/core/settings/postgres`, fake in
   `internal/core/settings/settingstest`)   **UI:** `web/src/core/settings/`
