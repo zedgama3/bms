@@ -1,0 +1,546 @@
+{
+  "tags": [
+    {
+      "name": "notify",
+      "description": "Notifications: template wording, a test message and the outbox. Every route needs a signed-in person; the permission is noted per route."
+    }
+  ],
+  "paths": {
+    "/templates": {
+      "get": {
+        "tags": [
+          "notify"
+        ],
+        "operationId": "notifyListTemplates",
+        "summary": "Every registered template with its languages and which are overridden, then overrides of templates no longer registered (available false). Needs notify.templates.manage.",
+        "responses": {
+          "200": {
+            "description": "The templates.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotifyTemplateList"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/templates/{name}/{lang}": {
+      "get": {
+        "tags": [
+          "notify"
+        ],
+        "operationId": "notifyGetTemplate",
+        "summary": "One template in one language: the shipped text and the current text. Needs notify.templates.manage.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Template name, <owner>.<ident>."
+          },
+          {
+            "name": "lang",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Language tag, such as en."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The template.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotifyTemplateView"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "notify"
+        ],
+        "operationId": "notifyPutTemplate",
+        "summary": "Save an override. Field errors name subject or body with code required, too_long, control_chars or parse (the parser's message with its line). Needs notify.templates.manage; 503 read_only on a read-only copy.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Template name, <owner>.<ident>."
+          },
+          {
+            "name": "lang",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Language tag, such as en."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotifyTemplateText"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The template after the change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotifyTemplateView"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "notify"
+        ],
+        "operationId": "notifyResetTemplate",
+        "summary": "Remove an override, back to the shipped text. Idempotent. Needs notify.templates.manage.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Template name, <owner>.<ident>."
+          },
+          {
+            "name": "lang",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Language tag, such as en."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Reset."
+          }
+        }
+      }
+    },
+    "/templates/{name}/{lang}/preview": {
+      "post": {
+        "tags": [
+          "notify"
+        ],
+        "operationId": "notifyPreviewTemplate",
+        "summary": "Render the given text with placeholder values; nothing is saved. Needs notify.templates.manage.",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Template name, <owner>.<ident>."
+          },
+          {
+            "name": "lang",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Language tag, such as en."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotifyTemplateText"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The rendered subject and body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotifyRendered"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/test": {
+      "post": {
+        "tags": [
+          "notify"
+        ],
+        "operationId": "notifySendTest",
+        "summary": "Queue the notify.test message to the signed-in person. Needs notify.templates.manage. 501 when e-mail is not configured.",
+        "responses": {
+          "202": {
+            "description": "The message was queued.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotifyMessageRef"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/outbox": {
+      "get": {
+        "tags": [
+          "notify"
+        ],
+        "operationId": "notifyOutbox",
+        "summary": "Counts by status, whether e-mail is configured, and the newest queued, sending and failed rows. Never an address, subject or body. Needs notify.outbox.manage.",
+        "responses": {
+          "200": {
+            "description": "The outbox.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotifyOutbox"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/outbox/check": {
+      "post": {
+        "tags": [
+          "notify"
+        ],
+        "operationId": "notifyCheckConnection",
+        "summary": "Connect, greet and authenticate against the SMTP server, then quit. Needs notify.outbox.manage. 501 when e-mail is not configured; 503 or 504 when the server cannot be reached.",
+        "responses": {
+          "204": {
+            "description": "The server answered."
+          }
+        }
+      }
+    },
+    "/outbox/{message}/retry": {
+      "post": {
+        "tags": [
+          "notify"
+        ],
+        "operationId": "notifyRetryMessage",
+        "summary": "Requeue a failed message that still holds its text. 409 when the message is not failed (code conflict) or its text has expired (code expired). Needs notify.outbox.manage.",
+        "parameters": [
+          {
+            "name": "message",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Requeued."
+          }
+        }
+      }
+    },
+    "/outbox/{message}/cancel": {
+      "post": {
+        "tags": [
+          "notify"
+        ],
+        "operationId": "notifyCancelMessage",
+        "summary": "Delete a queued or failed message. 409 when it is being sent or was sent. Needs notify.outbox.manage.",
+        "parameters": [
+          {
+            "name": "message",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Canceled."
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "NotifyTemplateText": {
+        "type": "object",
+        "required": [
+          "subject",
+          "body"
+        ],
+        "properties": {
+          "subject": {
+            "type": "string",
+            "description": "A text/template; one line."
+          },
+          "body": {
+            "type": "string",
+            "description": "A text/template."
+          }
+        }
+      },
+      "NotifyRendered": {
+        "type": "object",
+        "required": [
+          "subject",
+          "body"
+        ],
+        "properties": {
+          "subject": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          }
+        }
+      },
+      "NotifyLanguageInfo": {
+        "type": "object",
+        "required": [
+          "language",
+          "overridden"
+        ],
+        "properties": {
+          "language": {
+            "type": "string"
+          },
+          "overridden": {
+            "type": "boolean"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "NotifyTemplateInfo": {
+        "type": "object",
+        "required": [
+          "name",
+          "vars",
+          "languages",
+          "available"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "vars": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "languages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NotifyLanguageInfo"
+            }
+          },
+          "available": {
+            "type": "boolean",
+            "description": "False for an override whose template nobody registers in this installation."
+          }
+        }
+      },
+      "NotifyTemplateList": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/NotifyTemplateInfo"
+        }
+      },
+      "NotifyTemplateView": {
+        "type": "object",
+        "required": [
+          "name",
+          "language",
+          "default",
+          "current",
+          "overridden",
+          "vars"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          },
+          "default": {
+            "$ref": "#/components/schemas/NotifyTemplateText"
+          },
+          "current": {
+            "$ref": "#/components/schemas/NotifyTemplateText"
+          },
+          "overridden": {
+            "type": "boolean"
+          },
+          "vars": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "NotifyMessageRef": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "NotifyRecord": {
+        "type": "object",
+        "required": [
+          "id",
+          "owner",
+          "template",
+          "language",
+          "status",
+          "attempts",
+          "created_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "template": {
+            "type": "string"
+          },
+          "person_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Absent for a message to an explicit address."
+          },
+          "language": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "sending",
+              "sent",
+              "failed"
+            ]
+          },
+          "attempts": {
+            "type": "integer"
+          },
+          "next_attempt_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "leased_until": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "After this the text is gone and the message cannot be retried."
+          },
+          "sent_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "failed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "last_error": {
+            "type": "string",
+            "description": "A short token such as connect, auth, timeout, smtp_4xx, rejected, no_address or expired."
+          }
+        }
+      },
+      "NotifyOutbox": {
+        "type": "object",
+        "required": [
+          "configured",
+          "counts",
+          "recent"
+        ],
+        "properties": {
+          "configured": {
+            "type": "boolean"
+          },
+          "counts": {
+            "type": "object",
+            "description": "Rows by status.",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "recent": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NotifyRecord"
+            }
+          }
+        }
+      }
+    }
+  }
+}
