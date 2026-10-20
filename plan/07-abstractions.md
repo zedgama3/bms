@@ -197,7 +197,7 @@ Rules (enforced by depguard and `make imports`):
 
 ### notify: tell someone something
 - **Purpose:** deliver a notification to a person through a channel.
-- **Owns:** the `Notifier` contract (scoped per owner) and `AddressSender`; templates per language with regional overrides; the outbox (`core.notify_message`) written on the caller's transaction; the sender loop on the writing copy with retries; the SMTP channel (stdlib; Mailpit in development); the `notify` routes and screens; permissions `notify.templates.manage`, `notify.outbox.manage`; settings `notify.*`. E-mail first, others later behind the same `Channel`.
+- **Owns:** the `Notifier` contract (scoped per owner; `Send`, `Configured`) and `AddressSender`; templates per language with regional overrides; the outbox (`core.notify_message`) written on the caller's transaction; the sender loop on the writing copy with retries; the SMTP channel (stdlib; Mailpit in development); the `notify` routes and screens; permissions `notify.templates.manage`, `notify.outbox.manage`; settings `notify.*`. E-mail first, others later behind the same `Channel`.
 - **Doesn't do:** decide who needs telling (modules do), subscribe to signals or pick recipients; HTML, attachments, SMS (Later behind `Channel`).
 
 ### audit: who did what, and who saw what

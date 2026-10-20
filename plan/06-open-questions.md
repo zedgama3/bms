@@ -20,56 +20,9 @@ here, copy it into the document it affects, and tick the box.
       mechanism (planned switchover, by whom, how fast) and which workflows keep working on
       site. The emergency-information lookup offline has privacy implications (sensitive data
       on an on-site copy) to address when it's designed.
-- [ ] **Q-QUAL:** How are qualifications held and checked? Volunteer positions and shifts
-      have requirements: training completed, certificates such as ICS-100 or ICS-200 (often
-      with an expiry date), being over 18. Other modules may need the same facts (for
-      example, early-arrival passes). Proposed: a `qualifications` capability (D19): a
-      person's qualifications, who recorded or verified them, and their expiry, provided by
-      one module and required by `volunteers`. Decide before the `volunteers` spec; not
-      needed for the core MVP.
-      **Partly answered (owner, 2026-10-16):** department leads check off (verify) the
-      qualifications related to their department. Some qualifications apply to several
-      departments (for example, ICS-100), but most are specific to one department. Recorded in
-      [09-core-features.md](09-core-features.md) (§5 and the notes for `volunteers`). The shape
-      (the `qualifications` capability) is still open for the architect when the `volunteers`
-      spec is written.
-- [ ] **Q-NAME (GitHub org):** Does the project move to a GitHub org? It lives at
-      `github.com/zedgama3/bms` for now. The name is answered: BMS, for "Burn Management
-      System" → D25. The org question was not answered and stays open; the repository stays
-      at `github.com/zedgama3/bms` for now.
+### Build (M4)
 
-### Project
-
-- [ ] **Q-GOV1:** Governance: who can merge, how are maintainers added, which code of
-      conduct? Proposed: Contributor Covenant.
-- [ ] **Q-GOV2:** Contribution sign-off: DCO (`Signed-off-by`) or a CLA? Proposed: DCO, which
-      keeps the AGPL promise symmetric for everyone.
-- [ ] **Q-UPGRADE:** What's the upgrade promise between versions for forks that add their own
-      modules (a stable module contract, semver)?
-
-### Build (M4, awaiting the owner)
-
-- [ ] **Q-AMEND1:** Approve six pending spec amendments, already built on feat/m1: (1)
-      `Notifier.Configured`, so a reset returns a uniform 501 when e-mail is off (identity.md
-      and notify.md); (2) settings' `lazyAuthorizer`, no-store and ETag caching, and
-      `PublicOrigin` deferred; (3) `HoldersOf` counts explicit grants only; (4) the
-      `hello.greeted` template; (5) notify expiry: `Message.TTL`, `MaxAge` of 7 days, failed
-      rows retryable until expiry, `ExpireStale`, and `SendTo` dedupe (F67–F72).
-- [ ] **Q-RESET-RATE:** Reset requests share the sign-in failure buckets. That can lock out
-      sign-in, and about 960 reset e-mails a day to one victim are possible. Recommended: own
-      buckets for resets plus a per-account cooldown. Relates to D36(i).
-- [ ] **Q-RESET-LIFE:** The reset lifetime is passed to templates as English words ("60
-      minutes"). Recommended: pass a number and let each template word the unit.
-- [ ] **Q-SETTINGS-REVIEW:** Settings review points: (1) drop the early area check, which can
-      wrongly refuse a valid change for up to 30 s; (2) canonicalise and refuse a bad
-      `public_url`; (3) move the crypto and contrast tests to unit tests; (4) document that a
-      Check cannot see whether a secret is set, and that re-saving a secret counts as a change.
-- [ ] **Q-MAILPIT-AUTH:** The dev Mailpit lacks the SMTP AUTH settings
-      (`MP_SMTP_AUTH_ACCEPT_ANY`, `MP_SMTP_AUTH_ALLOW_INSECURE`), so SMTP login is not tested.
-      Recommended: enable them in `deploy/compose`.
-- [ ] **Q-WEB-REVIEW:** Web review points: (1) `Referrer-Policy: no-referrer` on the reset
-      path, or `strict-origin` site-wide; (2) translate outbox error tokens and template
-      names; (3) the outbox "address" wording.
+- None open. The M4 review questions were answered 2026-10-20 (D40).
 
 ## Resolved
 
@@ -123,8 +76,33 @@ here, copy it into the document it affects, and tick the box.
 - [x] **Q-FORMS:** Do registrations need forms that a regional configures, or are fields fixed
       per module? Forms are built in code for now, with fields fixed per module; configurable
       forms may come later. → D32
+- [x] **Q-NAME (GitHub org):** Does the project move to a GitHub org? No. The repository will
+      eventually be published at `github.com/zedgama3/bms`, the current module path; no org
+      move is planned. → D40
+- [x] **Q-QUAL:** How are qualifications held and checked? Department leads check them
+      manually. A lead applies a training record (date acquired, expiry or indefinite, who
+      approved it), some department-specific and some org-wide; a user uploads an ICS100
+      certificate and any lead certifies it. The shape (a `qualifications` capability, D19) is
+      for the architect in the `volunteers` spec; the certificate upload depends on `files`.
+      → D40
+- [x] **Q-GOV1:** Governance: the code of conduct is the Contributor Covenant. Who can merge and
+      how maintainers are added: the owner merges for now; nothing more decided. → D40
+- [x] **Q-GOV2:** Contribution sign-off: DCO (`Signed-off-by`), no CLA. → D40
+- [x] **Q-UPGRADE:** Upgrade promise for forks: semantic versioning. The module contract
+      (Module interface, Manifest, Deps, the core contracts modules import) is the public API;
+      breaking changes only in a major version, additions in minor, fixes in patch. → D40
+- [x] **Q-AMEND1:** Pending spec amendments (1)–(5) approved with recommendations. → D40
+- [x] **Q-RESET-RATE:** Reset requests: own limit buckets plus a per-account cooldown. → D40
+- [x] **Q-RESET-LIFE:** Templates get the reset lifetime as a number; each template words the
+      unit. → D40
+- [x] **Q-SETTINGS-REVIEW:** Settings review points (1)–(4) approved as recommended. → D40
+- [x] **Q-MAILPIT-AUTH:** Enable `MP_SMTP_AUTH_ACCEPT_ANY` and `MP_SMTP_AUTH_ALLOW_INSECURE`
+      in `deploy/compose`. → D40
+- [x] **Q-WEB-REVIEW:** Web review points (a) `Referrer-Policy: no-referrer` on the reset page
+      path; (b) translate outbox error tokens and template names, raw token as fallback; (c)
+      the outbox recipient reads "An e-mail address (no account)". → D40
 
 ### Design (for the architect)
 
-- None open. Q-WEBMOD and Q-FORMS are resolved above. The shape of qualifications (Q-QUAL) is
-  still open under Product.
+- None open. Q-WEBMOD and Q-FORMS are resolved above. The shape of qualifications is for the
+  architect in the `volunteers` spec (Q-QUAL, D40).

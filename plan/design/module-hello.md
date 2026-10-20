@@ -5,12 +5,12 @@
 - **Amended 2026-10-18 (owner approval of audit/identity):** the M1 step of decision 2 is named: `actor` is `identity.PersonFrom` (false with no session, for a restricted session and inside a signal delivery); `GET /api/hello/greeting` with a session is `403` until the owner's base role exists (M2), and the request-driven `deliver:hello.greeted` assertion lands then (identity.md Proposed change 4).
 - **Amended 2026-10-18 (owner approval of authz/people):** the M2 step of decision 2 is named: `permissionChecker` is `deps.Authz`; both permissions declare `StarterRoles: []string{authz.RoleParticipant}` (decision 11); the app e2e asserts `GET /api/hello/greeting` is `200` for a signed-in participant and `POST /api/hello/greetings` drives `deliver:hello.greeted`; migration `0002` adds `FOREIGN KEY (person_id) REFERENCES core.person(id) ON DELETE RESTRICT` (replacing the "on delete cascade" sketch: `people` calls `DeletePerson` first and a cascade would hide a module that forgot something); `Manifest.Subscribes` may add `people.person-deleted` to reset the counter (optional, deferred); the e2e export shows `hello` inside the document (authz.md Proposed change 3, people.md Proposed change 8).
 - **Amended 2026-10-18 (M2 build, accepted deviations):** implementation deviations recorded in Behavior, "Accepted implementation deviations (M2 build, 2026-10-18)": a nil `Deps.Authz` denies everything (the rule for modules copying hello); migration 0002 is the person FK, `RESTRICT`, with a preflight.
-- **Amendment 2026-10-19 (pending owner approval):** `hello` ships one notification template, `hello.greeted` (`Manifest.Templates`), sent to the actor from `Greet` through `Deps.Notify`, so the reference covers the path (module-contract.md, D39, notify Proposed change 4); F32 to F36. See "Amendment 2026-10-19 (pending owner approval): the `hello.greeted` template" before Open questions.
+- **Amendment 2026-10-19 (approved, owner, 2026-10-20, D40):** `hello` ships one notification template, `hello.greeted` (`Manifest.Templates`), sent to the actor from `Greet` through `Deps.Notify`, so the reference covers the path (module-contract.md, D39, notify Proposed change 4); F32 to F36. See "Amendment 2026-10-19 (approved, owner, 2026-10-20, D40): the `hello.greeted` template" before Open questions.
 - **Package:** `internal/modules/hello` (with `internal/modules/hello/greeting`,
   `internal/modules/hello/postgres`) and `internal/contracts/greeter`
   **UI:** `web/src/modules/hello`
 - **Depends on specs:** `module-contract`, `db`, `signals`, `telemetry`, `api` (`lib/httpx`),
-  `web-shell`, `app`, `model`, `lib-errs`, `lib-core`, `notify` (`Deps.Notify`, `Manifest.Templates`; M4, pending amendment)
+  `web-shell`, `app`, `model`, `lib-errs`, `lib-core`, `notify` (`Deps.Notify`, `Manifest.Templates`; M4, approved 2026-10-20, D40)
   **Used by:** `app` (compiled in through `internal/app/modules.go` and
   `web/src/modules/index.ts`; its end-to-end test), `web-shell` (Playwright smoke), every
   later module author (copy-paste template), `moduletest.Conformance` (the reference it is
@@ -94,7 +94,7 @@ README row 4b); identity.md's Proposed change 4 (the M1 step: `actor: identity.P
 
 **M2 build deviations (2026-10-18).** A nil `Deps.Authz` means deny-all (fail closed), the rule for modules copying hello (`TestNew_NilAuthz_DeniesEverything`); migration 0002 is the person FK, `RESTRICT`, with a preflight.
 
-**Pending amendment (2026-10-19, M4).** `Manifest.Templates` ships `templates/greeted.{en,es}.tmpl` (`TemplateGreeted = "hello.greeted"`); `Greet` sends it to the actor inside its transaction (`Key: "greeted:<id>"`, `Vars{word}`, `Link: "/hello/"`), treats `Unsupported` as "no e-mail" and any other `Send` error as a rollback; a nil `Deps.Notify` fails `New`. F32 to F36; catalogue key `module.hello.template.greeted.title`.
+**Approved amendment (2026-10-19, M4; owner, 2026-10-20, D40).** `Manifest.Templates` ships `templates/greeted.{en,es}.tmpl` (`TemplateGreeted = "hello.greeted"`); `Greet` sends it to the actor inside its transaction (`Key: "greeted:<id>"`, `Vars{word}`, `Link: "/hello/"`), treats `Unsupported` as "no e-mail" and any other `Send` error as a rollback; a nil `Deps.Notify` fails `New`. F32 to F36; catalogue key `module.hello.template.greeted.title`.
 
 ## Purpose
 
@@ -705,7 +705,7 @@ with the proposed answer:
     module to show; the operator docs tell a regional to set `BMS_MODULES_DISABLED=hello`;
     revisit when `volunteers` is Implemented.
 
-## Amendment 2026-10-19 (pending owner approval): the `hello.greeted` template
+## Amendment 2026-10-19 (approved, owner, 2026-10-20, D40): the `hello.greeted` template
 
 Source: notify.md Proposed change 4, applied in module-contract.md (D39): "the `hello` module ships one template `hello.greeted` (sent from `Greet`) so the reference covers the path; `module-hello.md` carries the detail". This is the detail. It depends on notify (Approved) and on module-contract's D39 amendment (`Manifest.Templates`, `Deps.Notify`, `notifytest.NewFake` in `Conformance`, the rule `templates_register`).
 
@@ -795,4 +795,4 @@ None. Both questions in the draft are answered above (decisions 11 and 12).
    permission checker, setting source) and their deny/default wiring until identity, authz
    and settings exist. Point both at `hello` as the template.
 9. **`plan/design/README.md`:** row 4b to Draft (done with this draft).
-10. Pending (amendment 2026-10-19, owner approval needed). **`plan/design/module-contract.md` (row 4), decision 8 and `plan/design/app.md` F30 (`TestMessageCatalogues_EnglishCoversManifests`):** the derived catalogue keys gain `module.<name>.template.<ident>.title` for each `<ident>` in `Manifest.Templates`, so a module template's title on notify's templates screen is checked like a permission's or a setting's. `hello`'s `en.json` gains `module.hello.template.greeted.title`.
+10. Applied 2026-10-20 (D40), in module-contract.md decision 8 and app.md F30. **`plan/design/module-contract.md` (row 4), decision 8 and `plan/design/app.md` F30 (`TestMessageCatalogues_EnglishCoversManifests`):** the derived catalogue keys gain `module.<name>.template.<ident>.title` for each `<ident>` in `Manifest.Templates`, so a module template's title on notify's templates screen is checked like a permission's or a setting's. `hello`'s `en.json` gains `module.hello.template.greeted.title`.

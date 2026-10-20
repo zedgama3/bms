@@ -21,6 +21,9 @@ rather than kept in anyone's head.
   in the core, and that change needs a spec.
 - **Never put real personal data** in issues, fixtures, seeds, screenshots or tests.
 - `make check` must pass.
+- Releases follow [semantic versioning](https://semver.org/). The module contract (the
+  `Module` interface, `Manifest`, `Deps` and the core contracts modules import) is the public
+  API for forks' own modules: it breaks only in a major version.
 
 ## Working with Claude Code
 
@@ -31,5 +34,15 @@ review. See [`plan/08-agent-workflow.md`](plan/08-agent-workflow.md).
 ## License
 
 By contributing, you agree that your contributions are licensed under the
-[AGPL-3.0](LICENSE). How contributions are signed off (for example with a DCO) is still an
-open question (`plan/06-open-questions.md`, Q-GOV2).
+[AGPL-3.0](LICENSE).
+
+## Sign-off (DCO)
+
+Every commit is signed off under the [Developer Certificate of Origin](https://developercertificate.org/):
+by adding a `Signed-off-by: Your Name <you@example.org>` line (`git commit -s`), you certify
+that you wrote the change or otherwise have the right to submit it under the project's
+license. There is no CLA: everyone, maintainers included, contributes on the same AGPL terms.
+
+## Code of conduct
+
+Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md).

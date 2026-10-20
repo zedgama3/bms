@@ -7,7 +7,8 @@
 - **Amended 2026-10-18 (M1 build, accepted deviations):** implementation deviations recorded in Behavior, "Accepted implementation deviations (M1 build, 2026-10-18)"; `serve` step 8 and the shutdown closer list updated (a seventh closer, `audit`).
 - **Amended 2026-10-18 (M2 build, accepted deviations):** implementation deviations recorded in Behavior, "Accepted implementation deviations (M2 build, 2026-10-18)": operator attribution, `migrate` and its exit statuses, command pre-parsing, new exported surface (`api.Permissions`, `core.modules.read`), the Imports list, and three open spec gaps for the architect.
 - **Amended 2026-10-19 (D39, owner approval of settings and notify):** the `settings` (part 3) and `notify` (part 9) rows of "How later core services plug in" are filled in (settings.md Proposed change 3, notify.md Proposed change 3); `internal/app/alert.go` implements `identity.Alerter` (notify.md Proposed change 7); the adapters `settingsPolicy`, `smtpSource`, `siteSource`, `retentionSource`, `lazyAlerter` and `lazyNotifier` are named; `coreSetOrder` gains `notify`; `bms check` prints the e-mail lines. No existing behaviour changes.
-- **Amendment 2026-10-19 (pending owner approval):** part 3 (`settings`) receives `Authz: lazyAuthorizer{a}` over `a.authz`, which part 4 sets, so no part is reordered (settings.md amendment of the same date); F31 to F33. `api.Options.PublicOrigin` waits (api.md amendment); when it lands `app` fills it over `a.settings.Regional`. See "Amendment 2026-10-19 (pending owner approval): `lazyAuthorizer` for settings" before Open questions.
+- **Amendment 2026-10-19 (approved, owner, 2026-10-20, D40):** part 3 (`settings`) receives `Authz: lazyAuthorizer{a}` over `a.authz`, which part 4 sets, so no part is reordered (settings.md amendment of the same date); F31 to F33. `api.Options.PublicOrigin` waits (api.md amendment); when it lands `app` fills it over `a.settings.Regional`. See "Amendment 2026-10-19 (approved, owner, 2026-10-20, D40): `lazyAuthorizer` for settings" before Open questions.
+- **Accepted 2026-10-20 (owner, D40):** the implementation deviations marked "(implementation, 2026-10-19)" in this spec are accepted as written; no text changed.
 - **Package:** `internal/app` (Go module `github.com/zedgama3/bms`), plus the helper package
   `internal/app/secrets` (the generated-secrets file) and the binary `cmd/bms`. **UI:**
   none of its own; `serve` hands the built web shell to `api`.
@@ -944,7 +945,7 @@ never `go.opentelemetry.io`, never `dbtest` or `telemetrytest` outside test file
 | F59 | `check` | no session key | `ExitUsage`, still printing "run bms migrate" and running the other sections | run migrate or restore the file | `TestCheck_SessionKeyMissing_Exit2` |
 | F60 | `check` | a disabled module with a schema was never migrated | none | — | `TestCheck_DisabledNeverMigrated_NotAProblem` |
 | F29 | `provision` | `Tracer` or `Scope` refuses (a name the registry already validated) | the refuser's kind, wrapped with the module name (module-contract F24) | fix app | `TestProvision_ScopeConflict_ReturnsKind` (a dispatcher already holding the scope) |
-| F30 | `TestMessageCatalogues_EnglishCoversManifests` | a registered module lacks `web/src/modules/<name>/messages/en.json`, or the file lacks a key module-contract decision 8 derives (`module.<name>.title`, `.description`, `.permission.<rest>.title`/`.description`, `.setting.<key>.title`/`.description`/`.option.<opt>`, `.signal.<rest>.title` for each published name) | a test failure naming module and key (not a runtime path); skipped when `web/src` is absent | add the key | the test itself; `TestMessageCatalogues_FixtureMissingKey_Fails` over a fixture |
+| F30 | `TestMessageCatalogues_EnglishCoversManifests` | a registered module lacks `web/src/modules/<name>/messages/en.json`, or the file lacks a key module-contract decision 8 derives (`module.<name>.title`, `.description`, `.permission.<rest>.title`/`.description`, `.setting.<key>.title`/`.description`/`.option.<opt>`, `.signal.<rest>.title` for each published name, `.template.<ident>.title` for each `Manifest.Templates` ident (module-hello amendment, approved 2026-10-20, D40)) | a test failure naming module and key (not a runtime path); skipped when `web/src` is absent | add the key | the test itself; `TestMessageCatalogues_FixtureMissingKey_Fails` over a fixture |
 
 Behaviours that are not failures but are proven: `serve` starts on a read-only database
 (`TestServe_ReadOnlyDatabase_StartsAndReadyzSaysReadOnly`, integration); a down or absent
@@ -1061,7 +1062,7 @@ server's exit status is not `0`.
 **Conformance:** none of its own. Every module's `moduletest.Conformance` runs in its own
 package; `app`'s e2e test is the one place a module is proven inside the real assembly.
 
-## Amendment 2026-10-19 (pending owner approval): `lazyAuthorizer` for settings
+## Amendment 2026-10-19 (approved, owner, 2026-10-20, D40): `lazyAuthorizer` for settings
 
 Gap found while applying D39: part 3 (`settings`) needs `settings.Options.Authz` (required, settings F1) and authz is part 4. Decision: a lazy adapter, as for identity and audit (`lazyPermissions`), not a part reorder; the reason is in settings.md's amendment of the same date (settings consults the authorizer only on a request, after every part is built; a reorder renumbers four specs and the pinned order test for nothing).
 

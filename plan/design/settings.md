@@ -1,7 +1,8 @@
 # Settings
 
 - **Status:** Implemented (2026-10-19; approved D39; logo deferred to files)
-- **Amendment 2026-10-19 (pending owner approval):** three gaps found while applying D39: `Options.Authz` at part 3 is `app`'s `lazyAuthorizer` (no part reorder); `GET /public` and `/theme.css` keep the `/api/` `no-store` rule with their `ETag`; `api.Options.PublicOrigin` waits, with its shape fixed over `regional.public_url`. See "Amendment 2026-10-19 (pending owner approval): authz before authz, caching, the public origin" before Open questions.
+- **Amendment 2026-10-19 (approved, owner, 2026-10-20, D40):** three gaps found while applying D39: `Options.Authz` at part 3 is `app`'s `lazyAuthorizer` (no part reorder); `GET /public` and `/theme.css` keep the `/api/` `no-store` rule with their `ETag`; `api.Options.PublicOrigin` waits, with its shape fixed over `regional.public_url`. See "Amendment 2026-10-19 (approved, owner, 2026-10-20, D40): authz before authz, caching, the public origin" before Open questions.
+- **Accepted 2026-10-20 (owner, D40):** the implementation deviations marked "(implementation, 2026-10-19/20)" in this spec are accepted as written; no text changed.
 - **Package:** `internal/core/settings` (store in `internal/core/settings/postgres`, fake in
   `internal/core/settings/settingstest`)   **UI:** `web/src/core/settings/`
 - **Depends on specs:** lib-errs, lib-core, lib-secret, model, config, db, audit, authz,
@@ -49,7 +50,7 @@ process, or differs per process) is not here, and nothing here is read from the 
   `DefaultRefreshInterval = 30 * time.Second`, `PermissionRead = "settings.read"`, `PermissionManage = "settings.manage"`.
 - `settingstest.NewFake(area string, decls []Decl) *Fake` (a `Reader` answering the defaults; `Set(key, value)`, `SetSecret(key, secret)`; safe for concurrent use).
 
-**Key decisions.** 1 one text form per value, parsed by `Kind`, stored only when it differs from the default (a reset deletes the row). 2 the declaration types move from `module` to `settings` with aliases, as authz's and signals' did, because `settings` cannot import `core/module`. 3 (owner, 2026-10-19: the SMTP password lives in settings, sealed) a sixth kind, `Secret`: sealed at rest with AES-256-GCM under a key derived from `settings.sealing_key` (a generated field of the secrets file, config Proposed change 9), never returned by any route (`secret_set` only), read only by Go consumers. 4 one in-memory snapshot per process, loaded on first read, replaced after each local commit and by a 30 s revision poll (`core.setting_revision`), so a read is a map lookup and a replica follows the writer without LISTEN/NOTIFY (which a standby cannot receive). 5 a stored value that no longer parses after an upgrade yields the default and a warning, never an error. 6 the regional's own values (`regional.*`) are a core area declared here; only they are public. 7 (owner, 2026-10-19: four forms) terminology is data: four forms per term per language, defaults embedded here (`terms/<lang>.json`), overrides in `core.terminology`; the shell's `term.*` catalogue entries stay as the boot fallback and must equal the defaults (test). 8 the logo is deferred to the `files` spec (owner, 2026-10-19): M4 has no logo table, route, header image or screen field. 9 (owner, 2026-10-19) colours are one brand colour per scheme, checked for 4.5:1 against the shipped background, served as `/api/settings/theme.css` (light inside `@media not (prefers-color-scheme: dark)`, dark inside `(prefers-color-scheme: dark)`, an unset scheme emits nothing; implementation, 2026-10-19). Duration `range` params are plain whole units (`1h`, `8760h`), not `1h0m0s`. 10 no signal on change: every consumer reads at use-case time from the snapshot; nothing downstream holds a copy. 11 no automatic retention keys per module: the module that runs the job declares its `<name>.retention*` keys when its spec has the job that enforces it (owner, 2026-10-19). 12 `regional` is a reserved area name. 13 values never appear in logs, audit entries, spans or error messages. 14 `settings.read` goes to `settings-admin` only; other admins see what they need on their own screens (owner, 2026-10-19).
+**Key decisions.** 1 one text form per value, parsed by `Kind`, stored only when it differs from the default (a reset deletes the row). 2 the declaration types move from `module` to `settings` with aliases, as authz's and signals' did, because `settings` cannot import `core/module`. 3 (owner, 2026-10-19: the SMTP password lives in settings, sealed) a sixth kind, `Secret`: sealed at rest with AES-256-GCM under a key derived from `settings.sealing_key` (a generated field of the secrets file, config Proposed change 9), never returned by any route (`secret_set` only), read only by Go consumers. 4 one in-memory snapshot per process, loaded on first read, replaced after each local commit and by a 30 s revision poll (`core.setting_revision`), so a read is a map lookup and a replica follows the writer without LISTEN/NOTIFY (which a standby cannot receive). 5 a stored value that no longer parses after an upgrade yields the default and a warning, never an error. 6 the regional's own values (`regional.*`) are a core area declared here; only they are public. 7 (owner, 2026-10-19: four forms) terminology is data: four forms per term per language, defaults embedded here (`terms/<lang>.json`), overrides in `core.terminology`; the shell's `term.*` catalogue entries stay as the boot fallback and must equal the defaults (test). 8 the logo is deferred to the `files` spec (owner, 2026-10-19): M4 has no logo table, route, header image or screen field. 9 (owner, 2026-10-19) colours are one brand colour per scheme, checked for 4.5:1 against the shipped background, served as `/api/settings/theme.css` (light inside `@media not (prefers-color-scheme: dark)`, dark inside `(prefers-color-scheme: dark)`, an unset scheme emits nothing; implementation, 2026-10-19). Duration `range` params are plain whole units (`1h`, `8760h`), not `1h0m0s`. 10 no signal on change: every consumer reads at use-case time from the snapshot; nothing downstream holds a copy. 11 no automatic retention keys per module: the module that runs the job declares its `<name>.retention*` keys when its spec has the job that enforces it (owner, 2026-10-19). 12 `regional` is a reserved area name. 13 values never appear in logs, audit entries, spans or error messages. 14 `settings.read` goes to `settings-admin` only; other admins see what they need on their own screens (owner, 2026-10-19). 15 (owner, 2026-10-20, D40) no early area check: an area `Check` runs only inside the `Set` transaction over stored values; `regional.public_url` is canonicalised (http/https, host required, no query/fragment/userinfo, trailing slashes removed); a `Check` cannot see whether a `Secret` is set and re-saving a `Secret` always counts as a change; the sealing and contrast tests are unit tests.
 
 **Errs kinds callers handle.** Readers: `Invalid` (undeclared key, kind mismatch), `Unavailable`/`Timeout`/`Canceled` (first load), `Unsupported` (`Secret` with no sealing key), `Internal` (unsealing failed). Use cases: `Unauthenticated`, `Permission`, `Invalid` with field = the setting key and codes `unknown`, `malformed`, `one_of`, `range`, `too_long {max}`, `required`, `control_chars`, `url`, `contrast {ratio, min}`, `rejected` (a `Check`'s reason), `too_many {max}`; `Unsupported` (a secret without a sealing key); `Unavailable` wrapping `db.ErrReadOnly` on every write; `Run`: `Conflict` (started twice). No sentinels.
 
@@ -57,7 +58,7 @@ process, or differs per process) is not here, and nothing here is read from the 
 
 **Expects of dependencies.** `app`: part 3 (`declare`: `Set`, `Permissions`; `build`: `New` over the areas (`regional` from this package, `identity.Settings`, `people.Settings`, `auditsettings.Settings`, `Plan.Settings()` as module areas), the actor closure, `audit.Scoped("settings")`, `cfg.Settings.SealingKey`; `a.deps.Settings` scoped per module in `provision`; `PolicySource` adapters for identity and people; `Run` as a runnable; route set `settings`). `module-contract`: the aliases, `Deps.Settings settings.Reader`, `moduletest.Conformance` supplying `settingstest.NewFake`, `regional` reserved. `identity`, `people`, `audit`: export `Settings []settings.Decl` (identity also `CheckSettings`). `authz`: `Allow`, starter-role seeding. `audit`: `Recorder` inside a `Write` transaction. `db`: `Transact`, `AfterCommit`, `Wrap`, `ErrReadOnly`, `Set`. `web-shell`: reads `GET /api/settings/public` at boot, merges `terms` over its catalogue, links `/api/settings/theme.css`, adds the three term forms to its catalogue and the `field.contrast` key. `notify`: declares `notify.*` (named under Settings) and reads `Regional`, `TermsFor` and its own `Reader`.
 
-**Open questions:** none; the six were answered 2026-10-19 (D39) and are folded into decisions 3, 7, 8, 9, 11 and 14. **Proposed changes elsewhere:** 13, all applied 2026-10-19 (D39), listed at the end.
+**Open questions:** none; the six were answered 2026-10-19 (D39) and are folded into decisions 3, 7, 8, 9, 11 and 14. **Settled 2026-10-20 (D40):** the amendment of 2026-10-19 is approved (`lazyAuthorizer`; `no-store` with `ETag`; `PublicOrigin` waits); decision 15 below; the implementation deviations marked 2026-10-19 are accepted as written. **Proposed changes elsewhere:** 13, all applied 2026-10-19 (D39), listed at the end.
 
 ## Purpose
 
@@ -153,6 +154,9 @@ type Decl struct {
 	// Check is an optional extra rule on the text value, pure and safe for concurrent use.
 	// It may return validate.FieldErrors (re-fielded under the setting key, codes kept)
 	// or any error (code "rejected", reason = err.Error()).
+	// A Check cannot see whether a Secret is set: for a Secret it receives the submitted
+	// plaintext only, and an area Check sees "" for every Secret key, set or not, so no rule
+	// may depend on a Secret already being set (owner, 2026-10-20, D40).
 	Check func(value string) error `json:"-"`
 }
 
@@ -167,7 +171,8 @@ type Area struct {
 	Decls []Decl
 	// Check is an optional cross-field rule over the area's effective values (every
 	// declared key, defaults filled in, bare keys). Pure. Field names it returns are bare
-	// keys and are prefixed with "<area>." by Set.
+	// keys and are prefixed with "<area>." by Set. Runs inside Set's Write transaction over
+	// values read there, never over the snapshot (Behavior, "Writes"). A Secret key reads "".
 	Check func(values map[string]string) error `json:"-"`
 }
 
@@ -440,7 +445,7 @@ shipped in `web/src/core/settings/messages/en.json`). All are public (decision 6
 |---|---|---|---|---|
 | `regional.name` | text | `BMS` | 1..`MaxNameBytes` bytes after trimming, no control characters (`required`, `too_long`, `control_chars`) | settings admin |
 | `regional.contact_email` | text | `` | `` or `model.ParseEmail` (`malformed`); the regional's shared mailbox, shown to anyone who opens the site; the form says so | settings admin |
-| `regional.public_url` | text | `` | `` or an absolute `https` (or `http`) URL with a host, no userinfo, query or fragment, at most `MaxURLBytes`; a trailing slash is removed on save (`url`, `too_long`). The installation's identity (D18) and the base of every link notify sends | settings admin |
+| `regional.public_url` | text | `` | `` or an absolute URL, canonicalised on save by the rule under this table (`url`, `too_long`). The installation's identity (D18) and the base of every link notify sends | settings admin |
 | `regional.language` | enum | `en` | `Languages` (`one_of`); the language before a person chooses (D28, web-shell decision 7) | settings admin |
 | `regional.timezone` | text | `` | `` (the browser's zone) or an IANA name `time.LoadLocation` accepts, never `Local`, at most 64 bytes (`unknown`, `too_long`); the new-event form's default zone, authz's end-of-day Later | settings admin |
 | `regional.color_primary` | text | `` | `` (the shipped palette) or `#rrggbb` (`malformed`); contrast against the shipped light background `#ffffff` at least `MinContrast` (`contrast {ratio, min}`) | settings admin |
@@ -460,6 +465,8 @@ default `587`), `notify.smtp_security` (enum `starttls|tls|none`, default `start
 `notify.smtp_username` (text), `notify.smtp_password` (secret), `notify.sender_address`
 (text, the From address), `notify.sender_name` (text, default `` = `regional.name`),
 `notify.reply_to` (text), `notify.alert_addresses` (text), `notify.retention` (duration).
+**`regional.public_url` canonical form (owner, 2026-10-20, D40).** The submitted text is trimmed, then refused (`url`, with a `reason` param of `scheme`, `host`, `userinfo`, `query`, `fragment` or `chars`) unless: it parses with `net/url`; the scheme is `http` or `https` (any case); the host is non-empty (a port, if present, is 1..65535); there is no userinfo; the text contains no `?` or `#` (so no query, empty query or fragment); and it has no space or control character; it is longer than `MaxURLBytes` is `too_long`. It is then stored as lowercase scheme, lowercase host (and port), the path as given, **with every trailing `/` removed** (so `https://x.example/` becomes `https://x.example` and a regional behind a sub-path keeps it: `https://x.example/bms`). The same function is the canonical form `Regional().PublicURL` returns; notify builds links as `PublicURL + Link`, so a link can neither double a slash nor lose its host. A stored value that no longer passes (an upgrade) falls back to the default under decision 5.
+
 What notify's draft calls `site.name`, `site.public_url` and `site.default_language` are
 `regional.name`, `regional.public_url` and `regional.language` here, read through
 `Regional`; the terminology map is `TermsFor`. Notify's `SMTPSource`, `SiteSource` and
@@ -533,10 +540,14 @@ unseals on each call so plaintext is not held; `secret.Secret{}` when unset.
 
 **Writes.** `Set`: `Allow(settings.manage)`; `Validate`: 1..`MaxBatch` keys, each declared
 (`unknown`), each non-nil value trimmed (not for `Secret`) and parsed by kind, the `Decl.Check`
-run, then every touched area's `Check` run over its effective values (defaults, the
-stored values and the batch merged); all problems joined into one `Invalid` with the full
-key as field. A `Secret` change needs a sealing key (`Unsupported` otherwise). Then one
-`Transact(Write)`: upsert or delete per key, one `audit.Entry` per key
+run; all problems joined into one `Invalid` with the full key as field. There is **no early
+area check** (owner, 2026-10-20, D40, Q-SETTINGS-REVIEW): the snapshot can be up to
+`RefreshInterval` (30 s) stale on a copy that has not yet polled, so an area `Check` run
+over snapshot values before the transaction could refuse a valid change. Every touched
+area's `Check` runs instead inside the `Transact(Write)`, after the revision row lock, over
+the values read from `core.setting` there (defaults, the stored values and the batch
+merged) and fails `Invalid` with the full key as field, rolling back. A `Secret` change
+needs a sealing key (`Unsupported` otherwise). The one `Transact(Write)`: upsert or delete per key, one `audit.Entry` per key
 (`settings.setting.changed` or `.reset`, `Record: Ref{Kind: "settings.setting", ID: IDOf(key)}`,
 `Fields: [key]`, `Reason: "key:<key>"`, never the value), the revision bump; after commit
 the snapshot replace. A value equal to the default is stored as a reset. `SetTerms` is the
@@ -621,8 +632,10 @@ and asserts it appears in no log, span or audit entry.
 | F19 | `Set` | a value that does not parse as its kind: bool, int, duration, text too long, control characters, enum not in options | Invalid (`<key>`, `malformed` / `too_long {max}` / `control_chars` / `one_of`) | show the field errors (all collected) | `TestSet_ValueShape_Table` |
 | F20 | `Set` | `Decl.Check` rejects the value | Invalid (`<key>`, the check's codes or `rejected` with its reason) | show the field error | `TestSet_CheckRejects_ReturnsInvalid` |
 | F21 | `Set` | an area's `Check` rejects the merged values (identity: `client_failure_limit` below `login_failure_limit`) | Invalid (`<area>.<field>`, the check's codes) | show the field error | `TestSet_AreaCheckRejects_ReturnsInvalid` |
+| F22a | `Set` | a `Secret` re-saved with the value it already has | counts as a change: written (a fresh nonce makes new ciphertext), revision bumped, `settings.setting.changed` audited; a `Check` and an area `Check` see no "already set" | nothing | `TestSet_SecretResave_AlwaysChanges` |
 | F22 | `Set` | a `Secret` value with no sealing key | Unsupported | tell the operator | `TestSet_SecretWithoutSealingKey_ReturnsUnsupported` |
-| F23 | `Set` (`regional.*`) | name empty or too long; contact e-mail malformed; URL relative, with userinfo, query or fragment, or too long; zone unknown or `Local`; colour not `#rrggbb`; colour under `MinContrast` | Invalid (`required`, `too_long`, `malformed`, `url`, `unknown`, `contrast {ratio, min}`) | show the field errors | `TestSet_Regional_Table` |
+| F23 | `Set` (`regional.*`) | name empty or too long; contact e-mail malformed; URL not http/https, without a host, with userinfo, query or fragment, or too long (the rule above); zone unknown or `Local`; colour not `#rrggbb`; colour under `MinContrast` | Invalid (`required`, `too_long`, `malformed`, `url {reason}`, `unknown`, `contrast {ratio, min}`) | show the field errors | `TestSet_Regional_Table` |
+| F23a | `Set` | the snapshot is stale (a copy that has not polled) and the batch is valid against the stored values | accepted: the area `Check` runs inside the transaction over the stored rows, so a stale snapshot cannot refuse it | nothing | `TestSet_StaleSnapshot_AreaCheckUsesStoredRows` |
 | F24 | `Set`, `SetTerms` | read-only copy | Unavailable wrapping `db.ErrReadOnly` | the api answers `503 read_only`; the screen keeps its edits | `TestSet_ReadOnly_ReturnsUnavailable` |
 | F25 | `Set`, `SetTerms` | the audit `Record` fails | the recorder's error; nothing written | the use case fails | `TestSet_AuditFails_RollsBack` |
 | F26 | `Set`, `SetTerms` | `core.setting_revision` has no row | Internal | run `bms migrate`; the operator sees the reference | `TestSet_NoRevisionRow_ReturnsInternal` |
@@ -649,7 +662,10 @@ store interface (D8), so a fork can swap it. Nothing here calls out of the proce
 ## Test plan
 
 - **Unit (no infrastructure):** `Decl`/`Area` validation tables; value parsing per kind;
-  the `regional.*` checks (URL, zone, colour, contrast with known pairs: `#9a3412` on white
+  the sealing (crypto) tests (round trip, wrong key, moved ciphertext) and the contrast tests
+  are unit tests with no build tag and no database (owner, 2026-10-20, D40); the
+  `regional.*` checks (URL canonical-form table: scheme, host, userinfo, query, fragment,
+  trailing slashes, case, sub-path; zone, colour, contrast with known pairs: `#9a3412` on white
   passes, `#f97316` fails); the snapshot (load once, after-commit replace, out-of-order
   install refused, stale value → default and one warning); `Reader` scoping and kind checks
   over a store fake; sealing round trip, wrong key, moved ciphertext (AAD); `ThemeCSS`
@@ -675,7 +691,7 @@ store interface (D8), so a fork can swap it. Nothing here calls out of the proce
   "team" and the nav and the departments page title change without a reload; a
   participant cannot open `/settings`; a bad colour shows the contrast error.
 
-## Amendment 2026-10-19 (pending owner approval): authz before authz, caching, the public origin
+## Amendment 2026-10-19 (approved, owner, 2026-10-20, D40): authz before authz, caching, the public origin
 
 Three gaps found while applying D39 (app.md Proposed change 18, api.md Proposed change 15). Each is settled with the smallest design; the failure modes live in the spec whose code carries them (app, api), named here.
 
@@ -700,7 +716,7 @@ None; answered 2026-10-19 (D39). Record:
 
 ## Proposed changes elsewhere
 
-Status as of 2026-10-19 (D39): all 13 are applied; item 9 is recorded in api.md with two points still undecided.
+Status as of 2026-10-20 (D40): all 13 are applied; item 9 is recorded in api.md and settled by the approved amendment of 2026-10-19.
 
 1. Applied 2026-10-19 (D39), in module-contract.md. **`plan/design/module-contract.md` (row 4):** `SettingKind` and `SettingDecl` move to
    `settings` (`settings.Kind`, `settings.Decl`), with aliases `module.SettingKind`,
@@ -757,7 +773,7 @@ Status as of 2026-10-19 (D39): all 13 are applied; item 9 is recorded in api.md 
    `field.contrast` joins the field-code keys (`"{ratio}:1 is below {min}:1"`); `/settings`
    is listed among the admin nav entries (`settings.read`); `web/src/core/settings/` as a
    core area folder.
-9. Applied 2026-10-19 (D39) in api.md as a note on its still-pending Proposed change 15; the two points it raises (a per-request public-origin seam, and where `ETag`/`304` may be set under `no-store`) are settled by the amendment of 2026-10-19 above (pending owner approval): `no-store` stays with the `ETag`; `PublicOrigin` waits, shape fixed. **`plan/design/api.md` (row 16):** none now. Proposed change 15 (trusted origins and the
+9. Applied 2026-10-19 (D39) in api.md as a note on its still-pending Proposed change 15; the two points it raises (a per-request public-origin seam, and where `ETag`/`304` may be set under `no-store`) are settled by the amendment of 2026-10-19 above (approved, owner, 2026-10-20, D40): `no-store` stays with the `ETag`; `PublicOrigin` waits, shape fixed. **`plan/design/api.md` (row 16):** none now. Proposed change 15 (trusted origins and the
    `Host` allowlist from `regional.public_url`) needs a per-request read, since settings
    change without a restart: api gains `Options.PublicOrigin func(ctx) (string, error)`
    (a seam `app` fills over `Regional`) when that change is designed; it stays pending.

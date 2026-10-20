@@ -327,7 +327,7 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
 - **Status:** Accepted (2026-10-16). Supersedes D6's "working name" status (Q-NAME, name part).
 - The project is called **BMS** (Burn Management System). It's no longer a working name.
 - The repository and Go module path stay `github.com/zedgama3/bms` for now. Whether the
-  project moves to a GitHub org is still open (Q-NAME).
+  project moves to a GitHub org is still open (Q-NAME). Answered 2026-10-20 (D40): no org; the repository will be published at github.com/zedgama3/bms.
 
 ## D26. Module order after the core: volunteers, incidents, registrations, after-reports
 
@@ -564,3 +564,46 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
     authz HoldersOf, the people notifier seam, Manifest.Templates and Deps.Notify, the db set
     order, the app part row, telemetry, and the Mailpit URL for tests.
 - **Next:** the M4 build.
+
+## D40. Owner's answers of 2026-10-20: M4 questions, governance, upgrade promise, GitHub, qualifications
+
+- **Status:** Accepted (2026-10-20). Answers Q-AMEND1, Q-RESET-RATE, Q-RESET-LIFE,
+  Q-SETTINGS-REVIEW, Q-MAILPIT-AUTH, Q-WEB-REVIEW, Q-GOV1, Q-GOV2, Q-UPGRADE, Q-NAME and
+  Q-QUAL.
+- **M4 review questions:** the owner answered "approved with recommendations", so the
+  recommendation written in each question is accepted:
+  - Q-AMEND1: the pending spec amendments are approved, as listed in Q-AMEND1 in
+    [06-open-questions.md](06-open-questions.md).
+  - Q-RESET-RATE: reset requests get their own limit buckets, plus a per-account cooldown
+    (not the sign-in buckets). Relates to D36(i).
+  - Q-RESET-LIFE: templates receive the reset lifetime as a number, and each template words
+    the unit.
+  - Q-SETTINGS-REVIEW: (1) drop the early area check; (2) canonicalise and refuse a bad
+    `public_url`; (3) move the crypto and contrast tests to unit tests; (4) document that a
+    Check cannot see whether a secret is set, and that re-saving a secret counts as a change.
+  - Q-MAILPIT-AUTH: enable `MP_SMTP_AUTH_ACCEPT_ANY` and `MP_SMTP_AUTH_ALLOW_INSECURE` in
+    `deploy/compose`.
+  - Q-WEB-REVIEW: (a) send `Referrer-Policy: no-referrer` on the document response for the
+    password-reset page path; (b) translate outbox error tokens and template names, with the
+    raw token or name as fallback; (c) the outbox recipient cell for a bare address reads
+    "An e-mail address (no account)" instead of "address".
+- **Governance (Q-GOV1, Q-GOV2):**
+  - The code of conduct is the Contributor Covenant.
+  - Contributions are signed off with DCO (`Signed-off-by`). No CLA.
+  - Merge rights and adding maintainers: the owner merges for now. Nothing more is decided.
+- **Upgrade promise (Q-UPGRADE):** semantic versioning. The module contract (the Module
+  interface, Manifest, Deps, and the core contracts modules import) is the public API for
+  forks' modules. Breaking changes only in a major version, additions in a minor version,
+  fixes in a patch version.
+- **Repository (Q-NAME):** the repository will eventually be published on GitHub at
+  `github.com/zedgama3/bms`, the current module path. No move to a GitHub org is planned.
+- **Qualifications (Q-QUAL):**
+  - Department leads check qualifications manually.
+  - A shift can require training. A lead looks up the user's last training date and applies
+    it to the user. The record holds the date acquired, the date it expires (or indefinitely),
+    and who approved it. Some training is department-specific (for example "Ranger Dirt
+    Training", "Medical Lead Training"); some is org-wide (for example ICS100).
+  - A shift can require ICS100. The user uploads a copy of their certificate, and any lead
+    can certify that the document is authentic.
+  - The shape (a `qualifications` capability, D19) is for the architect to decide in the
+    `volunteers` spec. The certificate upload depends on `files`.

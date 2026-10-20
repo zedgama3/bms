@@ -1076,7 +1076,7 @@ One record at `warn`, message `client error`, attributes: `origin=client`,
 | `bms.audit.spool_files` | gauge, `{file}` | — | `audit` |
 | `bms.identity.logins` | counter, `{login}` | `outcome` = `ok`, `superuser`, `bad_credentials`, `disabled`, `rate_limited`, `restricted` | `identity` |
 | `bms.identity.sessions_rejected` | counter, `{request}` | `reason` = `malformed`, `expired`, `revoked`, `disabled`, `unknown` | `identity` |
-| `bms.identity.rate_limited` | counter, `{request}` | `bucket` = `address` or `email` | `identity` |
+| `bms.identity.rate_limited` | counter, `{request}` | `bucket` = `address`, `email`, `reset_address` or `reset_email` (the last two for password-reset requests; identity.md decision 22, D40) | `identity` |
 | `bms.authz.decisions` | counter, `{decision}` | `outcome` = `allowed`, `denied`, `superuser`, `unauthenticated`, `error` | `authz` |
 | `bms.people.exports` | counter, `{export}` | `outcome` (a token: `ok` or the failure's kind) | `people` |
 | `bms.people.deletions` | counter, `{deletion}` | `outcome` (a token: `ok` or the failure's kind) | `people` |

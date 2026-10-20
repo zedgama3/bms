@@ -157,6 +157,17 @@ mark should be checked too.
 - **Department leads check off** the qualifications that relate to their department
   (owner, 2026-10-16). Most qualifications belong to one department; a few, such as ICS-100,
   count for several departments (owner, 2026-10-16).
+- **Qualifications are checked by hand** (owner, 2026-10-20). Nobody's training is verified
+  by software: departments keep training records, and a lead looks up the person's last
+  training and applies it to them. A recorded qualification has the date acquired, the date it
+  expires (or none, indefinite) and who approved it.
+- **Department-specific or org-wide.** Some qualifications belong to one department, such as
+  a ranger department's field training or medical lead training; others are org-wide, such as
+  ICS-100.
+- **Two ways a qualification is recorded.** (1) A shift requires training: a lead looks up the
+  person's last training date and records it for them. (2) A shift requires a certificate such
+  as ICS-100: the person uploads a copy and a lead certifies the document is authentic; for an
+  org-wide one any lead can do this.
 
 ## Incidents
 

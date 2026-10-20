@@ -186,7 +186,7 @@ the publisher. The `signals` spec confirms the details.
 
 A regional can make legal name and phone required or hidden in settings. No address, no
 photo, no age and no free-text "about me" in the MVP: collect only what's needed. Age,
-training and certificates come with qualifications (Q-QUAL), not as profile fields.
+training and certificates come with qualifications (§5, Q-QUAL), not as profile fields.
 
 **Done when:**
 - Every read of a `personal` field by someone other than the person is audited.
@@ -264,7 +264,20 @@ training and certificates come with qualifications (Q-QUAL), not as profile fiel
 **Done when:**
 - Departments are flat: no sub-teams (Q-CORE5). Roles within a department, such as Khaki or
   R12 on a Ranger team, are **positions**, which belong to `volunteers`, with requirements
-  (Q-QUAL). Department leads check off (verify) the qualifications related to their department.
+  (Q-QUAL).
+- **Qualifications are checked by hand by leads** (owner, 2026-10-20). A qualification record
+  holds the qualification, the person, the date acquired, the expiry date (or none:
+  indefinite), and who verified it. A qualification is scoped to one department (for example a
+  ranger department's field training or medical lead training) or is org-wide (for example
+  ICS-100). Two ways in: (a) a lead records it from their own training records (for example
+  the last training date the person took); (b) the person uploads a copy of their certificate
+  (needs `files`, Later) and a lead verifies the document is authentic. Any lead can verify an
+  org-wide qualification; for a department-scoped one, that department's leads do.
+  *Assumption for the architect:* the owner said "any lead" only for the org-wide certificate;
+  the department-leads-only rule for department qualifications is inferred from the earlier
+  answer (2026-10-16), so confirm it. The capability shape and the data model are for the
+  architect, with the `volunteers` spec; the core only provides departments, permissions and
+  (later) `files`.
 - An archived department keeps its history, takes no new work, and disappears from lists
   except to stewards. A department with nothing for an event simply shows nothing for it.
 - Leadership is a department-scoped grant (step 4) of the `department-admin` role; there's no separate leads table.
@@ -396,8 +409,9 @@ distinct, dated records.
 
 Shifts, positions, sign-ups, camps, incidents, reports and the rest are **modules**, built on
 top of this list. See [02-scope.md](02-scope.md). Notes for the `volunteers` spec, gathered so
-far: positions with requirements (Q-QUAL), checked off by department leads for their department
-(some qualifications, such as ICS-100, apply to several departments; most apply to one); shifts before, during and after the event (land
+far: positions with requirements (Q-QUAL), met by qualification records (acquired, expiry or none,
+verified by whom) that leads record or verify by hand (§5); a qualification is department-scoped
+or org-wide, such as ICS-100; shifts before, during and after the event (land
 prep, build, strike, inventory); a shift or activity can be open to all, invitation only, or
 limited to certain positions (Q-CORE10).
 

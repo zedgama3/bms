@@ -8,6 +8,7 @@
 - **Amended 2026-10-18 (D37; departments-events Proposed change 3, audit Proposed change 16):** `Deps.Departments departments.Directory` (`NamesOf`, `Active`) and `Deps.Events events.Directory` (`InfoOf`) are available from M3 (unscoped; `Provision` sets them); `moduletest.Conformance` fills a nil one with `departmentstest.NewFake()` / `eventstest.NewFake()`; `Env.CoreExtensionPoints` carries `events.event-setup` (the point is `events.event-setup`, not `events.event-created`) and `Env.CoreSignals` the seven `departments.*` and `events.*` names; module authors may declare a foreign key to `core.department(id)` or `core.event(id)` with `ON DELETE RESTRICT`, never read those tables directly, and keep an event-setup contribution idempotent per (event, module); `audittest.Fake` fails `Internal` on a `Record` inside a `db.Read` transaction, so a module whose read path records inside its `Transact(Read)` fails its own unit tests and the conformance run (record after the transaction, before returning).
 - **Amended 2026-10-18 (M2 build, accepted deviations):** implementation deviations recorded in Behavior, "Accepted implementation deviations (M2 build, 2026-10-18)": `Deps.Authz` and `Deps.People` in `module.go`; Conformance fills them with fakes.
 - **Amended 2026-10-19 (D39, owner approval of settings and notify):** `SettingKind` and `SettingDecl` move to `core/settings` and are aliased here (`SettingBool` ... `SettingEnum`, plus the new `SettingSecret`); the setting key grammar is `[a-z][a-z0-9]*(_[a-z0-9]+)*` (underscores, at most 64 bytes); `Deps.Settings settings.Reader` (M4, scoped per module, bare keys) and `Deps.Notify notify.Notifier` (M4, scoped per module) are available; `Manifest` gains `Templates fs.FS`; `regional` joins the reserved names; there are no automatic retention keys (the module that runs the job declares them); `moduletest.Conformance` supplies `settingstest.NewFake` and `notifytest.NewFake` and gains the rule `templates_register`. Proposed changes 5 and 13 (notify) applied.
+- **Accepted 2026-10-20 (owner, D40):** the implementation deviations marked "(implementation, 2026-10-19)" in this spec are accepted as written; no text changed.
 - **Package:** `internal/core/module` (Go module `github.com/zedgama3/bms`), plus the test
   helper package `internal/core/module/moduletest`. **UI:** none of its own; the admin
   "modules" screen is `web-shell.md`'s, fed by `GET /api/admin/modules` (`api.md`), both
@@ -115,6 +116,7 @@ Expects of dependencies: lib-errs (kinds, `errs.E`/`Is`); lib-core (`clock.Clock
 `telemetrytest`, `Scrub`'s `[email]` token); signals (`Bus`, `Name`, `signalstest.NewFake`).
 Of consumers: `app` supplies `Env`, `Provision`, the checker and the order Build, Start, Stop;
 `api` mounts `Set.Routes`; `authz`/`settings` take `Plan.Permissions`/`Plan.Settings`; `people` runs `Set.PersonData`.
+Compatibility (Q-UPGRADE): semver; the contract is the public API for forks' modules, breaking changes only in a major version.
 Proposed changes: 1, 3, 4, 6, 7, 9–12, 14 applied; 2 and 8 applied 2026-10-18; 5 and 13 (notify) applied 2026-10-19 (D39), 13 (jobs) pending (target unwritten);
 15–17 (hello, skills; none for telemetry or app) applied 2026-10-17.
 
@@ -1022,7 +1024,10 @@ None of its own. What this spec provides for screens elsewhere:
    `module.<name>.title` and `.description`; `module.<name>.permission.<rest>.title` and
    `.description` (`<rest>` is the permission name after `<name>.`);
    `module.<name>.setting.<key>.title`, `.description` and `.option.<opt>`;
-   `module.<name>.signal.<rest>.title`; `module.<name>.kept.<kind>`. `web-shell.md` owns the
+   `module.<name>.signal.<rest>.title`; `module.<name>.kept.<kind>`;
+   `module.<name>.template.<ident>.title` for each `<ident>` in `Manifest.Templates` (so a
+   module template's title on notify's templates screen is checked like a permission's;
+   hello.md amendment, approved 2026-10-20, D40). `web-shell.md` owns the
    catalogue files and checks that `en` has every key the module's declarations imply
    (Proposed change 7). `Warning.Message` and error messages are English, like logs: they
    are for operators. Confirmed by the owner (2026-10-16).
@@ -1259,6 +1264,14 @@ split); the `String` methods (name or `Kind(<n>)`); `NewRegistry`, `Default` (al
 `Manifests`, `Order`, `Permissions`, `Settings`, `Graph`, `Modules`, `Routes`, `PersonData`
 (copies of validated data); `Routes()`, `OpenAPI()`, `Capabilities()`, `Contributions()` on a
 module (return values built already; `Build` validates them). Each has a success-path test.
+
+## Compatibility
+
+(owner, 2026-10-20, Q-UPGRADE) bms follows semantic versioning with normal semver
+expectations. The module contract is the public API for modules that forks write: the `Module`
+interface, `Manifest`, `Deps`, and the core contracts a module imports (`core/authz`,
+`core/signals`, `model`, `lib`). A breaking change to any of them happens only in a major
+version; minor and patch releases only add or fix.
 
 ## Lock-in check
 

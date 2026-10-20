@@ -118,10 +118,12 @@ copy and can fork it. Features are modules.
        screens (templates, outbox) and the forgotten-password screens). Still open in M4:
        `volunteers` (module-volunteers.md, Not started); `jobs.md` and `files.md` (Not started;
        the settings logo waits for files, D39). M4 stays open.
-     Awaiting the owner (06-open-questions.md, Build (M4)): six pending spec amendments
-       (Q-AMEND1), reset-request rate limiting (Q-RESET-RATE), reset lifetime wording
-       (Q-RESET-LIFE), settings review (Q-SETTINGS-REVIEW), Mailpit SMTP AUTH (Q-MAILPIT-AUTH),
-       and web review points (Q-WEB-REVIEW).
+     Owner's answers 2026-10-20 (D40): the M4 review questions (Q-AMEND1, Q-RESET-RATE,
+       Q-RESET-LIFE, Q-SETTINGS-REVIEW, Q-MAILPIT-AUTH, Q-WEB-REVIEW) approved with
+       recommendations; code of conduct Contributor Covenant (Q-GOV1); DCO, no CLA (Q-GOV2);
+       semver for the module contract (Q-UPGRADE); publication at github.com/zedgama3/bms, no
+       org move planned (Q-NAME); qualifications facts recorded, shape for the `volunteers`
+       spec (Q-QUAL).
      Open follow-ups (all waiting on the owner or architect):
      - (a) Confirm D34 as D20's debug-level exception.
      - (b) The M3 part name `departments-events` is not a core area name for `module.IsCoreArea`
