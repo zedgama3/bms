@@ -265,6 +265,55 @@ describe("/settings (regional)", () => {
     expect(name).toHaveValue("");
   });
 
+  it.each([
+    ["scheme", /Must be an http or https web address/],
+    ["host", /Must have a valid host name/],
+    ["userinfo", /Must not contain a user name or password/],
+    ["query", /Must not contain a \? or a #/],
+    ["fragment", /Must not contain a \? or a #/],
+    ["chars", /Must not contain spaces, control characters or a broken % code/],
+    ["newer", /Must be a web address/],
+  ])("words the web address's url code for the reason %s", async (reason, words) => {
+    mountApp({
+      path: "/settings",
+      session: ident(ADMIN),
+      routes: base({
+        "PUT /api/settings/values": () =>
+          problem(400, {
+            code: "invalid",
+            fields: [
+              { field: "regional.public_url", code: "url", reason: "x", params: { reason } },
+            ],
+          }),
+      }),
+    });
+    const input = await screen.findByLabelText(/^Web address/);
+    await userEvent.type(input, "x");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    const alert = await screen.findByRole("alert");
+    expect(within(alert).getByRole("link", { name: words })).toBeInTheDocument();
+    expect(input).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("words a url code that arrives without a reason in general terms", async () => {
+    mountApp({
+      path: "/settings",
+      session: ident(ADMIN),
+      routes: base({
+        "PUT /api/settings/values": () =>
+          problem(400, {
+            code: "invalid",
+            fields: [{ field: "regional.public_url", code: "url", reason: "x" }],
+          }),
+      }),
+    });
+    const input = await screen.findByLabelText(/^Web address/);
+    await userEvent.type(input, "x");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    const alert = await screen.findByRole("alert");
+    expect(within(alert).getByRole("link", { name: /Must be a web address/ })).toBeInTheDocument();
+  });
+
   it("keeps the contrast result in an always-present status region tied to the input", async () => {
     mountApp({ path: "/settings", session: ident(ADMIN), routes: base() });
     const colour = await screen.findByLabelText("Brand colour", { exact: true });

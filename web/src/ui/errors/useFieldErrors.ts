@@ -27,7 +27,8 @@ export function useFieldErrors(error: ApiError | null): Readonly<Record<string, 
       if (Object.hasOwn(out, f.field)) continue; // the first problem with an input is the one shown
       const own = `module.${error?.module ?? ""}.field.${f.code}`;
       const shared = `field.${f.code}`;
-      const params = f.params ?? {};
+      // a `url` message selects on `reason`; a server that sends none gets the general wording
+      const params = f.code === "url" ? { reason: "", ...f.params } : (f.params ?? {});
       if (f.code !== "" && isMessageKey(own)) {
         out[f.field] = { text: t(own, params) };
       } else if (f.code !== "" && isMessageKey(shared)) {

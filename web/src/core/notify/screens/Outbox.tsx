@@ -1,9 +1,10 @@
 import { useQueryClient } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { api, ApiError, useReadOnly, useSession } from "@/api";
 import type { components } from "@/api";
-import { useFormat, useT } from "@/i18n";
+import { isMessageKey, useFormat, useT } from "@/i18n";
 import { Button, EmptyState, ErrorState, linkButtonClass, Loading, Table, useToast } from "@/ui";
 import type { Column } from "@/ui";
 import { ConfirmDialog } from "../ConfirmDialog";
@@ -15,6 +16,7 @@ import { ReadOnlyNote } from "../ReadOnlyNote";
 import { ScreenError } from "../ScreenError";
 import { useAction } from "../useAction";
 import { useNames } from "../useNames";
+import { useTemplateText } from "../useTemplateText";
 
 type Row = components["schemas"]["NotifyRecord"];
 
@@ -26,6 +28,7 @@ const STATUSES = ["queued", "sending", "sent", "failed"] as const;
 export function Outbox() {
   const t = useT();
   const format = useFormat();
+  const text = useTemplateText();
   const session = useSession();
   const toast = useToast();
   const client = useQueryClient();
@@ -100,6 +103,16 @@ export function Outbox() {
     return undefined;
   };
 
+  /** A known token in words; an unknown one as it came. */
+  const errorText = (token: string): ReactNode => {
+    const key = `core.notify.error.${token}`;
+    return isMessageKey(key) ? t(key) : <code translate="no">{token}</code>;
+  };
+  const templateText = (name: string): ReactNode => {
+    const title = text.title(name);
+    return title === name ? <code translate="no">{name}</code> : title;
+  };
+
   const columns: Column<Row>[] = [
     {
       header: t("core.notify.outbox.col.id"),
@@ -108,11 +121,11 @@ export function Outbox() {
     },
     {
       header: t("core.notify.outbox.col.recipient"),
-      cell: (r) => (r.person_id ? nameOf(r.person_id) : t("core.notify.outbox.address")),
+      cell: (r) => (r.person_id ? nameOf(r.person_id) : t("core.notify.outbox.recipient.address")),
     },
     {
       header: t("core.notify.outbox.col.template"),
-      cell: (r) => <code>{fullName(r.owner, r.template)}</code>,
+      cell: (r) => templateText(fullName(r.owner, r.template)),
     },
     {
       header: t("core.notify.outbox.col.status"),
@@ -121,7 +134,7 @@ export function Outbox() {
     { header: t("core.notify.outbox.col.attempts"), cell: (r) => format.number(r.attempts) },
     {
       header: t("core.notify.outbox.col.error"),
-      cell: (r) => (r.last_error ? <code>{r.last_error}</code> : t("core.notify.outbox.none")),
+      cell: (r) => (r.last_error ? errorText(r.last_error) : t("core.notify.outbox.none")),
     },
     { header: t("core.notify.outbox.col.created"), cell: (r) => format.dateTime(r.created_at) },
     {

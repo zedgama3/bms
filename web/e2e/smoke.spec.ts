@@ -2317,7 +2317,9 @@ test.describe("notify: the e-mail admin screens", () => {
     await page.goto("/notify/outbox");
     await expect(page.getByRole("heading", { level: 1, name: "E-mail outbox" })).toBeVisible();
     await expect(page.getByText(MSG)).toBeVisible();
-    await expect(page.getByText("connect", { exact: true })).toBeVisible();
+    await expect(page.getByText("Couldn't reach the mail server", { exact: true })).toBeVisible();
+    await expect(page.getByText("Password-reset link", { exact: true })).toBeVisible();
+    await expect(page.getByText("An e-mail address (no account)")).toBeVisible();
     expect(await page.locator("main").innerText()).not.toContain("@");
     await check();
     await press(page.getByRole("button", { name: "Check connection" }), isPhone);

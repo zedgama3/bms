@@ -81,6 +81,7 @@
   "core.regional.setting.color_primary_dark.title": "Brand colour, dark mode",
   "core.regional.setting.color_primary_dark.description": "The colour of buttons and links in the dark colour scheme. It must stay readable on the dark background.",
   "core.settings.secret.field_help": "Type the new value. It is sent when you save, and it is never shown again.",
+  "module.settings.field.url": "{reason, select, scheme {Must be an http or https web address.} host {Must have a valid host name, and a valid port if it has one.} userinfo {Must not contain a user name or password.} query {Must not contain a ? or a #.} fragment {Must not contain a ? or a #.} chars {Must not contain spaces, control characters or a broken % code.} other {Must be a web address.}}",
   "module.settings.field.unknown": "This isn't one we know.",
   "core.settings.row.default_zero": "Default: 0, which means off",
   "core.settings.row.default_named": "Default: {value}",

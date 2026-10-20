@@ -463,13 +463,14 @@ describe("/notify/outbox", () => {
     const counts = screen.getByText("Queued").closest("div")!;
     expect(counts).toHaveTextContent("2");
     expect(screen.getByText(MSG1)).toBeInTheDocument();
-    expect(screen.getByText("identity.password-reset")).toBeInTheDocument();
-    expect(screen.getByText("connect")).toBeInTheDocument();
+    expect(screen.getByText("Password-reset link")).toBeInTheDocument();
+    expect(screen.queryByText("identity.password-reset")).not.toBeInTheDocument();
+    expect(screen.getByText("Couldn't reach the mail server")).toBeInTheDocument();
     expect(container.textContent).not.toMatch(/@/);
     await expectNoAxeViolations(container);
   });
 
-  it("shows the recipient's playa name, or 'address' when there is no person", async () => {
+  it("shows the recipient's playa name, or a fixed phrase when there is no person", async () => {
     const PAT = "7c000000-0000-4000-8000-000000000001";
     open({
       [`GET ${O}`]: () =>
@@ -479,7 +480,16 @@ describe("/notify/outbox", () => {
       "GET /api/people/names": () => json({ names: { [PAT]: "Pat Dust" } }),
     });
     expect(await screen.findByText("Pat Dust")).toBeInTheDocument();
-    expect(screen.getByText("address")).toBeInTheDocument();
+    expect(screen.getByText("An e-mail address (no account)")).toBeInTheDocument();
+  });
+
+  it("falls back to the raw token and template name when the catalogue has none", async () => {
+    open({
+      [`GET ${O}`]: () =>
+        json(outbox({ recent: [record({ template: "unlisted-thing", last_error: "weird_new" })] })),
+    });
+    expect(await screen.findByText("weird_new")).toBeInTheDocument();
+    expect(screen.getByText("identity.unlisted-thing")).toBeInTheDocument();
   });
 
   it("falls back to the ID when names can't be resolved, and never shows an address", async () => {

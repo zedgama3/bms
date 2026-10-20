@@ -476,11 +476,19 @@ export interface GeneratedKeys {
   "core.notify.edit.subject_line": true;
   "core.notify.edit.title": true;
   "core.notify.edit.was_reset": true;
+  "core.notify.error.auth": true;
+  "core.notify.error.canceled": true;
+  "core.notify.error.connect": true;
+  "core.notify.error.expired": true;
+  "core.notify.error.no_address": true;
+  "core.notify.error.no_smtp": true;
+  "core.notify.error.rejected": true;
+  "core.notify.error.smtp_4xx": true;
+  "core.notify.error.timeout": true;
   "core.notify.nav.outbox": true;
   "core.notify.nav.templates": true;
   "core.notify.not_configured": true;
   "core.notify.open_settings": true;
-  "core.notify.outbox.address": true;
   "core.notify.outbox.cancel": true;
   "core.notify.outbox.cancel_body": true;
   "core.notify.outbox.cancel_label": true;
@@ -505,6 +513,7 @@ export interface GeneratedKeys {
   "core.notify.outbox.expired_error": true;
   "core.notify.outbox.none": true;
   "core.notify.outbox.recent_title": true;
+  "core.notify.outbox.recipient.address": true;
   "core.notify.outbox.refresh": true;
   "core.notify.outbox.retried": true;
   "core.notify.outbox.retry": true;
@@ -914,6 +923,7 @@ export interface GeneratedKeys {
   "module.people.permission.profiles.manage.title": true;
   "module.people.title": true;
   "module.settings.field.unknown": true;
+  "module.settings.field.url": true;
   "shell.account.anonymous": true;
   "shell.admin.modules.contributes_to": true;
   "shell.admin.modules.defines": true;
