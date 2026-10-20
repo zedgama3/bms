@@ -70,7 +70,7 @@
   "core.regional.setting.contact_email.title": "Contact mailbox",
   "core.regional.setting.contact_email.description": "The regional's shared mailbox. Anyone who opens the site can see it, so never use a person's address.",
   "core.regional.setting.public_url.title": "Web address",
-  "core.regional.setting.public_url.description": "Where this site lives, like https://burn.example.org. Links in messages start with it.",
+  "core.regional.setting.public_url.description": "The web address people use to reach this site, starting with https. Links in messages start with it.",
   "core.regional.setting.language.title": "Default language",
   "core.regional.setting.language.description": "The language people see before they choose their own.",
   "core.regional.setting.timezone.title": "Time zone",
