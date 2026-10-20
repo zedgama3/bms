@@ -5,6 +5,7 @@
 - **Amended 2026-10-18 (M1 build, accepted deviations):** implementation deviations recorded in Behavior, "Accepted implementation deviations (M1 build, 2026-10-18)"; `(*Service).CreateSuperuser` added to the Interface; the store interface and the dev-cookie and restricted-session wording corrected to what was built.
 - **Amended 2026-10-18 (M2 build, accepted deviations):** `LinkAccount` Conflict codes and the store method `SetPerson` recorded in Behavior, "Accepted implementation deviations (M2 build, 2026-10-18)".
 - **Amended 2026-10-19 (D39, owner approval of settings and notify):** the forgotten-password flow (notify Proposed change 1) is specified in full in "Amendment 2026-10-19 (D39): the forgotten-password flow" (before Open questions); `Policy` gains `PasswordResetLifetime`, identity exports `Settings` and `CheckSettings`, and Proposed changes 8 and 9 are applied.
+- **Amendment 2026-10-19 (pending owner approval):** closes the D39 amendment's "Needs a decision": `RequestPasswordReset` asks `Notify.Configured` before the account lookup and answers `Unsupported` for every address alike when e-mail is off (notify.md amendment of the same date); F71 and F72 replaced, F91 added. See "Amendment 2026-10-19 (pending owner approval): reset requests are uniform when e-mail is off".
 - **Package:** `internal/core/identity` (service, `Authenticator`, tokens, handlers), `internal/core/identity/account` (the record type), `internal/core/identity/postgres` (store, `sql/`, `migrations/`)   **UI:** `web/src/core/accounts/`
 - **Depends on specs:** `model`, `lib-errs`, `lib-core`, `lib-secret`, `config` (through `app`), `db`, `signals`, `settings` (`Decl`, D39), `notify` (`Notifier`, D39), `telemetry`, `api` (the `Authenticator` seam, `httpx`, the cookie rules), `audit` (Approved; the `Recorder`), `web-shell`, `app`   **Used by:** `api` (`Authenticator`), `app` (part 2, after audit; the `create-superuser` command, the audit actor closure), `audit` (`ActorFunc`, through `app`), every module and core service that needs the actor (`PersonFrom`), `web-shell` (the session endpoint, the sign-in flow), later `authz` (the actor and the superuser flag), `people` (`identity.account-created`, export and deletion), `settings` (`PolicySource`), `notify` (`Alerter`)
 
@@ -32,7 +33,7 @@
 
 **Expects of dependencies.** `api`: calls `Authenticate` on every routed request, 401 on signed-in routes when the person is zero, `httpx.ClientAddrFrom`/`SchemeFrom`, the cookie guard, `httpx.ErrRateLimited` mapped to 429 (Proposed change 1). `audit`: a `Recorder` scoped to `identity` at build time (audit built before identity, audit.md Proposed change 1), `Record` outside any `Read` transaction, the spool on a read-only copy, an explicit `Actor` honoured. `db`: `Transact`, `AfterCommit`, `Wrap`, `ErrReadOnly`, `*Error.Constraint`, `Set`, `dbtest`. `signals`: a `Bus` scoped to `identity`, `InDelivery`. `config` through `app`: `Session.Key`, `HTTP.AllowPlaintext`. `model`: `AccountID`, `PersonID`, `Email` (`ParseEmail`, `Canonical`, `LogValue`). `app`: part 2 as in app.md's table, the command, the actor closures for audit (M1) and authz (M2), the `accounts` route set, the end-to-end test. `web-shell`: the session store, the `401` rule, `/sign-in` as a redirect to `/accounts/sign-in` (Proposed change 2).
 
-**Open questions:** none; the nine are settled as decisions 8, 7, 15, 17, 3, 4, 13, 18 and 12 (owner, 2026-10-18); the reset-flow questions as decisions 20 and 21 (owner, 2026-10-19, D39). **Proposed changes elsewhere:** 18, listed at the end (status there).
+**Open questions:** none; the nine are settled as decisions 8, 7, 15, 17, 3, 4, 13, 18 and 12 (owner, 2026-10-18); the reset-flow questions as decisions 20 and 21 (owner, 2026-10-19, D39). **Proposed changes elsewhere:** 18, listed at the end (status there). **Pending amendment (2026-10-19):** `RequestPasswordReset` asks `Notify.Configured` before the account lookup; e-mail off answers `Unsupported` for every address alike (F71, F72, F91).
 
 **M2 build deviations (2026-10-18).** `LinkAccount` Conflict codes are `superuser` (field `email`) and `has_account` (field `person`); the store gains `SetPerson` (`set_account_person.sql`).
 
@@ -907,6 +908,26 @@ The token travels in the query of a page with no outbound links; the shell remov
 - **Integration (`//go:build integration`, `dbtest.TempDB`).** Migration `0003` applies; the unique `token_hash`; the cascade on account deletion; two concurrent `CompleteReset` calls: one wins; `Send` and the token row roll back together.
 - **End to end (`app`, with Mailpit).** Set the SMTP settings, request a reset, read the link from Mailpit, complete it, `Authenticate` with the old cookie is `401`, sign in with the new password.
 - **Web (`vitest`, `axe-core`).** Both screens' states; the token leaves the address bar; the sign-in link; focus and error summary.
+
+## Amendment 2026-10-19 (pending owner approval): reset requests are uniform when e-mail is off
+
+Closes "Needs a decision" in the D39 amendment above, together with notify.md's amendment of the same date (`Notifier.Configured`).
+
+**Decision.** Step 3 of `RequestPasswordReset` becomes: `Notify == nil`, or `Notify.Configured(ctx)` returns `false`: `Unsupported`, before the account lookup. The probe is a settings snapshot read (no SMTP connection, no recipient), so its answer cannot depend on the address. Every address therefore gets the same answer whatever the state of e-mail: `501` for all when it is off, `202` for all when it is on. A `Configured` error fails the request with its kind, still before the lookup, for every address alike (F91). If a settings admin clears the host between the probe and `Send` (a window one request long that only an admin can open), `Send` answers `Unsupported` after the lookup; identity then rolls back, returns nil (`202`), writes no entry and logs one warn line without the address (F72, replaced): uniformity over honesty for that one request, because the alternative is the oracle. The `/accounts/password-reset` screen is unchanged: its `501` state already reads "Password reset by e-mail isn't set up here. Ask an administrator for a temporary password."
+
+Options not taken: always `202` and enqueue (the queued reset link, a one-time credential, would outlive its hour in the outbox, and the person would be told an e-mail is coming when none can be; notify's `Send` refuses rows while unset by its decision 13); a public `email_enabled` flag read by the screen (does not fix the server, which must be uniform regardless of what the client shows).
+
+Interface change in identity: none. `Options.Notify` stays `notify.Notifier`, which now carries `Configured`; the unit tests' `notifytest.NewFake("identity")` gains `SetConfigured(false)` for the off path.
+
+### Failure modes (F71 and F72 replaced; F91 added)
+
+| # | Method | Condition | errs kind | Caller is expected to | Test |
+|---|---|---|---|---|---|
+| F71 | `RequestPasswordReset` | `Notify` nil, or `Notify.Configured` is `false` | Unsupported, before the lookup, for a known, an unknown, a disabled and a superuser address alike; the store records no lookup | 501, the screen says it is not set up | `TestRequestPasswordReset_NotConfigured_UnsupportedForAnyAddress` (table over the four addresses; identical error kinds, no store call) |
+| F72 | `RequestPasswordReset` | `Configured` was `true` and `Send` answers Unsupported (the settings changed in between) | nil; nothing committed (no token, no message, no entry); one warn log without the address | show the uniform message | `TestRequestPasswordReset_UnconfiguredAfterProbe_SilentNil` |
+| F91 | `RequestPasswordReset` | `Notify.Configured` fails | its kind (`Unavailable`, `Timeout`, `Canceled`), before the lookup, for every address alike | 503/504 | `TestRequestPasswordReset_ProbeFails_ReturnsKindBeforeLookup` |
+
+**Test plan (added).** The handler test's "identical bodies and headers" case runs twice, with the fake configured and not; `TestPasswordReset_NoSecretsInTelemetry` covers the F72 warn line; the Mailpit end-to-end run clears `notify.smtp_host` and asserts `501` with identical bodies for a known and an unknown address, then restores it.
 
 ## Open questions
 

@@ -1,6 +1,7 @@
 # Settings
 
 - **Status:** Approved (2026-10-19, D39)
+- **Amendment 2026-10-19 (pending owner approval):** three gaps found while applying D39: `Options.Authz` at part 3 is `app`'s `lazyAuthorizer` (no part reorder); `GET /public` and `/theme.css` keep the `/api/` `no-store` rule with their `ETag`; `api.Options.PublicOrigin` waits, with its shape fixed over `regional.public_url`. See "Amendment 2026-10-19 (pending owner approval): authz before authz, caching, the public origin" before Open questions.
 - **Package:** `internal/core/settings` (store in `internal/core/settings/postgres`, fake in
   `internal/core/settings/settingstest`)   **UI:** `web/src/core/settings/`
 - **Depends on specs:** lib-errs, lib-core, lib-secret, model, config, db, audit, authz,
@@ -665,6 +666,16 @@ store interface (D8), so a fork can swap it. Nothing here calls out of the proce
   "team" and the nav and the departments page title change without a reload; a
   participant cannot open `/settings`; a bad colour shows the contrast error.
 
+## Amendment 2026-10-19 (pending owner approval): authz before authz, caching, the public origin
+
+Three gaps found while applying D39 (app.md Proposed change 18, api.md Proposed change 15). Each is settled with the smallest design; the failure modes live in the spec whose code carries them (app, api), named here.
+
+**1. `Options.Authz` at part 3.** settings is core part 3, authz part 4, and `Options.Authz` is required (F1). Decision: `app` passes a lazy adapter, `lazyAuthorizer{a}` (app.md amendment of the same date), as it already does for identity's and audit's `PermissionChecker`; the part order does not change. Reason: settings consults `Authz` only inside a use case (`Allow` for `settings.read` and `settings.manage`; Behavior, "Pre- and post-conditions"), which runs on a request after every part is built; at build time the value exists only to pass F1. A reorder would renumber parts 3 to 7 in four specs and the pinned order test, and would turn authz's later `ZoneSource` (Proposed change 10) into a lazy adapter in turn. Settings calls nothing but `Allow` (every settings permission is site-scoped); the adapter implements `AllowIn` and `ExtentOf` too so it is a complete `Authorizer`. Nothing in this package changes; `settingstest` and the unit tests are unaffected. Failure mode: app F31 to F33 (`TestLazyAuthorizer_BeforeAuthz_DeniesAndEmptyExtent`).
+
+**2. Caching of `GET /public` and `GET /theme.css`.** Decision: the `/api/` `no-store` rule (api decision 12) stays as it is; neither route is exempted and the handlers do not set `Cache-Control`. Both set `ETag` (from the revision) and answer `304` to a matching `If-None-Match`, as Behavior already says: the web shell keeps the tag in memory and sends it on its refetch after a save (web-shell: the stored `ETag`), and `theme.css` is fetched once per page load (a few hundred bytes). That is the whole M4 cost. Reason: an exemption needs either api knowing settings' paths or a route-level "cacheable" declaration in module-contract, and a handler override would make "no cache ever stores anything personal" depend on every handler author; neither is worth a few hundred bytes per boot. F36 stands; api F58 (`TestPipeline_MountedRouteWithETag_KeepsNoStore`) pins the combination, and app's e2e repeats it on the two routes.
+
+**3. `regional.public_url` as api's public origin.** Decision: `api.Options.PublicOrigin` waits (not M4). Its shape is fixed now so Proposed change 9 closes: `PublicOrigin func(ctx context.Context) (string, error)`, optional, which `app` fills over `Regional(ctx).PublicURL` (a snapshot read per request, so a change needs no restart), returning the URL or `""` when unset; `""` or a nil seam means today's behaviour (the front end preserves `Host`, api Proposed change 14). There is no configuration fallback: `config` owns no public URL (D18, decision 6), so `regional.public_url` is the only source. Why wait: no M4 flow needs a second trusted origin or the `Host` allowlist; the one M4 consumer of `public_url` is notify's link prefix, which reads `Regional` directly. Failure mode: api F59, deferred with the seam.
+
 ## Open questions
 
 None; answered 2026-10-19 (D39). Record:
@@ -737,7 +748,7 @@ Status as of 2026-10-19 (D39): all 13 are applied; item 9 is recorded in api.md 
    `field.contrast` joins the field-code keys (`"{ratio}:1 is below {min}:1"`); `/settings`
    is listed among the admin nav entries (`settings.read`); `web/src/core/settings/` as a
    core area folder.
-9. Applied 2026-10-19 (D39) in api.md as a note on its still-pending Proposed change 15; the two points it raises (a per-request public-origin seam, and where `ETag`/`304` may be set under `no-store`) are not decided: see that item. **`plan/design/api.md` (row 16):** none now. Proposed change 15 (trusted origins and the
+9. Applied 2026-10-19 (D39) in api.md as a note on its still-pending Proposed change 15; the two points it raises (a per-request public-origin seam, and where `ETag`/`304` may be set under `no-store`) are settled by the amendment of 2026-10-19 above (pending owner approval): `no-store` stays with the `ETag`; `PublicOrigin` waits, shape fixed. **`plan/design/api.md` (row 16):** none now. Proposed change 15 (trusted origins and the
    `Host` allowlist from `regional.public_url`) needs a per-request read, since settings
    change without a restart: api gains `Options.PublicOrigin func(ctx) (string, error)`
    (a seam `app` fills over `Regional`) when that change is designed; it stays pending.

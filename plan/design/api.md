@@ -5,6 +5,7 @@
 - **Amended 2026-10-18 (owner approval of audit/identity):** `httpx.ErrRateLimited` is added to `lib/httpx` (identity and intake both use it): the mapper answers `429 rate_limited` with `Retry-After: 60` for anything wrapping it, and `intake.ErrRateLimited` is, or wraps, it; `Authenticator` is implemented by identity as in Proposed change 9 (identity.md Proposed change 1).
 - **Amended 2026-10-18 (owner approval of authz/people):** the mapper emits `fields` (from `validate.FieldError`) for a `409 conflict` as it does for `400 invalid`, so a duplicate can name its field (sign-up's `taken` names `email`; identity.md F15); `authz.Allow` satisfies `PermissionChecker` and refuses the actor inside `signals.InDelivery`; the declaration of `core.modules.read` gains `StarterRoles: authz.SiteAdminRoles` (authz.md Proposed change 6, Proposed change 10 applied).
 - **Amended 2026-10-18 (M2 build, accepted deviations):** `api.Permissions` and the exported `core.modules.read` declaration (`StarterRoles: authz.SiteAdminRoles`) are in the exported surface (app.md, "Accepted implementation deviations (M2 build, 2026-10-18)"). A record of what was built, not a design change.
+- **Amendment 2026-10-19 (pending owner approval):** Proposed change 15 settled for M4: decision 12's `no-store` stays on every mounted `/api/` route, a handler never sets `Cache-Control`, and `ETag`/`304` are allowed with it (the settings public routes); `Options.PublicOrigin` waits, its shape fixed over `regional.public_url`. F58, F59. See "Amendment 2026-10-19 (pending owner approval): Proposed change 15 settled for M4" before Open questions.
 - **Package:** `internal/api` (Go module `github.com/zedgama3/bms`), plus the foundation
   helper package `internal/lib/httpx` that this spec owns (decision 2): the wire form of an
   error, the kind-to-status table, and the three calls a handler makes (`ReadJSON`,
@@ -1423,6 +1424,35 @@ through `New` → `Listen` → `Serve` with a real `db.Pool`, `telemetry.New` an
 are the contract this spec enforces on modules, and the `hello` module is the reference
 that passes them.
 
+## Amendment 2026-10-19 (pending owner approval): Proposed change 15 settled for M4
+
+Two questions settings.md's Proposed change 9 left with this spec, answered with the smallest design (settings.md's amendment of the same date carries the same decisions from its side).
+
+**1. `Cache-Control` on `/api/settings/public` and `/api/settings/theme.css`.** Decision 12 stands unchanged: every `/api/` response carries `no-store` except the shell's own `/api/openapi.json` and `/api/modules`; no mounted route is exempted, and **a handler never sets `Cache-Control`**: the shell sets it before the handler runs, a handler that overwrites it is a review finding, and F58 pins the two routes that were tempted. `ETag` and `304` are allowed with `no-store`: a validator lets a client that keeps the tag itself (the web shell, in memory) revalidate, and tells a cache nothing it may store. The cost is one small fetch of each per boot. A route-level "cacheable" declaration (`module.Route.Cache`) is not added until a route needs it; `files`, which will serve large bodies, is the candidate and may propose it.
+
+**2. `Options.PublicOrigin`.** Waits; not M4. Its shape is fixed now so no spec waits on it:
+
+```go
+// PublicOrigin returns the regional's public URL (settings regional.public_url) or ""
+// when unset. Optional; nil or "" is today's behaviour (the front end preserves Host,
+// Proposed change 14). Read per request: a change needs no restart. app fills it over
+// settings.Regional. The shell derives the origin (scheme://host[:port]) from it for
+// decision 6 (one more trusted origin) and for the Host allowlist (the origin's host plus
+// loopback and the bind address; a request whose Host is not listed is 404 with no body).
+PublicOrigin func(ctx context.Context) (string, error)
+```
+
+A seam error is treated as `""` for that request and logged at warn once per minute (the settings snapshot cannot fail after its first load, so this is a start-up window). There is no configuration fallback: `config` owns no public URL (D18), so `regional.public_url` is the only source. Why wait: nothing in M4 needs it (the front end preserves `Host`; notify reads `Regional` itself for its links).
+
+### Failure modes (added)
+
+| # | Method | Condition | errs kind | Caller is expected to | Test |
+|---|---|---|---|---|---|
+| F58 | pipeline | a mounted route answers with `ETag` (the settings public routes) | none: the response carries `Cache-Control: no-store` and the `ETag`; a matching `If-None-Match` gets `304`, also with `no-store`; a handler's own `Cache-Control` never reaches the client on `/api/` | nothing | `TestPipeline_MountedRouteWithETag_KeepsNoStore` (a fake route set in api's tests; `app`'s e2e repeats it on `GET /api/settings/public` and `/theme.css` once settings is built) |
+| F59 | pipeline (lands with `PublicOrigin`) | the seam fails | none: treated as unset for the request; one warn per minute, no URL in it | fix settings | `TestPipeline_PublicOriginFails_TreatedAsUnset` |
+
+Proposed change 15 now reads: deferred, shape settled above; it is applied when a regional needs a front end that rewrites `Host`, or with `files`, whichever comes first.
+
 ## Open questions
 
 None. The four questions in the Draft were answered by the owner on 2026-10-17 and are
@@ -1627,7 +1657,7 @@ this list until then. Item 17 needs nothing.
     host is not in trusted_proxies"; note that bms sends HSTS as `max-age=31536000` only
     and that a regional controlling every subdomain adds `includeSubDomains` (and
     `preload`) at the front end (decision 26).
-15. **`plan/design/settings.md` (row 15)** (still pending after the settings spec was approved 2026-10-19, D39: settings.md Proposed change 9 records that the trusted origin and the `Host` allowlist must come from a per-request read, since settings change without a restart, so this change will add `Options.PublicOrigin func(ctx) (string, error)` (a seam `app` fills over `settings.Regional`) when it is designed; it also asks which of two things holds for `GET /api/settings/public` and `/api/settings/theme.css`, which want `ETag` and `304` under the `/api/` `no-store` rule of decision 12: that a handler may set `Cache-Control` and `ETag` on its own response, or that those two paths are exempted like `/api/openapi.json` and `/api/modules`; the owner has not chosen): when the public URL exists (D18), `app` passes
+15. **`plan/design/settings.md` (row 15)** (settled 2026-10-19 in "Amendment 2026-10-19 (pending owner approval): Proposed change 15 settled for M4": `no-store` stays with the `ETag`, handlers never set `Cache-Control`; `PublicOrigin`'s shape is fixed and it waits for a regional that needs it or for `files`. Earlier note: still pending after the settings spec was approved 2026-10-19, D39: settings.md Proposed change 9 records that the trusted origin and the `Host` allowlist must come from a per-request read, since settings change without a restart, so this change will add `Options.PublicOrigin func(ctx) (string, error)` (a seam `app` fills over `settings.Regional`) when it is designed; it also asks which of two things holds for `GET /api/settings/public` and `/api/settings/theme.css`, which want `ETag` and `304` under the `/api/` `no-store` rule of decision 12: that a handler may set `Cache-Control` and `ETag` on its own response, or that those two paths are exempted like `/api/openapi.json` and `/api/modules`; the owner has not chosen): when the public URL exists (D18), `app` passes
     its origin to `api` as a trusted origin for cross-origin protection, so a front end
     that rewrites `Host` still works; until then the `Host`-preserving rule in 14 holds.
     This adds `Options.TrustedOrigins []string` to this spec at that time, and with it a

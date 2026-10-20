@@ -3,6 +3,7 @@
 - **Status:** Implemented (2026-10-18); Approved (2026-10-18; owner approved every recommended answer)
 - **Amended 2026-10-18 (M2 build, accepted deviations):** implementation deviations recorded in Behavior, "Accepted implementation deviations (M2 build, 2026-10-18)": leaf packages `authz/perm` and `authz/rows`, wrapped list responses, fail-closed decisions, grant wire fields, migration 0002, new failure mode F64. Records of what was built, not design changes.
 - **Amended 2026-10-19 (D39, owner approval of settings and notify):** `(*Service).HoldersOf` added (notify Proposed change 6; F67 to F69); Proposed changes 11 and 12 are applied (starter role for `settings.*` and `notify.*`; "you were appointed" becomes Later).
+- **Amendment 2026-10-19 (pending owner approval):** `HoldersOf` returns explicit grant holders only and never enumerates the base role: confirmed, with the reason; F70 and F71 added. See "Amendment 2026-10-19 (pending owner approval): `HoldersOf` and the base role" before Open questions.
 - **Package:** `internal/core/authz` (contract and service), `internal/core/authz/postgres`
   (the store, SQL and migrations), `internal/core/authz/authztest` (the fake modules test
   with). **UI:** `web/src/core/access/` (screen set `access`, keys `core.access.*`).
@@ -568,6 +569,21 @@ No external technology beyond PostgreSQL through `db` (D8); `pg_advisory_xact_lo
 - **Conformance:** `authztest.Fake` passes the same decision table as the real service (`TestFake_MatchesService` over shared cases) so modules' tests mean something. `moduletest.Conformance` uses it (Proposed change 2).
 - **app end-to-end** (Proposed change 1): `bms migrate` seeds; the superuser grants `access-admin` to a fresh person (`POST /api/access/grants`); that person signs in, `GET /api/accounts/session` lists `access.*`; `/access/roles` renders at the phone viewport; a plain participant's `GET /api/hello/greeting` is `200`; a grant that violates a rule answers `409 separation_of_duties`; a revoke of the last access admin answers `409 last_access_admin`.
 - **Web** (`web/src/core/access/`): component tests for each screen's loading, empty, error, forbidden and read-only states; axe checks; the Playwright smoke run adds "grant a role, see the menu change" at the phone viewport.
+
+## Amendment 2026-10-19 (pending owner approval): `HoldersOf` and the base role
+
+Question raised while applying D39: `HoldersOf` (Interface, F67 to F69) returns explicit grant holders only and never enumerates the base role. **Confirmed as drafted.**
+
+Reason. `HoldersOf` exists to find the people appointed to a job: the superuser alert goes to the holders of `accounts.manage`, the deletion notice to the holders of `people.data.delete` (D39). The base role is every signed-in person (decision 2). A permission a regional puts there has no appointed holders, and enumerating `core.person` would e-mail every participant: at best spam, at worst a leak (every participant would learn that a deletion request or a superuser sign-in happened). A permission in the base role *and* in a granted role yields the granted holders, once each. The consumers already handle "nobody": people F61 logs one info line and still creates the request; the alert adapter still sends to `notify.alert_addresses`. The roles screen needs no warning: `HoldersOf` is not on a route, and which permissions are "appointment" permissions is each consumer's business.
+
+Not chosen: an `IncludeBase` flag (no consumer wants it), and reading `core.person` when the base role carries `p` (the spam and leak above, and a table authz does not read: decision 14).
+
+### Failure modes (added)
+
+| # | Method | Condition | errs kind | Caller is expected to | Test |
+|---|---|---|---|---|---|
+| F70 | `HoldersOf` | `p` is carried by the base role only (no active grant holds a role with `p`) | `[]model.PersonID{}`, nil; signed-in people are not enumerated | treat as "nobody appointed" (people F61; the alert adapter falls back to the alert addresses) | `TestHoldersOf_BaseRoleOnly_ReturnsEmpty` |
+| F71 | `HoldersOf` | `p` in the base role and in a role granted site-wide to A | `[A]`, once | — | `TestHoldersOf_BaseAndGrant_ReturnsGrantHoldersOnce` |
 
 ## Open questions
 

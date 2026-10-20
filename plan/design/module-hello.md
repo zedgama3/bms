@@ -5,11 +5,12 @@
 - **Amended 2026-10-18 (owner approval of audit/identity):** the M1 step of decision 2 is named: `actor` is `identity.PersonFrom` (false with no session, for a restricted session and inside a signal delivery); `GET /api/hello/greeting` with a session is `403` until the owner's base role exists (M2), and the request-driven `deliver:hello.greeted` assertion lands then (identity.md Proposed change 4).
 - **Amended 2026-10-18 (owner approval of authz/people):** the M2 step of decision 2 is named: `permissionChecker` is `deps.Authz`; both permissions declare `StarterRoles: []string{authz.RoleParticipant}` (decision 11); the app e2e asserts `GET /api/hello/greeting` is `200` for a signed-in participant and `POST /api/hello/greetings` drives `deliver:hello.greeted`; migration `0002` adds `FOREIGN KEY (person_id) REFERENCES core.person(id) ON DELETE RESTRICT` (replacing the "on delete cascade" sketch: `people` calls `DeletePerson` first and a cascade would hide a module that forgot something); `Manifest.Subscribes` may add `people.person-deleted` to reset the counter (optional, deferred); the e2e export shows `hello` inside the document (authz.md Proposed change 3, people.md Proposed change 8).
 - **Amended 2026-10-18 (M2 build, accepted deviations):** implementation deviations recorded in Behavior, "Accepted implementation deviations (M2 build, 2026-10-18)": a nil `Deps.Authz` denies everything (the rule for modules copying hello); migration 0002 is the person FK, `RESTRICT`, with a preflight.
+- **Amendment 2026-10-19 (pending owner approval):** `hello` ships one notification template, `hello.greeted` (`Manifest.Templates`), sent to the actor from `Greet` through `Deps.Notify`, so the reference covers the path (module-contract.md, D39, notify Proposed change 4); F32 to F36. See "Amendment 2026-10-19 (pending owner approval): the `hello.greeted` template" before Open questions.
 - **Package:** `internal/modules/hello` (with `internal/modules/hello/greeting`,
   `internal/modules/hello/postgres`) and `internal/contracts/greeter`
   **UI:** `web/src/modules/hello`
 - **Depends on specs:** `module-contract`, `db`, `signals`, `telemetry`, `api` (`lib/httpx`),
-  `web-shell`, `app`, `model`, `lib-errs`, `lib-core`
+  `web-shell`, `app`, `model`, `lib-errs`, `lib-core`, `notify` (`Deps.Notify`, `Manifest.Templates`; M4, pending amendment)
   **Used by:** `app` (compiled in through `internal/app/modules.go` and
   `web/src/modules/index.ts`; its end-to-end test), `web-shell` (Playwright smoke), every
   later module author (copy-paste template), `moduletest.Conformance` (the reference it is
@@ -92,6 +93,8 @@ revisit when `volunteers` is Implemented.
 README row 4b); identity.md's Proposed change 4 (the M1 step: `actor: identity.PersonFrom`) applied 2026-10-18; authz.md's Proposed change 3 and people.md's Proposed change 8 (the M2 step: `deps.Authz`, `StarterRoles`, migration `0002`) applied 2026-10-18.
 
 **M2 build deviations (2026-10-18).** A nil `Deps.Authz` means deny-all (fail closed), the rule for modules copying hello (`TestNew_NilAuthz_DeniesEverything`); migration 0002 is the person FK, `RESTRICT`, with a preflight.
+
+**Pending amendment (2026-10-19, M4).** `Manifest.Templates` ships `templates/greeted.{en,es}.tmpl` (`TemplateGreeted = "hello.greeted"`); `Greet` sends it to the actor inside its transaction (`Key: "greeted:<id>"`, `Vars{word}`, `Link: "/hello/"`), treats `Unsupported` as "no e-mail" and any other `Send` error as a rollback; a nil `Deps.Notify` fails `New`. F32 to F36; catalogue key `module.hello.template.greeted.title`.
 
 ## Purpose
 
@@ -702,6 +705,53 @@ with the proposed answer:
     module to show; the operator docs tell a regional to set `BMS_MODULES_DISABLED=hello`;
     revisit when `volunteers` is Implemented.
 
+## Amendment 2026-10-19 (pending owner approval): the `hello.greeted` template
+
+Source: notify.md Proposed change 4, applied in module-contract.md (D39): "the `hello` module ships one template `hello.greeted` (sent from `Greet`) so the reference covers the path; `module-hello.md` carries the detail". This is the detail. It depends on notify (Approved) and on module-contract's D39 amendment (`Manifest.Templates`, `Deps.Notify`, `notifytest.NewFake` in `Conformance`, the rule `templates_register`).
+
+**Manifest.** `Manifest.Templates` is the embedded directory `templates/` with `greeted.en.tmpl` and `greeted.es.tmpl`; notify names it `hello.greeted` (`TemplateGreeted notify.Template = "hello.greeted"`, exported next to `SignalGreeted`). The signal and the template share the string by coincidence of grammar; they are different namespaces (`signals.Name`, `notify.Template`) and nothing links them. The English file:
+
+```
+Subject: You greeted at {{.Site.Name}}
+Vars: word
+
+{{if .Recipient.PlayaName}}Hi {{.Recipient.PlayaName}},{{else}}Hi,{{end}}
+
+you said "{{.Vars.word}}". Your greetings: {{.Link}}
+```
+
+`Vars` carries the greeting word only (a setting's value, nothing personal). No `term` call: hello has no term of its own. The catalogue `web/src/modules/hello/messages/en.json` gains `module.hello.template.greeted.title` ("Greeting sent"), the key notify's templates screen derives for a module template (notify.md, UI, "Templates").
+
+**`Greet`.** After the insert and the `Publish`, inside the same `db.Transact(Write)`:
+
+```go
+err := s.notify.Send(ctx, notify.Message{
+	Template: TemplateGreeted,
+	To:       []model.PersonID{actor},
+	Key:      "greeted:" + g.ID.String(),
+	Vars:     map[string]string{"word": word},
+	Link:     "/hello/",
+})
+```
+
+The recipient is the actor: the one person a module may always tell about their own action (notify decision 10 holds trivially). `errors.Is(err, notify.ErrNotConfigured)` (an `Unsupported`): the greeting is saved and published and nothing is queued; one debug line (`notify=off`, no ID of anything), because "e-mail is not set up" is not the greeter's problem. This is the pattern every module copies for a courtesy notice; people's deletion request does the same (people F60). A notice that *is* the use case (identity's reset) instead refuses first with `Notify.Configured` (notify.md amendment of the same date); `Greet` does not call `Configured`, because its outcome must not depend on e-mail and `Send` already answers `Unsupported` before looking at the recipient. Any other `Send` error rolls the transaction back and returns its kind: nothing saved, nothing published, nothing queued, like a refused `Publish` (F16). A nil `Deps.Notify` fails `New` (`Invalid`; F1 gains `Notify`): `provision` sets it from M4 and `Conformance` supplies `notifytest.NewFake("hello")`, so a nil is wiring, and the module fails closed like it does for `Authz`.
+
+Decision 2's seam list gains nothing: `Deps.Notify` is a core field taken as is, like `Deps.Signals`. The service struct gains `notify notify.Notifier`.
+
+**Privacy.** The message carries no address (notify resolves it at send time), no name (the renderer reads the playa name) and nothing about anyone else. `Conformance`'s leak rule scans `Fake.Sent()` vars and links for the seed markers; `word` is the setting's value, never seeded data. Export and deletion are unchanged: the outbox row is notify's and goes through notify's `PersonData`.
+
+### Failure modes (added; F1 gains `Notify`)
+
+| # | Method | Condition | errs kind | Caller is expected to | Test |
+|---|---|---|---|---|---|
+| F32 | `New` | nil `Deps.Notify` | Invalid | fix `Provision` | `TestNew_NilNotify_ReturnsInvalid` (a row of F1's table) |
+| F33 | `Greet` | `Notify.Send` fails Unsupported wrapping `ErrNotConfigured` (e-mail not set up) | nil; the row is committed and `hello.greeted` published; nothing in `Fake.Sent()`; one debug line | nothing | `TestGreet_NotifyNotConfigured_StillGreets` |
+| F34 | `Greet` | `Notify.Send` fails otherwise (`Invalid` from a malformed message, `Unavailable`, `Timeout`, `Canceled`, read-only) | its kind; the insert rolled back; nothing published, nothing sent | 400/503/504 | `TestGreet_NotifyFails_RollsBackAndPublishesNothing` |
+| F35 | `Greet` | success with e-mail set up | one `Message` in `Fake.Sent()` after commit: template `hello.greeted`, `To` the actor only, `Key` `greeted:<id>`, `Vars` `{word}`, `Link` `/hello/`; nothing in `Sent()` when the transaction rolls back (the `Insert` failure of F17) | — | `TestGreet_SendsGreetedToActorAfterCommit` |
+| F36 | `Templates` (at `notify.Register`; `Conformance/templates_register`) | `greeted` lacks `en`, has a bad header, or does not parse | Invalid naming the file | fix the template | `Conformance/templates_register`, `TestTemplates_Parse` (`fstest`-free: the embedded FS) |
+
+**Test plan (added).** Unit: `notifytest.NewFake("hello")` as `Deps.Notify` (`SetConfigured(false)` for F33, `Fail(err)` for F34, `Sent()` for F35); `telemetrytest` asserts the debug line carries no ID. Conformance: unchanged call, now exercising `templates_register`. End to end (`app`, Mailpit, M4): with the SMTP settings set, `POST /api/hello/greetings` leaves one message in Mailpit whose subject names the regional and whose body holds the `/hello/` link; with the host cleared, the same request is `201` and Mailpit stays empty. The catalogue test (`app` F30) covers the new key once module-contract decision 8 derives `.template.<ident>.title` (Proposed change 10 below).
+
 ## Open questions
 
 None. Both questions in the draft are answered above (decisions 11 and 12).
@@ -745,3 +795,4 @@ None. Both questions in the draft are answered above (decisions 11 and 12).
    permission checker, setting source) and their deny/default wiring until identity, authz
    and settings exist. Point both at `hello` as the template.
 9. **`plan/design/README.md`:** row 4b to Draft (done with this draft).
+10. Pending (amendment 2026-10-19, owner approval needed). **`plan/design/module-contract.md` (row 4), decision 8 and `plan/design/app.md` F30 (`TestMessageCatalogues_EnglishCoversManifests`):** the derived catalogue keys gain `module.<name>.template.<ident>.title` for each `<ident>` in `Manifest.Templates`, so a module template's title on notify's templates screen is checked like a permission's or a setting's. `hello`'s `en.json` gains `module.hello.template.greeted.title`.
