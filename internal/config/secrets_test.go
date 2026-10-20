@@ -214,3 +214,94 @@ func TestLoad_NeverWritesSecretsFile(t *testing.T) {
 		t.Errorf("Load created files in the data dir: %v %v", ents, err)
 	}
 }
+
+const sealingKey = "settings-sealing-key-0123456789abcdef-test"
+
+func TestLoad_SecretsFile_ProvidesBothKeys(t *testing.T) {
+	dir, _ := secretsFile(t, `{"session_key":"`+sessionKey+`","settings_sealing_key":"`+sealingKey+`"}`)
+	cfg := mustLoad(t, env("BMS_DATA_DIR="+dir)...)
+	if cfg.Session.Key.Value() != sessionKey || cfg.Settings.SealingKey.Value() != sealingKey {
+		t.Error("a key was not read byte for byte")
+	}
+}
+
+func TestLoad_SealingKeyFromEnvOrFile(t *testing.T) {
+	cfg := mustLoad(t, env("BMS_DATA_DIR="+t.TempDir(), "BMS_SETTINGS_SEALING_KEY="+sealingKey)...)
+	if cfg.Settings.SealingKey.Value() != sealingKey {
+		t.Error("key not read from the environment")
+	}
+	keyFile := writeFile(t, t.TempDir(), "sealing", sealingKey+"\n", 0o600)
+	cfg = mustLoad(t, env("BMS_DATA_DIR="+t.TempDir(), "BMS_SETTINGS_SEALING_KEY_FILE="+keyFile)...)
+	if cfg.Settings.SealingKey.Value() != sealingKey {
+		t.Error("key not read from the _FILE variant")
+	}
+}
+
+func TestLoad_SealingKeyUnset_IsNotAnError(t *testing.T) {
+	dir, _ := secretsFile(t, skeyJSON(sessionKey))
+	cfg := mustLoad(t, env("BMS_DATA_DIR="+dir)...)
+	if cfg.Settings.SealingKey.IsSet() {
+		t.Error("the sealing key must be unset when no source has it")
+	}
+}
+
+func TestLoad_SealingKeyInEnvAndSecretsFile_ReturnsInvalid(t *testing.T) {
+	dir, _ := secretsFile(t, `{"settings_sealing_key":"`+sealingKey+`"}`)
+	_, err := load(t, env("BMS_DATA_DIR="+dir, "BMS_SETTINGS_SEALING_KEY="+sealingKey)...)
+	if !errs.Is(err, errs.Invalid) || findField(err, "BMS_SETTINGS_SEALING_KEY") == nil {
+		t.Fatalf("err = %v, want Invalid under BMS_SETTINGS_SEALING_KEY", err)
+	}
+	noLeak(t, err, sealingKey)
+}
+
+func TestLoad_ShortSealingKey_ReturnsInvalidWithoutEcho(t *testing.T) {
+	_, err := load(t, env("BMS_DATA_DIR="+t.TempDir(), "BMS_SETTINGS_SEALING_KEY="+strings.Repeat("z", 8))...)
+	if fe := wantInvalidOne(t, err, "BMS_SETTINGS_SEALING_KEY"); fe.Code != "length" {
+		t.Errorf("code = %q, want length", fe.Code)
+	}
+	noLeak(t, err, strings.Repeat("z", 8))
+}
+
+// F33
+func TestLoad_SecretsFileBadSealingKey_ReturnsInvalid(t *testing.T) {
+	cases := map[string]string{
+		"short":    marker,
+		"31 bytes": sealingKey[:31],
+		"1025":     strings.Repeat("s", 1025),
+		"NUL":      sealingKey + "\x00",
+	}
+	for name, key := range cases {
+		t.Run(name, func(t *testing.T) {
+			b, err := json.Marshal(map[string]string{config.SecretsFieldSettingsSealingKey: key})
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, path := secretsFile(t, string(b))
+			_, err = load(t, env("BMS_SECRETS_FILE="+path)...)
+			requireInvalidOne(t, err, "BMS_SETTINGS_SEALING_KEY")
+			noLeak(t, err, marker)
+		})
+	}
+	// Not a string: the file is malformed, reported under the file's variable.
+	for name, js := range map[string]string{
+		"number": `{"settings_sealing_key": 12345, "x": "` + marker + `"}`,
+		"object": `{"settings_sealing_key": {"k": "` + marker + `"}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, path := secretsFile(t, js)
+			_, err := load(t, env("BMS_SECRETS_FILE="+path)...)
+			requireInvalidOne(t, err, "BMS_SECRETS_FILE")
+			noLeak(t, err, marker)
+		})
+	}
+}
+
+// F32, both environment forms set together.
+func TestLoad_SealingKeyEnvAndFileVariant_ReturnsInvalid(t *testing.T) {
+	kf := writeFile(t, t.TempDir(), "k", sealingKey, 0o600)
+	_, err := load(t, env("BMS_DATA_DIR="+t.TempDir(), "BMS_SETTINGS_SEALING_KEY="+sealingKey, "BMS_SETTINGS_SEALING_KEY_FILE="+kf)...)
+	if !errs.Is(err, errs.Invalid) || findField(err, "BMS_SETTINGS_SEALING_KEY_FILE") == nil {
+		t.Fatalf("err = %v, want Invalid under BMS_SETTINGS_SEALING_KEY_FILE", err)
+	}
+	noLeak(t, err, sealingKey)
+}

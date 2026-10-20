@@ -3,9 +3,11 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/identity"
+	"github.com/zedgama3/bms/internal/core/people"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/model"
 )
@@ -87,4 +89,70 @@ func (l lazyDepartments) Active(ctx context.Context, d model.DepartmentID) (bool
 		return false, errs.E("app.lazyDepartments.Active", errs.Unsupported, errors.New("no departments service is wired"))
 	}
 	return l.a.departments.Active(ctx, d) //nolint:wrapcheck // the service's own error
+}
+
+// lazyAuthorizer is settings' authz.Authorizer over a.authz, which authz's part sets after
+// settings is built: until then every decision is denied (errs.Permission) and ExtentOf is
+// nowhere (a zero Extent, nil), as the services do when they are given no authorizer. It
+// does no I/O of its own. settings calls only Allow (every settings permission is
+// site-scoped); AllowIn and ExtentOf are implemented so the value is a complete Authorizer.
+type lazyAuthorizer struct{ a *assembly }
+
+var _ authz.Authorizer = lazyAuthorizer{}
+
+// Allow asks the authz service when there is one, else fails errs.Permission.
+func (l lazyAuthorizer) Allow(ctx context.Context, p authz.Permission) error {
+	if l.a.authz == nil {
+		return errs.E("app.lazyAuthorizer.Allow", errs.Permission, errors.New("no authorizer is wired, so access is denied"))
+	}
+	return l.a.authz.Allow(ctx, p) //nolint:wrapcheck // the authorizer's own error
+}
+
+// AllowIn asks the authz service when there is one, else fails errs.Permission.
+func (l lazyAuthorizer) AllowIn(ctx context.Context, p authz.Permission, d model.DepartmentID) error {
+	if l.a.authz == nil {
+		return errs.E("app.lazyAuthorizer.AllowIn", errs.Permission, errors.New("no authorizer is wired, so access is denied"))
+	}
+	return l.a.authz.AllowIn(ctx, p, d) //nolint:wrapcheck // the authorizer's own error
+}
+
+// ExtentOf asks the authz service when there is one, else answers nowhere (a zero Extent).
+func (l lazyAuthorizer) ExtentOf(ctx context.Context, p authz.Permission) (authz.Extent, error) {
+	if l.a.authz == nil {
+		return authz.Extent{}, nil
+	}
+	return l.a.authz.ExtentOf(ctx, p) //nolint:wrapcheck // the authorizer's own error
+}
+
+// lazyIdentityPolicy is identity's PolicySource over a.settings, which settings' part sets
+// after identity is built: until then the policy is the shipped default, as it is when
+// identity is given no source. It does no I/O of its own.
+type lazyIdentityPolicy struct{ a *assembly }
+
+// Policy reads the accounts.* settings when there is a settings service, else the defaults.
+func (l lazyIdentityPolicy) Policy(ctx context.Context) (identity.Policy, error) {
+	if l.a.settings == nil {
+		return identity.DefaultPolicy(), nil
+	}
+	r, err := l.a.settings.Scoped(accountsSettings)
+	if err != nil {
+		return identity.Policy{}, fmt.Errorf("app.lazyIdentityPolicy: %w", err)
+	}
+	return settingsPolicy{r: r}.Policy(ctx)
+}
+
+// lazyPeoplePolicy is people's PolicySource over a.settings, resolved when called, so the
+// part order does not matter to it.
+type lazyPeoplePolicy struct{ a *assembly }
+
+// Policy reads the people.* settings when there is a settings service, else the defaults.
+func (l lazyPeoplePolicy) Policy(ctx context.Context) (people.Policy, error) {
+	if l.a.settings == nil {
+		return people.DefaultPolicy(), nil
+	}
+	r, err := l.a.settings.Scoped(peopleSettings)
+	if err != nil {
+		return people.Policy{}, fmt.Errorf("app.lazyPeoplePolicy: %w", err)
+	}
+	return peoplePolicy{r: r}.Policy(ctx)
 }

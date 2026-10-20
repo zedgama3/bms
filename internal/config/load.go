@@ -278,7 +278,8 @@ func (l *loader) readSecrets(ctx context.Context, path, field string) (data []by
 
 // secretsDoc is the shape of the secrets file. Unknown fields are ignored.
 type secretsDoc struct {
-	SessionKey secret.Secret `json:"session_key"`
+	SessionKey         secret.Secret `json:"session_key"`
+	SettingsSealingKey secret.Secret `json:"settings_sealing_key"`
 }
 
 // readSecretsFile is step 5: the generated secrets, a third source for the session key.
@@ -315,19 +316,26 @@ func (l *loader) readSecretsFile(ctx context.Context) error {
 		return nil //nolint:nilerr // recorded as a problem; Load goes on to report the rest
 	}
 
-	keyEnv := envOf("session.key")
-	if !doc.SessionKey.IsSet() {
-		return nil
-	}
-	pos := positionOf(keyEnv)
-	switch {
-	case l.failed[pos]:
-	case l.cfg.Session.Key.IsSet():
-		l.fail(keyEnv, codeConflict, "set in the environment and in %s (%s): keep only one", field, SecretsFieldSessionKey)
-	default:
-		l.cfg.Session.Key = doc.SessionKey
-	}
+	l.takeFromFile("session.key", field, SecretsFieldSessionKey, doc.SessionKey, &l.cfg.Session.Key)
+	l.takeFromFile("settings.sealing_key", field, SecretsFieldSettingsSealingKey, doc.SettingsSealingKey, &l.cfg.Settings.SealingKey)
 	return nil
+}
+
+// takeFromFile makes the secrets file's value the key's third source: it is used when no
+// other source set the key, and it is a conflict when one did (F27, F32). A key the file
+// does not hold, or one that already has a problem, is left alone.
+func (l *loader) takeFromFile(key, field, fileField string, fromFile secret.Secret, dst *secret.Secret) {
+	if !fromFile.IsSet() {
+		return
+	}
+	keyEnv := envOf(key)
+	switch {
+	case l.failed[positionOf(keyEnv)]:
+	case dst.IsSet():
+		l.fail(keyEnv, codeConflict, "set in the environment and in %s (%s): keep only one", field, fileField)
+	default:
+		*dst = fromFile
+	}
 }
 
 // unknownVariables is step 3: BMS_* names no key reads (F11), sorted so the report is stable.

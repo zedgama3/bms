@@ -352,3 +352,31 @@ func TestDefault_Unset_ShowsUnsetMarker(t *testing.T) {
 		t.Errorf("unset secrets should print [unset]: %s", out)
 	}
 }
+
+// F31
+func TestValidate_SealingKey_ReturnsInvalidWithoutEcho(t *testing.T) {
+	for name, k := range map[string]string{
+		"short": marker, "31": strings.Repeat(marker, 4)[:31], "1025": strings.Repeat(marker, 103)[:1025],
+		"nul": strings.Repeat(marker, 4) + "\x00",
+	} {
+		t.Run(name, func(t *testing.T) {
+			c := valid()
+			c.Settings.SealingKey = secret.New(k)
+			err := c.Validate()
+			requireInvalidOne(t, err, "BMS_SETTINGS_SEALING_KEY")
+			noLeak(t, err, marker)
+		})
+	}
+	for _, n := range []int{32, 1024} {
+		c := valid()
+		c.Settings.SealingKey = secret.New(strings.Repeat("s", n))
+		if err := c.Validate(); err != nil {
+			t.Errorf("%d bytes should pass: %v", n, err)
+		}
+	}
+	c := valid() // unset is never an error (decision 17)
+	c.Settings.SealingKey = secret.Secret{}
+	if err := c.Validate(); err != nil {
+		t.Errorf("unset key should pass: %v", err)
+	}
+}

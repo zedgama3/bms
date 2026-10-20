@@ -147,7 +147,7 @@ func (r *checkReport) config(ctx context.Context, p *process) (config.Config, bo
 	r.printf("configuration\n")
 	for _, k := range config.Keys() {
 		line := fmt.Sprintf("  %s = %s", k.Env, valueOf(cfg, k))
-		if k.Generated && !cfg.Session.Key.IsSet() {
+		if k.Generated && valueOf(cfg, k) == "[unset]" {
 			line += "  (run bms migrate)"
 		}
 		r.printf("%s\n", line)
@@ -204,6 +204,8 @@ func valueOf(cfg config.Config, k config.Key) string {
 		text = strconv.FormatBool(cfg.HTTP.AllowPlaintext)
 	case "session.key":
 		return secretState(cfg.Session.Key.IsSet())
+	case "settings.sealing_key":
+		return secretState(cfg.Settings.SealingKey.IsSet())
 	case "secrets.file":
 		text = cfg.Secrets.File
 	case "log.level":

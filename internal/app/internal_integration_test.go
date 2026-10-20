@@ -85,6 +85,7 @@ func itEnv(t *testing.T, dbURL string) (env []string, addr string) {
 	return []string{
 		"BMS_DB_URL=" + dbURL,
 		"BMS_SESSION_KEY=" + itMarker + strings.Repeat("k", 38),
+		"BMS_SETTINGS_SEALING_KEY=" + itMarker + strings.Repeat("s", 38),
 		"BMS_DATA_DIR=" + t.TempDir(),
 		"BMS_HTTP_ADDR=" + addr,
 		"BMS_LOG_FORMAT=json",

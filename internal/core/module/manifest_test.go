@@ -74,7 +74,7 @@ func TestReservedNames_Pinned(t *testing.T) {
 		"core", "people", "accounts", "access", "identity", "authz", "departments", "events",
 		"signals", "notify", "audit", "files", "jobs", "settings", "telemetry", "db", "module", "modules",
 		// shell packages
-		"api", "app", "config", "web", "admin", "client",
+		"api", "app", "config", "web", "admin", "client", "regional",
 		// PostgreSQL
 		"public", "information", "pg", "pgsomething",
 	}

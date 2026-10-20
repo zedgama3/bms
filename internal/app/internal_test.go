@@ -26,6 +26,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/module"
+	"github.com/zedgama3/bms/internal/core/settings"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/telemetry/telemetrytest"
 	"github.com/zedgama3/bms/internal/lib/clock"
@@ -62,12 +63,13 @@ func TestValueOf_EveryKeyRendered_SecretsRedacted(t *testing.T) {
 	cfg := config.Default()
 	cfg.DB.URL = secret.New("postgres://u:ZQ9MARKER7@h/db")
 	cfg.Session.Key = secret.New(strings.Repeat("k", 40))
+	cfg.Settings.SealingKey = secret.New(strings.Repeat("s", 40))
 	for _, k := range config.Keys() {
 		got := valueOf(cfg, k)
 		if got == "[unknown key]" {
 			t.Errorf("valueOf has no case for %s", k.Env)
 		}
-		if strings.Contains(got, "ZQ9MARKER7") || strings.Contains(got, "kkkk") {
+		if strings.Contains(got, "ZQ9MARKER7") || strings.Contains(got, "kkkk") || strings.Contains(got, "ssss") {
 			t.Errorf("valueOf(%s) leaks a secret: %q", k.Env, got)
 		}
 		if k.Secret && got != "[redacted]" {
@@ -465,6 +467,7 @@ func quietEnv(t *testing.T, extra ...string) []string {
 	return append([]string{
 		"BMS_DB_URL=postgres://u:ZQ9MARKER7@127.0.0.1:1/db?sslmode=disable",
 		"BMS_SESSION_KEY=" + strings.Repeat("k", 40),
+		"BMS_SETTINGS_SEALING_KEY=" + strings.Repeat("s", 40),
 		"BMS_DATA_DIR=" + t.TempDir(),
 		"BMS_DB_CONNECT_TIMEOUT=1s",
 	}, extra...)
@@ -510,7 +513,7 @@ func TestOpenAPI_OutputIsIndentedWithOneTrailingNewline(t *testing.T) {
 	}
 }
 
-// Item 19: with the session key injected there is nothing to write, so migrate must not
+// Item 19: with both generated keys injected there is nothing to write, so migrate must not
 // create the data directory (a read-only filesystem works).
 func TestEnsureSecrets_SessionKeyAlreadySet_CreatesNoDataDir(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "absent", "data")
@@ -518,6 +521,7 @@ func TestEnsureSecrets_SessionKeyAlreadySet_CreatesNoDataDir(t *testing.T) {
 	cfg.Data.Dir = dir
 	cfg.Secrets.File = filepath.Join(dir, "secrets.env")
 	cfg.Session.Key = secret.New(strings.Repeat("k", 40))
+	cfg.Settings.SealingKey = secret.New(strings.Repeat("s", 40))
 	p := &process{stderr: &bytes.Buffer{}}
 	if _, err := ensureSecrets(context.Background(), p, cfg); err != nil {
 		t.Fatalf("ensureSecrets: %v", err)
@@ -525,6 +529,90 @@ func TestEnsureSecrets_SessionKeyAlreadySet_CreatesNoDataDir(t *testing.T) {
 	if _, err := os.Stat(dir); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("stat %s = %v, want the directory not to exist", dir, err)
 	}
+}
+
+// Config decision 17 and item 19: with the session key injected, a sealing key that cannot
+// be written (the directory or the file is unwritable) is one warning, never an error, and
+// the key stays unset.
+func TestEnsureSecrets_SessionKeyInjected_UnwritableSealingKey_WarnsAndSucceeds(t *testing.T) {
+	root := t.TempDir()
+	blocker := filepath.Join(root, "blocker")
+	if err := os.WriteFile(blocker, []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cases := map[string]config.Config{
+		"data dir under a file":     {Data: config.Data{Dir: filepath.Join(blocker, "data")}, Secrets: config.Secrets{File: filepath.Join(blocker, "data", "secrets.json")}},
+		"secrets file under a file": {Data: config.Data{Dir: root}, Secrets: config.Secrets{File: filepath.Join(blocker, "secrets.json")}},
+	}
+	for name, cfg := range cases {
+		t.Run(name, func(t *testing.T) {
+			cfg.Session.Key = secret.New(strings.Repeat("k", 40))
+			var errOut bytes.Buffer
+			got, err := ensureSecrets(context.Background(), &process{stderr: &errOut}, cfg)
+			if err != nil {
+				t.Fatalf("ensureSecrets: %v, want a warning only", err)
+			}
+			if got.Settings.SealingKey.IsSet() {
+				t.Error("the sealing key is set although nothing could be written")
+			}
+			if strings.Count(errOut.String(), "warning:") != 1 || !strings.Contains(errOut.String(), "BMS_SETTINGS_SEALING_KEY") {
+				t.Errorf("stderr = %q, want one warning naming BMS_SETTINGS_SEALING_KEY", errOut.String())
+			}
+		})
+	}
+}
+
+// The session key still being missing keeps an unwritable directory an error (F22, F23).
+func TestEnsureSecrets_NoSessionKey_UnwritableDir_ReturnsInvalid(t *testing.T) {
+	blocker := filepath.Join(t.TempDir(), "blocker")
+	if err := os.WriteFile(blocker, []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Config{Data: config.Data{Dir: filepath.Join(blocker, "data")}, Secrets: config.Secrets{File: filepath.Join(blocker, "data", "secrets.json")}}
+	if _, err := ensureSecrets(context.Background(), &process{stderr: &bytes.Buffer{}}, cfg); !errs.Is(err, errs.Invalid) {
+		t.Errorf("err = %v, want Invalid", err)
+	}
+}
+
+// The notice follows whether the file existed: a new file is "Created ..." whichever fields
+// it holds, an existing one gains fields with "Added ...".
+func TestEnsureSecrets_NoticeFollowsWhetherTheFileExisted(t *testing.T) {
+	env := func(dir string) []string {
+		return []string{"BMS_DB_URL=postgres://u:p@127.0.0.1:1/db", "BMS_SESSION_KEY=" + strings.Repeat("k", 40), "BMS_DATA_DIR=" + dir}
+	}
+	t.Run("new file with only the sealing key", func(t *testing.T) {
+		dir := t.TempDir()
+		cfg, err := config.Load(context.Background(), env(dir))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var errOut bytes.Buffer
+		if _, err := ensureSecrets(context.Background(), &process{stderr: &errOut, environ: env(dir)}, cfg); err != nil {
+			t.Fatalf("ensureSecrets: %v", err)
+		}
+		for _, want := range []string{"Created ", "Keep it readable by the bms user only"} {
+			if !strings.Contains(errOut.String(), want) {
+				t.Errorf("stderr lacks %q:\n%s", want, &errOut)
+			}
+		}
+	})
+	t.Run("existing file gains the sealing key", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "secrets.json"), []byte(`{"other":"x"}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		cfg, err := config.Load(context.Background(), env(dir))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var errOut bytes.Buffer
+		if _, err := ensureSecrets(context.Background(), &process{stderr: &errOut, environ: env(dir)}, cfg); err != nil {
+			t.Fatalf("ensureSecrets: %v", err)
+		}
+		if !strings.Contains(errOut.String(), "Added ") || strings.Contains(errOut.String(), "Created ") {
+			t.Errorf("stderr = %q, want the Added notice only", &errOut)
+		}
+	})
 }
 
 // Item 21: check exits like serve when no session key exists, and still says what to run.
@@ -615,14 +703,15 @@ func TestCoreParts_Declare_SetsPermissionsSignalAndCommand(t *testing.T) {
 	for _, s := range a.coreSets {
 		sets = append(sets, s.Name)
 	}
-	if got := strings.Join(sets, ","); got != "identity,people,authz,departments,events,audit" {
-		t.Errorf("core migration sets = %s, want identity,people,authz,departments,events,audit (db.md order, not part order)", got)
+	if got := strings.Join(sets, ","); got != "identity,people,authz,departments,events,audit,settings" {
+		t.Errorf("core migration sets = %s, want identity,people,authz,departments,events,audit,settings (db.md order, not part order)", got)
 	}
 	var perms []string
 	for _, d := range a.corePerms {
 		perms = append(perms, string(d.Name))
 	}
 	want := "core.modules.read,audit.search,audit.export,accounts.read,accounts.manage," +
+		"settings.read,settings.manage," +
 		"access.roles.read,access.roles.manage,access.rules.manage,access.grants.read,access.grants.manage,access.department-grants.manage," +
 		"people.directory.read,people.contacts.read,people.profiles.manage,people.data.export,people.data.delete," +
 		"departments.manage,departments.details.manage,events.manage"
@@ -796,11 +885,83 @@ func TestBuildParts_AgainstNoDatabase_SetsAuthenticatorRoutesAndRunnable(t *test
 			t.Errorf("route set %s has %d routes and %d bytes of fragment", rs.Module, len(rs.Routes), len(rs.OpenAPI))
 		}
 	}
-	if strings.Join(areas, ",") != "audit,accounts,access,people,departments,events" {
-		t.Errorf("route sets = %v, want audit, accounts, access, people, departments, events", areas)
+	if strings.Join(areas, ",") != "audit,accounts,settings,access,people,departments,events" {
+		t.Errorf("route sets = %v, want audit, accounts, settings, access, people, departments, events", areas)
 	}
-	if len(a.runnables) != 1 || a.runnables[0].name != "audit" {
-		t.Errorf("runnables = %+v, want the audit importer", a.runnables)
+	var runnables []string
+	for _, r := range a.runnables {
+		runnables = append(runnables, r.name)
+	}
+	if strings.Join(runnables, ",") != "audit,settings" {
+		t.Errorf("runnables = %v, want the audit importer, then the settings refresher", runnables)
+	}
+	if a.settings == nil || a.deps.settings != a.settings {
+		t.Errorf("settings = %v, deps.settings = %v, want the one service in both", a.settings, a.deps.settings)
+	}
+}
+
+// settings' two public routes need no session; every other one is signed in and checks its
+// permission inside the use case.
+func TestSettingsRoutes_PublicOnlyThePublicDocumentAndTheStylesheet(t *testing.T) {
+	a := builtCore(t)
+	var got []string
+	for _, rs := range a.routeSets {
+		if rs.Module != "settings" {
+			continue
+		}
+		for _, r := range rs.Routes {
+			if r.Access == module.AccessPublic {
+				got = append(got, r.Method+" "+r.Pattern)
+			}
+		}
+	}
+	slices.Sort(got)
+	if want := []string{"GET /public", "GET /theme.css"}; !slices.Equal(got, want) {
+		t.Errorf("public settings routes = %v, want %v", got, want)
+	}
+}
+
+// Deps.Settings is scoped to the module by name; a module that declares no setting has no
+// area and gets no Reader.
+func TestProvision_ScopesSettingsPerModule(t *testing.T) {
+	a := builtCore(t)
+	deps, err := a.provision(context.Background(), module.Manifest{Name: "zqalpha"})
+	if err != nil {
+		t.Fatalf("provision: %v", err)
+	}
+	if deps.Settings != nil {
+		t.Errorf("a module with no setting got a Reader: %v", deps.Settings)
+	}
+	deps, err = a.provision(context.Background(), module.Manifest{
+		Name: "audit", Settings: []module.SettingDecl{{Key: "retention", Kind: module.SettingText}},
+	})
+	if err != nil {
+		t.Fatalf("provision: %v", err)
+	}
+	if deps.Settings == nil {
+		t.Error("a module with a declared area got no Reader")
+	}
+	if _, err := a.provision(context.Background(), module.Manifest{
+		Name: "zqbeta", Settings: []module.SettingDecl{{Key: "k", Kind: module.SettingText}},
+	}); !errs.Is(err, errs.Invalid) {
+		t.Errorf("a module whose area the service does not know: err = %v, want Invalid", err)
+	}
+}
+
+// settings is built before authz, so its authorizer denies until authz is wired and then asks it.
+func TestLazyAuthorizer_BeforeAuthz_DeniesAndEmptyExtent(t *testing.T) {
+	a := &assembly{}
+	l := lazyAuthorizer{a: a}
+	ctx := context.Background()
+	if err := l.Allow(ctx, settings.PermissionRead); !errs.Is(err, errs.Permission) {
+		t.Errorf("Allow: err = %v, want Permission", err)
+	}
+	if err := l.AllowIn(ctx, settings.PermissionRead, model.DepartmentID{1}); !errs.Is(err, errs.Permission) {
+		t.Errorf("AllowIn: err = %v, want Permission", err)
+	}
+	ext, err := l.ExtentOf(ctx, settings.PermissionRead)
+	if err != nil || ext.Site || len(ext.Departments) != 0 {
+		t.Errorf("ExtentOf = (%+v, %v), want a zero Extent and nil", ext, err)
 	}
 }
 
@@ -843,8 +1004,8 @@ func TestCheckSchemas_CoreAndModuleSets_ReportedTogether(t *testing.T) {
 	if !errs.Is(err, errs.Conflict) {
 		t.Fatalf("err = %v, want Conflict", err)
 	}
-	if got := strings.Join(checked, ","); got != "identity,people,authz,departments,events,audit,zqmod" {
-		t.Errorf("checked = %s, want identity,people,authz,departments,events,audit,zqmod (every set, none stopped the rest, no schema-less module)", got)
+	if got := strings.Join(checked, ","); got != "identity,people,authz,departments,events,audit,settings,zqmod" {
+		t.Errorf("checked = %s, want identity,people,authz,departments,events,audit,settings,zqmod (every set, none stopped the rest, no schema-less module)", got)
 	}
 	// The first problem that is not a Conflict decides the kind, not the last.
 	mixed := schemaFunc(func(_ context.Context, name string, _ fs.FS) error {
@@ -868,7 +1029,7 @@ func TestCheckSchemas_CoreAndModuleSets_ReportedTogether(t *testing.T) {
 	if err := a.checkSchemas(context.Background(), core, []module.Manifest{{Name: "zqmod", Migrations: fstest.MapFS{}}}); err != nil {
 		t.Errorf("current core sets: %v", err)
 	}
-	if got := strings.Join(checked, ","); got != "identity,people,authz,departments,events,audit" {
+	if got := strings.Join(checked, ","); got != "identity,people,authz,departments,events,audit,settings" {
 		t.Errorf("checked = %s, want only the core sets when they are current", got)
 	}
 	unavailable := schemaFunc(func(context.Context, string, fs.FS) error {
@@ -1056,6 +1217,8 @@ func TestCoreParts_StarterRoles_AreAuthzKeys(t *testing.T) {
 		"audit.export":      {authz.RoleAuditReviewer},
 		"accounts.read":     {authz.RoleAccountAdmin},
 		"accounts.manage":   {authz.RoleAccountAdmin},
+		"settings.read":     {authz.RoleSettingsAdmin},
+		"settings.manage":   {authz.RoleSettingsAdmin},
 	}
 	for _, d := range a.corePerms {
 		w, ok := want[string(d.Name)]

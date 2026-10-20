@@ -27,7 +27,7 @@ var coreAreas = []string{
 // reservedNames are the names a module may not take besides the core areas: the shell
 // packages and PostgreSQL's own schemas. Anything starting with "pg" is reserved too.
 var reservedNames = []string{
-	"api", "app", "config", "web", "admin", "client", "public", "information",
+	"api", "app", "config", "web", "admin", "client", "public", "information", "regional",
 }
 
 // IsCoreArea reports whether name is one of the core's areas, the names a module may not

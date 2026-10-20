@@ -457,7 +457,8 @@ type Deps struct {
 	Signals signals.Bus // signals.md (row 10): Provision sets disp.Scope(m.Name, m.Publishes, m.Subscribes)
 
 	// Added by later specs, named here so modules know where to look:
-	// Settings settings.Reader   settings.md (row 15): M4; scoped per module (bare keys); Provision sets a.deps.Settings.Scoped(m.Name)
+	// Settings settings.Reader   settings.md (row 15): M4; scoped per module (bare keys); Provision sets a.deps.Settings.Scoped(m.Name);
+	//                            a module that declares no settings gets a nil Deps.Settings (no area, no key to read) (implementation, 2026-10-19)
 	// Authz    authz.Authorizer  authz.md (row 7): M2; unscoped; Provision sets it
 	// People   people.Directory  people.md (row 8): M2; unscoped; Provision sets it
 	// Departments departments.Directory  departments-events.md (row 9): M3; unscoped; Provision sets it (D37)

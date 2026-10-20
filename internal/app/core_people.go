@@ -91,6 +91,7 @@ func buildPeople(_ context.Context, a *assembly) error {
 		Accounts:   a.identity,
 		Access:     a.authz,
 		AuditCount: a.deps.audit,
+		Policy:     lazyPeoplePolicy{a: a},
 	})
 	if err != nil {
 		return err //nolint:wrapcheck // people.New names itself

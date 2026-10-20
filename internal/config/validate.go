@@ -73,6 +73,7 @@ func (c Config) problems() []problem {
 	c.validateDB(&col)
 	c.validateHTTP(&col)
 	c.validateSession(&col)
+	c.validateSettings(&col)
 	c.validateSecrets(&col)
 	c.validateLog(&col)
 	c.validateData(&col)
@@ -182,6 +183,22 @@ func (c Config) validateSession(col *collector) {
 		col.addf(env, codeLength, "must be at least %d bytes", minSessionBytes)
 	case len(k) > maxSessionBytes:
 		col.addf(env, codeLength, "must be at most %d bytes", maxSessionBytes)
+	}
+}
+
+func (c Config) validateSettings(col *collector) {
+	if !c.Settings.SealingKey.IsSet() {
+		return
+	}
+	env := envOf("settings.sealing_key")
+	k := c.Settings.SealingKey.Value()
+	switch {
+	case strings.ContainsRune(k, 0):
+		col.addf(env, codeFormat, "must not contain a NUL byte")
+	case len(k) < minSealingBytes:
+		col.addf(env, codeLength, "must be at least %d bytes", minSealingBytes)
+	case len(k) > maxSealingBytes:
+		col.addf(env, codeLength, "must be at most %d bytes", maxSealingBytes)
 	}
 }
 

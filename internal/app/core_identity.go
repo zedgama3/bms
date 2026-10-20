@@ -42,8 +42,7 @@ func declareIdentity(a *assembly) error {
 // buildIdentity constructs the service (no I/O: it succeeds against db.None() and on a
 // read-only copy), hands the shell its Authenticator and mounts the accounts routes. The
 // permission checker, the permission lister and the name source are the lazy adapters,
-// because authz and people are built after identity (app.md, rows 4 and 5); the policy
-// source stays nil until settings.
+// because settings, authz and people are built after identity (app.md, rows 3 to 5).
 func buildIdentity(_ context.Context, a *assembly) error {
 	const op = "app.identity.build"
 	if a.deps.audit == nil {
@@ -74,6 +73,7 @@ func buildIdentity(_ context.Context, a *assembly) error {
 		Permissions:    lazyPermissions{a: a},
 		Lister:         lazyLister{a: a},
 		Names:          lazyNames{a: a},
+		Policy:         lazyIdentityPolicy{a: a},
 	})
 	if err != nil {
 		return err //nolint:wrapcheck // identity.New names itself

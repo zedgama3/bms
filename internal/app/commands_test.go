@@ -7,11 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"net"
 	"os"
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -546,6 +548,36 @@ func TestMigrate_NoSessionKey_CreatesDataDir(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(data, "secrets.json")); err != nil {
 		t.Errorf("migrate did not create the secrets file: %v", err)
+	}
+	noMarker(t, r)
+}
+
+// D39: an injected session key is never written, but the sealing key is still generated
+// (into the secrets file, alone) when no source has it.
+func TestMigrate_SessionKeyInjected_NoSealingKey_GeneratesOnlyTheSealingKey(t *testing.T) {
+	data := filepath.Join(t.TempDir(), "made", "data")
+	env := envWithout(baseEnv(t, closedDBURL(t)), "BMS_SETTINGS_SEALING_KEY", "BMS_DATA_DIR")
+	env = append(env, "BMS_DATA_DIR="+data)
+	r := run(t.Context(), t, env, "migrate")
+	if r.code == app.ExitUsage {
+		t.Fatalf("migrate exited 2:\n%s", r.all())
+	}
+	b, err := os.ReadFile(filepath.Join(data, "secrets.json")) //nolint:gosec // test reads its own temp file
+	if err != nil {
+		t.Fatalf("migrate did not create the secrets file: %v", err)
+	}
+	var m map[string]string
+	if err := json.Unmarshal(b, &m); err != nil {
+		t.Fatalf("the secrets file is not a JSON object of strings: %v", err)
+	}
+	if m["settings_sealing_key"] == "" {
+		t.Errorf("the sealing key was not generated: %v", slices.Collect(maps.Keys(m)))
+	}
+	if _, ok := m["session_key"]; ok {
+		t.Error("the injected session key was written to the secrets file")
+	}
+	if !strings.Contains(r.errOut, "seals settings") {
+		t.Errorf("stderr must name the key it added:\n%s", r.errOut)
 	}
 	noMarker(t, r)
 }

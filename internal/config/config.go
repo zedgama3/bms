@@ -27,10 +27,11 @@ const MaxSecretFileBytes = 64 << 10
 // The generated-secrets file (decision 7). bms migrate creates it under Data.Dir with
 // crypto/rand material, mode 0600, and never overwrites it; Load reads it. It is a JSON
 // object; unknown fields are preserved by migrate and ignored by Load, so a rollback to an
-// older binary still starts. Today it holds one field.
+// older binary still starts. Today it holds two fields.
 const (
-	SecretsFileName        = "secrets.json" // default: filepath.Join(Data.Dir, SecretsFileName)
-	SecretsFieldSessionKey = "session_key"  // string; the material Session.Key holds
+	SecretsFileName                = "secrets.json"         // default: filepath.Join(Data.Dir, SecretsFileName)
+	SecretsFieldSessionKey         = "session_key"          // string; the material Session.Key holds
+	SecretsFieldSettingsSealingKey = "settings_sealing_key" // string; the material Settings.SealingKey holds (D39)
 )
 
 // Config is the whole process configuration. It is a value: immutable once Load returns,
@@ -41,6 +42,7 @@ type Config struct {
 	DB       DB
 	HTTP     HTTP
 	Session  Session
+	Settings Settings
 	Secrets  Secrets
 	Log      Log
 	Data     Data
@@ -109,6 +111,17 @@ type Session struct {
 	// accepts that, and the command that needs the key refuses to run (F22b in app). When
 	// set: 32..1024 bytes, no NUL. The same value on every copy of one installation.
 	Key secret.Secret
+}
+
+// Settings is what the settings service needs to seal secret values (D39).
+type Settings struct {
+	// SealingKey is the material settings derives its AES-256-GCM key from (HKDF-SHA256)
+	// to seal Secret values such as the SMTP password. Sources, in this order:
+	// BMS_SETTINGS_SEALING_KEY, BMS_SETTINGS_SEALING_KEY_FILE, the secrets file's
+	// "settings_sealing_key"; more than one source set is an error (F7, F27 shape).
+	// Unset when no source has it: Validate accepts that and no command refuses to run
+	// (decision 17). When set: 32..1024 bytes, no NUL. The same value on every copy.
+	SealingKey secret.Secret
 }
 
 // Secrets says where the generated-secrets file is.

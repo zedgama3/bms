@@ -622,7 +622,7 @@ Declared here, read through `PolicySource` (settings, M2); until then `DefaultPo
 | `accounts.login_failure_limit` | int | `10` | `3`..`100` (failures per submitted address per window) | settings admin |
 | `accounts.client_failure_limit` | int | `100` | `10`..`1000` (failures per client address per window; never below `login_failure_limit`) | settings admin |
 | `accounts.login_failure_window` | duration | `15m` | `1m`..`24h` | settings admin |
-| `accounts.password_reset_lifetime` | duration | `1h` | `10m`..`24h` (D39) | settings admin |
+| `accounts.password_reset_lifetime` | duration | `1h` | `10m`..`24h` (D39); declared, with `Policy.PasswordResetLifetime`, together with the forgotten-password flow when notify is built, not in the first settings round (implementation, 2026-10-19) | settings admin |
 
 `Policy.Validate` is the validation error for each (`Invalid`, field = the key). A changed lifetime applies to tokens issued after the change; existing tokens keep their `expires_at`.
 

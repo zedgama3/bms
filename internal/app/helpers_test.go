@@ -25,6 +25,9 @@ const marker = "ZQ9MARKER7"
 // sessionKey is a 48-byte key that carries the marker.
 var sessionKey = marker + strings.Repeat("k", 38)
 
+// sealingKey is a 48-byte settings sealing key that carries the marker.
+var sealingKey = marker + strings.Repeat("s", 38)
+
 // The invented modules below are registered in the process-wide registry, because Main
 // builds its registry from module.Default(). Names carry the prefix "zq" so the catalogue
 // test can tell them from the real ones. zqneeds requires what zqprobe provides, so
@@ -265,6 +268,7 @@ func baseEnv(t *testing.T, dbURL string, extra ...string) []string {
 	env := []string{
 		"BMS_DB_URL=" + dbURL,
 		"BMS_SESSION_KEY=" + sessionKey,
+		"BMS_SETTINGS_SEALING_KEY=" + sealingKey,
 		"BMS_DATA_DIR=" + t.TempDir(),
 		fmt.Sprintf("BMS_HTTP_ADDR=127.0.0.1:%d", freePort(t)),
 		"BMS_LOG_FORMAT=json",

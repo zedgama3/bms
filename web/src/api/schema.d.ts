@@ -1024,6 +1024,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every declared setting with its default and value. Needs settings.read. A secret is reported as secret_set only. */
+        get: operations["settingsDocument"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/public": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The regional's public values and the terms in every language. No session needed. ETag is derived from the settings revision; a matching If-None-Match answers 304. */
+        get: operations["settingsPublic"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/terms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every term in every language, with its default and its override. Needs settings.read. */
+        get: operations["settingsTerms"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/terms/{lang}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Change the forms of terms in one language, all or nothing. Needs settings.manage. A null or absent form is unchanged; reset names forms to put back to the default. */
+        put: operations["settingsSetTerms"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/theme.css": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The regional's brand colours as a stylesheet; an empty body when both are the shipped palette. No session needed. ETag and 304 as for /public. */
+        get: operations["settingsTheme"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/values": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Change settings, all or nothing: a string sets, null resets to the default. Needs settings.manage. Field errors name the full setting key. 501 when a secret is set and the deployment has no sealing key; 503 read_only on a read-only copy. */
+        put: operations["settingsSet"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1621,6 +1723,93 @@ export interface components {
         };
         /** @enum {string} */
         Sensitivity: "public" | "internal" | "personal" | "sensitive";
+        SettingsArea: {
+            core: boolean;
+            name: string;
+            settings: components["schemas"]["SettingsSetting"][];
+        };
+        SettingsChanges: {
+            /** @description Full setting key to its new text value; null resets it. 1 to 200 keys. */
+            values: {
+                [key: string]: string | null;
+            };
+        };
+        SettingsDocument: {
+            areas: components["schemas"]["SettingsArea"][];
+            /** Format: int64 */
+            revision: number;
+        };
+        SettingsFormChanges: {
+            plural?: string | null;
+            plural_title?: string | null;
+            reset?: ("singular" | "plural" | "singular_title" | "plural_title")[];
+            singular?: string | null;
+            singular_title?: string | null;
+        };
+        SettingsForms: {
+            plural: string;
+            plural_title: string;
+            singular: string;
+            singular_title: string;
+        };
+        SettingsPublic: {
+            /** @description The regional's shared mailbox, shown to anyone; empty when none. */
+            contact_email: string;
+            /** @description The language before a person chooses. */
+            language: string;
+            languages: string[];
+            name: string;
+            /** @description No trailing slash; empty when unset. */
+            public_url: string;
+            /** @description Per language, the term arguments: term_<term>, term_<term>_plural, term_<term>_title, term_<term>_plural_title. */
+            terms: {
+                [key: string]: {
+                    [key: string]: string;
+                };
+            };
+            /** @description Whether /api/settings/theme.css has content. */
+            theme: boolean;
+            /** @description An IANA name; empty means the browser's zone. */
+            timezone: string;
+        };
+        SettingsRevision: {
+            /** Format: int64 */
+            revision: number;
+        };
+        SettingsSetting: {
+            /** @description Empty for a secret. */
+            default: string;
+            /** @description The full key, <area>.<key>. */
+            key: string;
+            /** @enum {string} */
+            kind: "bool" | "int" | "duration" | "text" | "enum" | "secret";
+            /** @description An enum's options. */
+            options?: string[];
+            secret_set: boolean;
+            /** @description A stored value no longer parses and the default applies. */
+            stale: boolean;
+            /** @description Null while the default applies; always null for a secret. */
+            value: string | null;
+        };
+        SettingsTerm: {
+            default: components["schemas"]["SettingsForms"];
+            override: components["schemas"]["SettingsFormChanges"];
+        };
+        SettingsTermChanges: {
+            /** @description Term to its form changes; 1 to 4 terms. */
+            terms: {
+                [key: string]: components["schemas"]["SettingsFormChanges"];
+            };
+        };
+        SettingsTermsDocument: {
+            languages: string[];
+            /** @description Language, then term. */
+            terms: {
+                [key: string]: {
+                    [key: string]: components["schemas"]["SettingsTerm"];
+                };
+            };
+        };
         /** @description The half-open interval [start, end). */
         TimeRange: {
             /** Format: date-time */
@@ -4118,6 +4307,204 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PeopleLinkResult"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    settingsDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The settings document. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsDocument"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    settingsPublic: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The public document. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsPublic"];
+                };
+            };
+            /** @description The If-None-Match tag is the current one. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    settingsTerms: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The terminology document. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsTermsDocument"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    settingsSetTerms: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                lang: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingsTermChanges"];
+            };
+        };
+        responses: {
+            /** @description The revision after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsRevision"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    settingsTheme: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The stylesheet. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/css": string;
+                };
+            };
+            /** @description The If-None-Match tag is the current one. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    settingsSet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingsChanges"];
+            };
+        };
+        responses: {
+            /** @description The revision after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsRevision"];
                 };
             };
             /** @description An error. The body is a Problem. */

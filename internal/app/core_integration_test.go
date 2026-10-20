@@ -211,6 +211,16 @@ func TestServe_Integration_AccountsAuditAndHelloEndToEnd(t *testing.T) {
 	if code, _ := itGet(ctx, t, addr, "/api/audit/entries"); code != 401 {
 		t.Errorf("anonymous audit search = %d, want 401", code)
 	}
+	// settings: the public document and the stylesheet need no session; the admin document does.
+	if code, body := itGet(ctx, t, addr, "/api/settings/public"); code != 200 || !strings.Contains(body, `"name":"BMS"`) || !strings.Contains(body, `"term_department"`) {
+		t.Errorf("anonymous GET /api/settings/public = %d %s, want the defaults and the terms", code, body)
+	}
+	if code, _ := itGet(ctx, t, addr, "/api/settings/theme.css"); code != 200 {
+		t.Errorf("anonymous GET /api/settings/theme.css = %d, want 200", code)
+	}
+	if code, _ := itGet(ctx, t, addr, "/api/settings/"); code != 401 {
+		t.Errorf("anonymous GET /api/settings/ = %d, want 401", code)
+	}
 
 	// A participant signs up (201, signed in) and is somebody. The base role, seeded by
 	// migrate from hello's StarterRoles, lets them read and write hello (M2: 200, 201).
@@ -231,7 +241,7 @@ func TestServe_Integration_AccountsAuditAndHelloEndToEnd(t *testing.T) {
 		t.Errorf("signed-in participant POST /api/hello/greetings = %d %s, want 201", status, body)
 	}
 	// The participant has no accounts.read: 403, and no audit.search either.
-	for _, path := range []string{"/api/accounts/", "/api/audit/entries"} {
+	for _, path := range []string{"/api/accounts/", "/api/audit/entries", "/api/settings/"} {
 		if status, _, _ = itSend(t, addr, http.MethodGet, path, cookie, ""); status != 403 {
 			t.Errorf("participant GET %s = %d, want 403", path, status)
 		}
@@ -248,6 +258,24 @@ func TestServe_Integration_AccountsAuditAndHelloEndToEnd(t *testing.T) {
 	status, body, _ = itSend(t, addr, http.MethodGet, "/api/accounts/session", super.Name+"="+super.Value, "")
 	if status != 200 || !strings.Contains(body, `"superuser":true`) {
 		t.Errorf("superuser session = %d %s", status, body)
+	}
+	// The superuser reads the admin document (every area, the accounts policy among them) and
+	// renames the regional; the public document follows at once, without a restart.
+	superCookie := super.Name + "=" + super.Value
+	status, body, _ = itSend(t, addr, http.MethodGet, "/api/settings/", superCookie, "")
+	if status != 200 || !strings.Contains(body, `"accounts.signup"`) || !strings.Contains(body, `"audit.retention"`) || !strings.Contains(body, `"hello.greeting"`) {
+		t.Errorf("superuser GET /api/settings/ = %d %s, want the core and module areas", status, body)
+	}
+	status, body, _ = itSend(t, addr, http.MethodPut, "/api/settings/values", superCookie, `{"values":{"regional.name":"Quillfeather Burn","accounts.signup":"invitation"}}`)
+	if status != 200 {
+		t.Errorf("superuser PUT /api/settings/values = %d %s, want 200", status, body)
+	}
+	if code, body := itGet(ctx, t, addr, "/api/settings/public"); code != 200 || !strings.Contains(body, `"name":"Quillfeather Burn"`) {
+		t.Errorf("GET /api/settings/public after the change = %d %s", code, body)
+	}
+	// identity reads its policy through settings: sign-up is now by invitation (501).
+	if status, _, _ = itSend(t, addr, http.MethodPost, "/api/accounts/sign-up", "", credentials("late@example.org", itMemberPass)); status != 501 {
+		t.Errorf("sign-up after accounts.signup=invitation = %d, want 501", status)
 	}
 	// A participant address is refused by create-superuser (Conflict -> 2) while serving.
 	if r := itMain(ctx, env, "create-superuser", itMemberMail); r.code != ExitUsage || !strings.Contains(r.errOut, "use another address") {

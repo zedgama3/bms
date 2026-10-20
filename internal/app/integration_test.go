@@ -72,7 +72,7 @@ func mustMigrate(t *testing.T, env []string) {
 
 func TestMigrate_CreatesSecretsFileOnceAndLoadReadsIt(t *testing.T) {
 	env, _ := integrationEnv(t)
-	env = envWithout(env, "BMS_SESSION_KEY")
+	env = envWithout(env, "BMS_SESSION_KEY", "BMS_SETTINGS_SEALING_KEY")
 	dir := envValue(env, "BMS_DATA_DIR")
 	path := filepath.Join(dir, "secrets.json")
 
@@ -93,8 +93,11 @@ func TestMigrate_CreatesSecretsFileOnceAndLoadReadsIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	var m map[string]string
-	if err := json.Unmarshal(first, &m); err != nil || m["session_key"] == "" {
-		t.Fatalf("secrets file lacks session_key: %v", err)
+	if err := json.Unmarshal(first, &m); err != nil || m["session_key"] == "" || m["settings_sealing_key"] == "" {
+		t.Fatalf("secrets file lacks session_key or settings_sealing_key: %v", err)
+	}
+	if m["session_key"] == m["settings_sealing_key"] {
+		t.Error("the two generated keys are the same value")
 	}
 	// serve and check (which load it) accept the generated key.
 	if c := run(t.Context(), t, env, "check"); c.code != app.ExitOK {
@@ -109,6 +112,26 @@ func TestMigrate_CreatesSecretsFileOnceAndLoadReadsIt(t *testing.T) {
 	second, err := os.ReadFile(path) //nolint:gosec // test reads its own temp file
 	if err != nil || string(first) != string(second) {
 		t.Errorf("secrets file changed on the second migrate (%v)", err)
+	}
+}
+
+// Config decision 17: with the session key injected and no sealing key, a data directory
+// that cannot be created is one warning on stderr; migrate still succeeds and creates nothing.
+func TestMigrate_SessionKeyInjected_NoSealingKey_UnwritableDataDir_WarnsAndSucceeds(t *testing.T) {
+	env, _ := integrationEnv(t)
+	env = envWithout(env, "BMS_DATA_DIR", "BMS_SETTINGS_SEALING_KEY")
+	blocker := filepath.Join(t.TempDir(), "blocker")
+	writeFile(t, blocker, "not a directory")
+	dir := filepath.Join(blocker, "data")
+	env = append(env, "BMS_DATA_DIR="+dir, "BMS_SECRETS_FILE="+filepath.Join(t.TempDir(), "secrets.json"))
+	r := run(t.Context(), t, env, "migrate")
+	wantCode(t, r, app.ExitOK)
+	noMarker(t, r)
+	if strings.Count(r.errOut, "warning: cannot write the settings sealing key") != 1 {
+		t.Errorf("stderr must carry exactly one warning:\n%s", r.errOut)
+	}
+	if _, err := os.Stat(dir); err == nil {
+		t.Errorf("migrate created %s", dir)
 	}
 }
 
@@ -258,7 +281,7 @@ func TestCheck_NeverPrintsSecrets(t *testing.T) {
 	}
 	r := run(t.Context(), t, env, "check")
 	all := r.all()
-	if strings.Contains(all, dsn) || strings.Contains(all, sessionKey) {
+	if strings.Contains(all, dsn) || strings.Contains(all, sessionKey) || strings.Contains(all, sealingKey) {
 		t.Errorf("check printed a secret")
 	}
 	if pw, ok := u.User.Password(); ok && pw != "" && strings.Contains(all, pw) {

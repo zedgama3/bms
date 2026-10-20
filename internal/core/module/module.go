@@ -11,6 +11,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/departments"
 	"github.com/zedgama3/bms/internal/core/events"
 	"github.com/zedgama3/bms/internal/core/people"
+	"github.com/zedgama3/bms/internal/core/settings"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/telemetry"
 	"github.com/zedgama3/bms/internal/lib/clock"
@@ -164,8 +165,15 @@ type Deps struct {
 	// look events up; moduletest.Conformance fills a nil one with an eventstest.Fake.
 	Events events.Directory
 
+	// Settings reads the module's own settings (settings.md; M4): bare keys, Text for a
+	// text or enum value, Secret for a sealed one. Scoped to the module by Provision with
+	// Scoped(m.Name), so only its declared keys answer; nothing is permission-checked (a
+	// module reads its own as the system). A module never caches a value: a read is a map
+	// lookup. Nil only in tests that read no setting; moduletest.Conformance fills a nil one
+	// with settingstest.NewFake(Manifest.Name, Manifest.Settings).
+	Settings settings.Reader
+
 	// Added by later specs, named here so modules know where to look:
-	// Settings settings.Reader   settings.md
 	// Jobs     jobs.Registrar    jobs.md
 	// Notify   notify.Notifier   notify.md
 	// Files    files.Store       files.md

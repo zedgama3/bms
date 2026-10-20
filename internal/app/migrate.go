@@ -18,10 +18,29 @@ import (
 const dataDirMode os.FileMode = 0o700
 
 // secretsNotice is config.md decision 7's notice, printed once when a secrets file is
-// created. The path is the operator's own.
-const secretsNotice = "Created %s. It holds this installation's session key. Back it up separately from the " +
-	"database and copy it to every copy of this installation; without it, every session is " +
-	"invalid and anything sealed with it is unreadable. Keep it readable by the bms user only."
+// created or gains a field. The path is the operator's own.
+const secretsNotice = "Created %s. It holds this installation's session key and the key that seals settings' " +
+	"secret values. Back it up separately from the database and copy it to every copy of this " +
+	"installation; without it, every session is invalid and anything sealed with it is " +
+	"unreadable. Keep it readable by the bms user only."
+
+// secretsAddedNotice is the notice when migrate adds a field to a secrets file that already
+// exists (config.md decision 7, "Further generated secrets"): the field is named by what it
+// does, and the keys already in the file are not touched.
+const secretsAddedNotice = "Added %s to %s. Back it up with the rest of the file, separately from the database " +
+	"and copied to every copy of this installation; without it, anything it seals is unreadable."
+
+// sealingKeyWarning is the one line migrate prints when it cannot write the sealing key
+// (the session key being injected, so nothing else needed the file). The path is the
+// operator's own.
+const sealingKeyWarning = "warning: cannot write the settings sealing key to %s, so secret settings (such as an " +
+	"SMTP password) cannot be stored until BMS_SETTINGS_SEALING_KEY or a writable secrets file provides one."
+
+// secretsFieldLabel says what a generated field is for, in the notices.
+var secretsFieldLabel = map[string]string{
+	config.SecretsFieldSessionKey:         "the session key",
+	config.SecretsFieldSettingsSealingKey: "the key that seals settings' secret values",
+}
 
 // fieldInvalid builds an errs.Invalid under the variable env, for problems the operator
 // fixes by changing that variable.
@@ -29,33 +48,59 @@ func fieldInvalid(op, env, reason string, cause error) error {
 	return errs.E(op, errs.Invalid, &validate.FieldError{Field: env, Code: "unwritable", Reason: reason + ": " + cause.Error()})
 }
 
-// ensureSecrets, when no session key is configured, creates the data directory and the
-// secrets file, then reloads the configuration so the rest of the command sees what any
-// other command would (decision 14; F22, F23).
+// ensureSecrets, when a generated key (the session key, the settings sealing key) is not
+// configured, creates the data directory and the secrets file or adds the missing fields to
+// it, then reloads the configuration so the rest of the command sees what any other command
+// would (decision 14; F22, F23). A key an operator injects is never written. When only the
+// sealing key is missing (the session key is injected) and the file cannot be written, that
+// is one warning, not an error: an unset sealing key is never an error (config decision 17;
+// item 19), and the key simply stays unset.
 func ensureSecrets(ctx context.Context, p *process, cfg config.Config) (config.Config, error) {
 	const op = "app.migrate"
-	if cfg.Session.Key.IsSet() {
+	var missing []string
+	if !cfg.Session.Key.IsSet() {
+		missing = append(missing, config.SecretsFieldSessionKey)
+	}
+	if !cfg.Settings.SealingKey.IsSet() {
+		missing = append(missing, config.SecretsFieldSettingsSealingKey)
+	}
+	if len(missing) == 0 {
 		// Nothing to write, so the data directory may be read-only or absent (item 19).
 		return cfg, nil
 	}
-	if err := os.MkdirAll(cfg.Data.Dir, dataDirMode); err != nil {
-		return cfg, fieldInvalid(op, config.Prefix+"DATA_DIR", "cannot create the data directory", err)
+	// With the session key injected only the sealing key is wanted, and failing to write it
+	// is a warning, not an error.
+	unwritable := func(err error) (config.Config, error) {
+		if cfg.Session.Key.IsSet() && errs.Is(err, errs.Invalid) {
+			say(p.stderr, sealingKeyWarning+"\n", cfg.Secrets.File)
+			return cfg, nil
+		}
+		return cfg, err
 	}
-	created, err := secrets.Ensure(ctx, cfg.Secrets.File, []string{config.SecretsFieldSessionKey})
+	if err := os.MkdirAll(cfg.Data.Dir, dataDirMode); err != nil {
+		return unwritable(fieldInvalid(op, config.Prefix+"DATA_DIR", "cannot create the data directory", err))
+	}
+	_, statErr := os.Stat(cfg.Secrets.File)
+	existed := statErr == nil
+	created, err := secrets.Ensure(ctx, cfg.Secrets.File, missing)
 	if err != nil {
 		if errs.Is(err, errs.Invalid) {
-			return cfg, fieldInvalid(op, config.Prefix+"SECRETS_FILE", "cannot create or update the secrets file", err)
+			err = fieldInvalid(op, config.Prefix+"SECRETS_FILE", "cannot create or update the secrets file", err)
 		}
-		return cfg, err //nolint:wrapcheck // secrets.Ensure names itself
-	}
-	for range created {
-		sayln(p.stderr)
-		say(p.stderr, secretsNotice+"\n", cfg.Secrets.File)
-		sayln(p.stderr)
+		return unwritable(err)
 	}
 	if len(created) == 0 {
 		return cfg, nil
 	}
+	sayln(p.stderr)
+	if existed {
+		for _, f := range created {
+			say(p.stderr, secretsAddedNotice+"\n", secretsFieldLabel[f], cfg.Secrets.File)
+		}
+	} else {
+		say(p.stderr, secretsNotice+"\n", cfg.Secrets.File)
+	}
+	sayln(p.stderr)
 	reloaded, err := config.Load(ctx, p.environ)
 	if err != nil {
 		return cfg, err //nolint:wrapcheck // config.Load names itself

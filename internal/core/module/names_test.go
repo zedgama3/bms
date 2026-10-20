@@ -96,8 +96,9 @@ func TestSettingKindString_Table(t *testing.T) {
 		module.SettingDuration: "duration",
 		module.SettingText:     "text",
 		module.SettingEnum:     "enum",
-		module.SettingKind(0):  "SettingKind(0)",
-		module.SettingKind(42): "SettingKind(42)",
+		module.SettingSecret:   "secret",
+		module.SettingKind(0):  "Kind(0)",
+		module.SettingKind(42): "Kind(42)",
 	}
 	for k, want := range tests {
 		if got := k.String(); got != want {

@@ -1976,6 +1976,303 @@
         ],
         "type": "string"
       },
+      "SettingsArea": {
+        "properties": {
+          "core": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "settings": {
+            "items": {
+              "$ref": "#/components/schemas/SettingsSetting"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "core",
+          "settings"
+        ],
+        "type": "object"
+      },
+      "SettingsChanges": {
+        "properties": {
+          "values": {
+            "additionalProperties": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": "Full setting key to its new text value; null resets it. 1 to 200 keys.",
+            "type": "object"
+          }
+        },
+        "required": [
+          "values"
+        ],
+        "type": "object"
+      },
+      "SettingsDocument": {
+        "properties": {
+          "areas": {
+            "items": {
+              "$ref": "#/components/schemas/SettingsArea"
+            },
+            "type": "array"
+          },
+          "revision": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "areas"
+        ],
+        "type": "object"
+      },
+      "SettingsFormChanges": {
+        "properties": {
+          "plural": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "plural_title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reset": {
+            "items": {
+              "enum": [
+                "singular",
+                "plural",
+                "singular_title",
+                "plural_title"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "singular": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "singular_title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "SettingsForms": {
+        "properties": {
+          "plural": {
+            "type": "string"
+          },
+          "plural_title": {
+            "type": "string"
+          },
+          "singular": {
+            "type": "string"
+          },
+          "singular_title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "singular",
+          "plural",
+          "singular_title",
+          "plural_title"
+        ],
+        "type": "object"
+      },
+      "SettingsPublic": {
+        "properties": {
+          "contact_email": {
+            "description": "The regional's shared mailbox, shown to anyone; empty when none.",
+            "type": "string"
+          },
+          "language": {
+            "description": "The language before a person chooses.",
+            "type": "string"
+          },
+          "languages": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          },
+          "public_url": {
+            "description": "No trailing slash; empty when unset.",
+            "type": "string"
+          },
+          "terms": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "description": "Per language, the term arguments: term_\u003cterm\u003e, term_\u003cterm\u003e_plural, term_\u003cterm\u003e_title, term_\u003cterm\u003e_plural_title.",
+            "type": "object"
+          },
+          "theme": {
+            "description": "Whether /api/settings/theme.css has content.",
+            "type": "boolean"
+          },
+          "timezone": {
+            "description": "An IANA name; empty means the browser's zone.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "contact_email",
+          "public_url",
+          "language",
+          "timezone",
+          "languages",
+          "theme",
+          "terms"
+        ],
+        "type": "object"
+      },
+      "SettingsRevision": {
+        "properties": {
+          "revision": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision"
+        ],
+        "type": "object"
+      },
+      "SettingsSetting": {
+        "properties": {
+          "default": {
+            "description": "Empty for a secret.",
+            "type": "string"
+          },
+          "key": {
+            "description": "The full key, \u003carea\u003e.\u003ckey\u003e.",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "bool",
+              "int",
+              "duration",
+              "text",
+              "enum",
+              "secret"
+            ],
+            "type": "string"
+          },
+          "options": {
+            "description": "An enum's options.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "secret_set": {
+            "type": "boolean"
+          },
+          "stale": {
+            "description": "A stored value no longer parses and the default applies.",
+            "type": "boolean"
+          },
+          "value": {
+            "description": "Null while the default applies; always null for a secret.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "key",
+          "kind",
+          "default",
+          "value",
+          "secret_set",
+          "stale"
+        ],
+        "type": "object"
+      },
+      "SettingsTerm": {
+        "properties": {
+          "default": {
+            "$ref": "#/components/schemas/SettingsForms"
+          },
+          "override": {
+            "$ref": "#/components/schemas/SettingsFormChanges"
+          }
+        },
+        "required": [
+          "default",
+          "override"
+        ],
+        "type": "object"
+      },
+      "SettingsTermChanges": {
+        "properties": {
+          "terms": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/SettingsFormChanges"
+            },
+            "description": "Term to its form changes; 1 to 4 terms.",
+            "type": "object"
+          }
+        },
+        "required": [
+          "terms"
+        ],
+        "type": "object"
+      },
+      "SettingsTermsDocument": {
+        "properties": {
+          "languages": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "terms": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/SettingsTerm"
+              },
+              "type": "object"
+            },
+            "description": "Language, then term.",
+            "type": "object"
+          }
+        },
+        "required": [
+          "languages",
+          "terms"
+        ],
+        "type": "object"
+      },
       "TimeRange": {
         "description": "The half-open interval [start, end).",
         "properties": {
@@ -5329,6 +5626,230 @@
           "people"
         ]
       }
+    },
+    "/api/settings/": {
+      "get": {
+        "operationId": "settingsDocument",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsDocument"
+                }
+              }
+            },
+            "description": "The settings document."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Every declared setting with its default and value. Needs settings.read. A secret is reported as secret_set only.",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/public": {
+      "get": {
+        "operationId": "settingsPublic",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsPublic"
+                }
+              }
+            },
+            "description": "The public document."
+          },
+          "304": {
+            "description": "The If-None-Match tag is the current one."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "security": [],
+        "summary": "The regional's public values and the terms in every language. No session needed. ETag is derived from the settings revision; a matching If-None-Match answers 304.",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/terms": {
+      "get": {
+        "operationId": "settingsTerms",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsTermsDocument"
+                }
+              }
+            },
+            "description": "The terminology document."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Every term in every language, with its default and its override. Needs settings.read.",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/terms/{lang}": {
+      "put": {
+        "operationId": "settingsSetTerms",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "lang",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsTermChanges"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsRevision"
+                }
+              }
+            },
+            "description": "The revision after the change."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Change the forms of terms in one language, all or nothing. Needs settings.manage. A null or absent form is unchanged; reset names forms to put back to the default.",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/theme.css": {
+      "get": {
+        "operationId": "settingsTheme",
+        "responses": {
+          "200": {
+            "content": {
+              "text/css": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The stylesheet."
+          },
+          "304": {
+            "description": "The If-None-Match tag is the current one."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "security": [],
+        "summary": "The regional's brand colours as a stylesheet; an empty body when both are the shipped palette. No session needed. ETag and 304 as for /public.",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/values": {
+      "put": {
+        "operationId": "settingsSet",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsChanges"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsRevision"
+                }
+              }
+            },
+            "description": "The revision after the change."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Change settings, all or nothing: a string sets, null resets to the default. Needs settings.manage. Field errors name the full setting key. 501 when a secret is set and the deployment has no sealing key; 503 read_only on a read-only copy.",
+        "tags": [
+          "settings"
+        ]
+      }
     }
   },
   "tags": [
@@ -5347,6 +5868,10 @@
     {
       "description": "Who is signed in, and the local accounts: sign-up, sign-in, passwords and the account admin.",
       "name": "accounts"
+    },
+    {
+      "description": "What the regional configures while bms runs: values, terminology and the public document.",
+      "name": "settings"
     },
     {
       "description": "Roles, grants and separation-of-duties rules: who may do what.",
