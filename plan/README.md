@@ -67,6 +67,12 @@ copy and can fork it. Features are modules.
     field-level privacy tags (Q-VOL6); reset-limit settings approved; `jobs` and `volunteers`
     approved; `files` not approved, redesigned as a file service (Q-FILES1); code of conduct
     reporting address set.
+- **Status update 2026-10-20 (not a decision):** `jobs` Implemented on feat/m1 (commit 42a101d:
+    core area, /api/jobs routes, /jobs screen). The D41 identity reset-limit settings are
+    implemented (commit 3ba4c6c). Awaiting the owner: the `jobs.md` amendment (b) (reclaim step,
+    attempts limit, advisory name lock; Q-JOBS8–13) and the audit/app Q-JOBS6 amendment
+    (ActorFunc may answer ActorSystem). `files.md` (redesigned) and `privacy-tags.md` are Draft,
+    awaiting approval. Still open in M4: `volunteers`, `files`, privacy tags.
 - **Next steps:**
   1. Done 2026-10-16: the owner agreed [09-core-features.md](09-core-features.md)
      (milestones M0–M4, done criteria, spec order). `architect` drafted `model`, now Approved.
@@ -120,8 +126,9 @@ copy and can fork it. Features are modules.
        (the e-mail outbox and SMTP sender, templates with admin overrides, password reset by
        e-mail, the people deletion-request notice, the superuser sign-in alert, the notify admin
        screens (templates, outbox) and the forgotten-password screens). Still open in M4:
-       `volunteers` (module-volunteers.md, Not started); `jobs.md` and `files.md` (Not started;
-       the settings logo waits for files, D39). M4 stays open.
+       `volunteers` (module-volunteers.md, Approved, not built); `files.md` (Draft, redesigned
+       per D43; the settings logo waits for it, D39); `privacy-tags.md` (Draft). `jobs` is
+       Implemented (2026-10-20). M4 stays open.
      Owner's answers 2026-10-20 (D40): the M4 review questions (Q-AMEND1, Q-RESET-RATE,
        Q-RESET-LIFE, Q-SETTINGS-REVIEW, Q-MAILPIT-AUTH, Q-WEB-REVIEW) approved with
        recommendations; code of conduct Contributor Covenant (Q-GOV1); DCO, no CLA (Q-GOV2);
