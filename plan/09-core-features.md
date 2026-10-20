@@ -59,7 +59,7 @@ Each milestone is something the owner can try on bms-vm, not just code.
 | **M1. Accounts** | 2, 8 (basic) | create the superuser by command, sign up, sign in and out, change a password, sign out everywhere else, disable and re-enable an account, set a temporary password |
 | **M2. People and permissions** | 3, 4, 9 (basic), 11 (basic) | edit a profile, give someone an admin job, see menus change, see who viewed whose contact details, download your own data, request deletion, export or delete one person (screen or command) |
 | **M3. Departments and events** | 5, 7 | set up departments and an event, add an event's schedule, copy a module's set-up into a new event, appoint a department's leadership, have that department manage itself, archive a department |
-| **M4. Ready for a module** | 6 | receive e-mail, reset a forgotten password by e-mail; start `volunteers` |
+| **M4. Ready for a module** | 6 | receive e-mail, reset a forgotten password by e-mail, see a scheduled purge run on the writer and show on `/jobs`; start `volunteers` |
 
 ```
  M0  1. Installer and harness
@@ -124,7 +124,7 @@ it depends on getting this right.
 `web-shell`, `app`.
 
 **Settled here:** signals (in-process domain events, D24) are delivered **after commit**, with
-the subscriber's failures logged and counted, and, from M4, retryable ones handed to `jobs`;
+the subscriber's failures logged and counted, and, from M4, retryable ones handed to `jobs` (`jobs.md`; signals.md decision 3);
 nothing is durable before delivery (signals.md decisions 2 and 3); a failure never rolls back
 the publisher. The `signals` spec confirms the details.
 
@@ -324,7 +324,7 @@ training and certificates come with qualifications (§5, Q-QUAL), not as profile
   and events screens (D37): the department list, new-department form and department page
   (`/departments`, `/departments/new`, `/departments/:department`), and the event list,
   new-event form, event page and event kinds (`/events`, `/events/new`, `/events/:event`,
-  `/events/kinds`).
+  `/events/kinds`). Site admins also reach `/jobs` (M4; `jobs.md`): the queued, running and failed jobs, with Run now, Retry and Cancel.
 - *Department admin:* a page per department they run.
 - *Any site admin:* see which modules are compiled in and enabled, the provides/uses graph
   (D19) and each schema version.
@@ -358,7 +358,7 @@ own spec (its screens, built as that core area's `ScreenSet` under `web/src/core
 - Entries are kept for a set time (a setting; the default is to keep them until a regional sets
   a period, D30).
 
-**Specs:** `audit`.
+**Specs:** `audit` (and `jobs.md` for the retention purge).
 
 ## 9. Settings and branding (MVP, basic, from M2)
 
@@ -390,7 +390,7 @@ Local disk first, S3-compatible storage optional. Files follow the data to the o
 - **Later:** retention periods set by the regional (default: keep forever, D30) delete data
   automatically; an export request kind.
 
-**Specs:** part of `people` (the extension point), `jobs` (retention).
+**Specs:** part of `people` (the extension point), `jobs` (`jobs.md`, retention).
 
 ## 12. Offline switchover (Later; before the first event that needs it)
 

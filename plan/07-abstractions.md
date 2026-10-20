@@ -139,7 +139,7 @@ Rules (enforced by depguard and `make imports`):
 
 ### identity: who is this?
 - **Purpose:** authenticate a person and manage their session.
-- **Owns:** local accounts keyed by e-mail (D21), the password policy and Argon2id, the signed session token and cookie checked without a write, the `Authenticator` and the principal accessors (`SessionFrom`, `PersonFrom`), per-account revocation, failed-login limits, the superuser and `bms create-superuser` (D23), the `accounts` routes and screens, `identity.account-created`; providers (OIDC, trusted header; D15) Later behind the same service.
+- **Owns:** local accounts keyed by e-mail (D21), the password policy and Argon2id, the signed session token and cookie checked without a write, the `Authenticator` and the principal accessors (`SessionFrom`, `PersonFrom`), per-account revocation, failed-login and password-reset limits, the superuser and `bms create-superuser` (D23), the `accounts` routes and screens, `identity.account-created`; providers (OIDC, trusted header; D15) Later behind the same service.
 - **Doesn't do:** decide what they may do (`authz`), hold their profile or the playa name (`people`), invitations until their milestone, e-mail delivery (`notify`). The forgotten-password flow (token, routes, screens; D39) is identity's, the e-mail is notify's.
 
 ### authz: may they do this?
@@ -211,6 +211,8 @@ Rules (enforced by depguard and `make imports`):
 
 ### jobs: background work
 - **Purpose:** run scheduled and deferred work (reminders, retention) once, with retries.
+- **Owns:** the `Registrar` contract (`Register`, `Enqueue`; = `Deps.Jobs`, scoped per owner), the table `core.job` (scheduled slots and deferred jobs, record references only), the runner (`SKIP LOCKED` leases with a heartbeat, backoff by `retry.Policy`, writer only), the `signals.Deferrer` implementation and `signals.redeliver`, `jobs.purge`, the status screen behind `jobs.read` / `jobs.manage`. Spec: `plan/design/jobs.md`.
+- **Doesn't do:** notify's sender loop (notify decision 2), retention periods (each area's setting), daily local-time schedules (Later), cross-process messaging.
 
 ### telemetry: logs, traces, metrics and client error reports (D20)
 - **Purpose:** let a maintainer find what happened in any one request from the reference

@@ -99,7 +99,7 @@ failure); telemetry (`Tracer` Producer/Consumer spans, `Meter` counters,
 
 Accepted deviations (2026-10-17, reviewer-approved): `bms.signals.published` is counted in the after-commit hook (rollback counts nothing); `Close` while deliveries run waits again and returns Timeout/Canceled, nil only once nothing is in flight (F32); the `Deferrer` gets the handler's trace and in-delivery marker but a fresh `HandlerTimeout` deadline (up to 2x per subscriber); consumer spans carry `Int` depth, producer spans `Int` subscribers; `NewPayload` records a repeated key under reserved key `!repeated`, which `Validate` reports as F4 on `payload`; `signalstest.Fake` stamps `At` with `clock.Real()`; a delivery arriving after `Close` is dropped with one warn and not counted; `Redeliver` after `Close` is `Unavailable`.
 
-Pending proposed changes (targets not written): 6 jobs.md (implement `Deferrer`, call `Redeliver`). Items 1, 2, 3, 4, 5, 7, 9, 10, 11 are applied, and 8 for people and departments-events (2026-10-18, D37).
+Item 6 (jobs.md: `Deferrer`, `Redeliver`) applied 2026-10-20 (D43). Items 1, 2, 3, 4, 5, 7, 9, 10, 11 are applied, and 8 for people and departments-events (2026-10-18, D37).
 
 ## Purpose
 
@@ -856,8 +856,8 @@ references only; synchronous delivery with 5 s per handler) were answered by the
 
 ## Proposed changes elsewhere
 
-Status as of 2026-10-18: items 1, 2, 3, 4, 5, 7, 9 and 10 are applied, and 8 for people and departments-events (D37). Items 6 and 11
-wait for their target to be written and are carried by this list until then.
+Status as of 2026-10-20: item 6 is applied (D43). Status as of 2026-10-18: items 1, 2, 3, 4, 5, 7, 9 and 10 are applied, and 8 for people and departments-events (D37). Item 11
+waits for their target to be written and are carried by this list until then.
 
 1. **`plan/design/module-contract.md` (row 4)** (applied 2026-10-16): `Deps.Signals` is `signals.Bus` as
    defined here; `Provision` sets it to `disp.Scope(m.Name, m.Publishes, m.Subscribes)`;
@@ -899,7 +899,7 @@ wait for their target to be written and are carried by this list until then.
    define); `Env.CoreSignals` lists the core's names; shutdown order: HTTP server drained →
    runnables (jobs, M4) → `signals.Close` → `Set.Stop` → `db.Close` → `telemetry.Close`, all within
    `http.shutdown_timeout`.
-6. **`plan/design/jobs.md` (row 14)** (pending: target not written): implement `signals.Deferrer` (store the `Delivery`
+6. **`plan/design/jobs.md` (row 14)** (applied 2026-10-20, D43, by jobs.md Proposed change 3: `Defer` stores on the writer with key `<signal id>:<subscriber>`; job name `signals.redeliver`; `Attempt` counts the first delivery; `NotFound` dropped with a log line, `outcome=dropped`; `db.ErrReadOnly` releases and pauses; give-up count `DefaultRetry.MaxAttempts` (10) in all): implement `signals.Deferrer` (store the `Delivery`
    on the writing copy; the job name `signals.redeliver`); run `Dispatcher.Redeliver` with
    backoff from `retry.Policy`, `Attempt` incremented per try, on the writer only; treat
    `NotFound` from `Redeliver` as "drop with a log line" and `errors.Is(err,

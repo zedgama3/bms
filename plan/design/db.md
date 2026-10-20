@@ -109,7 +109,7 @@ once, calls `Close` after `Set.Stop` and the HTTP server; core packages export `
 Accepted deviations (2026-10-17, see Behavior): `Write` is plain `BEGIN`; the probe also reads `pg_db_role_setting` and the pool is Reset on a state change; a `25006` in a Read tx owned by the pool is `Internal` and flips nothing; a closed pool is `Unavailable`; `Write` nested in `Read` and `AfterCommit` after an ended tx are `Invalid`; `Migrate` returns the files applied so far with the error; `Wrap` keeps only `%T` for unknown errors.
 
 Pending proposed changes (targets not yet written): 10 core specs with tables export a migration `Set` (applied for `audit`, `identity`, `authz`, `people`, `departments` and `events`, 2026-10-18, and for `settings` and `notify`, 2026-10-19, D39), 11
-`docs/operating.md`, 13 jobs/notify read `ReadOnly()` and stop on `ErrReadOnly` (applied for notify 2026-10-19, D39; jobs pending). Approved (D36 (e), D37) and applied 2026-10-18: 14 `TxMode` in 07's `db` "Owns", 15 the skills' audit sentence.
+`docs/operating.md`, 13 jobs/notify read `ReadOnly()` and stop on `ErrReadOnly` (applied for notify 2026-10-19, D39, and for jobs 2026-10-20, D43). Approved (D36 (e), D37) and applied 2026-10-18: 14 `TxMode` in 07's `db` "Owns", 15 the skills' audit sentence.
 
 ## Purpose
 
@@ -1237,7 +1237,7 @@ target to be written and are carried by this list until then. Items 14 and 15 (D
     added then. Answered: `Options.Tracer` and `Options.Meter` (nil means none), the
     `QueryTracer` adapter in `Open` step 2, `Pool.Stats()` and the three gauges in `Open`
     step 5, F56 and F57.
-13. **`plan/design/jobs.md` (row 14) and `notify.md` (row 11)** (notify applied 2026-10-19, D39: the sender loop reads `ReadOnly()` before each tick and stops a batch on `ErrReadOnly`, notify.md Behavior; jobs pending: spec not written): read `ReadOnly()` before
+13. **`plan/design/jobs.md` (row 14) and `notify.md` (row 11)** (notify applied 2026-10-19, D39: the sender loop reads `ReadOnly()` before each tick and stops a batch on `ErrReadOnly`, notify.md Behavior; jobs applied 2026-10-20, D43, by jobs.md Proposed change 4: the loop reads `ReadOnly()` before each tick and a run that meets `ErrReadOnly` releases its row and pauses): read `ReadOnly()` before
     each run and send, and treat `errors.Is(err, db.ErrReadOnly)` as "stop until the next
     probe", not as a retryable failure.
 14. **`plan/07-abstractions.md`, `db` entry** (applied 2026-10-18, D37): in

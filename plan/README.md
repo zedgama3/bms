@@ -63,6 +63,10 @@ copy and can fork it. Features are modules.
     Q-QUAL: department leads verify their department's qualifications (shape still open).
   - Design specs approved by the owner: `model` is Approved, and `module-contract` is Approved
     2026-10-16 (design/README.md).
+- **Owner's answers 2026-10-20 (D43):** volunteer visibility set by the regional, with
+    field-level privacy tags (Q-VOL6); reset-limit settings approved; `jobs` and `volunteers`
+    approved; `files` not approved, redesigned as a file service (Q-FILES1); code of conduct
+    reporting address set.
 - **Next steps:**
   1. Done 2026-10-16: the owner agreed [09-core-features.md](09-core-features.md)
      (milestones M0–M4, done criteria, spec order). `architect` drafted `model`, now Approved.

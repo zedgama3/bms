@@ -5,6 +5,7 @@
 - **Amended 2026-10-18 (owner approval of audit/identity):** `intake.ErrRateLimited` is, or wraps, the shared `httpx.ErrRateLimited` (api.md, identity.md Proposed change 1); instrument rows for `bms.audit.*` and `bms.identity.*` added (audit.md Proposed change 8, identity.md Proposed change 15); `TraceIDFrom` is recorded on every audit entry (Proposed change 7 applied).
 - **Amended 2026-10-18 (D37):** instrument row `bms.events.setup{module,outcome}` added; spans `departments.<use-case>`, `events.<use-case>` and `events.setup` are token names (departments-events.md Proposed change 9).
 - **Amended 2026-10-18 (owner approval of authz/people):** instrument rows for `bms.authz.decisions` and `bms.people.*` added (authz.md Proposed change 15, people.md Proposed change 13).
+- **Amended 2026-10-20 (D43, owner approval of jobs):** instrument rows `bms.jobs.runs{job, module, outcome}` (nine outcomes), `bms.jobs.queue{status}` and `bms.jobs.lag`; span names `jobs.tick`, `jobs.enqueue`, `jobs.defer`, `jobs.run`; Proposed change 6 applied for jobs.
 - **Amended 2026-10-19 (D39, owner approval of notify):** instrument rows for `bms.notify.enqueued`, `bms.notify.delivered`, `bms.notify.outbox` and `bms.notify.purged` added, and span names `notify.send`, `notify.tick`, `notify.deliver`, `notify.<use-case>` listed (notify.md Proposed change 9).
 - **Package:** `internal/core/telemetry` (Go module `github.com/zedgama3/bms`), plus the
   sub-package `internal/core/telemetry/intake` (client error reports) and the test helper
@@ -83,7 +84,7 @@
 
 **Expects of dependencies:** lib-errs (`E`, `KindOf`, `Error.Op`, kinds); lib-core (`clock.Clock`, `validate.*`); lib-secret (`Secret` and `Email` redact via `LogValue`); model (`PersonID`, `ID.String`); config (`app` copies `config.Log`/`Instance.Name` into `Options`; client address derived per config decision 16, by api); module-contract (`Deps.Logger`, `Deps.Tracer`, `Route.Access`); db (`Options.Tracer/Meter`, pgx `QueryTracer`, pool gauges).
 
-**Pending proposed changes:** item 6 pending for `jobs.md`; item 9 pending for Loki retention, alert rules and `docs/operating.md`; all others applied.
+**Pending proposed changes:** item 6 applied for `jobs.md` 2026-10-20 (D43); item 9 pending for Loki retention, alert rules and `docs/operating.md`; all others applied.
 
 ## Purpose
 
@@ -1024,7 +1025,7 @@ context with flags cleared; anything else is a root. `End` computes `SpanData` f
 observer and ends the SDK span. `RecordError`: `error.kind`, `error.op` (first
 `*errs.Error` by `errors.As`), `exception.message` (scrubbed, capped); status Error unless
 the kind is `Canceled`. Span names are tokens, or the HTTP form `<METHOD> <route pattern>`
-(decision 19); instrument names are tokens; scope names are tokens of at most 64 bytes. `notify` (D39) uses the span names `notify.send` (Internal), `notify.tick`, `notify.deliver` (Client) and `notify.<use-case>`, with `Token`/`ID`/`Int` attributes only (never an address, subject, body, variable or link).
+(decision 19); instrument names are tokens; scope names are tokens of at most 64 bytes. `notify` (D39) uses the span names `notify.send` (Internal), `notify.tick`, `notify.deliver` (Client) and `notify.<use-case>`, with `Token`/`ID`/`Int` attributes only (never an address, subject, body, variable or link). `jobs` (D43) uses the span names `jobs.tick`, `jobs.enqueue`, `jobs.defer` and `jobs.run`.
 
 ### `intake.Accept`, step by step
 
@@ -1086,7 +1087,10 @@ One record at `warn`, message `client error`, attributes: `origin=client`,
 | `bms.notify.delivered` | counter, `{message}` | `outcome` = `ok`, `retry`, `failed`, `rejected`, `no_address`, `no_smtp`, `read_only` | `notify` |
 | `bms.notify.outbox` | gauge, `{message}` | `status` = `queued`, `sending`, `sent`, `failed` | `notify` (after each tick) |
 | `bms.notify.purged` | counter, `{message}` | — | `notify` |
-| `bms.signals.published`, `bms.signals.delivered`, `bms.jobs.runs` | counter | `signal`/`job` (token), `module`, `outcome` (`delivered`: `ok`, `failed`, `deferred`, `read_only`, `panicked`; `published` has none) | `signals` (signals.md "Telemetry"), `jobs` (Proposed change 6) |
+| `bms.signals.published`, `bms.signals.delivered` | counter | `signal`/`job` (token), `module`, `outcome` (`delivered`: `ok`, `failed`, `deferred`, `read_only`, `panicked`; `published` has none) | `signals` (signals.md "Telemetry") |
+| `bms.jobs.runs` | counter, `{run}` | `job` (token), `module`, `outcome` = `ok`, `retried`, `failed`, `canceled`, `read_only`, `panicked`, `no_handler`, `lost_lease`, `dropped` | `jobs` (jobs.md; D43) |
+| `bms.jobs.queue` | gauge, `{job}` | `status` | `jobs` (D43) |
+| `bms.jobs.lag` | histogram, `s` | — | `jobs` (D43) |
 
 Rates, errors and durations per route also come from Tempo's metrics generator over the
 spans (`deploy/compose/observability/tempo.yaml`), so a regional that exports traces only
@@ -1269,7 +1273,7 @@ answered by the owner on 2026-10-16 and are recorded in decisions 3, 9, 17, 18 a
 Status as of 2026-10-18: the departments-events instrument (item 9 there) is applied. Status as of 2026-10-17: items 1, 2, 3, 5, 8, 10, 11, 13, 14 and 15 are applied; item 9 is
 applied for `deploy/compose/.env.example` and Tempo's retention, and Prometheus's retention flag, and pending for
 Loki retention, the alert rules and `docs/operating.md`; item 12 is applied; item 6 is
-applied for `signals.md` and pending for `jobs.md`; item 4 is applied; item 7 waits for its
+applied for `signals.md` and for `jobs.md` (2026-10-20, D43); item 4 is applied; item 7 waits for its
 target to be written and are carried by this list until then.
 
 1. **`plan/design/module-contract.md` (row 4)** (applied 2026-10-16): add `Tracer telemetry.Tracer` to `Deps`
@@ -1343,7 +1347,7 @@ target to be written and are carried by this list until then.
    `signals.md`, by its Proposed change 3, with the token names `signal:<name>` (Producer)
    and `deliver:<name>` (Consumer), the counters `bms.signals.published{signal,module}`
    and `bms.signals.delivered{signal,module,outcome}`, and `outcome` ∈ `ok`, `failed`,
-   `deferred`, `read_only`, `panicked`; pending for `jobs.md`: target not written): wrap
+   `deferred`, `read_only`, `panicked`; applied for `jobs.md` 2026-10-20, D43, by jobs.md Proposed change 5: `bms.jobs.runs{job, module, outcome}` with outcomes `ok`, `retried`, `failed`, `canceled`, `read_only`, `panicked`, `no_handler`, `lost_lease`, `dropped`; `bms.jobs.queue{status}` (gauge); `bms.jobs.lag` (histogram, seconds); span names `jobs.tick`, `jobs.enqueue`, `jobs.defer`, `jobs.run`): wrap
    each publish in a `SpanProducer` span `signal:<name>` and each delivery in a
    `SpanConsumer` span `deliver:<name>` with `Module(subscriber)` as a child of the
    publisher's ctx (after commit, so the trace spans the request and its consequences;

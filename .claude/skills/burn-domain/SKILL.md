@@ -30,6 +30,7 @@ mark should be checked too.
 | **Department** | a standing part of the regional (Rangers, Gate, Greeters, Medical, DPW, Placement, Art...) | team (ambiguous) |
 | **Position** | a role within a department, often with requirements; for example Khaki and R12 on a Ranger team (owner, 2026-10-16) | sub-team |
 | **Lead** | a person leading a department | manager |
+| **Volunteer coordinator** | the role that runs volunteer sign-up and the roster across departments; usually the one role besides a few others who sees volunteers' legal names (owner, 2026-10-20) | |
 | **Shift** | a block of volunteer time in a position | |
 | **Shift lead / supervisor** | runs one shift of a department: briefs, pairs and dispatches volunteers, keeps the shift log; among Rangers this is often **Khaki**, which is also the shift command's radio call sign (manuals) | manager |
 | **Dirt Ranger** | a Ranger on foot or bike patrol, always in a pair (manuals) | |
@@ -138,6 +139,11 @@ mark should be checked too.
   don't get along, so being able to see who is on a shift before booking lets a volunteer pick
   another. Fellow volunteers see the playa name only, never legal names or contact details,
   and whether the roster is shown at all varies by regional (configurable).
+- **Who sees which name** (owner, 2026-10-20, D43): at burns, playa names are generally public
+  to anyone who volunteers, and volunteers' schedules (who is on which shift) are visible to
+  other volunteers. Real (legal) names are usually visible only to the volunteer coordinator
+  and perhaps a few other roles. Some burns want different visibility, so it is a regional
+  setting, not code.
 - **Pairing happens on the day** (manuals): the shift supervisor pairs experienced with new,
   never partners or spouses.
 - **What volunteering earns differs** (manuals): at some burns hours earn ticket credit,
@@ -269,7 +275,7 @@ mark should be checked too.
 
 When a rule above says "differs by regional", it becomes a setting or data in bms, never
 code. Known differences so far: leadership terms, who may see incident reports, how much a
-person sees about views of their data, whether legal name and phone are required,
+person sees about views of their data, whether legal name and phone are required, who sees playa names, legal names and the shift roster (owner, 2026-10-20),
 open or invitation-only sign-up, terminology, and the default language: most use English,
 some another (owner, 2026-10-16). From the manuals: position names (one burn's "shadows" are
 another's "trackers"), qualification thresholds (experience shifts, training validity), the

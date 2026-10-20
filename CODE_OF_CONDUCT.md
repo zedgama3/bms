@@ -7,7 +7,6 @@ elsewhere.
 
 ## Reporting
 
-Report unacceptable behavior privately to the maintainers. A dedicated reporting address
-will be listed here when the project is published; until then, contact a maintainer
-directly. Reports are handled in confidence, and the enforcement guidelines of the
-Contributor Covenant 2.1 apply.
+Report unacceptable behavior privately to the maintainers at
+[conduct@zg3.net](mailto:conduct@zg3.net). Reports are handled in confidence, and the
+enforcement guidelines of the Contributor Covenant 2.1 apply.

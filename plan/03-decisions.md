@@ -615,7 +615,7 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
   reset requests per client address and 5 per submitted address per login-failure window,
   15 minutes by default; a 5-minute per-account cooldown) become `accounts.*` regional
   settings with those defaults. The owner's answer: "Make it a setting. The defaults are good."
-  The identity amendment that specifies the keys and ranges is being drafted by the architect.
+  The identity amendment that specifies the keys and ranges is approved in D43.
 - **Qualification verification (refines D40, Q-QUAL):** only department leads verify
   qualifications. A department-specific qualification is verified by that department's leads.
   An org-wide qualification (for example ICS100) is verified by any department lead.
@@ -639,3 +639,40 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
 - **Still Draft:** the spec is not yet Approved. The owner has not yet approved the identity
   D41 amendment, [design/jobs.md](design/jobs.md), [design/files.md](design/files.md), or the
   volunteers spec as a whole.
+
+## D43. Owner's answers of 2026-10-20: visibility, reset-limit settings, jobs and volunteers approved, files redesigned
+
+- **Status:** Accepted (2026-10-20), decided by the owner.
+- **Visibility (Q-VOL6, [design/module-volunteers.md](design/module-volunteers.md)):**
+  - The regional (org) sets visibility.
+  - Defaults: burn (playa) names and volunteers' schedules are visible to anyone who
+    volunteers. Real (legal) names are visible only to the volunteer coordinator and maybe
+    some other roles.
+  - Some burns may want different settings. For now the defaults stand.
+  - Fields carry privacy tags, in a way like Go struct tags, so permissions are easier to
+    enforce later. Tags make data filterable under various conditions and stay flexible,
+    because disagreement later is expected.
+- **Reset-limit settings (refines D41; identity amendment approved, with its proposed changes
+  elsewhere, items 19–21):**
+  - `accounts.password_reset_client_limit`: 5 to 1000, default 20, never below the address
+    limit.
+  - `accounts.password_reset_address_limit`: 1 to 100, default 5.
+  - `accounts.password_reset_cooldown`: 0 to 1h, default 5m. 0 turns it off. Never above
+    `password_reset_lifetime`.
+  - No Spanish accounts catalogue yet.
+- **Jobs ([design/jobs.md](design/jobs.md)):** approved with all recommendations (Q-JOBS1–7):
+  - The jobs screen offers run now, retry and cancel.
+  - 10 attempts, with backoff from 1 minute to 1 hour.
+  - The notify sender stays.
+  - `Every` schedules only; local-time schedules come later.
+  - DoneTTL is 7 days, as a constant.
+  - The system actor is set with `jobs.InJob`.
+  - Tuning values are fixed constants; no new config keys.
+  - Its nine proposed changes elsewhere are approved.
+- **Files ([design/files.md](design/files.md)): not approved.** Q-FILES1: files are not stored
+  in the database. The owner wants a small file service that other features can use, like a
+  simplified S3. The architect redesigns `files.md`. The other Q-FILES answers wait for the
+  redesign.
+- **Volunteers ([design/module-volunteers.md](design/module-volunteers.md)): approved** as the
+  spec, with the privacy tags above. Its seven proposed changes elsewhere are approved.
+- **Code of conduct:** the reporting address is `conduct@zg3.net`, set in CODE_OF_CONDUCT.md.

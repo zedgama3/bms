@@ -452,8 +452,8 @@ shipped in `web/src/core/settings/messages/en.json`). All are public (decision 6
 | `regional.color_primary_dark` | text | `` | `` or `#rrggbb`; contrast against the shipped dark background `#121212` at least `MinContrast` | settings admin |
 
 Declared elsewhere, stored here (the owning spec gives the ranges; `settings` only checks
-shape and calls their `Check`): `accounts.*` (identity, eight keys, `identity.CheckSettings`
-for `client_failure_limit >= login_failure_limit`), `people.legal_name|phone|emergency_contacts`
+shape and calls their `Check`): `accounts.*` (identity, eleven keys, `identity.CheckSettings`
+for `client_failure_limit >= login_failure_limit`, `password_reset_client_limit >= password_reset_address_limit` and `password_reset_cooldown <= password_reset_lifetime`), `people.legal_name|phone|emergency_contacts`
 (people), `audit.retention|self_view` (audit), `hello.greeting` and every module's
 `Manifest.Settings`.
 
