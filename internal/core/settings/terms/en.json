@@ -1,0 +1,26 @@
+{
+  "event": {
+    "singular": "event",
+    "plural": "events",
+    "singular_title": "Event",
+    "plural_title": "Events"
+  },
+  "department": {
+    "singular": "department",
+    "plural": "departments",
+    "singular_title": "Department",
+    "plural_title": "Departments"
+  },
+  "participant": {
+    "singular": "participant",
+    "plural": "participants",
+    "singular_title": "Participant",
+    "plural_title": "Participants"
+  },
+  "theme_camp": {
+    "singular": "theme camp",
+    "plural": "theme camps",
+    "singular_title": "Theme camp",
+    "plural_title": "Theme camps"
+  }
+}

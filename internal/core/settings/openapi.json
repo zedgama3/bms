@@ -1,0 +1,219 @@
+{
+  "tags": [
+    {"name": "settings", "description": "What the regional configures while bms runs: values, terminology and the public document."}
+  ],
+  "paths": {
+    "/public": {
+      "get": {
+        "tags": ["settings"],
+        "operationId": "settingsPublic",
+        "summary": "The regional's public values and the terms in every language. No session needed. ETag is derived from the settings revision; a matching If-None-Match answers 304.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The public document.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SettingsPublic"}}}
+          },
+          "304": {"description": "The If-None-Match tag is the current one."}
+        }
+      }
+    },
+    "/theme.css": {
+      "get": {
+        "tags": ["settings"],
+        "operationId": "settingsTheme",
+        "summary": "The regional's brand colours as a stylesheet; an empty body when both are the shipped palette. No session needed. ETag and 304 as for /public.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The stylesheet.",
+            "content": {"text/css": {"schema": {"type": "string"}}}
+          },
+          "304": {"description": "The If-None-Match tag is the current one."}
+        }
+      }
+    },
+    "/": {
+      "get": {
+        "tags": ["settings"],
+        "operationId": "settingsDocument",
+        "summary": "Every declared setting with its default and value. Needs settings.read. A secret is reported as secret_set only.",
+        "responses": {
+          "200": {
+            "description": "The settings document.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SettingsDocument"}}}
+          }
+        }
+      }
+    },
+    "/values": {
+      "put": {
+        "tags": ["settings"],
+        "operationId": "settingsSet",
+        "summary": "Change settings, all or nothing: a string sets, null resets to the default. Needs settings.manage. Field errors name the full setting key. 501 when a secret is set and the deployment has no sealing key; 503 read_only on a read-only copy.",
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SettingsChanges"}}}
+        },
+        "responses": {
+          "200": {
+            "description": "The revision after the change.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SettingsRevision"}}}
+          }
+        }
+      }
+    },
+    "/terms": {
+      "get": {
+        "tags": ["settings"],
+        "operationId": "settingsTerms",
+        "summary": "Every term in every language, with its default and its override. Needs settings.read.",
+        "responses": {
+          "200": {
+            "description": "The terminology document.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SettingsTermsDocument"}}}
+          }
+        }
+      }
+    },
+    "/terms/{lang}": {
+      "put": {
+        "tags": ["settings"],
+        "operationId": "settingsSetTerms",
+        "summary": "Change the forms of terms in one language, all or nothing. Needs settings.manage. A null or absent form is unchanged; reset names forms to put back to the default.",
+        "parameters": [
+          {"name": "lang", "in": "path", "required": true, "schema": {"type": "string"}}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SettingsTermChanges"}}}
+        },
+        "responses": {
+          "200": {
+            "description": "The revision after the change.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SettingsRevision"}}}
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "SettingsPublic": {
+        "type": "object",
+        "required": ["name", "contact_email", "public_url", "language", "timezone", "languages", "theme", "terms"],
+        "properties": {
+          "name": {"type": "string"},
+          "contact_email": {"type": "string", "description": "The regional's shared mailbox, shown to anyone; empty when none."},
+          "public_url": {"type": "string", "description": "No trailing slash; empty when unset."},
+          "language": {"type": "string", "description": "The language before a person chooses."},
+          "timezone": {"type": "string", "description": "An IANA name; empty means the browser's zone."},
+          "languages": {"type": "array", "items": {"type": "string"}},
+          "theme": {"type": "boolean", "description": "Whether /api/settings/theme.css has content."},
+          "terms": {
+            "type": "object",
+            "description": "Per language, the term arguments: term_<term>, term_<term>_plural, term_<term>_title, term_<term>_plural_title.",
+            "additionalProperties": {"type": "object", "additionalProperties": {"type": "string"}}
+          }
+        }
+      },
+      "SettingsDocument": {
+        "type": "object",
+        "required": ["revision", "areas"],
+        "properties": {
+          "revision": {"type": "integer", "format": "int64"},
+          "areas": {"type": "array", "items": {"$ref": "#/components/schemas/SettingsArea"}}
+        }
+      },
+      "SettingsArea": {
+        "type": "object",
+        "required": ["name", "core", "settings"],
+        "properties": {
+          "name": {"type": "string"},
+          "core": {"type": "boolean"},
+          "settings": {"type": "array", "items": {"$ref": "#/components/schemas/SettingsSetting"}}
+        }
+      },
+      "SettingsSetting": {
+        "type": "object",
+        "required": ["key", "kind", "default", "value", "secret_set", "stale"],
+        "properties": {
+          "key": {"type": "string", "description": "The full key, <area>.<key>."},
+          "kind": {"type": "string", "enum": ["bool", "int", "duration", "text", "enum", "secret"]},
+          "default": {"type": "string", "description": "Empty for a secret."},
+          "value": {"type": ["string", "null"], "description": "Null while the default applies; always null for a secret."},
+          "secret_set": {"type": "boolean"},
+          "options": {"type": "array", "items": {"type": "string"}, "description": "An enum's options."},
+          "stale": {"type": "boolean", "description": "A stored value no longer parses and the default applies."}
+        }
+      },
+      "SettingsChanges": {
+        "type": "object",
+        "required": ["values"],
+        "properties": {
+          "values": {
+            "type": "object",
+            "description": "Full setting key to its new text value; null resets it. 1 to 200 keys.",
+            "additionalProperties": {"type": ["string", "null"]}
+          }
+        }
+      },
+      "SettingsRevision": {
+        "type": "object",
+        "required": ["revision"],
+        "properties": {"revision": {"type": "integer", "format": "int64"}}
+      },
+      "SettingsForms": {
+        "type": "object",
+        "required": ["singular", "plural", "singular_title", "plural_title"],
+        "properties": {
+          "singular": {"type": "string"},
+          "plural": {"type": "string"},
+          "singular_title": {"type": "string"},
+          "plural_title": {"type": "string"}
+        }
+      },
+      "SettingsFormChanges": {
+        "type": "object",
+        "properties": {
+          "singular": {"type": ["string", "null"]},
+          "plural": {"type": ["string", "null"]},
+          "singular_title": {"type": ["string", "null"]},
+          "plural_title": {"type": ["string", "null"]},
+          "reset": {"type": "array", "items": {"type": "string", "enum": ["singular", "plural", "singular_title", "plural_title"]}}
+        }
+      },
+      "SettingsTerm": {
+        "type": "object",
+        "required": ["default", "override"],
+        "properties": {
+          "default": {"$ref": "#/components/schemas/SettingsForms"},
+          "override": {"$ref": "#/components/schemas/SettingsFormChanges"}
+        }
+      },
+      "SettingsTermsDocument": {
+        "type": "object",
+        "required": ["languages", "terms"],
+        "properties": {
+          "languages": {"type": "array", "items": {"type": "string"}},
+          "terms": {
+            "type": "object",
+            "description": "Language, then term.",
+            "additionalProperties": {"type": "object", "additionalProperties": {"$ref": "#/components/schemas/SettingsTerm"}}
+          }
+        }
+      },
+      "SettingsTermChanges": {
+        "type": "object",
+        "required": ["terms"],
+        "properties": {
+          "terms": {
+            "type": "object",
+            "description": "Term to its form changes; 1 to 4 terms.",
+            "additionalProperties": {"$ref": "#/components/schemas/SettingsFormChanges"}
+          }
+        }
+      }
+    }
+  }
+}
