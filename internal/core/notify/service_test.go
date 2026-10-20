@@ -941,3 +941,13 @@ func permissionRefused(t *testing.T, perm authz.Permission) {
 func TestTemplates_NoPermission_Permission(t *testing.T) { permissionRefused(t, permTemplates) }
 
 func TestOutbox_NoPermission_Permission(t *testing.T) { permissionRefused(t, permOutbox) }
+
+func TestPutTemplate_ParseError_HasLine(t *testing.T) {
+	r := newRig(t, dbtest.NewFake())
+	ctx := as(ctxT(t), r.holder(permTemplates))
+	_, err := r.svc.PutTemplate(ctx, "volunteers.greet", "en", notify.TemplateText{Subject: "s", Body: "fine\nstill fine\n{{.Vars.x"})
+	wantField(t, err, "body", "parse")
+	if got := paramOf(err, "body", "parse", "line"); got != "3" {
+		t.Fatalf("line = %q, want 3 (%v)", got, describe(err))
+	}
+}

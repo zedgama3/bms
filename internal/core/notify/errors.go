@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 
 	"github.com/zedgama3/bms/internal/lib/errs"
@@ -38,6 +39,20 @@ func addField(v *validate.Errors, field, code string, params map[string]string, 
 }
 
 func maxParam(n int) map[string]string { return map[string]string{"max": strconv.Itoa(n)} }
+
+// templateLine matches the line text/template puts after the template's name.
+var templateLine = regexp.MustCompile(`^template: [a-z]+:([0-9]+)`)
+
+// parseError reports a template that does not parse or render on field, with params line
+// (the parser's line, when its message has one) so the screen can say where without
+// showing the parser's English.
+func parseError(op, field string, err error) error {
+	var params map[string]string
+	if m := templateLine.FindStringSubmatch(err.Error()); m != nil {
+		params = map[string]string{"line": m[1]}
+	}
+	return fieldError(op, field, codeParse, params, err.Error())
+}
 
 // seamError reports a failure of a seam (settings, people, identity) with its kind but not
 // its text, which could carry an address or a name the seam looked up. Cancellation and

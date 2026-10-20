@@ -186,11 +186,11 @@ func compile(text TemplateText) (*compiled, error) {
 	const op = "notify.compile"
 	st, err := newTemplate("subject", text.Subject)
 	if err != nil {
-		return nil, fieldError(op, "subject", codeParse, nil, err.Error())
+		return nil, parseError(op, "subject", err)
 	}
 	bt, err := newTemplate("body", text.Body)
 	if err != nil {
-		return nil, fieldError(op, "body", codeParse, nil, err.Error())
+		return nil, parseError(op, "body", err)
 	}
 	return &compiled{subject: st, body: bt}, nil
 }
@@ -481,7 +481,7 @@ func execute(c *compiled, data renderData, terms map[string]string) (Rendered, e
 			if errors.Is(err, errTooLong) {
 				return "", fieldError(op, "template", codeTooLong, maxParam(limit), "the rendered "+field+" is too long")
 			}
-			return "", fieldError(op, field, codeParse, nil, err.Error())
+			return "", parseError(op, field, err)
 		}
 		return w.buf.String(), nil
 	}
