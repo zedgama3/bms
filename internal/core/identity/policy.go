@@ -29,6 +29,7 @@ type Policy struct {
 	LoginFailureLimit        int           // accounts.login_failure_limit (per submitted address; default 10)
 	ClientFailureLimit       int           // accounts.client_failure_limit (per client address; default 100)
 	LoginFailureWindow       time.Duration // accounts.login_failure_window
+	PasswordResetLifetime    time.Duration // accounts.password_reset_lifetime (how long a reset link works)
 }
 
 // DefaultPolicy returns the shipped defaults (Settings table). Cannot fail.
@@ -41,6 +42,7 @@ func DefaultPolicy() Policy {
 		LoginFailureLimit:        10,
 		ClientFailureLimit:       100,
 		LoginFailureWindow:       15 * time.Minute,
+		PasswordResetLifetime:    time.Hour,
 	}
 }
 
@@ -60,6 +62,7 @@ func (p Policy) Validate() error {
 	// below the per-submitted-address limit.
 	v.Add(validate.Range("accounts.client_failure_limit", p.ClientFailureLimit, min(max(10, p.LoginFailureLimit), 1000), 1000))
 	v.Add(validate.Range("accounts.login_failure_window", p.LoginFailureWindow, time.Minute, 24*time.Hour))
+	v.Add(validate.Range("accounts.password_reset_lifetime", p.PasswordResetLifetime, 10*time.Minute, 24*time.Hour))
 	return v.Err() //nolint:wrapcheck // Err already carries Op and errs.Invalid
 }
 

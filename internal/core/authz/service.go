@@ -33,6 +33,7 @@ type store interface {
 	EffectiveFor(ctx context.Context, person model.PersonID, now time.Time, permission string) ([]rows.Held, error)
 	RulesHeldBy(ctx context.Context, person model.PersonID, now time.Time) ([]rows.HeldRule, error)
 	TitlesOf(ctx context.Context, person model.PersonID, now time.Time, limit int) ([]string, error)
+	PermissionHolders(ctx context.Context, permission string, now time.Time) ([]model.PersonID, error)
 
 	ListRoles(ctx context.Context, scope string) ([]rows.Role, error)
 	GetRole(ctx context.Context, id rows.RoleID) (rows.Role, error)

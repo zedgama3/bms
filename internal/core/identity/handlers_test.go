@@ -22,6 +22,8 @@ func TestRoutes_TheElevenRoutes(t *testing.T) {
 		"POST /sign-in":                      true,
 		"POST /sign-out":                     true,
 		"POST /password":                     true,
+		"POST /password-reset":               true,
+		"POST /password-reset/complete":      true,
 		"POST /sessions/end-others":          false,
 		"GET /":                              false,
 		"GET /{account}":                     false,

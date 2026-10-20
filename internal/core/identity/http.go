@@ -33,6 +33,8 @@ func (s *Service) Routes() []Route {
 		{Method: http.MethodPost, Pattern: "/sign-in", Public: true, Handler: s.signInHandler()},
 		{Method: http.MethodPost, Pattern: "/sign-out", Public: true, Handler: s.signOutHandler()},
 		{Method: http.MethodPost, Pattern: "/password", Public: true, Handler: s.passwordHandler()},
+		{Method: http.MethodPost, Pattern: "/password-reset", Public: true, Handler: s.resetRequestHandler()},
+		{Method: http.MethodPost, Pattern: "/password-reset/complete", Public: true, Handler: s.resetCompleteHandler()},
 		{Method: http.MethodPost, Pattern: "/sessions/end-others", Handler: s.endOthersHandler()},
 		{Method: http.MethodGet, Pattern: "/", Handler: s.listHandler()},
 		{Method: http.MethodGet, Pattern: "/{account}", Handler: s.getHandler()},
@@ -110,6 +112,42 @@ func (s *Service) passwordHandler() http.Handler {
 			return Issued{}, err //nolint:wrapcheck // httpx's own kinds
 		}
 		return s.ChangePassword(r.Context(), c)
+	})
+}
+
+// resetRequestHandler answers 202 with no body for every address alike (identity.md,
+// "Uniform answers"); a failure goes to the shell's mapper.
+func (s *Service) resetRequestHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body ResetRequest
+		if err := httpx.ReadJSON(r, &body); err != nil {
+			httpx.Fail(w, r, err)
+			return
+		}
+		if err := s.RequestPasswordReset(r.Context(), body.Email); err != nil {
+			httpx.Fail(w, r, err)
+			return
+		}
+		noStore(w)
+		w.WriteHeader(http.StatusAccepted)
+	})
+}
+
+// resetCompleteHandler answers 204. It sets no cookie: the person signs in afterwards
+// (decision 20).
+func (s *Service) resetCompleteHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body ResetCompletion
+		if err := httpx.ReadJSON(r, &body); err != nil {
+			httpx.Fail(w, r, err)
+			return
+		}
+		if err := s.CompletePasswordReset(r.Context(), body.Token, body.NewPassword); err != nil {
+			httpx.Fail(w, r, err)
+			return
+		}
+		noStore(w)
+		w.WriteHeader(http.StatusNoContent)
 	})
 }
 

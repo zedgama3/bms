@@ -195,3 +195,5 @@ func newUnitRig(t testing.TB, d db.DB, mods ...func(*authz.Options)) *rig {
 	r.svc = svc
 	return r
 }
+
+func authzPermission(s string) authz.Permission { return authz.Permission(s) }

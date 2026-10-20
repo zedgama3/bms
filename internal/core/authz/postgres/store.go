@@ -57,6 +57,7 @@ var (
 	sqlInsertRolePerms   = mustSQL("insert_role_permissions.sql")
 	sqlInsertRule        = mustSQL("insert_rule.sql")
 	sqlListGrants        = mustSQL("list_grants.sql")
+	sqlListHolders       = mustSQL("list_permission_holders.sql")
 	sqlListRolePerms     = mustSQL("list_role_permissions.sql")
 	sqlListRolePermsOne  = mustSQL("list_role_permissions_by_role.sql")
 	sqlListRoles         = mustSQL("list_roles.sql")
@@ -455,6 +456,30 @@ func (s *Store) AdminGrants(ctx context.Context, q rows.Holders) ([]rows.AdminGr
 		}
 		g.Person = model.PersonID(person)
 		out = append(out, g)
+	}
+	if err := rs.Err(); err != nil {
+		return nil, db.Wrap(op, err)
+	}
+	return out, nil
+}
+
+// PermissionHolders returns the persons who hold permission site-wide now through an
+// explicit grant (never the base role), distinct and in person ID order. The
+// separation-of-duties rules are not applied.
+func (s *Store) PermissionHolders(ctx context.Context, permission string, now time.Time) ([]model.PersonID, error) {
+	const op = "authz.postgres.PermissionHolders"
+	rs, err := s.db.Query(ctx, sqlListHolders, permission, now.UTC())
+	if err != nil {
+		return nil, db.Wrap(op, err)
+	}
+	defer rs.Close()
+	out := []model.PersonID{}
+	for rs.Next() {
+		var person [16]byte
+		if err := rs.Scan(&person); err != nil {
+			return nil, db.Wrap(op, err)
+		}
+		out = append(out, model.PersonID(person))
 	}
 	if err := rs.Err(); err != nil {
 		return nil, db.Wrap(op, err)

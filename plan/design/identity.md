@@ -799,9 +799,9 @@ var Templates fs.FS
 //     sign-in, each request counted once whatever the outcome; at the limit:
 //     Unavailable wrapping httpx.ErrRateLimited;
 //  3. Notify == nil: Unsupported, before the account lookup (see "Needs a decision");
-//  4. account lookup; unknown, disabled or superuser (D23: command only): a dummy hash is
-//     verified so timing matches, an audit entry (Outcome Denied) is recorded, nothing is
-//     sent, nil returned;
+//  4. verify one dummy hash, for every address alike, before the lookup (implementation, 2026-10-19);
+//     then the account lookup; unknown, disabled or superuser (D23: command only): an
+//     audit entry (Outcome Denied) is recorded, nothing is sent, nil returned;
 //  5. otherwise, in one Write transaction: purge the account's expired and used tokens,
 //     delete its earlier tokens (only the newest is valid), mint PasswordResetTokenBytes
 //     random bytes (base64url, no padding), insert sha256(token) with
@@ -809,17 +809,24 @@ var Templates fs.FS
 //     To: the account's person, Key: "password-reset:" + reset row id,
 //     Link: "/accounts/password-reset?token=<token>", Vars{"lifetime": "<N> minutes"}),
 //     Record identity.password.reset-requested (Subject: the account's person).
+//     If Send answers Invalid or NotFound (for example a missing person row), the request
+//     answers silently (nil, nothing committed) with one warn line (implementation, 2026-10-19).
 //     The lifetime is formatted in whole minutes ("60 minutes").
-// Returns nil in every non-error case; the handler answers 202 with no body.
+// Returns nil in every non-error case; the handler answers 202 with no body. The body
+// of the request is {email} (implementation, 2026-10-19).
 func (s *Service) RequestPasswordReset(ctx context.Context, email model.Email) error
 
 // CompletePasswordReset redeems a token and sets a new password. Consumers:
 // POST /api/accounts/password-reset/complete. No session. Hashes the token and finds the
 // row; missing, used or disabled account: Invalid (token: invalid); expired: Invalid
 // (token: expired). The new password is checked as ChangePassword checks it (min length,
-// MaxPasswordBytes, common list). In one Write transaction: set password_hash and
-// password_changed_at, clear password_change_required, bump session_generation (every
-// session ends), set used_at, Record identity.password.reset. No session is issued and no
+// MaxPasswordBytes, common list). The body is {token, new_password} (implementation, 2026-10-19). Order (implementation, 2026-10-19):
+// a non-locking lookup and the validity checks; hash the new password outside any
+// transaction; then one Write transaction that locks the account first, marks the token
+// used (the `used_at IS NULL` guard decides a race), then sets password_hash and
+// password_changed_at, clears password_change_required, bumps session_generation (every
+// session ends) and Records identity.password.reset. Locking the account first avoids a
+// lock-order deadlock with RequestPasswordReset. No session is issued and no
 // cookie is set (decision 20). The handler answers 204; the shell goes to the sign-in page
 // with a "password changed" notice.
 func (s *Service) CompletePasswordReset(ctx context.Context, token, newPassword string) error
@@ -829,7 +836,7 @@ Store additions (identity's `store` interface, `postgres/`): `ReplaceResetToken(
 
 ### Data
 
-Migration `0003_password_reset.sql` in `internal/core/identity/postgres/migrations/`.
+Migration `0002_password_reset.sql` in `internal/core/identity/postgres/migrations/`.
 
 **`core.password_reset`**
 
@@ -861,7 +868,7 @@ The token travels in the query of a page with no outbound links; the shell remov
 
 ### Behavior
 
-- **Uniform answers.** `RequestPasswordReset` answers `202` for a known, an unknown, a disabled and a superuser address alike; the audit entry (Outcome `Denied` for the last three, so an admin can see attempts) is the only difference. Timing is equalised by verifying a dummy hash on the unknown path.
+- **Uniform answers.** `RequestPasswordReset` answers `202` for a known, an unknown, a disabled and a superuser address alike; the audit entry (Outcome `Denied` for the last three, so an admin can see attempts) is the only difference. Timing is equalised because every request verifies one dummy hash right after the `Configured` probe and before the lookup, for every address alike (on a known address no real hash is verified, so a dummy only on the unknown path would be a timing oracle) (implementation, 2026-10-19).
 - **Newest token only.** A new request deletes the account's earlier tokens in the same transaction that inserts the new one, so an older e-mail's link answers `invalid`.
 - **Single use.** `CompleteReset` marks `used_at` and fails `NotFound` on a used row; two concurrent redemptions: one succeeds, the other answers `invalid`.
 - **After a reset.** `session_generation` is bumped, so every session of the account ends, including a restricted one; `password_change_required` is cleared. No session is issued.
@@ -881,7 +888,7 @@ The token travels in the query of a page with no outbound links; the shell remov
 | F70 | `RequestPasswordReset` | either bucket at the limit | Unavailable wrapping `httpx.ErrRateLimited` | 429 | `TestRequestPasswordReset_RateLimited_Table` |
 | F71 | `RequestPasswordReset` | `Notify` nil | Unsupported, before the lookup | 501, the screen says it is not set up | `TestRequestPasswordReset_NoNotify_Unsupported` |
 | F72 | `RequestPasswordReset` | `Notify.Send` answers Unsupported (SMTP unset) | Unsupported; nothing committed | 501 (see "Needs a decision") | `TestRequestPasswordReset_NotConfigured_Unsupported` |
-| F73 | `RequestPasswordReset` | unknown, disabled or superuser address | nil; nothing sent; entry Denied; dummy hash verified | show the uniform message | `TestRequestPasswordReset_UnknownDisabledSuperuser_SilentNil` |
+| F73 | `RequestPasswordReset` | unknown, disabled or superuser address | nil; nothing sent; entry Denied; the dummy hash was verified before the lookup, as for every address | show the uniform message | `TestRequestPasswordReset_UnknownDisabledSuperuser_SilentNil` |
 | F74 | `RequestPasswordReset` | a known address | nil; one token row (hash only), one `identity.password-reset` message with the link and `lifetime`, one entry | show the uniform message | `TestRequestPasswordReset_Known_StoresHashAndSends` |
 | F75 | `RequestPasswordReset` | a second request for the account | the earlier token is deleted; only the newest redeems | show the uniform message | `TestRequestPasswordReset_Twice_OnlyNewestValid` |
 | F76 | `RequestPasswordReset` | `Notify.Send` fails other than Unsupported | its kind (Unavailable, Timeout, Canceled); no token row | retry later | `TestRequestPasswordReset_SendFails_NothingCommitted` |
@@ -905,7 +912,7 @@ The token travels in the query of a page with no outbound links; the shell remov
 - **Unit.** The fake store, `notifytest.NewFake("identity")` (`Sent()` after commit, `Fail(err)`), `clock.NewFake`, `audittest.NewFake("identity")`, `telemetrytest.New(t)`: tables for F69 to F90; the token is read from the fake notifier's recorded `Link` and redeemed, never from the store; the stored value is asserted to be 32 bytes of hash and never equal to the token; the lifetime string; a fake clock moves past `expires_at` (no sleeping); each test puts an invented address, token and password through the service and asserts `!c.Contains(...)` across logs, spans, entries and error strings.
 - **Handlers (`httptest`).** `202` for known and unknown addresses with identical bodies and headers; `204` on completion with no `Set-Cookie`; `501`, `429`, `503 read_only` statuses; the query string is absent from the log record.
 - **Permission tests.** Both routes are public: a signed-in person and a restricted session may use them; neither route returns a session.
-- **Integration (`//go:build integration`, `dbtest.TempDB`).** Migration `0003` applies; the unique `token_hash`; the cascade on account deletion; two concurrent `CompleteReset` calls: one wins; `Send` and the token row roll back together.
+- **Integration (`//go:build integration`, `dbtest.TempDB`).** Migration `0002` applies; the unique `token_hash`; the cascade on account deletion; two concurrent `CompleteReset` calls: one wins; `Send` and the token row roll back together.
 - **End to end (`app`, with Mailpit).** Set the SMTP settings, request a reset, read the link from Mailpit, complete it, `Authenticate` with the old cookie is `401`, sign in with the new password.
 - **Web (`vitest`, `axe-core`).** Both screens' states; the token leaves the address bar; the sign-in link; focus and error summary.
 

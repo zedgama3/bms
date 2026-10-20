@@ -141,6 +141,7 @@ func TestDefaultPolicy_Values(t *testing.T) {
 		LoginFailureLimit:        10,
 		ClientFailureLimit:       100,
 		LoginFailureWindow:       15 * time.Minute,
+		PasswordResetLifetime:    time.Hour,
 	}
 	if p != want {
 		t.Errorf("DefaultPolicy = %+v, want %+v", p, want)

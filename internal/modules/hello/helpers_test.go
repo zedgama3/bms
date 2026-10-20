@@ -13,6 +13,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/db/dbtest"
 	"github.com/zedgama3/bms/internal/core/module"
+	"github.com/zedgama3/bms/internal/core/notify/notifytest"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/signals/signalstest"
 	"github.com/zedgama3/bms/internal/core/telemetry"
@@ -167,6 +168,7 @@ type fx struct {
 	plan  *module.Plan
 	db    *dbtest.Fake
 	sig   *signalstest.Fake
+	mail  *notifytest.Fake
 	cap   *telemetrytest.Capture
 	clk   *clock.Fake
 	store *hello.FakeStore
@@ -178,7 +180,7 @@ func (noSchema) CheckSchema(context.Context, string, fs.FS) error { return nil }
 
 func newFx(t *testing.T, c cfg) *fx {
 	t.Helper()
-	f := &fx{cap: telemetrytest.New(t), clk: clock.NewFake(epoch), db: dbtest.NewFake()}
+	f := &fx{cap: telemetrytest.New(t), clk: clock.NewFake(epoch), db: dbtest.NewFake(), mail: notifytest.NewFake(hello.Manifest.Name)}
 	sig, err := signalstest.NewFake(hello.Manifest.Name, hello.Manifest.Publishes, hello.Manifest.Subscribes)
 	if err != nil {
 		t.Fatalf("signalstest.NewFake: %v", err)
@@ -235,6 +237,7 @@ func newFx(t *testing.T, c cfg) *fx {
 			Tracer: f.cap.Tracer("module." + m.Name),
 			Clock:  f.clk,
 			DB:     dbtest.NewFake(),
+			Notify: notifytest.NewFake(m.Name),
 		}
 		if m.Name != hello.Manifest.Name {
 			bus, err := signalstest.NewFake(m.Name, m.Publishes, m.Subscribes)
@@ -244,6 +247,7 @@ func newFx(t *testing.T, c cfg) *fx {
 			d.Signals = bus
 		} else {
 			d.DB = f.db
+			d.Notify = f.mail
 			if c.wrapBus != nil {
 				d.Signals = c.wrapBus(f.sig)
 			} else {

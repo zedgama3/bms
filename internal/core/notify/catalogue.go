@@ -298,10 +298,10 @@ func (s *Service) Register(owner string, defaults fs.FS) error {
 	if s.running.Load() {
 		return errs.E(op, errs.Internal, errors.New("Register after Run"))
 	}
-	if len(owner) > maxOwnerBytes || !identRE.MatchString(owner) {
-		return fieldError(op, "owner", codeMalformed, nil, "must be lower-case letters, digits and single hyphens")
+	if err := checkOwner(op, owner); err != nil {
+		return err
 	}
-	defs, err := s.loadDefaults(op, owner, defaults)
+	defs, err := loadDefaults(op, owner, defaults)
 	if err != nil {
 		return err
 	}
@@ -318,7 +318,30 @@ func (s *Service) Register(owner string, defaults fs.FS) error {
 	return nil
 }
 
-func (s *Service) loadDefaults(op, owner string, defaults fs.FS) ([]*definition, error) {
+// CheckTemplates runs the checks Register runs on owner's defaults (owner grammar, file
+// names, headers, parse, size, the trial render, an "en" file for every ident) without
+// registering anything and without a Service: module conformance tests use it. A nil
+// defaults passes. Fails errs.Invalid naming the file.
+func CheckTemplates(owner string, defaults fs.FS) error {
+	const op = "notify.CheckTemplates"
+	if err := checkOwner(op, owner); err != nil {
+		return err
+	}
+	_, err := loadDefaults(op, owner, defaults)
+	return err
+}
+
+// checkOwner fails errs.Invalid (field "owner", code malformed) unless owner is a valid
+// owner name: lower-case letters, digits and single hyphens, at most maxOwnerBytes.
+func checkOwner(op, owner string) error {
+	if len(owner) > maxOwnerBytes || !identRE.MatchString(owner) {
+		return fieldError(op, "owner", codeMalformed, nil, "must be lower-case letters, digits and single hyphens")
+	}
+	return nil
+}
+
+// loadDefaults parses and checks an owner's default templates. It reads no Service state.
+func loadDefaults(op, owner string, defaults fs.FS) ([]*definition, error) {
 	if defaults == nil {
 		return nil, nil
 	}

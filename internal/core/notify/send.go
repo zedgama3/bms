@@ -27,8 +27,8 @@ func (s *Service) Scoped(owner string) (Notifier, error) {
 	if s.running.Load() {
 		return nil, errs.E(op, errs.Internal, errors.New("Scoped after Run"))
 	}
-	if len(owner) > maxOwnerBytes || !identRE.MatchString(owner) {
-		return nil, fieldError(op, "owner", codeMalformed, nil, "must be lower-case letters, digits and single hyphens")
+	if err := checkOwner(op, owner); err != nil {
+		return nil, err
 	}
 	return scoped{s: s, owner: owner}, nil
 }

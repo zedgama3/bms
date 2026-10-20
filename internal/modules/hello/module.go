@@ -6,9 +6,10 @@ package hello
 
 import (
 	"context"
-	_ "embed" // the OpenAPI fragment
+	"embed" // the OpenAPI fragment and the templates
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"strings"
 	"sync"
@@ -19,6 +20,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/module"
+	"github.com/zedgama3/bms/internal/core/notify"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/lib/validate"
@@ -47,6 +49,11 @@ const (
 	// PayloadPerson is the one payload key: the person who greeted.
 	PayloadPerson = "person"
 
+	// TemplateGreeted is the notification Greet sends to the greeter (templates/greeted.*.tmpl).
+	// It shares its string with SignalGreeted by coincidence of grammar; the two are
+	// different namespaces (notify.Template, signals.Name) and nothing links them.
+	TemplateGreeted notify.Template = "hello.greeted"
+
 	// PointBanner is the extension point hello defines and contributes to.
 	PointBanner module.ExtensionPoint = "hello.banner"
 
@@ -58,6 +65,7 @@ const (
 var Manifest = module.Manifest{
 	Name:       "hello",
 	Migrations: postgres.Migrations,
+	Templates:  templates,
 	Permissions: []authz.PermissionDecl{
 		{Name: PermissionGreetingsRead, Scope: authz.ScopeSite, Reaches: model.SensitivityInternal, StarterRoles: []string{authz.RoleParticipant}},
 		{Name: PermissionGreetingsWrite, Scope: authz.ScopeSite, Reaches: model.SensitivityInternal, StarterRoles: []string{authz.RoleParticipant}},
@@ -74,6 +82,24 @@ func init() { module.Register(Manifest, New) }
 
 //go:embed openapi.json
 var openAPIFragment []byte
+
+//go:embed templates/*.tmpl
+var embeddedTemplates embed.FS
+
+// templates is Manifest.Templates: the files of templates/, rooted at it, in the layout
+// notify.Register reads (<ident>.<lang>.tmpl). It is built at package initialisation,
+// before Manifest, from files compiled into the binary, so it cannot fail at run time.
+var templates = mustSub(embeddedTemplates, "templates")
+
+// mustSub returns the sub-tree of fsys at dir. It panics only when the embedded directory
+// is missing, which is a build-time bug, never a run-time input.
+func mustSub(fsys fs.FS, dir string) fs.FS {
+	sub, err := fs.Sub(fsys, dir)
+	if err != nil {
+		panic("hello: embedded " + dir + " missing: " + err.Error())
+	}
+	return sub
+}
 
 // bannerKey is the message key hello contributes to its own extension point.
 const bannerKey = "module.hello.banner.welcome"
@@ -157,8 +183,8 @@ type Module struct {
 }
 
 // New builds the module from deps. It reads nothing from the database (app.md decision 7)
-// and starts nothing. Fails with errs.Invalid when Logger, Tracer, Clock, DB, Signals or
-// Links is nil, or when postgres.NewStore fails.
+// and starts nothing. Fails with errs.Invalid when Logger, Tracer, Clock, DB, Signals,
+// Notify or Links is nil, or when postgres.NewStore fails.
 func New(_ context.Context, deps module.Deps) (module.Module, error) {
 	const op = "hello.New"
 	if err := checkDeps(op, deps); err != nil {
@@ -193,6 +219,9 @@ func checkDeps(op string, d module.Deps) error {
 	if d.Signals == nil {
 		nils = append(nils, "Signals")
 	}
+	if d.Notify == nil {
+		nils = append(nils, "Notify")
+	}
 	if d.Links == nil {
 		nils = append(nils, "Links")
 	}
@@ -218,6 +247,7 @@ func newModule(deps module.Deps, s seams) (*Module, error) {
 		greeting: trimmed(s.greeting),
 		links:    deps.Links,
 		bus:      deps.Signals,
+		notify:   deps.Notify,
 		db:       deps.DB,
 		tracer:   deps.Tracer,
 		logger:   deps.Logger,

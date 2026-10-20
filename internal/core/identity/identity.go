@@ -25,6 +25,7 @@ const (
 	MaxPageSize             = 100
 	DefaultPageSize         = 50
 	ClockSkew               = 5 * time.Minute // a token issued further in the future is malformed
+	PasswordResetTokenBytes = 32              // random bytes of a password-reset token, before base64url (D39)
 )
 
 // generatedAlphabet has no look-alike characters (no i, l, o, 0, 1) and no upper case, so a
@@ -57,6 +58,8 @@ const (
 	actionDeleted        audit.Action = "identity.account.deleted"
 	actionLinked         audit.Action = "identity.account.linked"
 	actionPasswordSet    audit.Action = "identity.password.changed"
+	actionResetRequested audit.Action = "identity.password.reset-requested"
+	actionResetDone      audit.Action = "identity.password.reset"
 	actionTemporarySet   audit.Action = "identity.password.temporary-set"
 	actionSessionsEnded  audit.Action = "identity.sessions.ended"
 	actionSuperCreated   audit.Action = "identity.superuser.created"
@@ -89,6 +92,8 @@ const (
 	codeSuperuser = "superuser"   // the account is the superuser's (LinkAccount)
 	codeHasAcct   = "has_account" // the person already has an account (LinkAccount)
 	codeRequired  = validate.CodeRequired
+	codeInvalid   = "invalid" // the reset token matches no live reset (field token)
+	codeExpired   = "expired" // the reset token's lifetime has passed (field token)
 )
 
 // emailKey is the unique constraint a duplicate address violates.

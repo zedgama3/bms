@@ -1,0 +1,6 @@
+Subject: You greeted at {{.Site.Name}}
+Vars: word
+
+{{if .Recipient.PlayaName}}Hi {{.Recipient.PlayaName}},{{else}}Hi,{{end}}
+
+you said "{{.Vars.word}}". Your greetings: {{.Link}}

@@ -69,6 +69,13 @@ type Manifest struct {
 	// neither migrated nor checked.
 	Migrations fs.FS
 
+	// Templates holds the module's notification templates (go:embed of a templates/
+	// directory, rooted at it), files named <ident>.<lang>.tmpl with Subject: and Vars:
+	// headers; notify names them "<Name>.<ident>" (D39). nil means the module sends no
+	// notification. notify.Register reads it at start-up; the conformance rule
+	// templates_register checks every file.
+	Templates fs.FS
+
 	// Permissions this module declares. Each name starts with "<Name>.". authz turns them
 	// into what a regional can grant (09 §4).
 	Permissions []authz.PermissionDecl

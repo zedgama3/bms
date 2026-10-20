@@ -11,6 +11,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/db/dbtest"
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/module"
+	"github.com/zedgama3/bms/internal/core/notify/notifytest"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/signals/signalstest"
 	"github.com/zedgama3/bms/internal/core/telemetry/telemetrytest"
@@ -40,6 +41,7 @@ func rawFakes(t *testing.T) (module.Deps, *dbtest.Fake, *signalstest.Fake) {
 		Clock:   clock.NewFake(epoch),
 		DB:      fdb,
 		Signals: sig,
+		Notify:  notifytest.NewFake(hello.Manifest.Name),
 		Links:   &module.Links{},
 	}, fdb, sig
 }
@@ -55,6 +57,7 @@ func TestNew_NilDependency_ReturnsInvalid(t *testing.T) {
 		{"clock", func(d *module.Deps) { d.Clock = nil }},
 		{"db", func(d *module.Deps) { d.DB = nil }},
 		{"signals", func(d *module.Deps) { d.Signals = nil }},
+		{"notify", func(d *module.Deps) { d.Notify = nil }}, // F32
 		{"links", func(d *module.Deps) { d.Links = nil }},
 		{"all", func(d *module.Deps) { *d = module.Deps{} }},
 	}

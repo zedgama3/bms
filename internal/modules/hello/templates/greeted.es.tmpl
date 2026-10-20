@@ -1,0 +1,6 @@
+Subject: Saludaste en {{.Site.Name}}
+Vars: word
+
+{{if .Recipient.PlayaName}}Hola {{.Recipient.PlayaName}},{{else}}Hola,{{end}}
+
+dijiste "{{.Vars.word}}". Tus saludos: {{.Link}}

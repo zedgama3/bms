@@ -330,6 +330,48 @@ func (s *Service) PermissionsOf(ctx context.Context, person model.PersonID) (_ [
 	return slices.Compact(out), nil
 }
 
+// HoldersOf returns the persons who hold p site-wide now (D39): through an explicit grant
+// that has not ended, on a site-scoped role that holds p, and not denied p by a
+// separation-of-duties rule, in person ID order, never nil. The base role applies to
+// everyone and is not enumerated, so a permission carried by the base role alone yields
+// nobody, and one carried by the base role and a granted role yields the granted holders
+// once each. The result is grant holders: a superuser appears only through an explicit
+// grant, since the flag is not a grant (decision 6). It is a system read: no
+// actor, no permission check, not audited, never on a route; the consumers are app's
+// superuser-alert adapter and people's deletion notice. It fails errs.Invalid for a
+// permission nobody declared and with the store's kinds (Unavailable, Timeout, Canceled).
+func (s *Service) HoldersOf(ctx context.Context, p Permission) (_ []model.PersonID, err error) {
+	const op = "authz.Service.HoldersOf"
+	ctx, span := s.start(ctx, "holders-of")
+	defer endSpan(span, &err)
+	if err := s.declaredCheck(op, p); err != nil {
+		return nil, err
+	}
+	span.SetAttrs(telemetry.Token("permission", string(p)))
+	now := s.now()
+	candidates, err := s.store.PermissionHolders(ctx, string(p), now)
+	if err != nil {
+		return nil, wrap(op, err)
+	}
+	out := make([]model.PersonID, 0, len(candidates))
+	for _, person := range candidates {
+		rules, err := s.store.RulesHeldBy(ctx, person, now)
+		if err != nil {
+			return nil, wrap(op, err)
+		}
+		forbidden, err := s.forbiddenSet(rules)
+		if err != nil {
+			return nil, wrap(op, err)
+		}
+		if _, no := forbidden[string(p)]; no {
+			continue
+		}
+		out = append(out, person)
+	}
+	slices.SortFunc(out, func(x, y model.PersonID) int { return strings.Compare(x.String(), y.String()) })
+	return slices.Compact(out), nil
+}
+
 // TitlesOf is audit.TitleSource: the key (or, when renamed, the name) of each non-base role
 // the person holds now, sorted, at most audit.MaxTitles; nil for none. It needs no actor
 // and opens no transaction, so the recorder may call it inside a Write transaction.

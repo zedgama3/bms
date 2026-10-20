@@ -29,10 +29,11 @@ func TestSettings_DeclarationsAreValidAndDefaultToDefaultPolicy(t *testing.T) {
 		"login_failure_limit":        "10",
 		"client_failure_limit":       "100",
 		"login_failure_window":       def.LoginFailureWindow.String(),
+		"password_reset_lifetime":    def.PasswordResetLifetime.String(),
 	}
 	for k, w := range want {
 		g := got[k]
-		if k == "session_lifetime" || k == "superuser_session_lifetime" || k == "login_failure_window" {
+		if k == "session_lifetime" || k == "superuser_session_lifetime" || k == "login_failure_window" || k == "password_reset_lifetime" {
 			gd, gerr := time.ParseDuration(g)
 			wd, werr := time.ParseDuration(w)
 			if gerr != nil || werr != nil || gd != wd {

@@ -15,6 +15,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/identity"
+	"github.com/zedgama3/bms/internal/core/notify"
 	"github.com/zedgama3/bms/internal/core/people/postgres"
 	"github.com/zedgama3/bms/internal/core/people/rows"
 	"github.com/zedgama3/bms/internal/core/signals"
@@ -160,6 +161,10 @@ type Options struct {
 	Access     Access
 	AuditCount AuditCounter
 	Policy     PolicySource // optional; nil = DefaultPolicy
+	// Notify sends the deletion-request notice (scoped "people"); optional: nil means no
+	// notice. Holders says who gets it; optional: nil means no notice.
+	Notify  notify.Notifier
+	Holders Holders
 }
 
 // Validate fails errs.Invalid joining a validate.FieldError per nil dependency (fields
@@ -211,6 +216,8 @@ type Service struct {
 	access     Access
 	auditCount AuditCounter
 	policySrc  PolicySource
+	notify     notify.Notifier
+	holders    Holders
 	metrics    metrics
 	linked     atomic.Pointer[linkState]
 	cooldown   *cooldown
@@ -253,7 +260,7 @@ func newService(o Options, st store) (*Service, error) {
 	s := &Service{
 		store: st, db: o.DB, clock: o.Clock, logger: o.Logger, tracer: o.Tracer, audit: o.Audit,
 		signals: o.Signals, authz: o.Authz, actorFn: o.Actor, accounts: o.Accounts, access: o.Access,
-		auditCount: o.AuditCount, policySrc: o.Policy, metrics: m, cooldown: newCooldown(),
+		auditCount: o.AuditCount, policySrc: o.Policy, notify: o.Notify, holders: o.Holders, metrics: m, cooldown: newCooldown(),
 	}
 	if err := o.Signals.Subscribe(identity.SignalAccountCreated, s.handleAccountCreated); err != nil {
 		return nil, fmt.Errorf("%s: subscribe: %w", op, err)

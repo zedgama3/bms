@@ -16,9 +16,6 @@ import (
 // scoped Reader. Titles and descriptions are the catalogue keys
 // core.accounts.setting.<key>.title|description (and .option.<opt> for signup). Each Check
 // is pure and agrees with Policy.Validate, which stays the check at the point of use.
-//
-// accounts.password_reset_lifetime joins them with the forgotten-password flow, which waits
-// for notify.
 var Settings = []settings.Decl{
 	{Key: "signup", Kind: settings.Enum, Default: string(SignupOpen),
 		Options: []string{string(SignupOpen), string(SignupInvitation)}},
@@ -34,6 +31,8 @@ var Settings = []settings.Decl{
 		Check: intRange("client_failure_limit", 10, 1000)},
 	{Key: "login_failure_window", Kind: settings.Duration, Default: "15m",
 		Check: durationRange("login_failure_window", time.Minute, 24*time.Hour)},
+	{Key: "password_reset_lifetime", Kind: settings.Duration, Default: "1h",
+		Check: durationRange("password_reset_lifetime", 10*time.Minute, 24*time.Hour)},
 }
 
 // CheckSettings is the area's cross-field rule over the effective values (bare keys,

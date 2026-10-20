@@ -12,11 +12,13 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/fstest"
 
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/db/dbtest"
 	"github.com/zedgama3/bms/internal/core/module"
 	"github.com/zedgama3/bms/internal/core/module/moduletest"
+	"github.com/zedgama3/bms/internal/core/notify"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/signals/signalstest"
 	"github.com/zedgama3/bms/internal/core/telemetry"
@@ -73,6 +75,12 @@ const (
 	preRequiredNoFake   mutant = "pre_required_without_fake"
 	preUndeclaredCap    mutant = "pre_undeclared_capability"
 	preNilCapImpl       mutant = "pre_nil_capability_impl"
+	foreignNotify       mutant = "foreign_notify"
+	badTemplate         mutant = "bad_template"
+	templateNoEn        mutant = "template_without_en"
+	goodTemplates       mutant = "good_templates"
+	logsNotifyVar       mutant = "notify_var_with_seed_marker"
+	logsNotifyLink      mutant = "notify_link_with_seed_marker"
 	preDuplicateCap     mutant = "pre_duplicate_capability"
 	preNeitherSeedNor   mutant = "pre_neither_seed_nor_without"
 	preBothSeedAndWith  mutant = "pre_both_seed_and_without"
@@ -120,6 +128,15 @@ func manifestFor(mu mutant) module.Manifest {
 	switch {
 	case mu == badManifest:
 		m.Name = "Bad Name"
+	case mu == badTemplate:
+		m.Templates = fstest.MapFS{"greeted.en.tmpl": {Data: []byte("no subject header\n\nbody")}}
+	case mu == templateNoEn:
+		m.Templates = fstest.MapFS{"greeted.es.tmpl": {Data: []byte("Subject: Hola\n\ncuerpo")}}
+	case mu == goodTemplates:
+		m.Templates = fstest.MapFS{
+			"greeted.en.tmpl": {Data: []byte("Subject: Hi from {{.Site.Name}}\nVars: word\n\nYou said {{.Vars.word}}. {{.Link}}")},
+			"greeted.es.tmpl": {Data: []byte("Subject: Hola desde {{.Site.Name}}\nVars: word\n\nDijiste {{.Vars.word}}. {{.Link}}")},
+		}
 	case mu == capsNotImplemented:
 		m.Provides = []module.Capability{"greeter"}
 	case isRequiresFamily(mu):
@@ -148,7 +165,7 @@ type fakeModule struct {
 
 func newFactory(mu mutant) module.Factory {
 	return func(_ context.Context, deps module.Deps) (module.Module, error) {
-		if deps.Logger == nil || deps.Tracer == nil || deps.Clock == nil || deps.DB == nil || deps.Signals == nil {
+		if deps.Logger == nil || deps.Tracer == nil || deps.Clock == nil || deps.DB == nil || deps.Signals == nil || deps.Notify == nil {
 			return nil, errs.E("alpha.New", errs.Invalid, os.ErrInvalid)
 		}
 		if err := checkCapabilities(mu, deps); err != nil {
@@ -261,6 +278,16 @@ func (m *fakeModule) leak(ctx context.Context, r row) {
 		m.deps.Logger.InfoContext(ctx, "exported", slog.String("email", r.email))
 	case logsSeededNote:
 		m.deps.Logger.InfoContext(ctx, "exported", slog.String("detail", r.note))
+	case logsNotifyVar, logsNotifyLink:
+		msg := notify.Message{Template: "alpha.greeted", To: []model.PersonID{{1}}, Key: "k"}
+		if m.mu == logsNotifyVar {
+			msg.Vars = map[string]string{"detail": r.legal}
+		} else {
+			msg.Link = "/alpha/" + r.note
+		}
+		if err := m.deps.Notify.Send(ctx, msg); err != nil {
+			m.deps.Logger.ErrorContext(ctx, "send failed", slog.String("kind", errs.KindOf(err).String()))
+		}
 	case spansSeededPhone:
 		_, span := m.deps.Tracer.Start(ctx, "alpha.export", telemetry.WithAttrs(telemetry.Text("detail", r.phone)))
 		span.End()
@@ -363,9 +390,20 @@ func provisionFor(mu mutant) module.Provision {
 		if mu == foreignDB {
 			d = db.None()
 		}
-		return module.Deps{DB: d, Signals: sig}, nil
+		deps := module.Deps{DB: d, Signals: sig}
+		if mu == foreignNotify {
+			deps.Notify = foreignNotifier{}
+		}
+		return deps, nil
 	}
 }
+
+// foreignNotifier is a Notifier that is not a notifytest.Fake.
+type foreignNotifier struct{}
+
+func (foreignNotifier) Send(context.Context, notify.Message) error { return nil }
+
+func (foreignNotifier) Configured(context.Context) (bool, error) { return true, nil }
 
 // optsFor returns the Conformance options a careful test author would pass for mu, or the
 // deliberately wrong ones for the precondition scenarios.
@@ -540,7 +578,7 @@ func runChild(t *testing.T, mu mutant) (string, bool) {
 }
 
 var allRules = []string{
-	"manifest_valid", "registers_under_its_name", "implements_declared",
+	"manifest_valid", "templates_register", "registers_under_its_name", "implements_declared",
 	"rejects_wrong_capability_type", "used_capability_absent_builds_and_starts",
 	"start_read_only", "subscribes_every_declared_name", "stop_honors_context",
 	"stop_without_start_is_nil", "export_zero_id", "delete_zero_id",
@@ -568,6 +606,12 @@ func TestConformance_BrokenModule_FailsTheNamedRule(t *testing.T) {
 		rule string
 	}{
 		{badManifest, "manifest_valid"},
+		// F58
+		{badTemplate, "templates_register"},
+		{templateNoEn, "templates_register"},
+		// F59
+		{logsNotifyVar, "no_personal_data_in_logs"},
+		{logsNotifyLink, "no_personal_data_in_logs"},
 		{exportZeroOK, "export_zero_id"},
 		{deleteZeroOK, "delete_zero_id"},
 		{deleteIgnoresRO, "delete_read_only"},
@@ -619,7 +663,7 @@ func TestConformance_BrokenModule_FailsTheNamedRule(t *testing.T) {
 // The first rule a leaking module trips is the privacy rule, not an earlier one: the
 // mutants above must reach no_personal_data_in_logs with every other rule passing.
 func TestConformance_LeakMutants_PassEveryOtherRule(t *testing.T) {
-	for _, mu := range []mutant{logsSeededName, logsSeededEmailBenignKey, logsSeededEmailDeniedKey, logsSeededNote, spansSeededPhone} {
+	for _, mu := range []mutant{logsNotifyVar, logsNotifyLink, logsSeededName, logsSeededEmailBenignKey, logsSeededEmailDeniedKey, logsSeededNote, spansSeededPhone} {
 		t.Run(string(mu), func(t *testing.T) {
 			out, _ := runChild(t, mu)
 			for _, rule := range allRules {
@@ -742,4 +786,18 @@ func TestConformance_ForeignDBInDeps_FailsNamingTheModule(t *testing.T) {
 	if !strings.Contains(out, "alpha") {
 		t.Errorf("failure does not name the module:\n%s", out)
 	}
+}
+
+func TestConformance_ForeignNotifyInDeps_FailsNamingTheModule(t *testing.T) {
+	out, failed := runChild(t, foreignNotify)
+	if !failed {
+		t.Fatalf("Conformance accepted a Deps.Notify that is not a notifytest fake:\n%s", out)
+	}
+	if !strings.Contains(out, "alpha") {
+		t.Errorf("failure does not name the module:\n%s", out)
+	}
+}
+
+func TestConformance_ModuleWithTemplates_Passes(t *testing.T) {
+	moduletest.Conformance(t, manifestFor(goodTemplates), newFactory(goodTemplates), provisionFor(goodTemplates), optsFor(goodTemplates)...)
 }

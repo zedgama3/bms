@@ -15,6 +15,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/identity/account"
 	"github.com/zedgama3/bms/internal/core/identity/postgres"
+	"github.com/zedgama3/bms/internal/core/notify"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/telemetry"
 	"github.com/zedgama3/bms/internal/lib/clock"
@@ -51,6 +52,24 @@ type store interface {
 	TouchLogin(ctx context.Context, id model.AccountID, at time.Time) error
 	Rehash(ctx context.Context, id model.AccountID, newHash, oldHash secret.Secret) error
 	Superuser(ctx context.Context, id model.AccountID, person model.PersonID, e model.Email, hash secret.Secret, at time.Time) (account.Superuser, error)
+
+	// The forgotten-password flow (D39). hash is the SHA-256 of the token; the token itself
+	// never reaches the store.
+
+	// ReplaceResetToken locks the account, deletes every token it has (used, expired and
+	// the earlier live one: only the newest is valid) and inserts this one, returning its
+	// ID. now is the new row's created_at. NotFound when the account is gone. Runs inside
+	// the caller's transaction.
+	ReplaceResetToken(ctx context.Context, acct model.AccountID, hash []byte, expires, now time.Time) (account.ResetID, error)
+	// ResetByHash finds a token by its hash without locking anything; NotFound when there
+	// is none.
+	ResetByHash(ctx context.Context, hash []byte) (account.ResetRow, error)
+	// CompleteReset locks the account row (the order ReplaceResetToken uses), refuses
+	// (NotFound) an account that is now disabled or the superuser's, marks the
+	// token used and then sets the account's password (clearing password_change_required
+	// and bumping the session generation); NotFound when the token was already used, so two
+	// concurrent redemptions cannot both win, and before the password is touched.
+	CompleteReset(ctx context.Context, id account.ResetID, acct model.AccountID, passwordHash secret.Secret, now time.Time) error
 }
 
 var _ store = (*postgres.Store)(nil)
@@ -72,6 +91,7 @@ type Options struct {
 	Lister         PermissionLister
 	Names          NameSource
 	Alerter        Alerter
+	Notify         notify.Notifier // scoped to "identity"; nil means no reset: RequestPasswordReset answers Unsupported
 }
 
 // Validate fails errs.Invalid joining a validate.FieldError per problem: "identity.db",
@@ -119,13 +139,16 @@ type Service struct {
 	lister         PermissionLister
 	names          NameSource
 	alerter        Alerter
+	notify         notify.Notifier
 
 	common  map[string]struct{}
 	dummy   secret.Secret // verified when no account matched, so the answer costs the same
 	limiter *limiter
 	sem     chan struct{} // HashConcurrency slots; a hash holds one while it runs
 	rand    io.Reader     // crypto/rand.Reader; tests replace it to fail
-	metrics metrics
+	// dummyHook is called once per dummy verification of a reset request; tests count with it.
+	dummyHook func()
+	metrics   metrics
 }
 
 // New validates o, derives the signing key (HKDF-SHA256, info "bms identity session v1"),
@@ -170,6 +193,7 @@ func newService(o Options, st store) (*Service, error) {
 		store: st, db: o.DB, clock: o.Clock, logger: o.Logger, tracer: o.Tracer,
 		key: key, allowPlaintext: o.AllowPlaintext, audit: o.Audit, signals: o.Signals,
 		policySource: o.Policy, perms: o.Permissions, lister: o.Lister, names: o.Names, alerter: o.Alerter,
+		notify: o.Notify,
 		common: common, dummy: dummyHash(), limiter: newLimiter(), sem: make(chan struct{}, HashConcurrency),
 		rand: rand.Reader, metrics: m,
 	}, nil

@@ -15,6 +15,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/db/dbtest"
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/module"
+	"github.com/zedgama3/bms/internal/core/notify/notifytest"
 	"github.com/zedgama3/bms/internal/core/people"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/telemetry/telemetrytest"
@@ -31,6 +32,7 @@ type realFx struct {
 	pool *db.Pool
 	disp *signals.Dispatcher
 	cap  *telemetrytest.Capture
+	mail *notifytest.Fake
 }
 
 func newRealFx(t *testing.T, wrap func(signals.Bus) signals.Bus) *realFx {
@@ -65,7 +67,7 @@ func newRealFx(t *testing.T, wrap func(signals.Bus) signals.Bus) *realFx {
 			t.Errorf("dispatcher Close: %v", err)
 		}
 	})
-	r := &realFx{pool: pool, disp: disp, cap: c}
+	r := &realFx{pool: pool, disp: disp, cap: c, mail: notifytest.NewFake(hello.Manifest.Name)}
 	store, err := postgres.NewStore(pool)
 	if err != nil {
 		t.Fatalf("NewStore: %v", err)
@@ -98,7 +100,7 @@ func newRealFx(t *testing.T, wrap func(signals.Bus) signals.Bus) *realFx {
 		}
 		return module.Deps{
 			Logger: c.Logger(), Tracer: c.Tracer("module." + m.Name), Clock: clock.Real(),
-			DB: pool, Signals: bus,
+			DB: pool, Signals: bus, Notify: r.mail,
 		}, nil
 	}
 	if _, err := plan.Build(ctxT(t), noSchema{}, provision); err != nil {
@@ -172,6 +174,36 @@ func TestGreet_PublishFails_RowRolledBackInRealDatabase(t *testing.T) {
 	}
 	if n := r.mod.Seen(); n != 0 {
 		t.Errorf("Seen = %d, want 0", n)
+	}
+}
+
+func TestGreet_NotifyFails_RollsBackInRealDatabase(t *testing.T) {
+	r := newRealFx(t, nil)
+	r.mail.Fail(errs.E("test.notify", errs.Unavailable, errors.New("refused")))
+	if _, err := r.mod.Service().Greet(ctxT(t)); !errs.Is(err, errs.Unavailable) {
+		t.Fatalf("Greet err = %v, want Unavailable", err)
+	}
+	g, err := r.mod.Service().Greeting(ctxT(t))
+	if err != nil || g.Mine != 0 {
+		t.Errorf("Greeting = %+v, %v; the insert must roll back with the failed Send", g, err)
+	}
+	if n := r.mod.Seen(); n != 0 {
+		t.Errorf("Seen = %d, want 0", n)
+	}
+	if sent := r.mail.Sent(); len(sent) != 0 {
+		t.Errorf("Sent = %+v, want nothing", sent)
+	}
+}
+
+func TestGreet_Committed_SendsAfterCommitInRealDatabase(t *testing.T) {
+	r := newRealFx(t, nil)
+	got, err := r.mod.Service().Greet(ctxT(t))
+	if err != nil {
+		t.Fatalf("Greet: %v", err)
+	}
+	sent := r.mail.Sent()
+	if len(sent) != 1 || sent[0].Key != "greeted:"+got.ID.String() {
+		t.Errorf("Sent = %+v, want one message keyed to the committed greeting", sent)
 	}
 }
 

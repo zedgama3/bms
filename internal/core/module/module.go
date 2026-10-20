@@ -10,6 +10,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/departments"
 	"github.com/zedgama3/bms/internal/core/events"
+	"github.com/zedgama3/bms/internal/core/notify"
 	"github.com/zedgama3/bms/internal/core/people"
 	"github.com/zedgama3/bms/internal/core/settings"
 	"github.com/zedgama3/bms/internal/core/signals"
@@ -173,8 +174,16 @@ type Deps struct {
 	// with settingstest.NewFake(Manifest.Name, Manifest.Settings).
 	Settings settings.Reader
 
+	// Notify queues e-mail to people (notify.md; M4): Send and Configured. Scoped to the
+	// module by Provision with Scoped(m.Name), so only a template named "<name>.<ident>",
+	// shipped in Manifest.Templates, is accepted (otherwise errs.Invalid, field "template",
+	// code "scope"). Send joins the transaction in ctx and never sends inline; it fails
+	// errs.Unsupported wrapping notify.ErrNotConfigured when e-mail is not set up. Nil only
+	// in tests that send nothing; moduletest.Conformance fills a nil one with
+	// notifytest.NewFake(Manifest.Name).
+	Notify notify.Notifier
+
 	// Added by later specs, named here so modules know where to look:
 	// Jobs     jobs.Registrar    jobs.md
-	// Notify   notify.Notifier   notify.md
 	// Files    files.Store       files.md
 }

@@ -513,9 +513,13 @@ func requestsOf(rs []rows.Request) []Request {
 
 // RequestDeletion files the actor's own request to be deleted, which a holder of
 // people.data.delete fulfils or declines. At most one request is open at a time. Records
-// people.request.created and publishes people.deletion-requested in the transaction. Fails
-// errs.Unauthenticated, errs.Invalid (F41), errs.Conflict (field request, code duplicate:
-// F40), errs.NotFound (no profile row yet) and store kinds.
+// people.request.created and publishes people.deletion-requested in the transaction, then
+// e-mails the holders of people.data.delete that a request is waiting (Options.Notify and
+// Options.Holders; nil, nobody to tell, or e-mail not configured means no notice and no
+// failure). Fails errs.Unauthenticated, errs.Invalid (F41), errs.Conflict (field request,
+// code duplicate: F40; nothing is sent), errs.NotFound (no profile row yet), the kind of a
+// failed HoldersOf or Send other than Unsupported (the request is rolled back: F62) and
+// store kinds.
 func (s *Service) RequestDeletion(ctx context.Context, note string) (_ Request, err error) {
 	const op = "people.Service.RequestDeletion"
 	ctx, span := s.start(ctx, "request-deletion")
@@ -548,7 +552,10 @@ func (s *Service) RequestDeletion(ctx context.Context, note string) (_ Request, 
 		}); err != nil {
 			return err
 		}
-		return s.publish(ctx, SignalDeletionRequested, requestRef(id), personRef(a.Person))
+		if err := s.publish(ctx, SignalDeletionRequested, requestRef(id), personRef(a.Person)); err != nil {
+			return err
+		}
+		return s.notifyDeletionRequested(ctx, op, id)
 	})
 	if err != nil {
 		return Request{}, wrap(op, err)

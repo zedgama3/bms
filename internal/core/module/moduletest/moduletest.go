@@ -24,6 +24,8 @@ import (
 	"github.com/zedgama3/bms/internal/core/departments/departmentstest"
 	"github.com/zedgama3/bms/internal/core/events/eventstest"
 	"github.com/zedgama3/bms/internal/core/module"
+	"github.com/zedgama3/bms/internal/core/notify"
+	"github.com/zedgama3/bms/internal/core/notify/notifytest"
 	"github.com/zedgama3/bms/internal/core/people/peopletest"
 	"github.com/zedgama3/bms/internal/core/settings/settingstest"
 	"github.com/zedgama3/bms/internal/core/signals"
@@ -213,10 +215,12 @@ func resolveOptions(m module.Manifest, opts []Option) (options, []string) {
 // Clock, DB, Signals or Audit with a fake (an audittest.NewFake scoped to the module), a nil
 // Authz with authztest.NewFake() (it denies everything) and a nil People with
 // peopletest.NewFake(), a nil Departments with departmentstest.NewFake(), a nil Events with
-// eventstest.NewFake(), a nil Settings with settingstest.NewFake(Manifest.Name, Manifest.Settings), and sets Links through Plan.Build. A DB, Signals or Audit that is
-// not a dbtest.Fake, signalstest.Fake or audittest.Fake fails t (t.Fatalf), naming the module, because the
-// rules need to make the database read-only, to read back the subscriptions and to scan
-// the audit entries the module recorded for personal data (no_personal_data_in_logs).
+// eventstest.NewFake(), a nil Settings with settingstest.NewFake(Manifest.Name, Manifest.Settings), a nil Notify with
+// notifytest.NewFake(Manifest.Name), and sets Links through Plan.Build. A DB, Signals,
+// Audit or Notify that is not a dbtest.Fake, signalstest.Fake, audittest.Fake or
+// notifytest.Fake fails t (t.Fatalf), naming the module, because the rules need to make the
+// database read-only, to read back the subscriptions and to scan the audit entries and the
+// messages the module recorded for personal data (no_personal_data_in_logs).
 //
 // opts supply what the rules cannot learn from the manifest: the value behind each
 // capability the module requires or uses (WithCapability), and how to put a known person's
@@ -226,7 +230,7 @@ func resolveOptions(m module.Manifest, opts []Option) (options, []string) {
 // first rule when the options disagree with the manifest, naming the option and the
 // capability; otherwise it runs the rules as named subtests, in this order, and stops at
 // the first that fails, so the failing subtest's name is the broken rule: manifest_valid,
-// registers_under_its_name, implements_declared, rejects_wrong_capability_type,
+// templates_register, registers_under_its_name, implements_declared, rejects_wrong_capability_type,
 // used_capability_absent_builds_and_starts, start_read_only, subscribes_every_declared_name,
 // stop_honors_context, stop_without_start_is_nil, export_zero_id, delete_zero_id,
 // export_unknown_person_is_empty, delete_unknown_person_is_zero_and_idempotent,
@@ -248,6 +252,7 @@ func Conformance(t *testing.T, m module.Manifest, f module.Factory, provision mo
 		run  func(*testing.T, *rig)
 	}{
 		{"manifest_valid", ruleManifestValid},
+		{"templates_register", ruleTemplatesRegister},
 		{"registers_under_its_name", ruleRegisters},
 		{"implements_declared", ruleImplementsDeclared},
 		{"rejects_wrong_capability_type", ruleRejectsWrongCapabilityType},
@@ -322,7 +327,8 @@ type harness struct {
 	mod     module.Module
 	db      *dbtest.Fake
 	sig     *signalstest.Fake
-	audit   *audittest.Fake // the module under test's recorder
+	audit   *audittest.Fake  // the module under test's recorder
+	notify  *notifytest.Fake // the module under test's notifier
 	capture *telemetrytest.Capture
 	started bool
 	stopped bool
@@ -433,9 +439,17 @@ func (h *harness) provisioner(readOnly bool) module.Provision {
 		if d.Settings == nil {
 			d.Settings = settingstest.NewFake(m.Name, m.Settings)
 		}
+		out, ok := d.Notify.(*notifytest.Fake)
+		if d.Notify != nil && !ok {
+			h.t.Fatalf("the provision for %q returned a Notify of type %T; Conformance needs a *notifytest.Fake (or nil) to scan what was sent", m.Name, d.Notify)
+		}
+		if !ok {
+			out = notifytest.NewFake(m.Name)
+		}
+		d.Notify = out
 		if m.Name == r.m.Name {
 			fake.SetReadOnly(readOnly)
-			h.db, h.sig, h.audit = fake, bus, rec
+			h.db, h.sig, h.audit, h.notify = fake, bus, rec, out
 		}
 		return d, nil
 	}
@@ -569,6 +583,14 @@ func (*stub) DeletePerson(context.Context, model.PersonID) (module.Deletion, err
 func ruleManifestValid(t *testing.T, r *rig) {
 	if err := r.m.Validate(); err != nil {
 		t.Fatalf("Manifest.Validate: %v", err)
+	}
+}
+
+// ruleTemplatesRegister proves F58: every file of Manifest.Templates passes the checks
+// notify.Register runs, so a bad template fails here and not at start-up.
+func ruleTemplatesRegister(t *testing.T, r *rig) {
+	if err := notify.CheckTemplates(r.m.Name, r.m.Templates); err != nil {
+		t.Fatalf("Manifest.Templates: %v", err)
 	}
 }
 
@@ -847,6 +869,32 @@ func ruleNoPersonalDataInLogs(t *testing.T, r *rig) {
 	if err := auditLeak(h.audit.Recorded()); err != nil {
 		t.Fatal(err)
 	}
+	if err := sentLeak(h.notify.Sent()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// sentLeak returns an error when a message a module queued carries a seed marker or
+// "[email]" in a variable or the link: a message holds the recipient's own data at most,
+// never a value taken from seeded records (notify decision 10; rule
+// no_personal_data_in_logs, F59).
+func sentLeak(msgs []notify.Message) error {
+	markers := []string{subject.LegalName, subject.Phone, subject.Note, subject.Email, scrubbedEmail}
+	for i, m := range msgs {
+		texts := []string{m.Link}
+		for _, k := range slices.Sorted(maps.Keys(m.Vars)) {
+			texts = append(texts, m.Vars[k])
+		}
+		for _, text := range texts {
+			for _, marker := range markers {
+				if strings.Contains(text, marker) {
+					// The marker is invented, so quoting it leaks nothing.
+					return fmt.Errorf("message %d (%s) holds personal data (%q) in its Vars or Link; pass only the recipient's own data, never a value from a record", i, m.Template, marker)
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // auditLeak returns an error when an audit entry's Reason or Fields hold a seed marker or

@@ -2,6 +2,7 @@ package hello
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/module"
+	"github.com/zedgama3/bms/internal/core/notify"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/telemetry"
 	"github.com/zedgama3/bms/internal/lib/clock"
@@ -68,6 +70,7 @@ type service struct {
 	greeting greetingSource
 	links    *module.Links
 	bus      signals.Bus
+	notify   notify.Notifier
 	db       db.DB
 	tracer   telemetry.Tracer
 	logger   *slog.Logger
@@ -164,7 +167,11 @@ func (s *service) Greeting(ctx context.Context) (out Greeting, err error) {
 // and publish SignalGreeted {person: actor}; delivery happens after commit. Needs an actor
 // (errs.Unauthenticated) and PermissionGreetingsWrite (errs.Permission). Span
 // "hello.greet". On a read-only copy fails errs.Unavailable wrapping db.ErrReadOnly; a
-// refused Publish rolls the insert back and its kind is returned.
+// refused Publish rolls the insert back and its kind is returned. After the Publish, still
+// inside the transaction, it queues TemplateGreeted to the actor through Deps.Notify: when
+// e-mail is not set up (errs.Unsupported wrapping notify.ErrNotConfigured) the greeting is
+// kept and one debug line says so; any other Send error rolls the insert back, publishes
+// nothing and is returned with its kind.
 func (s *service) Greet(ctx context.Context) (g greeting.Greeting, err error) {
 	const op = "hello.Greet"
 	actor, err := s.authorize(ctx, op, PermissionGreetingsWrite)
@@ -193,10 +200,34 @@ func (s *service) Greet(ctx context.Context) (g greeting.Greeting, err error) {
 		if err := s.bus.Publish(ctx, SignalGreeted, greetedPayload(actor)); err != nil {
 			return fmt.Errorf("publish: %w", err)
 		}
+		if err := s.notifyGreeted(ctx, actor, g.ID, word); err != nil {
+			return fmt.Errorf("notify: %w", err)
+		}
 		return nil
 	})
 	if err != nil {
 		return greeting.Greeting{}, fmt.Errorf("%s: %w", op, err)
 	}
 	return g, nil
+}
+
+// notifyGreeted queues the TemplateGreeted notice to the greeter inside Greet's
+// transaction. "E-mail is not set up" is not the greeter's problem: it is logged once at
+// debug level (no ID of anything) and returns nil; every other Send error is returned.
+func (s *service) notifyGreeted(ctx context.Context, actor model.PersonID, id greeting.ID, word string) error {
+	err := s.notify.Send(ctx, notify.Message{
+		Template: TemplateGreeted,
+		To:       []model.PersonID{actor},
+		Key:      "greeted:" + id.String(),
+		Vars:     map[string]string{"word": word},
+		Link:     "/hello/",
+	})
+	if errors.Is(err, notify.ErrNotConfigured) {
+		s.logger.DebugContext(ctx, "greeting saved without a notice", slog.String("notify", "off"))
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("send %s: %w", TemplateGreeted, err)
+	}
+	return nil
 }

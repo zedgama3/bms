@@ -8,6 +8,7 @@
   "module.hello.setting.greeting.title": "Greeting word",
   "module.hello.setting.greeting.description": "The word the greeting screen shows.",
   "module.hello.signal.greeted.title": "Someone greeted",
+  "module.hello.template.greeted.title": "Greeting sent",
   "module.hello.nav.greeting": "Hello",
   "module.hello.banner.welcome": "Welcome to the reference module.",
   "module.hello.screen.greeting": "{greeting}!",

@@ -71,6 +71,34 @@
         }
       }
     },
+    "/password-reset": {
+      "post": {
+        "tags": ["accounts"],
+        "operationId": "accountsRequestPasswordReset",
+        "summary": "Ask for a password-reset e-mail. Public. 202 with no body for a known, an unknown, a disabled and a superuser address alike; 501 for every address when e-mail is not set up; 429 when rate-limited (the sign-in buckets).",
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AccountsPasswordResetRequest"}}}
+        },
+        "responses": {
+          "202": {"description": "Accepted. If an account exists for the address, an e-mail is on its way. No body."}
+        }
+      }
+    },
+    "/password-reset/complete": {
+      "post": {
+        "tags": ["accounts"],
+        "operationId": "accountsCompletePasswordReset",
+        "summary": "Redeem a reset token and set a new password. Public; single use; only the newest token works. 400 with field token (invalid or expired) or new_password (too_short, too_long, common). Ends every session of the account; signs nobody in.",
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AccountsPasswordResetComplete"}}}
+        },
+        "responses": {
+          "204": {"description": "Password changed; no cookie is set. Sign in with the new password."}
+        }
+      }
+    },
     "/sessions/end-others": {
       "post": {
         "tags": ["accounts"],
@@ -188,6 +216,21 @@
         "required": ["current_password", "new_password"],
         "properties": {
           "current_password": {"type": "string"},
+          "new_password": {"type": "string"}
+        }
+      },
+      "AccountsPasswordResetRequest": {
+        "type": "object",
+        "required": ["email"],
+        "properties": {
+          "email": {"type": "string"}
+        }
+      },
+      "AccountsPasswordResetComplete": {
+        "type": "object",
+        "required": ["token", "new_password"],
+        "properties": {
+          "token": {"type": "string", "description": "The token from the e-mailed link. Never logged."},
           "new_password": {"type": "string"}
         }
       },
