@@ -26,14 +26,15 @@ The order follows dependencies: foundation first, then the core, then modules.
 | 10 | `signals.md` | in-process domain events (D24) | Implemented (2026-10-17) |
 | 11 | `notify.md` | notifier contract, e-mail | Implemented (2026-10-20) |
 | 12 | `audit.md` | append-only audit log and its read-only spool | Implemented (2026-10-18) |
-| 13 | `files.md` | attachments and storage | Draft (2026-10-20) |
-| 14 | `jobs.md` | scheduled and deferred work | Draft (2026-10-20) |
+| 13 | `files.md` | attachments and storage | Draft (2026-10-20; redesign per D43) |
+| 14 | `jobs.md` | scheduled and deferred work | Approved (2026-10-20) |
 | 15 | `settings.md` | runtime settings and terminology | Implemented (2026-10-19) |
 | 15b | `telemetry.md` | logs, traces, metrics, client error intake (D20) | Implemented (2026-10-17) |
+| 15c | `privacy-tags.md` | field-level privacy tags and the visibility filter (D43) | Draft (2026-10-20) |
 | 16 | `api.md` | router, middleware, error mapper, OpenAPI assembly | Implemented (2026-10-17) |
 | 17 | `web-shell.md` | UI frame, API client, module screen registry | Implemented (2026-10-17) |
 | 18 | `app.md` | composition root and lifecycle | Implemented (2026-10-17) |
-| 19 | `module-volunteers.md` | volunteers module | Draft (2026-10-20) |
+| 19 | `module-volunteers.md` | volunteers module | Approved (2026-10-20; visibility amendment pending) |
 | 20 | `module-registrations.md` | registrations module | Not started |
 | 21 | `module-incidents.md` | incidents module | Not started |
 | 22 | `module-after-reports.md` | after-burn reports module | Not started |
