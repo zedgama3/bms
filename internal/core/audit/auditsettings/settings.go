@@ -7,10 +7,12 @@
 package auditsettings
 
 import (
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/zedgama3/bms/internal/core/settings"
+	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/lib/validate"
 )
 
@@ -45,7 +47,32 @@ func checkRetention(v string) error {
 		return nil //nolint:nilerr // settings reports a value that does not parse; 0 keeps entries forever
 	}
 	if d < MinRetention || d > MaxRetention {
-		return validate.Range("retention", d, MinRetention, MaxRetention) //nolint:wrapcheck // a field error, re-fielded by settings
+		return durationOutOfRange("retention", d, MinRetention, MaxRetention)
 	}
 	return nil
+}
+
+// plainDuration writes d in the plainest whole unit that divides it ("1h", "8760h", "10m",
+// "30s"), not time.Duration.String's "1h0m0s", so a range error reads well to a person and
+// the text can be typed back as a value.
+func plainDuration(d time.Duration) string {
+	switch {
+	case d != 0 && d%time.Hour == 0:
+		return strconv.FormatInt(int64(d/time.Hour), 10) + "h"
+	case d != 0 && d%time.Minute == 0:
+		return strconv.FormatInt(int64(d/time.Minute), 10) + "m"
+	case d != 0 && d%time.Second == 0:
+		return strconv.FormatInt(int64(d/time.Second), 10) + "s"
+	default:
+		return d.String()
+	}
+}
+
+// durationOutOfRange is validate.Range for durations with min and max in plain units.
+func durationOutOfRange(field string, got, lo, hi time.Duration) error {
+	return errs.E("", errs.Invalid, &validate.FieldError{
+		Field: field, Code: validate.CodeRange,
+		Params: map[string]string{"min": plainDuration(lo), "max": plainDuration(hi)},
+		Reason: "must be between " + plainDuration(lo) + " and " + plainDuration(hi) + ", got " + plainDuration(got),
+	})
 }

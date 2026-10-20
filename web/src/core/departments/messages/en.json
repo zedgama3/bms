@@ -1,9 +1,9 @@
 {
-  "core.departments.nav": "Departments",
+  "core.departments.nav": "{term_department_plural_title}",
   "core.departments.readonly": "This copy is read-only, so this can't be saved right now.",
   "core.departments.cancel": "Cancel",
   "core.departments.archived_badge": "Archived",
-  "core.departments.list.title": "Departments",
+  "core.departments.list.title": "{term_department_plural_title}",
   "core.departments.list.new": "New {term_department}",
   "core.departments.list.show_archived": "Show archived",
   "core.departments.list.empty": "No {term_department} has been created yet.",
@@ -16,7 +16,7 @@
   "core.departments.field.description": "Description",
   "core.departments.field.contact_email": "Contact mailbox",
   "core.departments.field.contact_email_hint": "The {term_department}'s shared mailbox, never a person's address.",
-  "core.departments.page.title": "Department",
+  "core.departments.page.title": "{term_department_title}",
   "core.departments.page.back": "Back to the list",
   "core.departments.page.details": "About",
   "core.departments.page.no_description": "No description yet.",
@@ -51,9 +51,9 @@
   "module.departments.field.taken": "Another {term_department} already has this name.",
   "module.departments.field.archived": "This {term_department} is archived. Restore it first.",
   "module.departments.field.not_archived": "This {term_department} is not archived.",
-  "module.departments.title": "Departments",
-  "module.departments.permission.manage.title": "Create, rename, archive and restore departments",
-  "module.departments.permission.details.manage.title": "Change a department's description and mailbox",
+  "module.departments.title": "{term_department_plural_title}",
+  "module.departments.permission.manage.title": "Create, rename, archive and restore {term_department_plural}",
+  "module.departments.permission.details.manage.title": "Change a {term_department}'s description and mailbox",
   "core.departments.leadership.unknown_person": "Unknown person",
   "core.departments.leadership.truncated": "This list is cut short. Use \"See roles here\" to see every grant."
 }

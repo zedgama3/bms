@@ -1,6 +1,6 @@
 {
-  "core.events.nav": "Events",
-  "core.events.nav_kinds": "Event kinds",
+  "core.events.nav": "{term_event_plural_title}",
+  "core.events.nav_kinds": "{term_event_title} kinds",
   "core.events.readonly": "This copy is read-only, so this can't be saved right now.",
   "core.events.cancel": "Cancel",
   "core.events.closed_badge": "Closed",
@@ -11,7 +11,7 @@
   "core.events.group.now": "Now",
   "core.events.group.upcoming": "Upcoming",
   "core.events.group.past": "Past",
-  "core.events.list.title": "Events",
+  "core.events.list.title": "{term_event_plural_title}",
   "core.events.list.new": "New {term_event}",
   "core.events.list.empty": "No {term_event} has been created yet.",
   "core.events.new.title": "New {term_event}",
@@ -28,7 +28,7 @@
   "core.events.field.copy_from_hint": "Optional. Each module copies what it needs from this {term_event} into the new one.",
   "core.events.field.copy_none": "Don't copy anything",
   "core.events.field.copy_option": "{name} ({date})",
-  "core.events.page.title": "Event",
+  "core.events.page.title": "{term_event_title}",
   "core.events.page.back": "Back to the list",
   "core.events.page.dates": "Dates",
   "core.events.page.status": "Status",
@@ -86,7 +86,7 @@
   "core.events.schedule.window": "{start} to {end}",
   "core.events.schedule.moment": "{at}",
   "core.events.schedule.outside": "Outside the {term_event}'s dates.",
-  "core.events.kinds.title": "Event kinds",
+  "core.events.kinds.title": "{term_event_title} kinds",
   "core.events.kinds.intro": "Every {term_event} has a kind. A kind can be renamed but never deleted.",
   "core.events.kinds.new": "New kind",
   "core.events.kinds.add": "Add kind",
@@ -98,7 +98,7 @@
   "core.events.kinds.rename": "Rename",
   "core.events.kinds.save": "Save name",
   "core.events.kinds.renamed": "Renamed",
-  "core.events.kinds.back": "Back to the events",
+  "core.events.kinds.back": "Back to the {term_event_plural}",
   "module.events.field.control_chars": "Use plain text only: no control characters.",
   "module.events.field.range": "The end must be after the start, and no more than a year later.",
   "module.events.field.unknown": "We don't know this one.",
@@ -107,6 +107,6 @@
   "module.events.field.self": "Choose a different {term_event}.",
   "module.events.field.closed": "This {term_event} is closed. Reopen it first.",
   "module.events.field.open": "This {term_event} is not closed.",
-  "module.events.title": "Events",
-  "module.events.permission.manage.title": "Create and change events, kinds and schedules, and close events"
+  "module.events.title": "{term_event_plural_title}",
+  "module.events.permission.manage.title": "Create and change {term_event_plural}, kinds and schedules, and close {term_event_plural}"
 }

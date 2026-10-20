@@ -153,5 +153,19 @@
   "core.people.search.found": "{count, plural, =0 {No one found} one {# person found} other {# people found}}",
   "core.people.report.kind.audit.entry": "audit log entries",
   "core.people.report.link": "Back to people",
-  "core.people.person.deleted_page": "Person deleted"
+  "core.people.person.deleted_page": "Person deleted",
+  "core.people.setting.legal_name.title": "Legal name",
+  "core.people.setting.legal_name.description": "Whether the profile asks for a person's legal name, which is used only where the law or the venue needs it.",
+  "core.people.setting.legal_name.option.hidden": "Not asked",
+  "core.people.setting.legal_name.option.optional": "Asked, but optional",
+  "core.people.setting.legal_name.option.required": "Asked and required",
+  "core.people.setting.phone.title": "Phone number",
+  "core.people.setting.phone.description": "Whether the profile asks for a phone number.",
+  "core.people.setting.phone.option.hidden": "Not asked",
+  "core.people.setting.phone.option.optional": "Asked, but optional",
+  "core.people.setting.phone.option.required": "Asked and required",
+  "core.people.setting.emergency_contacts.title": "Emergency contacts",
+  "core.people.setting.emergency_contacts.description": "Whether the profile asks for people to call in an emergency. They are never required.",
+  "core.people.setting.emergency_contacts.option.hidden": "Not asked",
+  "core.people.setting.emergency_contacts.option.optional": "Asked, but optional"
 }

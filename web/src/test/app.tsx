@@ -10,6 +10,8 @@ import { moduleSets } from "@/modules";
 import type { ScreenSet } from "@/registry/types";
 import { App } from "@/shell/App";
 import shellEn from "@/shell/messages/en.json";
+import { resetPublicForTest } from "@/shell/publicDoc";
+import { resetRegionalForTest } from "@/shell/regional";
 import { setSession, SIGNED_OUT } from "@/shell/session";
 import { setReadOnly } from "@/shell/readonly";
 import { wireClient } from "@/shell/wire";
@@ -31,6 +33,8 @@ export interface Mount {
 export function mountApp(opts: Mount = {}) {
   setSession(SIGNED_OUT);
   setReadOnly(false);
+  resetRegionalForTest();
+  resetPublicForTest();
   configureLanguages(["en"], "en");
   addCatalogue("shell", "en", shellEn);
   const client = createQueryClient({ retry: false });

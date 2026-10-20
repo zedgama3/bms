@@ -124,7 +124,7 @@
   "module.access.permission.rules.manage.title": "Change separation-of-duties rules",
   "module.access.permission.grants.read.title": "See who holds which role",
   "module.access.permission.grants.manage.title": "Grant and revoke roles",
-  "module.access.permission.department-grants.manage.title": "Grant and revoke department roles",
+  "module.access.permission.department-grants.manage.title": "Grant and revoke {term_department} roles",
   "module.access.field.taken": "Another role already has this name.",
   "module.access.field.scope": "A department role can hold only permissions a department can limit.",
   "module.access.field.immutable": "This can't be changed once the role is made.",

@@ -1,6 +1,41 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test as base } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
+
+/** The public settings document the shell reads at boot (`GET /api/settings/public`). */
+function publicSettings(over: Record<string, unknown> = {}) {
+  return {
+    name: "BMS",
+    contact_email: "",
+    language: "en",
+    languages: ["en"],
+    public_url: "",
+    theme: false,
+    timezone: "",
+    terms: {},
+    ...over,
+  };
+}
+
+/** Answers the two requests the shell makes at boot for the regional's settings, so a test that
+ *  mocks the session does not depend on what the real server holds. A route a test adds later
+ *  takes precedence. */
+async function mockPublicSettings(page: Page, doc: () => unknown = () => publicSettings()) {
+  await page.route("**/api/settings/public", (r) => r.fulfill({ json: doc() }));
+  await page.route("**/api/settings/theme.css**", (r) =>
+    r.fulfill({ contentType: "text/css", body: "" }),
+  );
+}
+
+/** Every test mocks the public settings, except the ones that talk to the real server
+ *  (`test.use({ stubPublicSettings: false })`), which get the real document and theme. */
+const test = base.extend<{ stubPublicSettings: boolean }>({
+  stubPublicSettings: [true, { option: true }],
+  page: async ({ page, stubPublicSettings }, provide) => {
+    if (stubPublicSettings) await mockPublicSettings(page);
+    await provide(page);
+  },
+});
 
 const mode = process.env["BMS_E2E_MODE"] ?? "default";
 const only = (m: string) => test.skip(mode !== m, `needs BMS_E2E_MODE=${m}`);
@@ -119,6 +154,7 @@ async function press(target: Locator, isPhone: boolean) {
 }
 
 test.describe("the frame", () => {
+  test.use({ stubPublicSettings: false }); // the real server answers
   test("renders with a skip link and landmarks; on a phone the Menu disclosure opens and closes on navigation", async ({
     page,
   }, info) => {
@@ -167,6 +203,7 @@ test.describe("the frame", () => {
 });
 
 test.describe("hello", () => {
+  test.use({ stubPublicSettings: false }); // the real server answers
   test("the entry appears and its screen calls GET /api/hello/public-greeting", async ({
     page,
   }) => {
@@ -210,6 +247,7 @@ test.describe("hello", () => {
 });
 
 test.describe("read-only copy", () => {
+  test.use({ stubPublicSettings: false }); // the real server answers
   test("the banner appears after the first call and the server's X-Read-Only is true", async ({
     page,
   }) => {
@@ -230,6 +268,7 @@ const screens: [string, string][] = [
 ];
 
 test.describe("accessibility and the phone layout", () => {
+  test.use({ stubPublicSettings: false }); // the real server answers
   for (const scheme of ["light", "dark"] as const) {
     for (const [name, path] of screens) {
       test(`${name} has no axe violations (${scheme})`, async ({ page }) => {
@@ -628,6 +667,7 @@ test.describe("accounts: the admin screens", () => {
 // ---- one real flow, nothing mocked: the server has no seeded accounts, so it signs up first ----
 
 test.describe("a real account (no mocks)", () => {
+  test.use({ stubPublicSettings: false }); // the real server answers
   test("sign up, set the playa name, see it in the profile, greeting 200, change password, sign out, sign in, taken", async ({
     page,
   }, info) => {
@@ -717,6 +757,7 @@ test.describe("a real account (no mocks)", () => {
 });
 
 test.describe("read-only copy: accounts", () => {
+  test.use({ stubPublicSettings: false }); // the real server answers
   test("sign-up is disabled and says why", async ({ page }) => {
     only("readonly");
     await page.goto("/accounts/sign-up");
@@ -1690,5 +1731,327 @@ test.describe("read-only copy: departments and events", () => {
     await page.goto("/events");
     await expect(page.getByRole("heading", { level: 1, name: "Events" })).toBeVisible();
     await expect(page.getByRole("button", { name: "New event" })).toBeDisabled();
+  });
+});
+
+// ---- settings (M4): the regional's values, terminology and an area's form, mocked at the network ----
+
+/** An in-memory settings document behind the settings routes. The public document follows what
+ *  was saved, as the real one does. */
+async function mockSettings(page: Page, permissions: string[]) {
+  await page.route("**/api/accounts/session", (r) =>
+    r.fulfill({ json: adminSession(permissions) }),
+  );
+  await mockMe(page);
+  const state = {
+    name: "BMS",
+    color: "",
+    departments: "Departments",
+    contrastError: true,
+    saved: [] as unknown[],
+    termSaves: [] as unknown[],
+  };
+  const text = (key: string, over: Record<string, unknown> = {}) => ({
+    key,
+    kind: "text",
+    default: "",
+    value: null,
+    secret_set: false,
+    stale: false,
+    ...over,
+  });
+  await mockPublicSettings(page, () =>
+    publicSettings({
+      name: state.name,
+      terms: {
+        en: {
+          term_department: state.departments.toLowerCase(),
+          term_department_plural: state.departments.toLowerCase(),
+          term_department_title: state.departments,
+          term_department_plural_title: state.departments,
+        },
+      },
+    }),
+  );
+  await page.route(/\/api\/settings\/?$/, (r) =>
+    r.fulfill({
+      json: {
+        revision: 3,
+        areas: [
+          {
+            name: "regional",
+            core: true,
+            settings: [
+              text("regional.name", {
+                default: "BMS",
+                value: state.name === "BMS" ? null : state.name,
+              }),
+              text("regional.contact_email"),
+              text("regional.public_url"),
+              text("regional.language", { kind: "enum", default: "en", options: ["en", "es"] }),
+              text("regional.timezone"),
+              text("regional.color_primary", { value: state.color || null }),
+              text("regional.color_primary_dark"),
+            ],
+          },
+          {
+            name: "accounts",
+            core: true,
+            settings: [
+              text("accounts.session_lifetime", { kind: "duration", default: "720h" }),
+              text("accounts.password_min_length", { kind: "int", default: "12" }),
+            ],
+          },
+          {
+            name: "hello",
+            core: false,
+            settings: [
+              text("hello.greeting", { default: "Hello" }),
+              text("hello.token", { kind: "secret", secret_set: true }),
+            ],
+          },
+        ],
+      },
+    }),
+  );
+  await page.route("**/api/settings/values", (r) => {
+    const body = r.request().postDataJSON() as { values: Record<string, string | null> };
+    state.saved.push(body);
+    const color = body.values["regional.color_primary"];
+    if (color && state.contrastError) {
+      state.contrastError = false;
+      return r.fulfill({
+        status: 400,
+        contentType: "application/problem+json",
+        body: JSON.stringify({
+          status: 400,
+          code: "invalid",
+          fields: [
+            {
+              field: "regional.color_primary",
+              code: "contrast",
+              reason: "too faint",
+              params: { ratio: "1.6", min: "4.5" },
+            },
+          ],
+        }),
+      });
+    }
+    if (body.values["regional.name"]) state.name = body.values["regional.name"];
+    if (color) state.color = color;
+    return r.fulfill({ json: { revision: 4 } });
+  });
+  const form = (singular: string, plural: string, st: string, pt: string) => ({
+    singular,
+    plural,
+    singular_title: st,
+    plural_title: pt,
+  });
+  await page.route("**/api/settings/terms", (r) =>
+    r.fulfill({
+      json: {
+        languages: ["en"],
+        terms: {
+          en: {
+            department: {
+              default: form("department", "departments", "Department", "Departments"),
+              override:
+                state.departments === "Departments" ? {} : { plural_title: state.departments },
+            },
+            event: {
+              default: form("event", "events", "Event", "Events"),
+              override: {},
+            },
+          },
+        },
+      },
+    }),
+  );
+  await page.route("**/api/settings/terms/en", (r) => {
+    const body = r.request().postDataJSON() as {
+      terms: Record<string, { plural_title?: string }>;
+    };
+    state.termSaves.push(body);
+    state.departments = body.terms["department"]?.plural_title ?? state.departments;
+    return r.fulfill({ json: { revision: 5 } });
+  });
+  return { state };
+}
+
+test.describe("settings: the M4 screens", () => {
+  for (const scheme of ["light", "dark"] as const) {
+    test(`an admin changes the name and colour, fixes a contrast error, and renames Departments, with touch alone (${scheme})`, async ({
+      page,
+    }, info) => {
+      only("default");
+      const isPhone = info.project.name === "phone";
+      await page.emulateMedia({ colorScheme: scheme });
+      const { state } = await mockSettings(page, ["settings.read", "settings.manage"]);
+      if (isPhone) await page.setViewportSize({ width: 320, height: 568 });
+      const check = async () => {
+        if (isPhone) {
+          await noHorizontalScroll(page);
+          await touchTargets(page);
+        }
+        await axe(page);
+      };
+
+      await page.goto("/settings");
+      await expect(page.getByRole("heading", { level: 1, name: "Settings" })).toBeVisible();
+      await expect(page.getByRole("link", { name: "BMS", exact: true }).first()).toBeVisible();
+      await expect(page.getByLabel("Contact mailbox")).toHaveAttribute("type", "email");
+      await expect(page.getByLabel("Web address")).toHaveAttribute("type", "url");
+      await check();
+
+      // a colour that is too faint: said live, refused by the server, the edits are kept
+      await page.getByLabel(/^Name/).fill("Playa Hall");
+      await page.getByLabel("Brand colour", { exact: true }).fill("#cccccc");
+      await expect(page.getByText(/too low \(at least 4\.5 to 1 is needed\)/)).toBeVisible();
+      await press(page.getByRole("button", { name: "Save" }), isPhone);
+      const alert = page.getByRole("alert");
+      await expect(alert).toContainText("Brand colour");
+      await expect(alert).toContainText("1.6 to 1");
+      await expect(page.getByLabel("Brand colour", { exact: true })).toHaveAttribute(
+        "aria-invalid",
+        "true",
+      );
+      await expect(page.getByLabel(/^Name/)).toHaveValue("Playa Hall");
+      await check();
+
+      await page.getByLabel("Brand colour", { exact: true }).fill("#0b5cad");
+      await press(page.getByRole("button", { name: "Save" }), isPhone);
+      await expect(page.getByText("Saved")).toBeVisible();
+      // the header follows without a reload
+      await expect(
+        page.getByRole("banner").getByRole("link", { name: "Playa Hall" }),
+      ).toBeVisible();
+      expect(state.saved.at(-1)).toEqual({
+        values: { "regional.name": "Playa Hall", "regional.color_primary": "#0b5cad" },
+      });
+
+      await press(page.getByRole("link", { name: "Terminology" }), isPhone);
+      await expect(page).toHaveURL(/\/settings\/terms$/);
+      const group = page.getByRole("group", { name: "Department" });
+      await group.getByLabel("Several, as a title").fill("Teams");
+      await check();
+      await press(page.getByRole("button", { name: "Save English" }), isPhone);
+      await expect(page.getByText("Saved")).toBeVisible();
+      expect(state.termSaves).toEqual([{ terms: { department: { plural_title: "Teams" } } }]);
+      const nav = await openMenu(page, isPhone);
+      await expect(nav.getByRole("link", { name: "Teams" })).toBeVisible();
+    });
+  }
+
+  test("an area form shows a duration as a number and unit and never shows a secret", async ({
+    page,
+  }, info) => {
+    only("default");
+    const isPhone = info.project.name === "phone";
+    const { state } = await mockSettings(page, ["settings.read", "settings.manage"]);
+    if (isPhone) await page.setViewportSize({ width: 320, height: 568 });
+
+    await page.goto("/settings");
+    await press(page.getByRole("link", { name: "Accounts" }), isPhone);
+    await expect(page).toHaveURL(/\/settings\/accounts$/);
+    await expect(page.getByLabel("How long people stay signed in", { exact: true })).toHaveValue(
+      "30",
+    );
+    await expect(page.getByLabel("Unit for How long people stay signed in")).toHaveValue("d");
+    await page.getByLabel("How long people stay signed in", { exact: true }).fill("14");
+    await press(page.getByRole("button", { name: "Save" }), isPhone);
+    await expect(page.getByText("Saved")).toBeVisible();
+    expect(state.saved.at(-1)).toEqual({ values: { "accounts.session_lifetime": "336h" } });
+
+    await page.goto("/settings/hello");
+    await expect(page.getByText("A value is set. It can't be shown.")).toBeVisible();
+    await expect(page.locator('input[type="password"]')).toHaveCount(0);
+    await press(page.getByRole("button", { name: "Replace: hello.token" }), isPhone);
+    await expect(page.getByLabel("New value for hello.token")).toHaveAttribute("type", "password");
+    if (isPhone) {
+      await noHorizontalScroll(page);
+      await touchTargets(page);
+    }
+    await axe(page);
+  });
+
+  test("a participant cannot open /settings and has no menu entry for it", async ({
+    page,
+  }, info) => {
+    only("default");
+    const isPhone = info.project.name === "phone";
+    await mockSettings(page, []);
+    await page.goto("/settings");
+    await expect(page.getByText("You don't have access to this screen.")).toBeVisible();
+    await expect(page.getByLabel(/^Name/)).toHaveCount(0);
+    if (isPhone) await page.getByRole("button", { name: "Menu" }).tap();
+    await expect(page.getByRole("link", { name: "Settings", exact: true })).toHaveCount(0);
+    await axe(page);
+  });
+
+  test("the departments page title follows a term rename", async ({ page }, info) => {
+    only("default");
+    const isPhone = info.project.name === "phone";
+    await mockSettings(page, ["settings.read", "settings.manage"]);
+    await page.route(/\/api\/departments\/?(\?.*)?$/, (r) =>
+      r.fulfill({ json: { departments: [] } }),
+    );
+    await page.goto("/settings/terms");
+    await page
+      .getByRole("group", { name: "Department" })
+      .getByLabel("Several, as a title")
+      .fill("Teams");
+    await press(page.getByRole("button", { name: "Save English" }), isPhone);
+    await expect(page.getByText("Saved")).toBeVisible();
+    await page.goto("/departments");
+    await expect(page.getByRole("heading", { level: 1, name: "Teams" })).toBeVisible();
+    await expect(page).toHaveTitle(/^Teams · /);
+  });
+
+  test("a person who can manage but not read gets an explanation and no form", async ({ page }) => {
+    only("default");
+    await mockSettings(page, ["settings.manage"]);
+    await page.goto("/settings");
+    await expect(page.getByText(/change settings but not read them/)).toBeVisible();
+    await expect(page.getByLabel(/^Name/)).toHaveCount(0);
+    await axe(page);
+  });
+});
+
+test.describe("read-only copy: settings", () => {
+  test("Save is disabled with the reason and the form keeps its edits", async ({ page }) => {
+    only("readonly");
+    await mockSettings(page, ["settings.read", "settings.manage"]);
+    const readOnly = { "X-Read-Only": "true" };
+    await page.route(/\/api\/settings\/?$/, (r) =>
+      r.fulfill({
+        headers: readOnly,
+        json: {
+          revision: 1,
+          areas: [
+            {
+              name: "regional",
+              core: true,
+              settings: [
+                {
+                  key: "regional.name",
+                  kind: "text",
+                  default: "BMS",
+                  value: null,
+                  secret_set: false,
+                  stale: false,
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+    await page.goto("/settings");
+    await page.getByLabel(/^Name/).fill("Playa Hall");
+    await expect(page.getByRole("button", { name: "Save" })).toBeDisabled();
+    await expect(
+      page.getByText("This copy is read-only, so this can't be saved right now."),
+    ).toBeVisible();
+    await expect(page.getByLabel(/^Name/)).toHaveValue("Playa Hall");
   });
 });

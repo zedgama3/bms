@@ -11,8 +11,9 @@ import { enabledSets } from "@/registry/registry";
 import { Button, ErrorState, Loading } from "@/ui";
 import { ToastProvider } from "@/ui/internal";
 import { BootContext } from "./boot";
-import { MODULES_KEY, SESSION_KEY } from "./bootKeys";
+import { MODULES_KEY, PUBLIC_KEY, SESSION_KEY } from "./bootKeys";
 import type { SessionResult } from "./bootKeys";
+import { applyPublic } from "./publicDoc";
 import { getReporter } from "./report";
 import type { BootState } from "./boot";
 import { loadCatalogues } from "./catalogues";
@@ -67,6 +68,20 @@ function Boot({ sets, createRouter = browserRouter, onRouter, leave }: AppProps)
           return { identity: false, session: SIGNED_OUT };
         throw e;
       }
+    },
+  });
+
+  // The regional's name, languages, terms and theme (settings.md). A failure (no settings
+  // endpoint yet, or the database down) keeps the shipped defaults and does not hold the boot:
+  // the first failure lets it go on, and the GET retry policy keeps trying in the background.
+  const publicQ = useQuery({
+    queryKey: PUBLIC_KEY,
+    queryFn: async ({ signal }) => {
+      // An invalidation (a settings save) re-reads the theme too; a plain refetch does not.
+      const saved = client.getQueryState(PUBLIC_KEY)?.isInvalidated === true;
+      const doc = await api.GET("/api/settings/public", { signal });
+      applyPublic(doc, saved);
+      return doc;
     },
   });
 
@@ -173,7 +188,11 @@ function Boot({ sets, createRouter = browserRouter, onRouter, leave }: AppProps)
     );
   }
 
-  const ready = router !== null && !sessionQ.isPending && loadedFor === `${activeKey}|${lang}`;
+  const ready =
+    router !== null &&
+    !sessionQ.isPending &&
+    (!publicQ.isPending || publicQ.failureCount > 0) &&
+    loadedFor === `${activeKey}|${lang}`;
   if (!ready || router === null) {
     return (
       <main id="content" className="mx-auto min-h-dvh max-w-md p-4">

@@ -24,12 +24,20 @@ export function hasCatalogue(owner: string, lang: string): boolean {
   return loaded.get(lang)?.has(owner) ?? false;
 }
 
+/** The owner of the regional's own terms (settings.md): merged last, so its `term.*` entries win
+ *  over the shell's catalogue whichever loaded first. */
+export const REGIONAL_OWNER = "regional";
+
 /** Every loaded message of a language, merged. */
 export function mergedFor(lang: string): Catalogue {
   const hit = merged.get(lang);
   if (hit) return hit;
   const out: Record<string, string> = {};
-  for (const cat of loaded.get(lang)?.values() ?? []) Object.assign(out, cat);
+  for (const [owner, cat] of loaded.get(lang) ?? []) {
+    if (owner !== REGIONAL_OWNER) Object.assign(out, cat);
+  }
+  const regional = loaded.get(lang)?.get(REGIONAL_OWNER);
+  if (regional) Object.assign(out, regional);
   merged.set(lang, out);
   return out;
 }

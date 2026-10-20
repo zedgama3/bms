@@ -79,5 +79,21 @@
   "core.accounts.detail.temp_label": "Temporary password",
   "core.accounts.detail.temp_must": "The person must change it at their next sign-in.",
   "core.accounts.detail.temp_copy": "Copy password",
-  "core.accounts.detail.temp_copied": "Password copied"
+  "core.accounts.detail.temp_copied": "Password copied",
+  "core.accounts.setting.signup.title": "Who can sign up",
+  "core.accounts.setting.signup.description": "Whether anyone can create an account or only people who were invited.",
+  "core.accounts.setting.signup.option.open": "Anyone can sign up",
+  "core.accounts.setting.signup.option.invitation": "Only people who are invited",
+  "core.accounts.setting.session_lifetime.title": "How long people stay signed in",
+  "core.accounts.setting.session_lifetime.description": "After this long a person has to sign in again. From 1 hour to 365 days.",
+  "core.accounts.setting.superuser_session_lifetime.title": "How long a superuser stays signed in",
+  "core.accounts.setting.superuser_session_lifetime.description": "The break-glass superuser signs in again after this long. From 10 minutes to 24 hours.",
+  "core.accounts.setting.password_min_length.title": "Shortest password",
+  "core.accounts.setting.password_min_length.description": "The fewest characters a new password may have. From 12 to 128.",
+  "core.accounts.setting.login_failure_limit.title": "Wrong passwords before a pause",
+  "core.accounts.setting.login_failure_limit.description": "How many wrong passwords for one e-mail address are allowed within the window below before sign-in pauses. From 3 to 100.",
+  "core.accounts.setting.client_failure_limit.title": "Wrong passwords from one device or network",
+  "core.accounts.setting.client_failure_limit.description": "The same, counted per device or network address. Many people share one address at a venue, so keep it at least as high as the limit above. From 10 to 1000.",
+  "core.accounts.setting.login_failure_window.title": "How long failed sign-ins are counted",
+  "core.accounts.setting.login_failure_window.description": "Failed attempts older than this are forgotten. From 1 minute to 24 hours."
 }

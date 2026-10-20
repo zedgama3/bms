@@ -47,5 +47,14 @@
   "core.audit.picker.none": "No one matches.",
   "core.audit.count": "{count, plural, =0 {No entries shown} one {# entry shown} other {# entries shown}}",
   "module.audit.field.mismatch": "This action isn't in that area.",
-  "module.audit.field.range": "The first day must be on or before the last day."
+  "module.audit.field.range": "The first day must be on or before the last day.",
+  "core.audit.setting.retention.title": "How long the audit log is kept",
+  "core.audit.setting.retention.description": "Entries older than this are removed. 0 keeps them forever; otherwise at least 365 days and at most 100 years.",
+  "core.audit.setting.self_view.title": "What people are told about who read their data",
+  "core.audit.setting.self_view.description": "How much a person is shown about who looked at their own records. This has no effect until that feature ships.",
+  "core.audit.setting.self_view.option.off": "Nothing",
+  "core.audit.setting.self_view.option.viewed": "That and when their records were viewed",
+  "core.audit.setting.self_view.option.fields": "That, and which parts were viewed",
+  "core.audit.setting.self_view.option.titles": "All of that, and the role or position of the viewer",
+  "core.audit.setting.retention.zero": "Kept forever"
 }

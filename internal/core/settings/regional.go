@@ -232,14 +232,24 @@ func themeRule(c rgb, dark bool) string {
 	return fmt.Sprintf("--primary: %s; --primary-fg: %s; --primary-hover: %s;", c.hex(), c.foreground().hex(), hover.hex())
 }
 
+// The media queries a theme rule sits in. The shipped palette (web/src/index.css) is a bare
+// :root for light and the same :root inside prefers-color-scheme: dark, so a regional's
+// colour must be guarded the same way or the later-loaded theme.css would beat the shipped
+// dark tokens: the light colour sits under "not dark" (which also matches a browser with no
+// preference) and the dark colour under dark, so an unset scheme keeps the shipped tokens.
+const (
+	mediaLight = "@media not (prefers-color-scheme: dark)"
+	mediaDark  = "@media (prefers-color-scheme: dark)"
+)
+
 // renderTheme returns the stylesheet for the two brand colours ("" for none).
 func renderTheme(light, dark string) string {
 	var b strings.Builder
 	if c, ok := parseHex(light); ok {
-		b.WriteString(":root { " + themeRule(c, false) + " }\n")
+		b.WriteString(mediaLight + " { :root { " + themeRule(c, false) + " } }\n")
 	}
 	if c, ok := parseHex(dark); ok {
-		b.WriteString("@media (prefers-color-scheme: dark) { :root { " + themeRule(c, true) + " } }\n")
+		b.WriteString(mediaDark + " { :root { " + themeRule(c, true) + " } }\n")
 	}
 	return b.String()
 }

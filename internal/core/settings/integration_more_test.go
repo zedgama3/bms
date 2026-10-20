@@ -170,7 +170,8 @@ func TestThemeCSS_Rendering(t *testing.T) {
 	t.Run("light only", func(t *testing.T) {
 		r.mustSet("regional.color_primary", "#9a3412") //nolint:contextcheck // the helper builds its own ctx
 		css := first(r.svc.ThemeCSS(ctx))
-		if !strings.Contains(css, ":root") || strings.Contains(css, "prefers-color-scheme") {
+		// The light rule is guarded, so the shipped dark tokens keep winning in dark mode.
+		if !strings.HasPrefix(css, "@media not (prefers-color-scheme: dark) { :root {") || strings.Contains(css, "@media (prefers-color-scheme: dark)") {
 			t.Fatalf("css = %q", css)
 		}
 		if got := cssValues(css, "--primary"); len(got) != 1 || got[0] != "#9a3412" {
@@ -196,7 +197,8 @@ func TestThemeCSS_Rendering(t *testing.T) {
 	t.Run("both schemes", func(t *testing.T) {
 		r.mustSet("regional.color_primary_dark", "#f97316") //nolint:contextcheck // the helper builds its own ctx
 		css := first(r.svc.ThemeCSS(ctx))
-		if strings.Count(css, ":root") != 2 || strings.Count(css, "@media (prefers-color-scheme: dark)") != 1 {
+		if strings.Count(css, ":root") != 2 || strings.Count(css, "@media (prefers-color-scheme: dark)") != 1 ||
+			strings.Count(css, "@media not (prefers-color-scheme: dark)") != 1 {
 			t.Fatalf("css = %q", css)
 		}
 		if got := cssValues(css, "--primary-fg"); len(got) != 2 || got[0] != "#ffffff" || got[1] != "#1a1a1a" {
