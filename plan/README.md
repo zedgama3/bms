@@ -25,7 +25,7 @@ copy and can fork it. Features are modules.
 ## Status
 
 - **Phase:** 0, foundations
-- **Last updated:** 2026-10-19
+- **Last updated:** 2026-10-20
 - **Done 2026-10-16:**
   - Repo scaffolded: plan, agents, skills, lint rules, dev compose. Methodology carried over
     from Sojourn (D7).
@@ -112,6 +112,16 @@ copy and can fork it. Features are modules.
      on feat/m1.
      Done 2026-10-19: `settings` and `notify` are Approved (D39), with the owner's answers.
      Next milestone: M4 (see 09-core-features.md). The M4 build is next.
+     Done 2026-10-20: M4 partly implemented on feat/m1: `settings` and `notify` Implemented
+       (the e-mail outbox and SMTP sender, templates with admin overrides, password reset by
+       e-mail, the people deletion-request notice, the superuser sign-in alert, the notify admin
+       screens (templates, outbox) and the forgotten-password screens). Still open in M4:
+       `volunteers` (module-volunteers.md, Not started); `jobs.md` and `files.md` (Not started;
+       the settings logo waits for files, D39). M4 stays open.
+     Awaiting the owner (06-open-questions.md, Build (M4)): six pending spec amendments
+       (Q-AMEND1), reset-request rate limiting (Q-RESET-RATE), reset lifetime wording
+       (Q-RESET-LIFE), settings review (Q-SETTINGS-REVIEW), Mailpit SMTP AUTH (Q-MAILPIT-AUTH),
+       and web review points (Q-WEB-REVIEW).
      Open follow-ups (all waiting on the owner or architect):
      - (a) Confirm D34 as D20's debug-level exception.
      - (b) The M3 part name `departments-events` is not a core area name for `module.IsCoreArea`

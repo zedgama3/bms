@@ -1,6 +1,6 @@
 # notify
 
-- **Status:** Approved (2026-10-19, D39)
+- **Status:** Implemented (2026-10-20; approved D39; the pending amendments below are built and await approval)
 - **Amendment 2026-10-19 (pending owner approval):** retry, expiry and the text of failed rows (`Message.TTL`, `MaxAge`, `expires_at`, `ExpireStale`, the `SendTo` dedupe index); see "Amendments". Until approved, decision 11 and the Data table stand as written.
 - **Amendment 2026-10-19 (pending owner approval):** `Notifier` gains `Configured(ctx) (bool, error)` so a caller can refuse before work whose outcome must not depend on the recipient (closes identity.md's "Needs a decision" on reset-request uniformity); `notifytest.Fake` gains `SetConfigured`. See "Amendment 2026-10-19 (pending owner approval): `Notifier.Configured`" before Open questions; F64 to F66.
 - **Package:** `internal/core/notify` (contract, catalogue, outbox, sender, handlers), `internal/core/notify/message` (the record type), `internal/core/notify/postgres` (store, `sql/`, `migrations/`), `internal/core/notify/smtp` (the SMTP channel; the only package importing `net/smtp`), `internal/core/notify/notifytest` (fakes)   **UI:** `web/src/core/notify/`

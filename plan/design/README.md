@@ -24,7 +24,7 @@ The order follows dependencies: foundation first, then the core, then modules.
 | 8 | `people.md` | profiles, contacts, consent, export and deletion | Implemented (2026-10-18) |
 | 9 | `departments-events.md` | departments, leadership, archiving, events (D24) | Implemented (2026-10-18) |
 | 10 | `signals.md` | in-process domain events (D24) | Implemented (2026-10-17) |
-| 11 | `notify.md` | notifier contract, e-mail | Approved (2026-10-19, D39) |
+| 11 | `notify.md` | notifier contract, e-mail | Implemented (2026-10-20) |
 | 12 | `audit.md` | append-only audit log and its read-only spool | Implemented (2026-10-18) |
 | 13 | `files.md` | attachments and storage | Not started |
 | 14 | `jobs.md` | scheduled and deferred work | Not started |

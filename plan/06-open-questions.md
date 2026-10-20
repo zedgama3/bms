@@ -47,6 +47,30 @@ here, copy it into the document it affects, and tick the box.
 - [ ] **Q-UPGRADE:** What's the upgrade promise between versions for forks that add their own
       modules (a stable module contract, semver)?
 
+### Build (M4, awaiting the owner)
+
+- [ ] **Q-AMEND1:** Approve six pending spec amendments, already built on feat/m1: (1)
+      `Notifier.Configured`, so a reset returns a uniform 501 when e-mail is off (identity.md
+      and notify.md); (2) settings' `lazyAuthorizer`, no-store and ETag caching, and
+      `PublicOrigin` deferred; (3) `HoldersOf` counts explicit grants only; (4) the
+      `hello.greeted` template; (5) notify expiry: `Message.TTL`, `MaxAge` of 7 days, failed
+      rows retryable until expiry, `ExpireStale`, and `SendTo` dedupe (F67–F72).
+- [ ] **Q-RESET-RATE:** Reset requests share the sign-in failure buckets. That can lock out
+      sign-in, and about 960 reset e-mails a day to one victim are possible. Recommended: own
+      buckets for resets plus a per-account cooldown. Relates to D36(i).
+- [ ] **Q-RESET-LIFE:** The reset lifetime is passed to templates as English words ("60
+      minutes"). Recommended: pass a number and let each template word the unit.
+- [ ] **Q-SETTINGS-REVIEW:** Settings review points: (1) drop the early area check, which can
+      wrongly refuse a valid change for up to 30 s; (2) canonicalise and refuse a bad
+      `public_url`; (3) move the crypto and contrast tests to unit tests; (4) document that a
+      Check cannot see whether a secret is set, and that re-saving a secret counts as a change.
+- [ ] **Q-MAILPIT-AUTH:** The dev Mailpit lacks the SMTP AUTH settings
+      (`MP_SMTP_AUTH_ACCEPT_ANY`, `MP_SMTP_AUTH_ALLOW_INSECURE`), so SMTP login is not tested.
+      Recommended: enable them in `deploy/compose`.
+- [ ] **Q-WEB-REVIEW:** Web review points: (1) `Referrer-Policy: no-referrer` on the reset
+      path, or `strict-origin` site-wide; (2) translate outbox error tokens and template
+      names; (3) the outbox "address" wording.
+
 ## Resolved
 
 - [x] **Q-TYPE:** What kind of project is it? A web application, fully extensible, so each
