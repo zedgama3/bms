@@ -619,3 +619,23 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
 - **Qualification verification (refines D40, Q-QUAL):** only department leads verify
   qualifications. A department-specific qualification is verified by that department's leads.
   An org-wide qualification (for example ICS100) is verified by any department lead.
+
+## D42. Owner's answers to the volunteers spec's open questions (Q-VOL1–Q-VOL5)
+
+- **Status:** Accepted (2026-10-20), decided by the owner. Answers the open questions in
+  [design/module-volunteers.md](design/module-volunteers.md) (Draft).
+- **Qualification waivers (Q-VOL1):** a lead may assign someone who lacks a required
+  qualification. This is an explicit, audited waiver, and never happens on self sign-up.
+- **Qualification records are internal (Q-VOL2):** a qualification record is internal data.
+  The uploaded certificate file stays personal.
+- **Qualification catalogue (Q-VOL3):** the org-wide catalogue is managed site-wide by
+  department stewards. Department-specific entries are managed by that department's admins
+  and leads.
+- **Certificate self-upload (Q-VOL4):** self-upload of certificates is on by default. An
+  upload never counts until a lead verifies it.
+- **Seeing who else is on a shift (Q-VOL5):** volunteers on a shift may see who else is on it,
+  by burn (playa) name only. This is configurable by the regional; the architect is designing
+  the setting. Reason given: some people don't get along, so they can pick another shift.
+- **Still Draft:** the spec is not yet Approved. The owner has not yet approved the identity
+  D41 amendment, [design/jobs.md](design/jobs.md), [design/files.md](design/files.md), or the
+  volunteers spec as a whole.

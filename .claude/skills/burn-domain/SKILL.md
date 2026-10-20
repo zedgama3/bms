@@ -134,6 +134,10 @@ mark should be checked too.
 - **Check-in and check-out are recorded at a desk** (manuals). A missing check-out can
   trigger a search, and shift credit follows the check-out. Volunteers are on duty until
   released, and a lead may send a tired volunteer home without it counting against them.
+- **Volunteers choose shifts partly by who else is on them** (owner, 2026-10-20). Some people
+  don't get along, so being able to see who is on a shift before booking lets a volunteer pick
+  another. Fellow volunteers see the playa name only, never legal names or contact details,
+  and whether the roster is shown at all varies by regional (configurable).
 - **Pairing happens on the day** (manuals): the shift supervisor pairs experienced with new,
   never partners or spouses.
 - **What volunteering earns differs** (manuals): at some burns hours earn ticket credit,
@@ -164,6 +168,9 @@ mark should be checked too.
 - **Only department leads verify qualifications** (owner, 2026-10-20). Never ordinary
   volunteers, and never self-attested. A department-specific qualification is verified only by
   a lead of that department; an org-wide one can be verified by any department lead.
+- **Leads may waive a missing requirement** (owner, 2026-10-20). A lead can assign someone
+  who lacks a required qualification, as an explicit, recorded waiver (who waived, what, when).
+  Volunteers can never waive a requirement for themselves.
 - **Department-specific or org-wide.** Some qualifications belong to one department, such as
   a ranger department's field training or medical lead training; others are org-wide, such as
   ICS-100.
@@ -267,4 +274,5 @@ open or invitation-only sign-up, terminology, and the default language: most use
 some another (owner, 2026-10-16). From the manuals: position names (one burn's "shadows" are
 another's "trackers"), qualification thresholds (experience shifts, training validity), the
 age that counts as a child or elder, what volunteering earns, whether shifts need a lead's
-approval, check-in windows, and per-event rules (gate hours, quiet hours, burn bans).
+approval, whether volunteers see who else is on a shift (owner, 2026-10-20), check-in windows,
+and per-event rules (gate hours, quiet hours, burn bans).
