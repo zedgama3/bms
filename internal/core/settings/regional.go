@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"net/url"
@@ -53,9 +54,18 @@ func regionalDecls() []Decl {
 
 // regionalNormalizers rewrite a trimmed value before it is checked and stored.
 var regionalNormalizers = map[string]func(string) string{
-	regionalArea + "." + keyPublicURL:      func(v string) string { return strings.TrimRight(v, "/") },
+	regionalArea + "." + keyPublicURL:      canonicalPublicURLOrSame,
 	regionalArea + "." + keyColorPrimary:   strings.ToLower,
 	regionalArea + "." + keyColorPrimaryDk: strings.ToLower,
+}
+
+// canonicalPublicURLOrSame is the normalizer of regional.public_url: the canonical form of a
+// valid value, and v unchanged otherwise, so the Check that follows reports why.
+func canonicalPublicURLOrSame(v string) string {
+	if c, err := canonicalPublicURL(v); err == nil {
+		return c
+	}
+	return v
 }
 
 func checkName(v string) error {
@@ -81,31 +91,85 @@ func checkContactEmail(v string) error {
 	return nil
 }
 
+// The values of the reason param of a refused regional.public_url (code url).
+const (
+	urlReasonScheme   = "scheme"
+	urlReasonHost     = "host"
+	urlReasonUserinfo = "userinfo"
+	urlReasonQuery    = "query"
+	urlReasonFragment = "fragment"
+	urlReasonChars    = "chars"
+)
+
+// checkPublicURL is the Check of regional.public_url (settings.md, "regional.public_url
+// canonical form"): "" or an absolute http(s) URL with a host, an optional port in 1..65535,
+// no userinfo, no query ("?") and no fragment ("#"), and no space, control or Unicode format character. A
+// value over MaxURLBytes is too_long; every other refusal is code url with a reason param.
 func checkPublicURL(v string) error {
+	_, err := parsePublicURL(v)
+	return err
+}
+
+// canonicalPublicURL returns the stored form of a valid regional.public_url: lowercase
+// scheme, lowercase host (and port), the path as given and every trailing "/" removed. It
+// fails as checkPublicURL does; "" is valid and stays "".
+func canonicalPublicURL(v string) (string, error) { return parsePublicURL(v) }
+
+// parsePublicURL validates v and returns its canonical form.
+func parsePublicURL(v string) (string, error) {
 	if v == "" {
-		return nil
+		return "", nil
 	}
 	if len(v) > MaxURLBytes {
 		p := tooLong(MaxURLBytes)
-		return fieldError("", p.code, p.params, p.reason)
+		return "", fieldError("", p.code, p.params, p.reason)
 	}
-	bad := func(reason string) error {
-		return fieldError("", codeURL, map[string]string{"schemes": "https, http"}, reason)
+	bad := func(reason, why string) (string, error) {
+		params := map[string]string{"reason": reason}
+		if reason == urlReasonScheme {
+			params["schemes"] = "https, http"
+		}
+		return "", fieldError("", codeURL, params, why)
+	}
+	if strings.IndexFunc(v, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) || unicode.Is(unicode.Cf, r) }) >= 0 {
+		return bad(urlReasonChars, "must not contain a space, a control character or an invisible format character")
+	}
+	if strings.Contains(v, "?") {
+		return bad(urlReasonQuery, "must not contain a query")
+	}
+	if strings.Contains(v, "#") {
+		return bad(urlReasonFragment, "must not contain a fragment")
 	}
 	u, err := url.Parse(v)
-	switch {
-	case err != nil:
-		return bad("must be a valid URL")
-	case u.Scheme != "https" && u.Scheme != "http":
-		return bad("must start with https:// or http://")
-	case u.Hostname() == "":
-		return bad("must name a host")
-	case u.User != nil:
-		return bad("must not contain a user name or password")
-	case u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || strings.Contains(v, "#"):
-		return bad("must not contain a query or a fragment")
+	if err != nil {
+		var esc url.EscapeError
+		if errors.As(err, &esc) {
+			return bad(urlReasonChars, "must be a valid URL")
+		}
+		return bad(urlReasonHost, "must be a valid URL")
 	}
-	return nil
+	switch {
+	case u.Scheme != "https" && u.Scheme != "http": // url.Parse lowercases the scheme
+		return bad(urlReasonScheme, "must start with https:// or http://")
+	case u.User != nil:
+		return bad(urlReasonUserinfo, "must not contain a user name or password")
+	case u.Hostname() == "" || strings.HasSuffix(u.Host, ":"):
+		return bad(urlReasonHost, "must name a host")
+	}
+	if port := u.Port(); port != "" {
+		if n, err := strconv.Atoi(port); err != nil || n < 1 || n > 65535 {
+			return bad(urlReasonHost, "the port must be 1 to 65535")
+		}
+	}
+	// The authority and the path come from the raw text, not from u (whose Host is already
+	// unescaped, so "%25eth0" or "%C3%A9" would not survive): only the scheme and host change
+	// case, so canonicalising a canonical value changes nothing.
+	rest := v[len(u.Scheme)+len("://"):]
+	authority, path := rest, ""
+	if i := strings.IndexByte(rest, '/'); i >= 0 {
+		authority, path = rest[:i], rest[i:]
+	}
+	return u.Scheme + "://" + strings.ToLower(authority) + strings.TrimRight(path, "/"), nil
 }
 
 func checkTimezone(v string) error {

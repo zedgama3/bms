@@ -15,10 +15,19 @@ func (s *Service) regionalIn(ctx context.Context, sn *snapshot) Regional {
 		}
 		return v
 	}
+	// The canonical form of the public URL; a stored value that the rule now refuses (an
+	// upgrade) reads as unset, under decision 5.
+	publicURL := get(keyPublicURL)
+	if c, err := canonicalPublicURL(publicURL); err == nil {
+		publicURL = c
+	} else {
+		publicURL = ""
+		s.noteStale(ctx, regionalArea+"."+keyPublicURL)
+	}
 	return Regional{
 		Name:         get(keyName),
 		ContactEmail: get(keyContactEmail),
-		PublicURL:    get(keyPublicURL),
+		PublicURL:    publicURL,
 		Language:     get(keyLanguage),
 		Timezone:     get(keyTimezone),
 		Languages:    slices.Clone(Languages),

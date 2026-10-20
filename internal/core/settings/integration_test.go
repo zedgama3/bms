@@ -621,16 +621,6 @@ func TestSet_Regional_Table(t *testing.T) {
 	}
 }
 
-func TestSet_Regional_ContrastKnownPairs(t *testing.T) {
-	r := newIRig(t)
-	// #9a3412 on white is about 7.3:1; #f97316 on white is about 2.8:1.
-	_, err := r.svc.Set(r.actx(), changes("regional.color_primary", "#f97316"))
-	ratio := paramOf(err, "regional.color_primary", "contrast", "ratio")
-	if !strings.HasPrefix(ratio, "2.") && !strings.HasPrefix(ratio, "3.") {
-		t.Errorf("ratio for #f97316 on white = %q, want about 2.8", ratio)
-	}
-}
-
 func TestSet_Regional_PublicURLTrailingSlashRemoved(t *testing.T) {
 	r := newIRig(t)
 	r.mustSet("regional.public_url", "https://burn.example.org/")

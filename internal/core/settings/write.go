@@ -26,14 +26,18 @@ type change struct {
 
 // Set changes the settings named in c, all or nothing. Needs settings.manage. Every key
 // must be declared; each value is trimmed (a Secret is not), parsed by its kind and passed
-// through the declaration's Check, then each touched area's Check runs over its effective
-// values. A nil value, or one equal to the default, resets the key. One audit entry per key
-// that really changed is recorded inside the transaction, the revision is bumped, and the
+// through the declaration's Check; then, inside the Write transaction, each touched area's
+// Check runs over its effective values read from the stored rows, never from the cache. A
+// nil value, or one equal to the default, resets the key. One audit entry per key that
+// really changed is recorded inside the transaction, the revision is bumped, and the
 // snapshot is replaced after commit; a batch that changes nothing writes, records and bumps
-// nothing. It returns the revision after the write. Fails errs.Unauthenticated,
-// errs.Permission, errs.Invalid (field = the setting key; codes in the spec), errs.Unsupported
-// (a Secret value without a sealing key), errs.Unavailable wrapping db.ErrReadOnly,
-// errs.Internal (no revision row) and store kinds.
+// nothing. A Secret is never compared with what is stored: saving one again counts as a
+// change (a fresh nonce makes new ciphertext, the revision bumps, the change is audited),
+// and neither a Check nor an area Check can tell whether a secret is already set (F22a).
+// It returns the revision after the write. Fails errs.Unauthenticated, errs.Permission,
+// errs.Invalid (field = the setting key; codes in the spec), errs.Unsupported (a Secret
+// value without a sealing key), errs.Unavailable wrapping db.ErrReadOnly, errs.Internal (no
+// revision row) and store kinds.
 func (s *Service) Set(ctx context.Context, c Changes) (_ Revision, err error) {
 	const op = "settings.Service.Set"
 	ctx, span := s.start(ctx, "set")
@@ -47,13 +51,9 @@ func (s *Service) Set(ctx context.Context, c Changes) (_ Revision, err error) {
 		return 0, err
 	}
 	span.SetAttrs(telemetry.Token("settings.area", planArea(plan)))
-	sn, err := s.current(ctx)
-	if err != nil {
-		return 0, wrap(op, err)
-	}
-	if err := s.checkAreas(op, plan, sn); err != nil {
-		return 0, err
-	}
+	// The area Check runs once, in the Write transaction over the stored rows (setTx): a
+	// check over the cached snapshot could refuse a batch that is valid against what is
+	// stored, or pass one that is not (decision 15, F23a).
 	sealed, err := s.sealAll(op, plan)
 	if err != nil {
 		return 0, err
