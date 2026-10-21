@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"io/fs"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/zedgama3/bms/internal/core/authz"
+	"github.com/zedgama3/bms/internal/core/privacy"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/lib/validate"
 )
@@ -83,6 +85,20 @@ type Manifest struct {
 	// Settings this module declares. Keys are stored as "<Name>.<Key>" by settings.
 	Settings []SettingDecl
 
+	// Views lists the response types the module sends on the wire (zero values); Groups
+	// the field groups they name (D44, privacy-tags.md). Validate runs privacy.Check(Views,
+	// Groups) (problems under views[i] and groups[j]), requires privacy.Settings(Groups)
+	// to be present in Settings with equal options and default (settings[k] missing or
+	// mismatch) and, for each group offering "holders" whose Permission this module
+	// declares, requires that permission's Reaches to be at least the highest level among
+	// the group's fields, nested types included, from privacy.GroupLevels(Views)
+	// (permissions[i].reaches too_low). Check also requires the omit option of every
+	// non-public field and rejects a self-marshaling view, an interface-kind field and a
+	// named unexported embedded field (D46). Both nil means the module sends
+	// no tagged types.
+	Views  []any
+	Groups []privacy.Group
+
 	// Publishes and Subscribes are signal names (D24). A published name starts with
 	// "<Name>."; a subscribed name is any valid name, declared by the core or by a module
 	// compiled in.
@@ -118,6 +134,7 @@ func (m Manifest) Validate() error {
 	}
 	m.validatePermissions(&acc)
 	m.validateSettings(&acc)
+	m.validatePrivacy(&acc)
 	m.validateSignals(&acc)
 	m.validateCapabilities(&acc)
 	m.validatePoints(&acc)
@@ -235,5 +252,45 @@ func (m Manifest) validatePoints(acc *validate.Errors) {
 			acc.Addf(field, "duplicate", "declared more than once")
 		}
 		contrib[p] = struct{}{}
+	}
+}
+
+// validatePrivacy runs the privacy-tags checks: the views are tagged, the groups are sound,
+// their visibility settings are declared and a holders permission reaches far enough.
+func (m Manifest) validatePrivacy(acc *validate.Errors) {
+	if err := privacy.Check(m.Views, m.Groups); err != nil {
+		acc.Add(err)
+		return // the cross-checks below assume sound groups
+	}
+	decls, err := privacy.Settings(m.Groups)
+	if err != nil {
+		acc.Add(err) // unreachable after Check; kept so a change there cannot pass silently
+		return
+	}
+	missing := 0
+	for _, want := range decls {
+		k := slices.IndexFunc(m.Settings, func(s SettingDecl) bool { return s.Key == want.Key })
+		switch {
+		case k < 0:
+			acc.Addf(fmt.Sprintf("settings[%d]", len(m.Settings)+missing), "missing",
+				"the setting %q of a privacy group must be declared: append privacy.Settings(Groups)", want.Key)
+			missing++
+		case m.Settings[k].Kind != want.Kind || m.Settings[k].Default != want.Default ||
+			!slices.Equal(m.Settings[k].Options, want.Options):
+			acc.Addf(fmt.Sprintf("settings[%d]", k), "mismatch",
+				"the setting %q differs from privacy.Settings(Groups): same kind, options and default", want.Key)
+		}
+	}
+	levels := privacy.GroupLevels(m.Views)
+	for _, g := range m.Groups {
+		if !slices.Contains(g.Options, privacy.AudienceHolders) {
+			continue
+		}
+		for i, p := range m.Permissions {
+			if p.Name == g.Permission && p.Reaches < levels[g.Name] {
+				acc.Addf(fmt.Sprintf("permissions[%d].reaches", i), "too_low",
+					"must be at least %s: group %q holds fields of that level", levels[g.Name], g.Name)
+			}
+		}
 	}
 }

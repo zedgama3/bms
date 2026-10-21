@@ -16,7 +16,7 @@ import (
 	"github.com/zedgama3/bms/internal/lib/secret"
 )
 
-// s3Config reads the MinIO (or other S3-compatible) test endpoint from the environment
+// s3Config reads the SeaweedFS (or other S3-compatible) test endpoint from the environment
 // (files.md, Test plan): BMS_TEST_S3_ENDPOINT, BMS_TEST_S3_BUCKET, BMS_TEST_S3_ACCESS_KEY and
 // BMS_TEST_S3_SECRET_KEY. It skips, with the reason, when the endpoint is not configured; the
 // compose profile `s3` (deploy/compose) provides one. Every call gets its own key prefix, so
@@ -25,7 +25,7 @@ func s3Config(t *testing.T) s3.Config {
 	t.Helper()
 	endpoint := os.Getenv("BMS_TEST_S3_ENDPOINT")
 	if endpoint == "" {
-		t.Skip("BMS_TEST_S3_ENDPOINT is not set: start the compose profile `s3` (MinIO) and export BMS_TEST_S3_* to run the s3 store tests")
+		t.Skip("BMS_TEST_S3_ENDPOINT is not set: start the compose profile `s3` (SeaweedFS) and export BMS_TEST_S3_* to run the s3 store tests")
 	}
 	var r [6]byte
 	if _, err := rand.Read(r[:]); err != nil {

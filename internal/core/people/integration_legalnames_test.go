@@ -129,20 +129,53 @@ func TestLegalNamesOf_NoContactsRead_ReturnsPermissionAndAuditsNothing(t *testin
 	}
 }
 
-// "In any extent": a department-scoped holder may call it. Whether the names of people
-// outside the department are withheld is the membership extension point's business, and
-// with no provider registered decision 9 holds.
-func TestLegalNamesOf_DepartmentScopedContactsRead_Succeeds(t *testing.T) {
+// D45: "in any extent" still lets a department-scoped holder call it (no Permission), but
+// the extent answers only for the people it reaches: with no provider registered a
+// department-scoped contacts.read reaches nobody, so the map is empty and nothing is audited.
+func TestLegalNamesOf_DepartmentScopedContactsRead_NoProvider_ReturnsNone(t *testing.T) {
 	f := newLegalFixture(t)
 	me := f.insertPerson(seed{Playa: "Dept Lead"})
 	f.az.GrantIn(me, permContacts, model.NewID[model.DepartmentID]())
 	got, err := f.svc.LegalNamesOf(asPerson(ctxT(t), me), []model.PersonID{f.a})
 	wantNoErr(t, err)
-	if got[f.a] != "Odalys Brindle" {
-		t.Errorf("got %v", got)
+	if len(got) != 0 {
+		t.Errorf("got %v, want none", got)
 	}
-	if n := f.count("people.person.read"); n != 1 {
-		t.Errorf("%d audit entries, want 1", n)
+	if n := f.count("people.person.read"); n != 0 {
+		t.Errorf("%d audit entries, want 0", n)
+	}
+}
+
+// A2.8 / D46: reach never excludes the actor: the department-scoped holder with no provider
+// is still answered for their own legal name, and a self read is not audited.
+func TestLegalNamesOf_DepartmentScopedContactsRead_NoProvider_ReturnsSelfOnly(t *testing.T) {
+	f := newLegalFixture(t)
+	me := f.insertPerson(seed{Playa: "Dept Lead", Legal: "Wren Quillon"})
+	f.az.GrantIn(me, permContacts, model.NewID[model.DepartmentID]())
+	got, err := f.svc.LegalNamesOf(asPerson(ctxT(t), me), []model.PersonID{f.a, me, f.b})
+	wantNoErr(t, err)
+	if len(got) != 1 || got[me] != "Wren Quillon" {
+		t.Errorf("got %v, want only the actor's own name", got)
+	}
+	if n := f.count("people.person.read"); n != 0 {
+		t.Errorf("%d audit entries, want 0 (a self read)", n)
+	}
+}
+
+// With a provider, a department-scoped holder gets names only for the members the provider
+// reports for the extent's departments, and only those are audited.
+func TestLegalNamesOf_DepartmentScopedContactsRead_WithProvider_OnlyMembers(t *testing.T) {
+	f := newMemberFixture(t)
+	f.linkProviders(f.prov)
+	ctx := f.deptViewer(permContacts, f.d1)
+	// one: d1, two: d2, both: d1+d2, loner: none.
+	got, err := f.svc.LegalNamesOf(ctx, []model.PersonID{f.one, f.two, f.both, f.loner})
+	wantNoErr(t, err)
+	if len(got) != 2 || got[f.one] != "Odalys Brindle" || got[f.both] != "Marisol Quenby" {
+		t.Errorf("got %v, want only the members of d1 (one and both)", got)
+	}
+	if n := f.count("people.person.read"); n != 2 {
+		t.Errorf("%d audit entries, want 2", n)
 	}
 }
 

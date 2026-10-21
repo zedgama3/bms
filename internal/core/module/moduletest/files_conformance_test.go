@@ -156,7 +156,7 @@ func runFilesConformance(t *testing.T, mu filesMutant) {
 	}
 	moduletest.Conformance(t, module.Manifest{Name: "alpha"}, factory,
 		func(_ context.Context, man module.Manifest) (module.Deps, error) { return filesProvision(man) },
-		moduletest.WithSeed(seed))
+		moduletest.WithSeed(seed), moduletest.WithoutViews())
 }
 
 func TestConformanceFilesHelper(t *testing.T) {

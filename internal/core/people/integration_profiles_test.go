@@ -702,8 +702,9 @@ func TestGet_Consents_OnlyWithManage(t *testing.T) {
 	}
 }
 
-// Decision 9: any extent reaches every person.
-func TestGet_DepartmentScopedGrants_ReachEveryone(t *testing.T) {
+// Decision 9 / D45, no provider: a department-scoped directory.read reaches every person,
+// a department-scoped contacts.read reaches nobody (no personal fields, no audit entry).
+func TestGet_DepartmentScopedGrants_NoProvider_DirectoryReachesAllContactsNobody(t *testing.T) {
 	f := newGetFixture(t)
 	viewerID := newPerson()
 	dept := model.NewID[model.DepartmentID]()
@@ -711,11 +712,14 @@ func TestGet_DepartmentScopedGrants_ReachEveryone(t *testing.T) {
 	f.az.GrantIn(viewerID, permContacts, dept)
 	prof, err := f.svc.Get(asPerson(ctxT(t), viewerID), f.target)
 	wantNoErr(t, err)
-	if prof.Person.LegalName != mLegal {
-		t.Error("a department-scoped contacts.read holder cannot read contacts")
+	if prof.Person.PlayaName == "" {
+		t.Error("directory.read@department must still reach every person's internal fields")
 	}
-	if f.count("people.person.read") != 1 {
-		t.Error("the read was not audited")
+	if prof.Person.LegalName != "" || prof.Person.Phone != "" || len(prof.Contacts) != 0 {
+		t.Errorf("a department-scoped contacts.read holder with no provider saw personal fields: %+v", prof.Person)
+	}
+	if f.count("people.person.read") != 0 {
+		t.Error("nothing personal was returned, so nothing may be audited")
 	}
 	// A department grant of one permission opens nothing of the other.
 	v2 := newPerson()

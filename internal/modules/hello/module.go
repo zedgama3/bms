@@ -76,6 +76,9 @@ var Manifest = module.Manifest{
 	Provides:      []module.Capability{greeter.Name},
 	Defines:       []module.ExtensionPointDecl{{Name: PointBanner, Accepts: acceptsBanner}},
 	ContributesTo: []module.ExtensionPoint{PointBanner},
+	// Every wire type, in privacy-tags A1.3 order; no Groups: every field is public or
+	// internal, so there is nothing for a regional to configure.
+	Views: []any{PublicGreeting{}, Banner{}, Greeting{}, greeting.Greeting{}},
 }
 
 func init() { module.Register(Manifest, New) }
@@ -141,6 +144,7 @@ type seams struct {
 	store    store
 	actor    actorFunc
 	allow    permissionChecker
+	authz    authz.Authorizer // optional: privacy.ViewerOf's seam; unused while hello declares no groups
 	greeting greetingSource
 }
 
@@ -198,7 +202,7 @@ func New(_ context.Context, deps module.Deps) (module.Module, error) {
 	if deps.Authz != nil {
 		allow = deps.Authz
 	}
-	return newModule(deps, seams{store: st, actor: identity.PersonFrom, allow: allow, greeting: declaredDefault})
+	return newModule(deps, seams{store: st, actor: identity.PersonFrom, allow: allow, authz: deps.Authz, greeting: declaredDefault})
 }
 
 // checkDeps fails with errs.Invalid naming every nil dependency.
@@ -244,6 +248,7 @@ func newModule(deps module.Deps, s seams) (*Module, error) {
 		store:    s.store,
 		actor:    s.actor,
 		allow:    s.allow,
+		authz:    s.authz,
 		greeting: trimmed(s.greeting),
 		links:    deps.Links,
 		bus:      deps.Signals,

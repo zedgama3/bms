@@ -1301,11 +1301,6 @@
             "$ref": "#/components/schemas/ID"
           }
         },
-        "required": [
-          "id",
-          "greeting",
-          "created_at"
-        ],
         "type": "object"
       },
       "HelloGreeting": {
@@ -1320,11 +1315,6 @@
             "type": "integer"
           }
         },
-        "required": [
-          "greeting",
-          "mine",
-          "seen"
-        ],
         "type": "object"
       },
       "HelloPublicGreeting": {

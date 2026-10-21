@@ -14,11 +14,13 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/db/dbtest"
 	"github.com/zedgama3/bms/internal/core/module"
 	"github.com/zedgama3/bms/internal/core/module/moduletest"
 	"github.com/zedgama3/bms/internal/core/notify"
+	"github.com/zedgama3/bms/internal/core/privacy"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/signals/signalstest"
 	"github.com/zedgama3/bms/internal/core/telemetry"
@@ -88,6 +90,14 @@ const (
 	preZeroOption       mutant = "pre_zero_option"
 	preZeroOptionAlone  mutant = "pre_zero_option_with_valid"
 	preUsedCapInManifst mutant = "pre_used_capability_declared_ok"
+
+	// privacy-tags / module-contract F65 (A1.6).
+	untaggedView       mutant = "untagged_view"
+	viewsMissing       mutant = "views_missing_with_routes"
+	groupsNoSettings   mutant = "groups_without_settings"
+	goodViews          mutant = "good_views"
+	goodViewsNoGroups  mutant = "good_views_no_groups"
+	badGroupInManifest mutant = "bad_group_in_manifest"
 )
 
 type alphaCap interface{ Alpha() string }
@@ -100,6 +110,10 @@ func (fakeAlpha) Alpha() string { return "alpha" }
 type fakeBeta struct{}
 
 func (fakeBeta) Beta() string { return "beta" }
+
+type plainView struct {
+	ID string `json:"id" privacy:"public"`
+}
 
 func isRequiresFamily(mu mutant) bool {
 	switch mu {
@@ -118,12 +132,63 @@ func isUsesFamily(mu mutant) bool {
 	return false
 }
 
+// A well-tagged response type, an untagged one, and a group, for F65.
+type taggedView struct {
+	ID    string  `json:"id" privacy:"public"`
+	Phone *string `json:"phone,omitempty" privacy:"personal,group=contact"`
+}
+
+type untaggedViewType struct {
+	ID   string `json:"id" privacy:"public"`
+	Name string `json:"name"`
+}
+
+var contactGroup = privacy.Group{
+	Name: "contact", Permission: "alpha.contacts.read", Default: privacy.AudienceHolders,
+	Options: []privacy.Audience{privacy.AudienceNobody, privacy.AudienceSelf, privacy.AudienceHolders},
+}
+
+func isViewsMutant(mu mutant) bool {
+	switch mu {
+	case untaggedView, viewsMissing, groupsNoSettings, goodViews, goodViewsNoGroups, badGroupInManifest:
+		return true
+	}
+	return false
+}
+
+func visibilityDecls() []module.SettingDecl {
+	d, err := privacy.Settings([]privacy.Group{contactGroup})
+	if err != nil {
+		panic(err)
+	}
+	return d
+}
+
 func manifestFor(mu mutant) module.Manifest {
 	m := module.Manifest{
 		Name:        "alpha",
 		Permissions: nil,
 		Publishes:   []signals.Name{"alpha.greeted"},
 		Subscribes:  []signals.Name{"alpha.greeted"},
+	}
+	switch mu {
+	case untaggedView:
+		m.Views = []any{untaggedViewType{}}
+	case goodViews:
+		m.Views = []any{taggedView{}}
+		m.Groups = []privacy.Group{contactGroup}
+		m.Settings = visibilityDecls()
+		m.Permissions = []authz.PermissionDecl{{Name: "alpha.contacts.read", Scope: authz.ScopeSite, Reaches: model.SensitivityPersonal}}
+	case goodViewsNoGroups:
+		m.Views = []any{plainView{}}
+	case groupsNoSettings:
+		m.Views = []any{taggedView{}}
+		m.Groups = []privacy.Group{contactGroup}
+		m.Permissions = []authz.PermissionDecl{{Name: "alpha.contacts.read", Scope: authz.ScopeSite, Reaches: model.SensitivityPersonal}}
+	case badGroupInManifest:
+		m.Views = []any{taggedView{}}
+		m.Groups = []privacy.Group{{Name: "contact", Default: privacy.AudienceHolders,
+			Options: []privacy.Audience{privacy.AudienceNobody, privacy.AudienceHolders}}}
 	}
 	switch {
 	case mu == badManifest:
@@ -408,6 +473,16 @@ func (foreignNotifier) Configured(context.Context) (bool, error) { return true, 
 // optsFor returns the Conformance options a careful test author would pass for mu, or the
 // deliberately wrong ones for the precondition scenarios.
 func optsFor(mu mutant) []moduletest.Option {
+	opts := baseOptsFor(mu)
+	// A1.6: the fixtures have routes and no response type, so they say so. The views
+	// mutants are the ones that must face the rules without it.
+	if !isViewsMutant(mu) {
+		opts = append(opts, moduletest.WithoutViews())
+	}
+	return opts
+}
+
+func baseOptsFor(mu mutant) []moduletest.Option {
 	withSeed := moduletest.WithSeed(seed)
 	alpha := moduletest.WithCapability("alphacap", fakeAlpha{})
 	beta := moduletest.WithCapability("betacap", fakeBeta{})
@@ -476,7 +551,7 @@ func TestConformance_UsedCapabilityPresentAndAbsent_Passes(t *testing.T) {
 		moduletest.Conformance(t, m, newFactory(goodUses), provisionFor(goodUses), optsFor(goodUses)...)
 	})
 	t.Run("absent", func(t *testing.T) {
-		moduletest.Conformance(t, m, newFactory(goodUses), provisionFor(goodUses), moduletest.WithSeed(seed))
+		moduletest.Conformance(t, m, newFactory(goodUses), provisionFor(goodUses), moduletest.WithSeed(seed), moduletest.WithoutViews())
 	})
 }
 
@@ -497,7 +572,7 @@ func TestConformance_UsedCapability_PresenceFollowsOption(t *testing.T) {
 		return newFactory(goodUses)(ctx, deps)
 	}
 	t.Run("given", func(t *testing.T) {
-		moduletest.Conformance(t, m, f, provisionFor(good), moduletest.WithCapability("betacap", fakeBeta{}), moduletest.WithSeed(seed))
+		moduletest.Conformance(t, m, f, provisionFor(good), moduletest.WithCapability("betacap", fakeBeta{}), moduletest.WithSeed(seed), moduletest.WithoutViews())
 	})
 	mu.Lock()
 	gotPresent, gotAbsent := present, absent
@@ -520,7 +595,7 @@ func TestConformance_SeedRunsPerRuleOnFreshModule(t *testing.T) {
 		mu.Unlock()
 		return seed(ctx, mod, s)
 	}
-	moduletest.Conformance(t, manifestFor(good), newFactory(good), provisionFor(good), moduletest.WithSeed(counting))
+	moduletest.Conformance(t, manifestFor(good), newFactory(good), provisionFor(good), moduletest.WithSeed(counting), moduletest.WithoutViews())
 	mu.Lock()
 	defer mu.Unlock()
 	if len(mods) != 3 {
@@ -544,7 +619,7 @@ func TestConformance_SeedSubject_IsFilledAndDistinct(t *testing.T) {
 		mu.Unlock()
 		return seed(ctx, mod, s)
 	}
-	moduletest.Conformance(t, manifestFor(good), newFactory(good), provisionFor(good), moduletest.WithSeed(probe))
+	moduletest.Conformance(t, manifestFor(good), newFactory(good), provisionFor(good), moduletest.WithSeed(probe), moduletest.WithoutViews())
 	mu.Lock()
 	defer mu.Unlock()
 	if len(subjects) == 0 {
@@ -578,7 +653,7 @@ func runChild(t *testing.T, mu mutant) (string, bool) {
 }
 
 var allRules = []string{
-	"manifest_valid", "templates_register", "registers_under_its_name", "implements_declared",
+	"manifest_valid", "views_tagged", "visibility_settings_declared", "templates_register", "registers_under_its_name", "implements_declared",
 	"rejects_wrong_capability_type", "used_capability_absent_builds_and_starts",
 	"start_read_only", "subscribes_every_declared_name", "stop_honors_context",
 	"stop_without_start_is_nil", "export_zero_id", "delete_zero_id",
@@ -800,4 +875,76 @@ func TestConformance_ForeignNotifyInDeps_FailsNamingTheModule(t *testing.T) {
 
 func TestConformance_ModuleWithTemplates_Passes(t *testing.T) {
 	moduletest.Conformance(t, manifestFor(goodTemplates), newFactory(goodTemplates), provisionFor(goodTemplates), optsFor(goodTemplates)...)
+}
+
+func TestConformance_WellTaggedViews_PassWithoutWithoutViews(t *testing.T) {
+	for _, mu := range []mutant{goodViews, goodViewsNoGroups} {
+		t.Run(string(mu), func(t *testing.T) {
+			out, failed := runChild(t, mu)
+			if failed {
+				t.Fatalf("a module with tagged Views failed Conformance:\n%s", out)
+			}
+			for _, rule := range []string{"views_tagged", "visibility_settings_declared"} {
+				if !regexp.MustCompile(`--- PASS: .*/` + rule + `\b`).MatchString(out) {
+					t.Errorf("rule %q did not pass:\n%s", rule, out)
+				}
+			}
+		})
+	}
+}
+
+// F65: a module that sends a response type Views does not list, or lists an untagged one,
+// fails the privacy rules (module-contract F65).
+func TestConformance_ViewsNotTagged_Fails(t *testing.T) {
+	t.Run("routes without Views fail views_tagged by name", func(t *testing.T) {
+		out, failed := runChild(t, viewsMissing)
+		if !failed {
+			t.Fatalf("Conformance passed a routed module with empty Views and no WithoutViews:\n%s", out)
+		}
+		if !regexp.MustCompile(`--- FAIL: .*/views_tagged\b`).MatchString(out) {
+			t.Errorf("expected views_tagged to fail by name:\n%s", out)
+		}
+	})
+	// Views listing an untagged type, and Groups whose settings are not in Settings, fail
+	// at or before the privacy rules. Manifest.Validate (F62, F63) runs inside manifest_valid
+	// and sees them first, so the named failing rule is manifest_valid or the privacy rule;
+	// what matters is that the module never gets as far as building.
+	for _, mu := range []mutant{untaggedView, groupsNoSettings, badGroupInManifest} {
+		t.Run(string(mu), func(t *testing.T) {
+			out, failed := runChild(t, mu)
+			if !failed {
+				t.Fatalf("Conformance passed a module with a bad privacy manifest:\n%s", out)
+			}
+			if !regexp.MustCompile(`--- FAIL: .*/(manifest_valid|views_tagged|visibility_settings_declared)\b`).MatchString(out) {
+				t.Errorf("expected manifest_valid, views_tagged or visibility_settings_declared to fail:\n%s", out)
+			}
+			if regexp.MustCompile(`--- (PASS|FAIL): .*/templates_register\b`).MatchString(out) {
+				t.Errorf("a rule after the privacy rules ran; they must stop the run:\n%s", out)
+			}
+		})
+	}
+}
+
+// A1.5: views_tagged and visibility_settings_declared run second and third.
+func TestConformance_RuleOrder_PrivacyRulesFollowManifestValid(t *testing.T) {
+	out, failed := runChild(t, good)
+	if failed {
+		t.Fatalf("good failed:\n%s", out)
+	}
+	re := regexp.MustCompile(`=== RUN   TestConformanceHelper/([a-z_]+)\s*$`)
+	var order []string
+	for _, line := range strings.Split(out, "\n") {
+		if m := re.FindStringSubmatch(line); m != nil {
+			order = append(order, m[1])
+		}
+	}
+	want := []string{"manifest_valid", "views_tagged", "visibility_settings_declared", "templates_register"}
+	if len(order) < len(want) {
+		t.Fatalf("rule order = %v, want it to start with %v", order, want)
+	}
+	for i, w := range want {
+		if order[i] != w {
+			t.Fatalf("rule order = %v, want it to start with %v", order, want)
+		}
+	}
 }

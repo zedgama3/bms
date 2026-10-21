@@ -256,16 +256,30 @@ func TestSearch_AuditFails_FailsAndReturnsNothing(t *testing.T) {
 	}
 }
 
-func TestSearch_DepartmentScopedHolders(t *testing.T) {
+// Decision 9 / D45: with no people.membership provider, a department-scoped directory.read
+// still reaches every person, but a department-scoped contacts.read reaches nobody, so no
+// personal-field match is found.
+func TestSearch_DepartmentScopedHolders_NoProvider_DirectoryReachesAllContactsNobody(t *testing.T) {
 	f := newSearchFixture(t)
-	p := newPerson()
 	dept := model.NewID[model.DepartmentID]()
+
+	p := newPerson()
 	f.az.GrantIn(p, permDirectory, dept)
 	f.az.GrantIn(p, permContacts, dept)
 	got, err := f.svc.Search(asPerson(ctxT(t), p), people.SearchQuery{Q: "quill"})
 	wantNoErr(t, err)
-	if len(got) == 0 {
-		t.Error("a department-scoped contacts.read holder cannot match personal fields (decision 9: any extent reaches everyone)")
+	if len(got) != 0 {
+		t.Errorf("a department-scoped contacts.read holder with no provider matched personal fields: %v", got)
+	}
+	if n := f.count("people.search.read"); n != 0 {
+		t.Errorf("%d people.search.read entries, want none", n)
+	}
+
+	// directory.read@department alone still reaches everyone by playa name.
+	byName, err := f.svc.Search(asPerson(ctxT(t), p), people.SearchQuery{Q: "cobalt"})
+	wantNoErr(t, err)
+	if len(byName) != 1 || byName[0].ID != f.a {
+		t.Errorf("playa-name search = %v, want the one match", byName)
 	}
 }
 

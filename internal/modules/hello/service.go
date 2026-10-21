@@ -12,6 +12,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/module"
 	"github.com/zedgama3/bms/internal/core/notify"
+	"github.com/zedgama3/bms/internal/core/privacy"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/telemetry"
 	"github.com/zedgama3/bms/internal/lib/clock"
@@ -45,28 +46,33 @@ type permissionChecker interface {
 type greetingSource func(ctx context.Context) (string, error)
 
 // PublicGreeting is GET /public-greeting's body.
+// Served to anyone, so every field is public (privacy-tags A1.3); PublicGreeting passes it
+// through privacy.Filter with the zero Viewer, which keeps public fields only.
 type PublicGreeting struct {
-	Greeting string   `json:"greeting"`
-	Banners  []Banner `json:"banners"` // never null: an empty array when nobody contributes
+	Greeting string   `json:"greeting" privacy:"public"`
+	Banners  []Banner `json:"banners" privacy:"public"` // never null: an empty array when nobody contributes
 }
 
-// Banner is one contribution, as the screen needs it.
+// Banner is one contribution, as the screen needs it. Public: shown to anyone.
 type Banner struct {
-	Module string `json:"module"` // Contribution.Module
-	Key    string `json:"key"`    // greeter.Banner.Key
+	Module string `json:"module" privacy:"public"` // Contribution.Module
+	Key    string `json:"key" privacy:"public"`    // greeter.Banner.Key
 }
 
-// Greeting is GET /greeting's body.
+// Greeting is GET /greeting's body: the actor's own counts (internal; signed in).
+// Every internal field is omitempty, so a zero count is absent on the wire and the
+// screen reads absent as 0 (a signed-in reader is never denied an internal field).
 type Greeting struct {
-	Greeting string `json:"greeting"`
-	Mine     int    `json:"mine"` // the actor's own rows
-	Seen     int    `json:"seen"` // hello.greeted deliveries this process counted since Start
+	Greeting string `json:"greeting,omitempty" privacy:"internal"`
+	Mine     int    `json:"mine,omitempty" privacy:"internal"` // the actor's own rows
+	Seen     int    `json:"seen,omitempty" privacy:"internal"` // hello.greeted deliveries this process counted since Start
 }
 
 type service struct {
 	store    store
 	actor    actorFunc
 	allow    permissionChecker
+	authz    authz.Authorizer // for privacy.ViewerOf; never called while hello declares no groups
 	greeting greetingSource
 	links    *module.Links
 	bus      signals.Bus
@@ -135,7 +141,32 @@ func (s *service) PublicGreeting(ctx context.Context) (out PublicGreeting, err e
 		return PublicGreeting{}, fmt.Errorf("%s: %w", op, err)
 	}
 	span.SetAttrs(telemetry.Int("banners", len(banners)))
-	return PublicGreeting{Greeting: word, Banners: banners}, nil
+	// A public route has no actor: the zero Viewer keeps public fields only, so a
+	// non-public field added to a wire type by mistake is dropped, not shipped. Elements
+	// first, then the container (privacy-tags Behavior 4). hello declares no groups, so the
+	// policy is empty and a Result never needs auditing.
+	for i := range banners {
+		if err := publicView(&banners[i]); err != nil {
+			return PublicGreeting{}, fmt.Errorf("%s: %w", op, err)
+		}
+	}
+	out = PublicGreeting{Greeting: word, Banners: banners}
+	if err := publicView(&out); err != nil {
+		return PublicGreeting{}, fmt.Errorf("%s: %w", op, err)
+	}
+	return out, nil
+}
+
+// publicView runs privacy.Filter over v for the anonymous reader (the zero Viewer, no
+// policy, no relation): public fields stay, anything else is zeroed and, being omittable,
+// absent from the body. PublicGreeting calls it on the container and on each Banner; a
+// test calls it with a test-only type to prove a non-public field never ships. Fails
+// errs.Internal as privacy.Filter does (v is not a checked struct pointer).
+func publicView[T any](v *T) error {
+	if _, err := privacy.Filter(v, nil, privacy.Viewer{}, privacy.Relation{}); err != nil {
+		return fmt.Errorf("hello.publicView: %w", err)
+	}
+	return nil
 }
 
 // Greeting is GET /greeting: the greeting word, how many times the actor has greeted
@@ -160,7 +191,11 @@ func (s *service) Greeting(ctx context.Context) (out Greeting, err error) {
 	}
 	seen := s.counter.Seen()
 	span.SetAttrs(telemetry.Int("mine", mine), telemetry.Int("seen", seen))
-	return Greeting{Greeting: word, Mine: mine, Seen: seen}, nil
+	out = Greeting{Greeting: word, Mine: mine, Seen: seen}
+	if err := s.filter(ctx, actor, &out); err != nil {
+		return Greeting{}, fmt.Errorf("%s: %w", op, err)
+	}
+	return out, nil
 }
 
 // Greet is POST /greetings: in one db.Transact(Write), insert a greeting for the actor
@@ -208,7 +243,25 @@ func (s *service) Greet(ctx context.Context) (g greeting.Greeting, err error) {
 	if err != nil {
 		return greeting.Greeting{}, fmt.Errorf("%s: %w", op, err)
 	}
+	if err := s.filter(ctx, actor, &g); err != nil {
+		return greeting.Greeting{}, fmt.Errorf("%s: %w", op, err)
+	}
 	return g, nil
+}
+
+// filter passes one response value through privacy.Filter for the actor. hello declares no
+// groups, so ViewerOf makes no authz call and the policy is empty; every field is internal,
+// kept for a signed-in viewer, and nothing is personal, so the Result is never audited. The
+// call is the shape module authors copy (privacy-tags "How a module uses it").
+func (s *service) filter(ctx context.Context, actor model.PersonID, v any) error {
+	viewer, err := privacy.ViewerOf(ctx, s.authz, actor, nil)
+	if err != nil {
+		return fmt.Errorf("viewer: %w", err)
+	}
+	if _, err := privacy.Filter(v, nil, viewer, privacy.Relation{Subject: actor}); err != nil {
+		return fmt.Errorf("filter: %w", err)
+	}
+	return nil
 }
 
 // notifyGreeted queues the TemplateGreeted notice to the greeter inside Greet's

@@ -715,6 +715,7 @@ test.describe("a real account (no mocks)", () => {
     await page.goto("/hello");
     expect((await greeting).status()).toBe(200);
     await expect(page.getByRole("button", { name: "Say hello" })).toBeVisible();
+    await expect(page.getByText("You have greeted never.")).toBeVisible();
 
     // change the password
     await page.goto("/accounts/password");

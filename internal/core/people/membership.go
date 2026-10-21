@@ -40,9 +40,12 @@ func (r reach) has(id model.PersonID) bool {
 }
 
 // reachOf returns who among ids the actor's extent of p reaches. A zero extent reaches
-// nobody. A site extent reaches everybody. A department extent reaches everybody while no
-// membership provider is registered (decision 9), and otherwise only the people the
-// providers report as members of one of the extent's departments. A provider that fails
+// nobody. A site extent reaches everybody. A department extent of people.directory.read
+// reaches everybody while no membership provider is registered (decision 9), but a
+// department extent of people.contacts.read reaches nobody then (D45: fail closed, there is
+// no way to say who belongs to the department). With providers, a department extent
+// reaches only the people the providers report as members of one of its departments. A
+// provider that fails
 // fails the use case, so a membership that cannot be read never widens access. Fails with
 // the authorizer's and the providers' kinds, and errs.Timeout when a provider is too slow.
 func (s *Service) reachOf(ctx context.Context, p authz.Permission, ids []model.PersonID) (reach, error) {
@@ -55,7 +58,13 @@ func (s *Service) reachOf(ctx context.Context, p authz.Permission, ids []model.P
 		return reach{set: map[model.PersonID]struct{}{}}, nil
 	}
 	st, _ := s.links()
-	if ext.Site || len(st.membership) == 0 {
+	if ext.Site {
+		return reach{all: true}, nil
+	}
+	if len(st.membership) == 0 {
+		if p == PermissionContactsRead {
+			return reach{set: map[model.PersonID]struct{}{}}, nil
+		}
 		return reach{all: true}, nil
 	}
 	set := make(map[model.PersonID]struct{}, len(ids))

@@ -69,28 +69,36 @@ func TestReachOf_ExtentAndProviders(t *testing.T) {
 		name      string
 		site      bool
 		dept      bool
+		contacts  bool // ask for contacts.read instead of directory.read
 		providers []MembershipProvider
 		wantIn    bool
 		wantOut   bool
 	}{
 		{name: "nowhere reaches nobody", providers: []MembershipProvider{{Module: "m", Provider: prov}}},
 		{name: "site reaches everyone", site: true, providers: []MembershipProvider{{Module: "m", Provider: prov}}, wantIn: true, wantOut: true},
-		{name: "department without a provider reaches everyone (decision 9)", dept: true, wantIn: true, wantOut: true},
+		{name: "directory.read, department without a provider reaches everyone (decision 9)", dept: true, wantIn: true, wantOut: true},
+		{name: "contacts.read, department without a provider reaches nobody (D45)", dept: true, contacts: true},
+		{name: "contacts.read, site without a provider reaches everyone", site: true, contacts: true, wantIn: true, wantOut: true},
+		{name: "contacts.read, department with a provider reaches its members", dept: true, contacts: true, providers: []MembershipProvider{{Module: "m", Provider: prov}}, wantIn: true},
 		{name: "department with a provider reaches its members", dept: true, providers: []MembershipProvider{{Module: "m", Provider: prov}}, wantIn: true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newWB(t)
+			perm := PermissionDirectoryRead
+			if tc.contacts {
+				perm = PermissionContactsRead
+			}
 			switch {
 			case tc.site:
-				r.az.Grant(r.me, PermissionContactsRead)
+				r.az.Grant(r.me, perm)
 			case tc.dept:
-				r.az.GrantIn(r.me, PermissionContactsRead, dept)
+				r.az.GrantIn(r.me, perm, dept)
 			}
 			if err := r.svc.Link(nil, nil, tc.providers); err != nil {
 				t.Fatalf("Link: %v", err)
 			}
-			got, err := r.svc.reachOf(r.ctx, PermissionContactsRead, []model.PersonID{in, out})
+			got, err := r.svc.reachOf(r.ctx, perm, []model.PersonID{in, out})
 			if err != nil {
 				t.Fatalf("reachOf: %v", err)
 			}

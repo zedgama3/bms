@@ -112,10 +112,14 @@ func (s *Service) ConsentOf(ctx context.Context, person model.PersonID, purpose 
 
 // LegalNamesOf returns the legal name of each person among ids who has one; unknown IDs
 // and people with none are omitted and not audited (F69). It needs people.contacts.read in
-// any extent (F67), whatever department it is limited to: the module that asks decides
-// whom it shows, and records the read it performs. One people.person.read (Fields
-// [legal_name], Level personal) is recorded per returned person before the map is
-// returned (decision 15). When the regional's legal-name mode is hidden it returns an empty
+// any extent (F67) and answers only for the people that extent reaches (decision 9, D45):
+// everyone for a site extent; for a department-scoped one nobody while no people.membership
+// provider is registered (an empty map for others, no audit, not an error: F73) and
+// otherwise the members the providers report; the module that asks decides whom it shows.
+// Reach never excludes the actor (D46): their own name is answered whenever they have one.
+// One people.person.read (Fields [legal_name], Level personal) is recorded per returned
+// person other than the actor, before the map is returned (decision 15: a self read is not
+// audited). When the regional's legal-name mode is hidden it returns an empty
 // map without reading or auditing. It is for modules and is never on a route. Fails
 // errs.Unauthenticated without a signed-in person, errs.Permission (F67), errs.Invalid
 // (ids, too_many {max}) for more than MaxNames IDs (F68), the settings source's kinds, audit's
@@ -124,7 +128,8 @@ func (s *Service) LegalNamesOf(ctx context.Context, ids []model.PersonID) (_ map
 	const op = "people.Service.LegalNamesOf"
 	ctx, span := s.start(ctx, "legal-names-of")
 	defer endSpan(span, &err)
-	if _, err := s.actorPerson(ctx, op); err != nil {
+	actor, err := s.actorPerson(ctx, op)
+	if err != nil {
 		return nil, err
 	}
 	if err := s.requireAnywhere(ctx, op, PermissionContactsRead); err != nil {
@@ -156,22 +161,39 @@ func (s *Service) LegalNamesOf(ctx context.Context, ids []model.PersonID) (_ map
 	if len(unique) == 0 {
 		return map[model.PersonID]string{}, nil
 	}
+	// Answer only for the people the actor's extent reaches (D45), and always for the actor
+	// themselves (D46): a department-scoped holder reaches nobody while no people.membership
+	// provider is registered, which is an empty answer for others, not a Permission error
+	// (the permission is held).
+	r, err := s.reachOf(ctx, PermissionContactsRead, unique)
+	if err != nil {
+		return nil, wrap(op, err)
+	}
+	if !r.all {
+		unique = slices.DeleteFunc(unique, func(id model.PersonID) bool { return id != actor.Person && !r.has(id) })
+		if len(unique) == 0 {
+			return map[model.PersonID]string{}, nil
+		}
+	}
 	names, err := s.store.LegalNamesOf(ctx, unique)
 	if err != nil {
 		return nil, wrap(op, err)
 	}
 	read := make([]model.PersonID, 0, len(names))
+	out := make(map[model.PersonID]string, len(names))
 	for id, name := range names {
-		if name != "" {
+		if name == "" {
+			continue
+		}
+		out[id] = name
+		if id != actor.Person { // a self read is not audited (decision 15)
 			read = append(read, id)
 		}
 	}
 	slices.SortFunc(read, func(a, b model.PersonID) int { return bytes.Compare(a[:], b[:]) })
-	out := make(map[model.PersonID]string, len(read))
 	for chunk := range slices.Chunk(read, audit.MaxBatch) {
 		entries := make([]audit.Entry, len(chunk))
 		for i, id := range chunk {
-			out[id] = names[id]
 			entries[i] = audit.Entry{
 				Action: actionRead, Outcome: audit.Succeeded, Subject: id, Record: audit.RefOf(kindPerson, id),
 				Fields: []string{FieldLegalName}, Level: model.SensitivityPersonal,
@@ -920,8 +942,9 @@ func (s *Service) Search(ctx context.Context, q SearchQuery) (_ []Match, err err
 }
 
 // searchWithin runs the store search and narrows it to what the actor's extents reach
-// (D44). A site extent, or a department extent while no module contributes people.membership
-// (decision 9), changes nothing. Otherwise the store is asked for up to MaxSearchResults
+// (D44). A site extent, or a department extent of people.directory.read while no module
+// contributes people.membership (decision 9), changes nothing; a department extent of
+// people.contacts.read then loses the personal columns (D45). Otherwise the store is asked for up to MaxSearchResults
 // rows and the result keeps only the people the directory extent reaches; a match on a
 // personal field counts only for a person the contacts extent reaches, so such a person
 // appears only when their playa name matches too (found by a second, name-only query) and
@@ -930,6 +953,18 @@ func (s *Service) Search(ctx context.Context, q SearchQuery) (_ []Match, err err
 func (s *Service) searchWithin(ctx context.Context, op string, q rows.SearchQuery) ([]rows.Match, error) {
 	st, _ := s.links()
 	if len(st.membership) == 0 {
+		// No provider can say who belongs to a department, so a department-scoped
+		// people.contacts.read reaches nobody (D45) and the personal columns are not
+		// searched for it; people.directory.read reaches everyone (decision 9).
+		if q.LegalName || q.Phone || q.ContactEmail {
+			conExt, err := s.authz.ExtentOf(ctx, PermissionContactsRead)
+			if err != nil {
+				return nil, wrap(op, err)
+			}
+			if !conExt.Site {
+				q.LegalName, q.Phone, q.ContactEmail = false, false, false
+			}
+		}
 		found, err := s.store.Search(ctx, q)
 		return found, wrap(op, err)
 	}

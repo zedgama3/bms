@@ -1000,6 +1000,14 @@ export interface GeneratedKeys {
   "module.people.title": true;
   "module.settings.field.unknown": true;
   "module.settings.field.url": true;
+  "privacy.audience.holders": true;
+  "privacy.audience.holders.description": true;
+  "privacy.audience.nobody": true;
+  "privacy.audience.nobody.description": true;
+  "privacy.audience.self": true;
+  "privacy.audience.self.description": true;
+  "privacy.audience.signed_in": true;
+  "privacy.audience.signed_in.description": true;
   "shell.account.anonymous": true;
   "shell.admin.modules.contributes_to": true;
   "shell.admin.modules.defines": true;

@@ -108,7 +108,7 @@ func jobsManifest() module.Manifest { return module.Manifest{Name: "alpha"} }
 
 func runJobsConformance(t *testing.T, mu jobsMutant) {
 	t.Helper()
-	moduletest.Conformance(t, jobsManifest(), jobsFactory(mu), jobsProvision(mu), moduletest.WithoutPersonData())
+	moduletest.Conformance(t, jobsManifest(), jobsFactory(mu), jobsProvision(mu), moduletest.WithoutPersonData(), moduletest.WithoutViews())
 }
 
 // TestConformanceJobsHelper is re-run in a child process by the tests below.

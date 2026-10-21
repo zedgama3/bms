@@ -1774,14 +1774,14 @@ export interface components {
         };
         HelloGreeted: {
             /** Format: date-time */
-            created_at: string;
-            greeting: string;
-            id: components["schemas"]["ID"];
+            created_at?: string;
+            greeting?: string;
+            id?: components["schemas"]["ID"];
         };
         HelloGreeting: {
-            greeting: string;
-            mine: number;
-            seen: number;
+            greeting?: string;
+            mine?: number;
+            seen?: number;
         };
         HelloPublicGreeting: {
             banners: components["schemas"]["HelloBanner"][];

@@ -117,5 +117,13 @@
   "term.theme_camp": "theme camp",
   "term.theme_camp.plural": "theme camps",
   "term.theme_camp.title": "Theme camp",
-  "term.theme_camp.plural_title": "Theme camps"
+  "term.theme_camp.plural_title": "Theme camps",
+  "privacy.audience.nobody": "Nobody",
+  "privacy.audience.nobody.description": "Hidden from everyone, including the person it is about.",
+  "privacy.audience.self": "Only the person it is about",
+  "privacy.audience.self.description": "Only the person the record is about can see it.",
+  "privacy.audience.holders": "People with access",
+  "privacy.audience.holders.description": "The person it is about, and people whose role lets them see this information.",
+  "privacy.audience.signed_in": "Everyone signed in",
+  "privacy.audience.signed_in.description": "The person it is about, and anyone signed in who can see the record."
 }

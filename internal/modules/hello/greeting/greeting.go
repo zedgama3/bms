@@ -18,10 +18,10 @@ type ID = model.ID[marker]
 
 // Greeting is one saved greeting: who greeted, with which word, when.
 type Greeting struct {
-	ID        ID             `json:"id"`
+	ID        ID             `json:"id,omitzero" privacy:"internal"`
 	Person    model.PersonID `json:"-"` // never on the wire; the caller already knows who they are
-	Text      string         `json:"greeting"`
-	CreatedAt time.Time      `json:"created_at"`
+	Text      string         `json:"greeting,omitempty" privacy:"internal"`
+	CreatedAt time.Time      `json:"created_at,omitzero" privacy:"internal"`
 }
 
 // Validate fails with errs.Invalid (joined validate.FieldErrors on "id", "person",

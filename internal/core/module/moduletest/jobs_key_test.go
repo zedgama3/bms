@@ -115,7 +115,7 @@ func TestConformanceJobKeyHelper(t *testing.T) {
 	if name == "" {
 		t.Skip("child-process helper")
 	}
-	moduletest.Conformance(t, jobsManifest(), keyFactory(keyMutant(name)), jobsProvision(jobsNone), moduletest.WithSeed(keySeed))
+	moduletest.Conformance(t, jobsManifest(), keyFactory(keyMutant(name)), jobsProvision(jobsNone), moduletest.WithSeed(keySeed), moduletest.WithoutViews())
 }
 
 func runKeyChild(t *testing.T, mu keyMutant) (string, bool) {

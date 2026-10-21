@@ -30,6 +30,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/notify"
 	"github.com/zedgama3/bms/internal/core/notify/notifytest"
 	"github.com/zedgama3/bms/internal/core/people/peopletest"
+	"github.com/zedgama3/bms/internal/core/privacy"
 	"github.com/zedgama3/bms/internal/core/settings/settingstest"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/signals/signalstest"
@@ -97,6 +98,7 @@ type options struct {
 	seed       Seed
 	seedNum    int // times WithSeed was given
 	withoutNum int // times WithoutPersonData was given
+	noViews    bool
 }
 
 // capOption is one WithCapability.
@@ -141,6 +143,19 @@ func WithSeed(seed Seed) Option {
 func WithoutPersonData() Option {
 	return Option{apply: func(o *options) error {
 		o.withoutNum++
+		return nil
+	}}
+}
+
+// WithoutViews states that the module sends no response types on the wire (D44): the
+// rules views_tagged and visibility_settings_declared then pass trivially. Without it,
+// Manifest.Views must list every response type, tagged as privacy-tags.md describes, and
+// must not be empty when the module has routes. A module with routes whose handlers write
+// no JSON body (moduletest's own fixtures) is the case it exists for; a module with any
+// JSON response never uses it. Cannot fail.
+func WithoutViews() Option {
+	return Option{apply: func(o *options) error {
+		o.noViews = true
 		return nil
 	}}
 }
@@ -234,7 +249,7 @@ func resolveOptions(m module.Manifest, opts []Option) (options, []string) {
 // first rule when the options disagree with the manifest, naming the option and the
 // capability; otherwise it runs the rules as named subtests, in this order, and stops at
 // the first that fails, so the failing subtest's name is the broken rule: manifest_valid,
-// templates_register, registers_under_its_name, implements_declared, rejects_wrong_capability_type,
+// views_tagged, visibility_settings_declared, templates_register, registers_under_its_name, implements_declared, rejects_wrong_capability_type,
 // used_capability_absent_builds_and_starts, start_read_only, subscribes_every_declared_name,
 // jobs_register_scoped, stop_honors_context, stop_without_start_is_nil, export_zero_id, delete_zero_id,
 // export_unknown_person_is_empty, delete_unknown_person_is_zero_and_idempotent,
@@ -258,6 +273,8 @@ func Conformance(t *testing.T, m module.Manifest, f module.Factory, provision mo
 		run  func(*testing.T, *rig)
 	}{
 		{"manifest_valid", ruleManifestValid},
+		{"views_tagged", ruleViewsTagged},
+		{"visibility_settings_declared", ruleVisibilitySettingsDeclared},
 		{"templates_register", ruleTemplatesRegister},
 		{"registers_under_its_name", ruleRegisters},
 		{"implements_declared", ruleImplementsDeclared},
@@ -608,6 +625,48 @@ func (*stub) DeletePerson(context.Context, model.PersonID) (module.Deletion, err
 func ruleManifestValid(t *testing.T, r *rig) {
 	if err := r.m.Validate(); err != nil {
 		t.Fatalf("Manifest.Validate: %v", err)
+	}
+}
+
+// ruleViewsTagged proves F65 (privacy-tags): every Views type passes privacy.Check, and a
+// module with routes lists at least one view unless WithoutViews was given.
+func ruleViewsTagged(t *testing.T, r *rig) {
+	if r.opts.noViews {
+		return
+	}
+	if err := privacy.Check(r.m.Views, r.m.Groups); err != nil {
+		t.Fatalf("Manifest.Views: %v", err)
+	}
+	if len(r.m.Views) > 0 {
+		return
+	}
+	h := r.build(t, false)
+	for _, mr := range h.set.Routes() {
+		if mr.Module == r.m.Name && len(mr.Routes) > 0 {
+			t.Fatalf("module %q has routes but Manifest.Views is empty: list its response types, or pass moduletest.WithoutViews() if no route writes a JSON body", r.m.Name)
+		}
+	}
+}
+
+// ruleVisibilitySettingsDeclared proves privacy.Settings(Groups) is present in
+// Manifest.Settings with equal kind, options and default.
+func ruleVisibilitySettingsDeclared(t *testing.T, r *rig) {
+	if r.opts.noViews {
+		return
+	}
+	decls, err := privacy.Settings(r.m.Groups)
+	if err != nil {
+		t.Fatalf("Manifest.Groups: %v", err)
+	}
+	for _, want := range decls {
+		i := slices.IndexFunc(r.m.Settings, func(s module.SettingDecl) bool { return s.Key == want.Key })
+		if i < 0 {
+			t.Fatalf("Manifest.Settings lacks %q: append privacy.Settings(Groups)", want.Key)
+		}
+		got := r.m.Settings[i]
+		if got.Kind != want.Kind || got.Default != want.Default || !slices.Equal(got.Options, want.Options) {
+			t.Fatalf("Manifest.Settings %q differs from privacy.Settings(Groups)", want.Key)
+		}
 	}
 }
 

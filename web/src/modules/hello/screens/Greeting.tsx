@@ -81,8 +81,8 @@ export function Greeting() {
           ) : null}
           {mine.data ? (
             <div className="flex flex-col gap-1">
-              <p>{t("module.hello.screen.mine", { mine: mine.data.mine })}</p>
-              <p>{t("module.hello.screen.seen", { seen: mine.data.seen })}</p>
+              <p>{t("module.hello.screen.mine", { mine: mine.data.mine ?? 0 })}</p>
+              <p>{t("module.hello.screen.seen", { seen: mine.data.seen ?? 0 })}</p>
             </div>
           ) : null}
           <ErrorSummary

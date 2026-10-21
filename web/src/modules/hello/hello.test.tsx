@@ -58,7 +58,9 @@ describe("hello (the reference module)", () => {
       path: "/hello",
       session: person,
       routes: {
-        "GET /api/hello/greeting": () => json({ greeting: "Hello", mine, seen: mine + 4 }),
+        // like the server, which omits zero and empty fields
+        "GET /api/hello/greeting": () =>
+          json({ greeting: "Hello", ...(mine ? { mine } : {}), seen: mine + 4 }),
         "POST /api/hello/greetings": () => {
           mine++;
           return json(
@@ -82,7 +84,19 @@ describe("hello (the reference module)", () => {
     expect(screen.getAllByText("Greeting saved").length).toBeGreaterThan(0);
   });
 
-  it("forbidden counts: the error state shows the permission sentence; the public part stays", async () => {
+  it("an empty body (zero fields omitted) shows the =0 wording", async () => {
+    mountApp({
+      path: "/hello",
+      session: person,
+      routes: { "GET /api/hello/greeting": () => json({}) },
+    });
+    expect(await screen.findByText("You have greeted never.")).toBeInTheDocument();
+    expect(
+      screen.getByText("This server has seen no greetings since it started."),
+    ).toBeInTheDocument();
+  });
+
+  it("forbidden counts:the error state shows the permission sentence; the public part stays", async () => {
     mountApp({
       path: "/hello",
       session: person,
@@ -100,7 +114,7 @@ describe("hello (the reference module)", () => {
       path: "/hello",
       session: person,
       routes: {
-        "GET /api/hello/greeting": () => json({ greeting: "Hello", mine: 0, seen: 0 }),
+        "GET /api/hello/greeting": () => json({ greeting: "Hello" }),
         "POST /api/hello/greetings": () =>
           problem(503, { code: "read_only", ref: "CAFE-0002" }, { "X-Read-Only": "true" }),
       },
@@ -123,7 +137,7 @@ describe("hello (the reference module)", () => {
       path: "/hello",
       session: person,
       routes: {
-        "GET /api/hello/greeting": () => json({ greeting: "Hello", mine: 0, seen: 0 }),
+        "GET /api/hello/greeting": () => json({ greeting: "Hello" }),
         "POST /api/hello/greetings": () => {
           calls++;
           return new Promise<Response>(() => {});
