@@ -81,6 +81,11 @@ copy and can fork it. Features are modules.
 - **Owner's answers 2026-10-21 (D46):** privacy-tags Amendment A2 approved as drafted, with
     module-hello's A2 changes and Proposed changes 10–13 (module-contract, people,
     module-volunteers, web-shell and go-conventions).
+- **Owner's answers 2026-10-21 (D47):** the settings logo amendment (L1–L9, Proposed changes
+    14–19) approved; Q-LOGO1–4 answered no (no SVG logos now, no dark-scheme logo now, no
+    favicon from the logo, no pixel cap); privacy-audience label wording accepted ("the person
+    this information is about"; the `holders` title becomes "People whose role allows it").
+    The spec text and its Proposed changes are not yet applied.
 - **Next steps:**
   1. Done 2026-10-16: the owner agreed [09-core-features.md](09-core-features.md)
      (milestones M0–M4, done criteria, spec order). `architect` drafted `model`, now Approved.

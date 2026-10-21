@@ -240,8 +240,8 @@ Rules (enforced by depguard and `make imports`):
 ### settings: what a regional configures at runtime
 - **Purpose:** typed, validated settings per module and for the core (terminology, brand colours,
   default language (D28), retention periods (D30; default: keep forever)), editable by admins.
-- **Owns:** the declaration types (`Kind`, `Decl`, `Area`), `core.setting` and its revision, terminology (four forms per term per language), `regional.*`, the sealed `Secret` kind, scoped `Reader`s, `Regional` and `TermsFor`, the public document and `theme.css`, the settings screens.
-- **Doesn't do:** process configuration (`config`), the meaning of other areas' keys (their specs), enforcing retention (`jobs`), translations (web-shell), signals on change, storing the logo's bytes (`files`; the logo's routes and screen field are settings', D44).
+- **Owns:** the declaration types (`Kind`, `Decl`, `Area`), `core.setting` and its revision, terminology (four forms per term per language), `regional.*`, the sealed `Secret` kind, scoped `Reader`s, `Regional` and `TermsFor`, the public document and `theme.css`, the settings screens, the regional's logo (`LogoRef`, `GET|PUT|DELETE /api/settings/logo`, `MaxLogoBytes`, `settings.logo.*` audit actions; D44, D47).
+- **Doesn't do:** process configuration (`config`), the meaning of other areas' keys (their specs), enforcing retention (`jobs`), translations (web-shell), signals on change, storing the logo's bytes (`files`; the logo's routes and screen field are settings', D44). SVG sanitising (`files`, Later; D47).
 
 ## Delivery
 

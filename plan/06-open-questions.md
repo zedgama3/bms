@@ -110,3 +110,11 @@ here, copy it into the document it affects, and tick the box.
 
 - None open. Q-WEBMOD and Q-FORMS are resolved above. The shape of qualifications is for the
   architect in the `volunteers` spec (Q-QUAL, D40).
+
+Resolved 2026-10-21 (D47): the four logo questions raised by the settings logo amendment.
+
+- [x] **Q-LOGO1:** Accept SVG logos now? No; a sanitised SVG kind comes later. → D47
+- [x] **Q-LOGO2:** A second logo for the dark colour scheme? No; one logo, with a
+      transparent-background hint. A `logo_dark` variant can be added later. → D47
+- [x] **Q-LOGO3:** Derive the favicon from the logo? No. → D47
+- [x] **Q-LOGO4:** Cap the logo's pixel dimensions? No. → D47

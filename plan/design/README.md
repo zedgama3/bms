@@ -28,7 +28,7 @@ The order follows dependencies: foundation first, then the core, then modules.
 | 12 | `audit.md` | append-only audit log and its read-only spool | Implemented (2026-10-18) |
 | 13 | `files.md` | attachments and storage | Implemented (2026-10-20) |
 | 14 | `jobs.md` | scheduled and deferred work | Implemented (2026-10-20; D44 amendments implemented) |
-| 15 | `settings.md` | runtime settings and terminology | Implemented (2026-10-19) |
+| 15 | `settings.md` | runtime settings and terminology | Implemented (2026-10-19); logo amendment approved 2026-10-21 (D47), not yet applied to the spec or built |
 | 15b | `telemetry.md` | logs, traces, metrics, client error intake (D20) | Implemented (2026-10-17) |
 | 15c | `privacy-tags.md` | field-level privacy tags and the visibility filter (D43) | Implemented (2026-10-21; Approved 2026-10-20, D44; Amendments A1 and A2 approved 2026-10-21, D45, D46) |
 | 16 | `api.md` | router, middleware, error mapper, OpenAPI assembly | Implemented (2026-10-17) |

@@ -753,3 +753,18 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
 - **Check** rejects self-marshaling views and interface-kind fields.
 - **LegalNamesOf reach** never excludes the actor.
 - **hello** gets a `publicView` seam.
+
+## D47. Owner's answers of 2026-10-21: settings logo amendment, Q-LOGO1–4, privacy-audience labels
+
+- **Status:** Accepted (2026-10-21), decided by the owner. The owner answered "approved with
+  recommendations", so each answer below is approved with the recommendation shown.
+- **Settings logo amendment ([design/settings.md](design/settings.md), "Amendment 2026-10-21:
+  the logo over files"): approved**, points L1–L9, with its Proposed changes 14–19.
+- **Q-LOGO1:** no SVG logos now. A sanitised SVG kind comes later.
+- **Q-LOGO2:** no dark-scheme logo now. One logo, with a transparent-background hint. A
+  `logo_dark` variant can be added later.
+- **Q-LOGO3:** no favicon derived from the logo.
+- **Q-LOGO4:** no pixel-dimension cap.
+- **Privacy-audience labels ([design/privacy-tags.md](design/privacy-tags.md)):** the wording
+  suggestions are accepted. Descriptions use one phrase, "the person this information is
+  about", throughout. The `holders` title becomes "People whose role allows it".
