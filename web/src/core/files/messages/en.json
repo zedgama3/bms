@@ -1,0 +1,8 @@
+{
+  "core.files.setting.max_bytes.title": "Largest file that can be uploaded",
+  "core.files.setting.max_bytes.description": "In bytes. A bigger upload is refused with a message that names this limit. Between 1 MiB (1048576) and 1 GiB (1073741824).",
+  "core.files.setting.quota_bytes.title": "Total storage for uploaded files",
+  "core.files.setting.quota_bytes.description": "In bytes, for all files together. 0 means no limit. Once the total is reached, new uploads are refused until files are removed.",
+  "core.files.setting.max_per_record.title": "Files allowed on one record",
+  "core.files.setting.max_per_record.description": "How many files one record, such as a qualification or an incident, may hold. Between 1 and 200."
+}

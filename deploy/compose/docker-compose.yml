@@ -3,6 +3,7 @@
 #   cp deploy/compose/.env.example deploy/compose/.env   # then edit the passwords
 #   make up                                              # database + mail
 #   docker compose ... --profile oidc up -d              # optional local OIDC provider
+#   docker compose ... --profile s3 up -d                # optional S3 store (MinIO) for the s3 file store
 #   make observe                                         # + Grafana, Loki, Tempo, Prometheus, Alloy
 #
 # Observability: point bms at OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 and open
@@ -44,6 +45,45 @@ services:
     command: ["dex", "serve", "/etc/dex/config.yaml"]
     volumes: ["./dex/config.yaml:/etc/dex/config.yaml:ro"]
     ports: ["${DEX_PORT:-5556}:5556"]
+
+  # S3-compatible object store for the files s3 implementation and its integration tests
+  # (files.md, Q-FILES2). Development only. Two buckets are created by `minio-init`: "bms"
+  # (private) and "bmspublic" (anonymous download allowed, so the start-up probe's refusal of a
+  # public bucket can be tested). The tests read BMS_TEST_S3_* from .env.example.
+  minio:
+    profiles: [s3]
+    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-bmsminio}
+      # Empty when unset: compose resolves every service's variables even for an inactive
+      # profile, so a required (:?) here would break `docker compose` for anyone without the s3
+      # profile. MinIO itself refuses to start with an empty or short root password.
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-}
+    ports: ["${S3_PORT:-9000}:9000", "${S3_CONSOLE_PORT:-9001}:9001"]
+    volumes: [minio-data:/data]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio-init:
+    profiles: [s3]
+    image: quay.io/minio/mc:RELEASE.2025-04-16T18-13-26Z
+    depends_on:
+      minio: {condition: service_healthy}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        test -n "$${MINIO_ROOT_PASSWORD}" || { echo "set S3_SECRET_KEY in .env" >&2; exit 1; } &&
+        mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}" &&
+        mc mb --ignore-existing local/bms &&
+        mc mb --ignore-existing local/bmspublic &&
+        mc anonymous set download local/bmspublic
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-bmsminio}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-}
 
   # --- Observability (profile "observability", D20). bms sends OTLP to Alloy only. ---
   alloy:
@@ -93,3 +133,4 @@ services:
 
 volumes:
   db-data:
+  minio-data:

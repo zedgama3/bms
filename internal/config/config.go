@@ -46,6 +46,7 @@ type Config struct {
 	Secrets  Secrets
 	Log      Log
 	Data     Data
+	Files    Files
 	Modules  Modules
 }
 
@@ -159,6 +160,40 @@ type Data struct {
 	Dir string
 }
 
+// FilesStore names where file contents are kept (D43, D44).
+type FilesStore string
+
+// The values of Files.Store. There is no database value.
+const (
+	FilesDisk FilesStore = "disk"
+	FilesS3   FilesStore = "s3"
+)
+
+// Files is where file contents live (files.md). The directory always holds the temp
+// directory of uploads in flight; with the disk store it also holds the files.
+type Files struct {
+	// Store is "disk" (the default) or "s3". There is no database value (D43).
+	Store FilesStore
+	// Dir is the directory for uploads in flight (<Dir>/tmp) and the disk store (<Dir>/store).
+	// Default filepath.Join(Data.Dir, "files"), resolved at Load after data.dir and made
+	// absolute there. bms migrate creates it (mode 0700).
+	Dir string
+	// S3Endpoint, S3Bucket, S3AccessKey and S3SecretKey are required when Store is "s3"
+	// (Validate names the variable); otherwise they are ignored but still checked for shape.
+	S3Endpoint string
+	S3Bucket   string
+	// S3Region defaults to "us-east-1" (what self-hosted stores accept).
+	S3Region string
+	// S3Prefix is "" or "a/b/".
+	S3Prefix string
+	// S3PathStyle defaults to true: every self-hosted store uses path-style requests.
+	S3PathStyle bool
+	// S3AccessKey and S3SecretKey are secrets; BMS_FILES_S3_ACCESS_KEY_FILE and
+	// BMS_FILES_S3_SECRET_KEY_FILE name files that hold them.
+	S3AccessKey secret.Secret
+	S3SecretKey secret.Secret
+}
+
 // Modules is the opt-out list of module-contract decision 7.
 type Modules struct {
 	// Disabled names compiled-in modules not to run. Default empty: every compiled-in
@@ -188,5 +223,9 @@ func Default() Config {
 		Secrets: Secrets{File: filepath.Join(dataDir, SecretsFileName)},
 		Log:     Log{Level: slog.LevelInfo, Format: LogJSON},
 		Data:    Data{Dir: dataDir},
+		Files: Files{
+			Store: FilesDisk, Dir: filepath.Join(dataDir, "files"),
+			S3Region: "us-east-1", S3PathStyle: true,
+		},
 	}
 }

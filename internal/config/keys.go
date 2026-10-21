@@ -116,6 +116,29 @@ var catalogue = []entry{
 		parseLogFormat),
 	newEntry(Key{Name: "data.dir", Default: "data", Doc: "directory for local files, including the secrets file"},
 		func(c *Config, t string) (string, string) { c.Data.Dir = t; return "", "" }),
+	newEntry(Key{Name: "files.store", Default: "disk",
+		Doc: "where file contents are kept: disk (a directory under files.dir) or s3 (an S3-compatible store)"},
+		parseFilesStore),
+	newEntry(Key{Name: "files.dir", Default: "<data.dir>/files",
+		Doc: "directory for uploads in flight and, for the disk store, the stored files"},
+		func(c *Config, t string) (string, string) { c.Files.Dir = t; return "", "" }),
+	newEntry(Key{Name: "files.s3_endpoint",
+		Doc: "S3 store host[:port] (https unless the host is loopback or an http:// prefix is given); required when files.store is s3"},
+		func(c *Config, t string) (string, string) { c.Files.S3Endpoint = t; return "", "" }),
+	newEntry(Key{Name: "files.s3_bucket",
+		Doc: "the one S3 bucket that holds every file; required when files.store is s3"},
+		func(c *Config, t string) (string, string) { c.Files.S3Bucket = t; return "", "" }),
+	newEntry(Key{Name: "files.s3_region", Default: "us-east-1", Doc: "S3 region (self-hosted stores accept the default)"},
+		func(c *Config, t string) (string, string) { c.Files.S3Region = t; return "", "" }),
+	newEntry(Key{Name: "files.s3_prefix", Doc: "optional key prefix inside the bucket, such as bms/"},
+		func(c *Config, t string) (string, string) { c.Files.S3Prefix = t; return "", "" }),
+	newEntry(Key{Name: "files.s3_path_style", Default: "true",
+		Doc: "address the bucket in the URL path (every self-hosted store); false lets the SDK choose"},
+		boolParser(func(c *Config) *bool { return &c.Files.S3PathStyle })),
+	newEntry(Key{Name: "files.s3_access_key", Secret: true, Doc: "S3 access key; required when files.store is s3"},
+		func(c *Config, t string) (string, string) { c.Files.S3AccessKey = secret.New(t); return "", "" }),
+	newEntry(Key{Name: "files.s3_secret_key", Secret: true, Doc: "S3 secret key; required when files.store is s3"},
+		func(c *Config, t string) (string, string) { c.Files.S3SecretKey = secret.New(t); return "", "" }),
 	newEntry(Key{Name: "modules.disabled",
 		Doc: "comma-separated names of compiled-in modules not to run"},
 		parseModulesDisabled),
@@ -226,6 +249,15 @@ func parseLogFormat(c *Config, t string) (string, string) {
 		return "", ""
 	}
 	return validate.CodeOneOf, "must be one of: " + logFormatOptions
+}
+
+func parseFilesStore(c *Config, t string) (string, string) {
+	switch FilesStore(t) {
+	case FilesDisk, FilesS3:
+		c.Files.Store = FilesStore(t)
+		return "", ""
+	}
+	return validate.CodeOneOf, "must be one of: " + filesStoreOptions
 }
 
 // parseModulesDisabled splits the list and leaves the shape (empty, duplicate, too many) to

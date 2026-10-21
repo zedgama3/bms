@@ -133,6 +133,9 @@ func linkPeople(_ context.Context, a *assembly) error {
 	if a.notify != nil {
 		sources = append(sources, notifySource(a.notify))
 	}
+	if a.files != nil { // after the modules, which delete their files first
+		sources = append(sources, filesSource(a.files))
+	}
 	contribs, err := a.set.Contributors(personpage.Point)
 	if err != nil {
 		return fmt.Errorf("%s: %w", op, err)

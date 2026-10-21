@@ -1,3 +1,4 @@
+//nolint:wrapcheck // test code: errors come straight from the fake or store under test; fixtures do bounded arithmetic
 package moduletest_test
 
 import (
@@ -43,6 +44,7 @@ type filesModule struct {
 	mu   filesMutant
 	deps module.Deps
 	rec  audit.Ref
+	own  bool // the no_use mutant's own row about the subject, which has nothing to do with files
 }
 
 type thingTag struct{}
@@ -68,6 +70,7 @@ var tinyPDF = []byte("%PDF-1.4\n% invented\ntrailer\n%%EOF\n")
 
 func (m *filesModule) seed(ctx context.Context, s moduletest.Subject) error {
 	if m.mu == filesNoUse {
+		m.own = true
 		return nil
 	}
 	name := "certificate.pdf"
@@ -88,14 +91,17 @@ func (m *filesModule) seed(ctx context.Context, s moduletest.Subject) error {
 	})
 }
 
-func (m *filesModule) ExportPerson(_ context.Context, p model.PersonID) (module.Export, error) {
+func (m *filesModule) ExportPerson(ctx context.Context, p model.PersonID) (module.Export, error) {
 	if p.IsZero() {
 		return module.Export{}, errs.E("alpha.ExportPerson", errs.Invalid, os.ErrInvalid)
+	}
+	if m.own {
+		return module.Export{Data: json.RawMessage(`{"notes":1}`)}, nil
 	}
 	if m.rec.IsZero() {
 		return module.Export{Data: json.RawMessage(`{}`)}, nil
 	}
-	fs, err := m.deps.Files.ByRecord(context.Background(), m.rec)
+	fs, err := m.deps.Files.ByRecord(ctx, m.rec)
 	if err != nil || len(fs) == 0 {
 		return module.Export{Data: json.RawMessage(`{}`)}, err //nolint:wrapcheck // test module
 	}
@@ -108,6 +114,10 @@ func (m *filesModule) DeletePerson(ctx context.Context, p model.PersonID) (modul
 	}
 	if _, err := m.deps.DB.Exec(ctx, "DELETE FROM alpha.note WHERE person_id = $1", [16]byte(p)); err != nil {
 		return module.Deletion{}, errs.E("alpha.DeletePerson", errs.KindOf(err), err)
+	}
+	if m.own {
+		m.own = false
+		return module.Deletion{Deleted: 1}, nil
 	}
 	if m.rec.IsZero() {
 		return module.Deletion{}, nil
@@ -134,18 +144,16 @@ func filesProvision(man module.Manifest) (module.Deps, error) {
 
 func runFilesConformance(t *testing.T, mu filesMutant) {
 	t.Helper()
-	var holder *filesModule
 	factory := func(ctx context.Context, deps module.Deps) (module.Module, error) {
-		m, err := filesFactory(mu)(ctx, deps)
-		if err == nil {
-			holder = m.(*filesModule) //nolint:forcetypeassert // test
-		}
-		return m, err
+		return filesFactory(mu)(ctx, deps)
 	}
 	seed := func(ctx context.Context, mod module.Module, s moduletest.Subject) error {
-		return mod.(*filesModule).seed(ctx, s) //nolint:forcetypeassert // test
+		fm, ok := mod.(*filesModule)
+		if !ok {
+			return errs.E("alpha.seed", errs.Internal, errors.New("not a filesModule"))
+		}
+		return fm.seed(ctx, s)
 	}
-	_ = holder
 	moduletest.Conformance(t, module.Manifest{Name: "alpha"}, factory,
 		func(_ context.Context, man module.Manifest) (module.Deps, error) { return filesProvision(man) },
 		moduletest.WithSeed(seed))

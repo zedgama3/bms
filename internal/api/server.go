@@ -36,8 +36,9 @@ type Server struct {
 	log     *slog.Logger
 	hist    telemetry.Histogram
 	mux     *http.ServeMux
-	known   map[string]bool   // every pattern registered through mount, and "/api/"
-	owners  map[string]string // pattern -> the set that owns it, for conflict messages
+	known   map[string]bool        // every pattern registered through mount, and "/api/"
+	owners  map[string]string      // pattern -> the set that owns it, for conflict messages
+	limits  map[string]routeLimits // pattern -> the route's raised body cap and deadline
 	trusted trustedSet
 	cop     *http.CrossOriginProtection
 	csp     string
@@ -86,6 +87,7 @@ func New(opts Options) (*Server, error) {
 		mux:     http.NewServeMux(),
 		known:   map[string]bool{},
 		owners:  map[string]string{},
+		limits:  map[string]routeLimits{},
 		trusted: trustedSet(opts.TrustedProxies),
 		cop:     http.NewCrossOriginProtection(),
 		csp:     opts.ContentSecurityPolicy,

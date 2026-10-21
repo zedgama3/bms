@@ -10,7 +10,7 @@ import (
 func TestCatalogue_DefaultMatchesKeyDefaults(t *testing.T) {
 	var got Config
 	for _, e := range catalogue {
-		if e.Default == "" || e.Name == "secrets.file" {
+		if e.Default == "" || e.Name == "secrets.file" || e.Name == "files.dir" {
 			continue
 		}
 		if code, reason := e.parse(&got, e.Default); code != "" {
@@ -18,6 +18,7 @@ func TestCatalogue_DefaultMatchesKeyDefaults(t *testing.T) {
 		}
 	}
 	got.Secrets.File = Default().Secrets.File
+	got.Files.Dir = Default().Files.Dir
 	if !reflect.DeepEqual(got, Default()) {
 		t.Fatalf("catalogue defaults differ from Default():\n got %+v\nwant %+v", got, Default())
 	}

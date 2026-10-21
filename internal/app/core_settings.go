@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/zedgama3/bms/internal/core/audit/auditsettings"
+	"github.com/zedgama3/bms/internal/core/files/filesettings"
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/module"
 	"github.com/zedgama3/bms/internal/core/notify"
@@ -99,6 +100,7 @@ func settingsAreas(a *assembly) []settings.Area {
 		{Name: peopleSettings, Core: true, Decls: people.Settings},
 		{Name: auditSettings, Core: true, Decls: auditsettings.Settings},
 		{Name: notifySettings, Core: true, Decls: notify.Settings},
+		{Name: filesSettings, Core: true, Decls: filesettings.Settings},
 	}
 	if a.plan == nil {
 		return areas

@@ -77,6 +77,7 @@ func (c Config) problems() []problem {
 	c.validateSecrets(&col)
 	c.validateLog(&col)
 	c.validateData(&col)
+	c.validateFiles(&col)
 	c.validateModules(&col)
 	return col.probs
 }
@@ -250,4 +251,73 @@ func (c Config) validateModules(col *collector) {
 		}
 		seen[name] = true
 	}
+}
+
+const filesStoreOptions = "disk, s3"
+
+var s3BucketRE = regexp.MustCompile(`^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$`)
+
+// validateFiles checks the files keys (files.md "Settings", config.md "Validate"): the store
+// is one of two, the directory is a path, the s3 keys that are set have the right shape, and
+// s3 needs its four. The other store's keys are ignored but still checked for shape.
+func (c Config) validateFiles(col *collector) {
+	f := c.Files
+	storeEnv := envOf("files.store")
+	switch f.Store {
+	case FilesDisk, FilesS3:
+	default:
+		col.addf(storeEnv, validate.CodeOneOf, "must be one of: %s", filesStoreOptions)
+	}
+	validatePath(col, envOf("files.dir"), f.Dir)
+
+	if f.S3Endpoint != "" && !validS3Endpoint(f.S3Endpoint) {
+		col.addf(envOf("files.s3_endpoint"), codeFormat, "must be host or host:port, or an http:// or https:// URL with a host")
+	}
+	if f.S3Bucket != "" && !s3BucketRE.MatchString(f.S3Bucket) {
+		col.addf(envOf("files.s3_bucket"), codeFormat, "must be an S3 bucket name: 3 to 63 of lower-case letters, digits, dot and hyphen")
+	}
+	if r := f.S3Region; r == "" || len(r) > 64 || strings.ContainsRune(r, 0) {
+		col.addf(envOf("files.s3_region"), codeFormat, "must be a region name of at most 64 bytes")
+	}
+	if p := f.S3Prefix; len(p) > 128 || strings.HasPrefix(p, "/") || strings.ContainsFunc(p, func(r rune) bool {
+		return (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '.' && r != '_' && r != '/' && r != '-'
+	}) {
+		col.addf(envOf("files.s3_prefix"), codeFormat, "must be at most 128 bytes of letters, digits, dot, underscore, slash and hyphen, with no leading slash")
+	}
+	for _, k := range []struct {
+		name string
+		s    interface{ Value() string }
+	}{{"files.s3_access_key", f.S3AccessKey}, {"files.s3_secret_key", f.S3SecretKey}} {
+		if v := k.s.Value(); len(v) > 1024 || strings.ContainsRune(v, 0) {
+			col.addf(envOf(k.name), codeLength, "must be at most 1024 bytes with no NUL")
+		}
+	}
+	if f.Store != FilesS3 {
+		return
+	}
+	for _, k := range []struct {
+		name string
+		set  bool
+	}{
+		{"files.s3_endpoint", f.S3Endpoint != ""},
+		{"files.s3_bucket", f.S3Bucket != ""},
+		{"files.s3_access_key", f.S3AccessKey.IsSet()},
+		{"files.s3_secret_key", f.S3SecretKey.IsSet()},
+	} {
+		if !k.set {
+			col.addf(envOf(k.name), validate.CodeRequired, "required when %s is s3", storeEnv)
+		}
+	}
+}
+
+// validS3Endpoint accepts host[:port] and http(s)://host[:port], nothing else.
+func validS3Endpoint(v string) bool {
+	rest := strings.TrimPrefix(strings.TrimPrefix(v, "https://"), "http://")
+	if rest == "" || strings.ContainsAny(rest, " \t\r\n\x00/?#@\\") {
+		return false
+	}
+	if _, _, err := net.SplitHostPort(rest); err == nil {
+		return true
+	}
+	return !strings.Contains(rest, ":") || strings.HasPrefix(rest, "[")
 }

@@ -64,6 +64,8 @@ func TestValueOf_EveryKeyRendered_SecretsRedacted(t *testing.T) {
 	cfg.DB.URL = secret.New("postgres://u:ZQ9MARKER7@h/db")
 	cfg.Session.Key = secret.New(strings.Repeat("k", 40))
 	cfg.Settings.SealingKey = secret.New(strings.Repeat("s", 40))
+	cfg.Files.S3AccessKey = secret.New("AKZQ9MARKER7")
+	cfg.Files.S3SecretKey = secret.New("SKZQ9MARKER7")
 	for _, k := range config.Keys() {
 		got := valueOf(cfg, k)
 		if got == "[unknown key]" {
@@ -703,8 +705,8 @@ func TestCoreParts_Declare_SetsPermissionsSignalAndCommand(t *testing.T) {
 	for _, s := range a.coreSets {
 		sets = append(sets, s.Name)
 	}
-	if got := strings.Join(sets, ","); got != "identity,people,authz,departments,events,audit,settings,jobs,notify" {
-		t.Errorf("core migration sets = %s, want identity,people,authz,departments,events,audit,settings,jobs,notify (db.md order, not part order)", got)
+	if got := strings.Join(sets, ","); got != "identity,people,authz,departments,events,audit,settings,jobs,notify,files" {
+		t.Errorf("core migration sets = %s, want identity,people,authz,departments,events,audit,settings,jobs,notify,files (db.md order, not part order)", got)
 	}
 	var perms []string
 	for _, d := range a.corePerms {
@@ -1006,8 +1008,8 @@ func TestCheckSchemas_CoreAndModuleSets_ReportedTogether(t *testing.T) {
 	if !errs.Is(err, errs.Conflict) {
 		t.Fatalf("err = %v, want Conflict", err)
 	}
-	if got := strings.Join(checked, ","); got != "identity,people,authz,departments,events,audit,settings,jobs,notify,zqmod" {
-		t.Errorf("checked = %s, want identity,people,authz,departments,events,audit,settings,jobs,notify,zqmod (every set, none stopped the rest, no schema-less module)", got)
+	if got := strings.Join(checked, ","); got != "identity,people,authz,departments,events,audit,settings,jobs,notify,files,zqmod" {
+		t.Errorf("checked = %s, want identity,people,authz,departments,events,audit,settings,jobs,notify,files,zqmod (every set, none stopped the rest, no schema-less module)", got)
 	}
 	// The first problem that is not a Conflict decides the kind, not the last.
 	mixed := schemaFunc(func(_ context.Context, name string, _ fs.FS) error {
@@ -1031,7 +1033,7 @@ func TestCheckSchemas_CoreAndModuleSets_ReportedTogether(t *testing.T) {
 	if err := a.checkSchemas(context.Background(), core, []module.Manifest{{Name: "zqmod", Migrations: fstest.MapFS{}}}); err != nil {
 		t.Errorf("current core sets: %v", err)
 	}
-	if got := strings.Join(checked, ","); got != "identity,people,authz,departments,events,audit,settings,jobs,notify" {
+	if got := strings.Join(checked, ","); got != "identity,people,authz,departments,events,audit,settings,jobs,notify,files" {
 		t.Errorf("checked = %s, want only the core sets when they are current", got)
 	}
 	unavailable := schemaFunc(func(context.Context, string, fs.FS) error {

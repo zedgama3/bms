@@ -22,7 +22,7 @@ func snake(s string) string {
 	var b strings.Builder
 	rs := []rune(s)
 	for i, r := range rs {
-		if i > 0 && r >= 'A' && r <= 'Z' && rs[i-1] >= 'a' && rs[i-1] <= 'z' {
+		if i > 0 && r >= 'A' && r <= 'Z' && (rs[i-1] >= 'a' && rs[i-1] <= 'z' || rs[i-1] >= '0' && rs[i-1] <= '9') {
 			b.WriteByte('_')
 		}
 		b.WriteString(strings.ToLower(string(r)))
@@ -119,7 +119,7 @@ func TestKeys_RequiredAndSecretFlags(t *testing.T) {
 	}
 }
 
-var specRow = regexp.MustCompile("^\\| `([a-z_.]+)` \\| `(BMS_[A-Z_]+)`")
+var specRow = regexp.MustCompile("^\\| `([a-z0-9_.]+)` \\| `(BMS_[A-Z0-9_]+)`")
 
 func TestKeys_DocsInSync(t *testing.T) {
 	b, err := os.ReadFile(filepath.Join("..", "..", "plan", "design", "config.md"))
@@ -202,6 +202,10 @@ func TestLoad_MinimalEnviron_AppliesDefaults(t *testing.T) {
 	want := config.Default()
 	want.DB.URL = cfg.DB.URL
 	want.Secrets.File = cfg.Secrets.File
+	// Load makes files.dir absolute (config.md); the default is data/files under the cwd.
+	if abs, err := filepath.Abs(want.Files.Dir); err == nil {
+		want.Files.Dir = abs
+	}
 	if !reflect.DeepEqual(cfg, want) {
 		t.Errorf("Load minimal differs from Default: %+v", cfg)
 	}

@@ -108,6 +108,7 @@ func runCheck(ctx context.Context, p *process) int {
 		}
 	}
 	r.email(ctx, a)
+	r.files(ctx, a)
 	r.auditSpool(cfg)
 	r.ui()
 
@@ -219,6 +220,24 @@ func valueOf(cfg config.Config, k config.Key) string {
 		text = string(cfg.Log.Format)
 	case "data.dir":
 		text = cfg.Data.Dir
+	case "files.store":
+		text = string(cfg.Files.Store)
+	case "files.dir":
+		text = cfg.Files.Dir
+	case "files.s3_endpoint":
+		text = cfg.Files.S3Endpoint
+	case "files.s3_bucket":
+		text = cfg.Files.S3Bucket
+	case "files.s3_region":
+		text = cfg.Files.S3Region
+	case "files.s3_prefix":
+		text = cfg.Files.S3Prefix
+	case "files.s3_path_style":
+		text = strconv.FormatBool(cfg.Files.S3PathStyle)
+	case "files.s3_access_key":
+		return secretState(cfg.Files.S3AccessKey.IsSet())
+	case "files.s3_secret_key":
+		return secretState(cfg.Files.S3SecretKey.IsSet())
 	case "modules.disabled":
 		text = strings.Join(cfg.Modules.Disabled, ",")
 	default:

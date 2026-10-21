@@ -10,6 +10,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/departments"
 	"github.com/zedgama3/bms/internal/core/events"
+	"github.com/zedgama3/bms/internal/core/files"
 	"github.com/zedgama3/bms/internal/core/jobs"
 	"github.com/zedgama3/bms/internal/core/notify"
 	"github.com/zedgama3/bms/internal/core/people"
@@ -193,6 +194,13 @@ type Deps struct {
 	// moduletest.Conformance fills a nil one with jobstest.NewFake(Manifest.Name).
 	Jobs jobs.Registrar
 
-	// Added by later specs, named here so modules know where to look:
-	// Files    files.Store       files.md
+	// Files keeps the bytes the module attaches to its records (files.md; M4): Stage an upload
+	// before the module's transaction, Attach it inside its Write transaction with the record,
+	// Open and Serve it from the module's own route after the module's own permission check.
+	// Scoped to the module by Provision with Scoped(m.Name), so the module sees only its own
+	// files and a record whose kind is not "<name>.<ident>" fails errs.Invalid (field
+	// "record", code "scope"). A module never gets the object store itself. Nil only in tests
+	// that attach nothing; moduletest.Conformance fills a nil one with
+	// filestest.NewFake(Manifest.Name).
+	Files files.Store
 }

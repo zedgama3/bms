@@ -51,9 +51,14 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := httpx.WithScheme(httpx.WithClientAddr(r.Context(), client), scheme)
 
-	r.Body = http.MaxBytesReader(w, r.Body, s.opts.MaxBodyBytes)
+	maxBody, timeout := s.opts.MaxBodyBytes, s.requestTimeout()
+	if lim, ok := s.limitsFor(r); ok { // a route may raise both, never lower them
+		maxBody = max(maxBody, lim.maxBody)
+		timeout = max(timeout, lim.timeout)
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxBody)
 
-	ctx, cancel, ok := s.withDeadline(ctx, rw, r)
+	ctx, cancel, ok := s.withDeadline(ctx, rw, r, timeout)
 	defer cancel()
 	if !ok {
 		return
@@ -97,16 +102,26 @@ func (s *Server) setStaticHeaders(w *respWriter, r *http.Request) {
 	}
 }
 
+// requestTimeout is the shell's default deadline of one request.
+func (s *Server) requestTimeout() time.Duration {
+	if s.testRequestTimeout > 0 {
+		return s.testRequestTimeout
+	}
+	return s.opts.RequestTimeout
+}
+
 // withDeadline gives the request its deadline on the ctx and on the connection's read
 // side (decision 18, F28, F53). ok is false when it answered 500 instead.
-func (s *Server) withDeadline(ctx context.Context, rw *respWriter, r *http.Request) (context.Context, context.CancelFunc, bool) {
-	timeout := s.opts.RequestTimeout
-	if s.testRequestTimeout > 0 {
-		timeout = s.testRequestTimeout
-	}
+func (s *Server) withDeadline(ctx context.Context, rw *respWriter, r *http.Request, timeout time.Duration) (context.Context, context.CancelFunc, bool) {
 	deadline := time.Now().Add(timeout)
 	ctx, cancel := context.WithDeadline(ctx, deadline)
-	err := http.NewResponseController(rw).SetReadDeadline(deadline)
+	rc := http.NewResponseController(rw)
+	err := rc.SetReadDeadline(deadline)
+	if err == nil && timeout > s.requestTimeout() {
+		// A route with a longer deadline also needs a longer write deadline than the server's
+		// WriteTimeout (set from the default), or the response could not be sent.
+		err = rc.SetWriteDeadline(deadline.Add(writeTimeoutExtra))
+	}
 	switch {
 	case err == nil:
 	case errors.Is(err, http.ErrNotSupported):

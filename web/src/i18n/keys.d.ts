@@ -457,6 +457,12 @@ export interface GeneratedKeys {
   "core.events.setup.run_confirm": true;
   "core.events.setup.run_hint": true;
   "core.events.setup.title": true;
+  "core.files.setting.max_bytes.description": true;
+  "core.files.setting.max_bytes.title": true;
+  "core.files.setting.max_per_record.description": true;
+  "core.files.setting.max_per_record.title": true;
+  "core.files.setting.quota_bytes.description": true;
+  "core.files.setting.quota_bytes.title": true;
   "core.identity.template.password-reset.title": true;
   "core.identity.template.superuser-signed-in.title": true;
   "core.identity.title": true;

@@ -23,6 +23,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/db/dbtest"
 	"github.com/zedgama3/bms/internal/core/departments/departmentstest"
 	"github.com/zedgama3/bms/internal/core/events/eventstest"
+	"github.com/zedgama3/bms/internal/core/files/filestest"
 	"github.com/zedgama3/bms/internal/core/jobs"
 	"github.com/zedgama3/bms/internal/core/jobs/jobstest"
 	"github.com/zedgama3/bms/internal/core/module"
@@ -336,6 +337,7 @@ type harness struct {
 	audit   *audittest.Fake  // the module under test's recorder
 	notify  *notifytest.Fake // the module under test's notifier
 	jobs    *jobstest.Fake   // the module under test's job registrar
+	files   *filestest.Fake  // the module under test's file store
 	capture *telemetrytest.Capture
 	started bool
 	stopped bool
@@ -462,9 +464,17 @@ func (h *harness) provisioner(readOnly bool) module.Provision {
 			jf = jobstest.NewFake(m.Name)
 		}
 		d.Jobs = jf
+		ff, ok := d.Files.(*filestest.Fake)
+		if d.Files != nil && !ok {
+			h.t.Fatalf("the provision for %q returned a Files of type %T; Conformance needs a *filestest.Fake (or nil) to scan what was staged and attached", m.Name, d.Files)
+		}
+		if !ok {
+			ff = filestest.NewFake(m.Name)
+		}
+		d.Files = ff
 		if m.Name == r.m.Name {
 			fake.SetReadOnly(readOnly)
-			h.db, h.sig, h.audit, h.notify, h.jobs = fake, bus, rec, out, jf
+			h.db, h.sig, h.audit, h.notify, h.jobs, h.files = fake, bus, rec, out, jf, ff
 		}
 		return d, nil
 	}
@@ -856,6 +866,15 @@ func ruleSeededDeletes(t *testing.T, r *rig) {
 	if again.Deleted != 0 || again.Anonymized != 0 || len(again.Kept) != 0 {
 		t.Fatalf("second DeletePerson reported %+v, want a zero Deletion (deletion is idempotent)", again)
 	}
+	// files' own DeletePerson, which people runs after the modules, refuses while a file about
+	// the person remains (files.md F46): the module must have deleted them all.
+	err = h.db.Transact(ctx, db.Write, func(ctx context.Context) error {
+		_, err := h.files.DeletePerson(ctx, subject.Person)
+		return err //nolint:wrapcheck // the rule reports it
+	})
+	if err != nil {
+		t.Fatalf("after DeletePerson a file about the seeded person remains (files' DeletePerson answers %v); delete the person's files with DeleteByRecord", err)
+	}
 }
 
 func ruleRoutesUnderPrefix(t *testing.T, r *rig) {
@@ -880,6 +899,10 @@ func ruleNoPersonalDataInLogs(t *testing.T, r *rig) {
 	ctx := r.ctx(t)
 	h.seed(ctx)
 	h.start(ctx)
+	// Before the delete below removes them: the files the seed staged and attached.
+	if err := filesLeak(h.files); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := h.mod.ExportPerson(ctx, subject.Person); err != nil {
 		t.Fatalf("ExportPerson: %v", err)
 	}
@@ -912,6 +935,28 @@ func ruleNoPersonalDataInLogs(t *testing.T, r *rig) {
 			t.Error(err)
 		}
 	})
+}
+
+// filesLeak returns an error when the name of a file the module staged or kept carries a
+// seed marker or "[email]": a stored name is chosen by the upload, never copied from a record.
+func filesLeak(f *filestest.Fake) error {
+	markers := []string{subject.LegalName, subject.Phone, subject.Note, subject.Email, scrubbedEmail}
+	var names []string
+	for _, x := range f.Files() {
+		names = append(names, x.Name)
+	}
+	for _, x := range f.Staged() {
+		names = append(names, x.Name)
+	}
+	for i, name := range names {
+		for _, marker := range markers {
+			if strings.Contains(name, marker) {
+				// The marker is invented, so quoting it leaks nothing.
+				return fmt.Errorf("file name %d holds personal data (%q); name an upload by what the client sent, never by a record's fields", i, marker)
+			}
+		}
+	}
+	return nil
 }
 
 // keyPersonLeak returns an error when a job's dedupe key holds the seeded person's ID, with or

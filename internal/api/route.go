@@ -28,6 +28,13 @@ type route struct {
 	unmatched bool // the fallback: its 4xx are debug noise
 }
 
+// routeLimits are the per-route raises of the body cap and the request deadline
+// (module.Route.MaxBodyBytes and Timeout). A zero field keeps the shell's value.
+type routeLimits struct {
+	maxBody int64
+	timeout time.Duration
+}
+
 // actorKey carries the authenticated person in ctx for the shell's own handlers. The
 // principal's form for services is identity's; this one is private to api.
 type actorKey struct{}

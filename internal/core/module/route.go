@@ -2,6 +2,7 @@ package module
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/zedgama3/bms/internal/lib/validate"
 )
@@ -31,7 +32,23 @@ type Route struct {
 	Pattern string       // net/http ServeMux path syntax, starting with "/", e.g. "/shifts/{id}"
 	Access  Access       // who may reach it before any permission check
 	Handler http.Handler // must not be nil
+
+	// MaxBodyBytes raises the request body cap of this route above the shell's (files.md,
+	// Proposed change 1): an upload route sets files.UploadCeiling. Zero keeps the shell's
+	// default; a smaller value never lowers it. At most MaxRouteBodyBytes.
+	MaxBodyBytes int64
+	// Timeout raises the request deadline of this route above the shell's, for the ctx and the
+	// connection's read and write deadlines: an upload route sets files.UploadTimeout. Zero
+	// keeps the shell's default; a smaller value never lowers it. At most MaxRouteTimeout.
+	Timeout time.Duration
 }
+
+// The ceilings Route.Validate holds MaxBodyBytes and Timeout to: the shell's own bounds
+// (config http.max_body_bytes and http.request_timeout).
+const (
+	MaxRouteBodyBytes int64 = 1 << 30
+	MaxRouteTimeout         = 10 * time.Minute
+)
 
 // Access says whether a route needs a signed-in person. The zero value is the safe one.
 type Access uint8
@@ -65,6 +82,12 @@ func (r Route) Validate() error {
 	}
 	if r.Handler == nil {
 		acc.Addf("handler", validate.CodeRequired, "must not be nil")
+	}
+	if r.MaxBodyBytes < 0 || r.MaxBodyBytes > MaxRouteBodyBytes {
+		acc.Addf("max_body_bytes", validate.CodeRange, "must be 0 or at most %d", MaxRouteBodyBytes)
+	}
+	if r.Timeout < 0 || r.Timeout > MaxRouteTimeout {
+		acc.Addf("timeout", validate.CodeRange, "must be 0 or at most %s", MaxRouteTimeout)
 	}
 	return acc.Err() //nolint:wrapcheck // Err already carries Op and errs.Invalid
 }

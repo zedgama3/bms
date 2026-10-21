@@ -44,7 +44,7 @@ func (s *Server) mountAll() ([]setDoc, error) {
 	docs := []setDoc{{name: shellSetName, abs: true, fragment: baseFragment}}
 	shell := &docs[0]
 	for _, sr := range s.shellRoutes() {
-		if err := s.mount(shellSetName, sr.method, sr.path, sr.access, sr.handler); err != nil {
+		if err := s.mount(shellSetName, sr.method, sr.path, sr.access, sr.handler, routeLimits{}); err != nil {
 			return nil, err
 		}
 		shell.routes = append(shell.routes, opKey{strings.ToLower(sr.method), openAPIPath(sr.path)})
@@ -60,7 +60,7 @@ func (s *Server) mountAll() ([]setDoc, error) {
 			if err := checkEscapes(set.Module, rt, full); err != nil {
 				return nil, err
 			}
-			if err := s.mount(set.Module, rt.Method, full, rt.Access, rt.Handler); err != nil {
+			if err := s.mount(set.Module, rt.Method, full, rt.Access, rt.Handler, routeLimits{maxBody: rt.MaxBodyBytes, timeout: rt.Timeout}); err != nil {
 				return nil, err
 			}
 			doc.routes = append(doc.routes, opKey{strings.ToLower(rt.Method), openAPIPath(rt.Pattern)})
@@ -101,7 +101,7 @@ func openAPIPath(p string) string {
 
 // mount registers one route with the per-route layers around it. path is the full mux
 // path (full); a trailing "/" is made exact by appending {$}.
-func (s *Server) mount(set, method, full string, access module.Access, h http.Handler) error {
+func (s *Server) mount(set, method, full string, access module.Access, h http.Handler, lim routeLimits) error {
 	const op = "api.New"
 	if strings.HasSuffix(full, "/") {
 		full += "{$}"
@@ -113,7 +113,13 @@ func (s *Server) mount(set, method, full string, access module.Access, h http.Ha
 			"set %q route %s %q does not fit the span name grammar or exceeds %d bytes", set, method, token, maxSpanName)
 	}
 	rt := &route{set: set, pattern: method + " " + full, token: token, access: access, handler: h}
-	return s.register(rt)
+	if err := s.register(rt); err != nil {
+		return err
+	}
+	if lim != (routeLimits{}) {
+		s.limits[rt.pattern] = lim
+	}
+	return nil
 }
 
 // register adds rt to the mux, turning ServeMux's panic into an error (F12).
@@ -268,4 +274,22 @@ func patternMatches(pattern, reqPath string) bool {
 		}
 	}
 	return len(ps) == len(rs)
+}
+
+// limitsFor returns the raises of the route a request will reach, if it has any: the mux
+// is asked which pattern matches, as dispatch does.
+func (s *Server) limitsFor(r *http.Request) (routeLimits, bool) {
+	if len(s.limits) == 0 {
+		return routeLimits{}, false
+	}
+	p := r.URL.EscapedPath()
+	if !strings.HasPrefix(p, apiPrefix) || cleanPath(p) != p {
+		return routeLimits{}, false
+	}
+	_, pattern := s.mux.Handler(r)
+	lim, ok := s.limits[pattern]
+	if !ok || !patternMatches(pattern, p) {
+		return routeLimits{}, false
+	}
+	return lim, true
 }

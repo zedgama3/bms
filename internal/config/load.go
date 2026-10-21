@@ -46,6 +46,7 @@ func Load(ctx context.Context, environ []string) (Config, error) {
 	if err := l.readKeys(ctx); err != nil {
 		return Config{}, err
 	}
+	l.resolveFilesDir()
 	if err := l.readSecretsFile(ctx); err != nil {
 		return Config{}, err
 	}
@@ -357,4 +358,19 @@ func (l *loader) unknownVariables() []problem {
 		out = append(out, newProblem(n, codeUnknown, "unknown configuration variable"))
 	}
 	return out
+}
+
+// resolveFilesDir applies files.dir's default (<data.dir>/files) and makes the path absolute,
+// as the disk store requires. A path Validate will reject is left for Validate.
+func (l *loader) resolveFilesDir() {
+	if explicit := strings.TrimSpace(l.env[envOf("files.dir")]); explicit == "" {
+		l.cfg.Files.Dir = filepath.Join(l.cfg.Data.Dir, "files")
+	}
+	dir := l.cfg.Files.Dir
+	if strings.TrimSpace(dir) == "" || strings.ContainsRune(dir, 0) {
+		return
+	}
+	if abs, err := filepath.Abs(dir); err == nil {
+		l.cfg.Files.Dir = abs
+	}
 }

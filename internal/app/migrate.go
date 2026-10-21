@@ -158,6 +158,9 @@ func runMigrate(ctx context.Context, p *process) int {
 		}
 		return bail(err, migrateStatus(err))
 	}
+	// The files directories (uploads in flight; the disk store) are created once the schema is
+	// in, so a migrate that fails early leaves nothing behind.
+	ensureFilesDirs(p, cfg)
 	// The parts' seed steps come before the summary line, which stays last.
 	if err := a.seed(ctx); err != nil {
 		return bail(err, statusOf(err, ExitFailure))

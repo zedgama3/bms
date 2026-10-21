@@ -1935,7 +1935,10 @@ test.describe("settings: the M4 screens", () => {
       await group.getByLabel("Several, as a title").fill("Teams");
       await check();
       await press(page.getByRole("button", { name: "Save English" }), isPhone);
-      await expect(page.getByText("Saved")).toBeVisible();
+      // toasts stack: the name save's may still be up, so wait for the terms save itself,
+      // then look at the newest toast
+      await expect.poll(() => state.termSaves.length).toBe(1);
+      await expect(page.getByText("Saved").last()).toBeVisible();
       expect(state.termSaves).toEqual([{ terms: { department: { plural_title: "Teams" } } }]);
       const nav = await openMenu(page, isPhone);
       await expect(nav.getByRole("link", { name: "Teams" })).toBeVisible();

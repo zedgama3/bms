@@ -19,6 +19,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/departments"
 	"github.com/zedgama3/bms/internal/core/events"
+	"github.com/zedgama3/bms/internal/core/files"
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/jobs"
 	"github.com/zedgama3/bms/internal/core/module"
@@ -120,6 +121,7 @@ type assembly struct {
 	departments *departments.Service       // the departments part's service; nil before its build
 	events      *events.Service            // the events part's service; nil before its build
 	notify      *notify.Service            // the notify part's service (the alert, the outbox in export); nil before its build
+	files       *files.Service             // the files part's service (the Start probe, bms check, bms files verify); nil before its build
 	jobs        *jobs.Runner               // the jobs part's runner (lazyDeferrer, audit.purge, bms check); nil before its build
 	notifiers   map[string]notify.Notifier // the Notifiers notify scoped for identity and people (Scoped fails once Run started); nil before its build
 	stdout      io.Writer                  // the command's standard output (migrate's seed line)
@@ -331,6 +333,11 @@ func (a *assembly) provision(_ context.Context, m module.Manifest) (module.Deps,
 	if a.deps.jobs != nil {
 		if deps.Jobs, err = a.deps.jobs.Scoped(m.Name); err != nil {
 			return module.Deps{}, fmt.Errorf("module %s: jobs scope: %w", m.Name, err)
+		}
+	}
+	if a.deps.files != nil {
+		if deps.Files, err = a.deps.files.Scoped(m.Name); err != nil {
+			return module.Deps{}, fmt.Errorf("module %s: files scope: %w", m.Name, err)
 		}
 	}
 	deps.Authz = a.deps.authz
