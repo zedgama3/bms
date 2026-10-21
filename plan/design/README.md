@@ -26,8 +26,8 @@ The order follows dependencies: foundation first, then the core, then modules.
 | 10 | `signals.md` | in-process domain events (D24) | Implemented (2026-10-17) |
 | 11 | `notify.md` | notifier contract, e-mail | Implemented (2026-10-20) |
 | 12 | `audit.md` | append-only audit log and its read-only spool | Implemented (2026-10-18) |
-| 13 | `files.md` | attachments and storage | Approved (2026-10-20, D44) |
-| 14 | `jobs.md` | scheduled and deferred work | Implemented (2026-10-20; amendments approved D44, being built) |
+| 13 | `files.md` | attachments and storage | Implemented (2026-10-20) |
+| 14 | `jobs.md` | scheduled and deferred work | Implemented (2026-10-20; D44 amendments implemented) |
 | 15 | `settings.md` | runtime settings and terminology | Implemented (2026-10-19) |
 | 15b | `telemetry.md` | logs, traces, metrics, client error intake (D20) | Implemented (2026-10-17) |
 | 15c | `privacy-tags.md` | field-level privacy tags and the visibility filter (D43) | Approved (2026-10-20, D44) |
