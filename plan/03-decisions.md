@@ -718,3 +718,24 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
   approved.** Shift mates and legal names are privacy groups with the owner's defaults; the
   per-person opt-out is kept.
 - **Proposed changes elsewhere:** every approved spec's Proposed changes elsewhere are approved.
+
+## D45. Owner's answers of 2026-10-21: privacy-tags Amendment A1, contacts.read by extent, Q-FILES11, dev object store
+
+- **Status:** Accepted (2026-10-21), decided by the owner. The owner answered "Approved with
+  recommendations", so each answer below is approved with the recommendation shown.
+- **privacy-tags Amendment A1 ([design/privacy-tags.md](design/privacy-tags.md), "Amendment A1"):
+  approved as drafted.**
+- **`people.contacts.read` for `department-admin` ([design/people.md](design/people.md)):**
+  - `department-admin` keeps `people.contacts.read` by default, as seeded per D44.
+  - A department-scoped extent of `people.contacts.read` reaches nobody while no
+    `people.membership` provider is registered (for example, volunteers disabled).
+  - Site extents (`volunteer-coordinator`, `account-admin`) still reach everyone.
+  - `people.directory.read` is unchanged: any extent reaches everyone until a provider exists
+    (decision 9).
+  - This amends people.md decision 9 for `people.contacts.read` only.
+- **Q-FILES11 ([design/files.md](design/files.md)): no.** The logo is not cached by the browser
+  for now. Decision 25 (`Serve` sets no `Cache-Control`; the shell's `no-store` stands) remains
+  final.
+- **Development object store:** the development `s3` compose profile switches from MinIO to
+  SeaweedFS, because MinIO stopped publishing free images in 2025. This is for development and
+  test only. bms still speaks plain S3 through `objects/s3` to any compatible store.

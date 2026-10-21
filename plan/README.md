@@ -25,7 +25,7 @@ copy and can fork it. Features are modules.
 ## Status
 
 - **Phase:** 0, foundations
-- **Last updated:** 2026-10-20
+- **Last updated:** 2026-10-21
 - **Done 2026-10-16:**
   - Repo scaffolded: plan, agents, skills, lint rules, dev compose. Methodology carried over
     from Sojourn (D7).
@@ -74,6 +74,10 @@ copy and can fork it. Features are modules.
     amendment (b) (Q-JOBS8–13) approved, and the jobs follow-ups are being built; `files.md`
     (redesigned) and `privacy-tags.md` approved; the module-volunteers D43 amendment approved.
     Still open in M4: `volunteers`, `files`, privacy tags.
+- **Owner's answers 2026-10-21 (D45):** privacy-tags Amendment A1 approved as drafted;
+    `people.contacts.read` for `department-admin` by department extent (amends people decision 9
+    for contacts.read only); Q-FILES11 answered no (decision 25 final); the development `s3`
+    compose profile moves from MinIO to SeaweedFS.
 - **Next steps:**
   1. Done 2026-10-16: the owner agreed [09-core-features.md](09-core-features.md)
      (milestones M0–M4, done criteria, spec order). `architect` drafted `model`, now Approved.

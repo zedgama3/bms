@@ -3,7 +3,7 @@
 #   cp deploy/compose/.env.example deploy/compose/.env   # then edit the passwords
 #   make up                                              # database + mail
 #   docker compose ... --profile oidc up -d              # optional local OIDC provider
-#   docker compose ... --profile s3 up -d                # optional S3 store (MinIO) for the s3 file store
+#   docker compose ... --profile s3 up -d                # optional S3 store (SeaweedFS) for the s3 file store
 #   make observe                                         # + Grafana, Loki, Tempo, Prometheus, Alloy
 #
 # Observability: point bms at OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 and open
@@ -47,43 +47,46 @@ services:
     ports: ["${DEX_PORT:-5556}:5556"]
 
   # S3-compatible object store for the files s3 implementation and its integration tests
-  # (files.md, Q-FILES2). Development only. Two buckets are created by `minio-init`: "bms"
-  # (private) and "bmspublic" (anonymous download allowed, so the start-up probe's refusal of a
-  # public bucket can be tested). The tests read BMS_TEST_S3_* from .env.example.
-  minio:
+  # (files.md, Q-FILES2). Development only. SeaweedFS (Apache-2.0) in one container: master,
+  # volume server, filer and the S3 gateway on :9000. Two buckets are created by `seaweedfs-init`:
+  # "bms" (private) and "bmspublic" (anonymous reads allowed, so the start-up probe's refusal of
+  # a public bucket can be tested). The tests read BMS_TEST_S3_* from .env.example.
+  seaweedfs:
     profiles: [s3]
-    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
-    command: ["server", "/data", "--console-address", ":9001"]
+    image: chrislusf/seaweedfs:3.85
+    # The S3 identities file is written at start from S3_ACCESS_KEY and S3_SECRET_KEY, so the
+    # keys live in .env only. The "anonymous" identity may read "bmspublic" and nothing else.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        test -n "$${S3_SECRET_KEY}" || { echo "set S3_SECRET_KEY in .env" >&2; exit 1; } &&
+        printf '{"identities":[{"name":"dev","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write","List","Tagging"]},{"name":"anonymous","actions":["Read:bmspublic","List:bmspublic"]}]}' "$${S3_ACCESS_KEY}" "$${S3_SECRET_KEY}" > /tmp/s3.json &&
+        exec /usr/bin/weed server -ip.bind=0.0.0.0 -dir=/data -master.volumeSizeLimitMB=64 -volume.max=20 -s3 -s3.port=9000 -s3.config=/tmp/s3.json
     environment:
-      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-bmsminio}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-bmsdev}
       # Empty when unset: compose resolves every service's variables even for an inactive
       # profile, so a required (:?) here would break `docker compose` for anyone without the s3
-      # profile. MinIO itself refuses to start with an empty or short root password.
-      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-}
-    ports: ["${S3_PORT:-9000}:9000", "${S3_CONSOLE_PORT:-9001}:9001"]
-    volumes: [minio-data:/data]
+      # profile. The container refuses to start with an empty secret.
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-}
+    ports: ["${S3_PORT:-9000}:9000"]
+    volumes: [seaweedfs-data:/data]
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9333/cluster/status && wget -q -O /dev/null http://127.0.0.1:8888/ && nc -z 127.0.0.1 9000"]
       interval: 5s
       timeout: 3s
       retries: 20
 
-  minio-init:
+  seaweedfs-init:
     profiles: [s3]
-    image: quay.io/minio/mc:RELEASE.2025-04-16T18-13-26Z
+    image: chrislusf/seaweedfs:3.85
     depends_on:
-      minio: {condition: service_healthy}
+      seaweedfs: {condition: service_healthy}
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >
-        test -n "$${MINIO_ROOT_PASSWORD}" || { echo "set S3_SECRET_KEY in .env" >&2; exit 1; } &&
-        mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}" &&
-        mc mb --ignore-existing local/bms &&
-        mc mb --ignore-existing local/bmspublic &&
-        mc anonymous set download local/bmspublic
-    environment:
-      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-bmsminio}
-      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-}
+        printf 's3.bucket.create -name bms\ns3.bucket.create -name bmspublic\n' |
+        /usr/bin/weed shell -master=seaweedfs:9333
+    restart: "no"
 
   # --- Observability (profile "observability", D20). bms sends OTLP to Alloy only. ---
   alloy:
@@ -133,4 +136,4 @@ services:
 
 volumes:
   db-data:
-  minio-data:
+  seaweedfs-data:
