@@ -106,7 +106,7 @@ it depends on getting this right.
 - Shutdown finishes requests in flight, within a deadline. A second SIGINT or SIGTERM
   terminates the process at once.
 - Every command returns one of four documented exit statuses, and `bms check` exits as
-  `bms serve` would.
+  `bms serve` would up to starting the modules (app decision 3).
 - A request gets a trace ID; error responses carry a short reference; the web shell reports its
   errors to `POST /api/client-errors` (D20).
 - An error response is `application/problem+json` with `code` and `ref`.

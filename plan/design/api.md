@@ -1688,4 +1688,4 @@ this list until then. Item 17 needs nothing.
     the standard library and `lib`, and the `api` rule already denies modules, `app` and
     `config`. If the owner wants a strict allowlist for `internal/api` (stdlib, `lib`,
     `model`, `core`), add it as `list-mode: strict` on the `api` rule.
-18. **`plan/design/files.md` (row 16)** (applied 2026-10-20, D44, by files.md Proposed change 1 parts (a), (c), (d), (e): decisions 32 and 33, F61, F62; part (b) is not applied: it would let a handler set `Cache-Control` on `/api/`, which contradicts decision 12 as settled in the 2026-10-19 amendment (D40) and F58, and waits for the owner).
+18. **`plan/design/files.md` (row 16)** (applied 2026-10-20, D44, by files.md Proposed change 1 parts (a), (c), (d), (e): decisions 32 and 33, F61, F62; part (b) is not applied: it would let a handler set `Cache-Control` on `/api/`, which contradicts decision 12 as settled in the 2026-10-19 amendment (D40) and F58, and part (b) is withdrawn by files decision 25).

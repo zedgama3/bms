@@ -777,7 +777,7 @@ and the exit status is the worst one found (`ExitUsage` > `ExitSchema` > `ExitFa
    schedule (the runner's own, `audit.purge`, files' two, and what each module's `Start`
    registered). A `Start` error is printed first as `modules did not start: <problem>`
    and is **not** a problem for the status: it does not record `ExitFailure` and does
-   not count in `result:` (Q-JOBS10, D44; `TestCheck_ModuleStartFails_StillExit0AndJobsSectionShowsIt`, integration).
+   not count in `result:`; the problem line comes first, then the jobs registered so far, then a note that the modules after the failed one were not started (Q-JOBS10, D44; `TestCheck_ModuleStartFails_StillExit0AndJobsSectionShowsIt`, integration).
    The modules are stopped before the next step.
 7. `web.FS()` and `web.Version()`: print `ui: built, version <v>` or `ui: not built` or
    `ui: built, version unknown`.
