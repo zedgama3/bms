@@ -6,6 +6,7 @@
 - **Amended 2026-10-18 (owner approval of authz/people):** the M2 step of decision 2 is named: `permissionChecker` is `deps.Authz`; both permissions declare `StarterRoles: []string{authz.RoleParticipant}` (decision 11); the app e2e asserts `GET /api/hello/greeting` is `200` for a signed-in participant and `POST /api/hello/greetings` drives `deliver:hello.greeted`; migration `0002` adds `FOREIGN KEY (person_id) REFERENCES core.person(id) ON DELETE RESTRICT` (replacing the "on delete cascade" sketch: `people` calls `DeletePerson` first and a cascade would hide a module that forgot something); `Manifest.Subscribes` may add `people.person-deleted` to reset the counter (optional, deferred); the e2e export shows `hello` inside the document (authz.md Proposed change 3, people.md Proposed change 8).
 - **Amended 2026-10-18 (M2 build, accepted deviations):** implementation deviations recorded in Behavior, "Accepted implementation deviations (M2 build, 2026-10-18)": a nil `Deps.Authz` denies everything (the rule for modules copying hello); migration 0002 is the person FK, `RESTRICT`, with a preflight.
 - **Amendment 2026-10-20 (approved, owner, D44; privacy-tags Proposed change 4):** the reference module tags `greeting.Greeting` (`id`, `greeting`, `created_at` all `privacy:"internal"`; `Person` stays `json:"-"`), declares `Views: []any{greeting.Greeting{}}` and no `Groups`, and calls `privacy.Filter` in every use case that returns a `greeting.Greeting` (`Greeting`, `Greet`), so module authors copy the shape. See "Amendment 2026-10-20 (D44): privacy tags" before Open questions.
+- **Amendment A1 (2026-10-20, awaiting owner approval; privacy-tags A1.3):** `hello` has four wire types, so all four are tagged and listed in `Views`: `PublicGreeting` and `Banner` (`public`), `hello.Greeting` and `greeting.Greeting` (`internal`); `Filter` runs in all three use cases, `PublicGreeting` with the zero `Viewer` (public fields only); `ViewerOf` takes the actor. F38 added. Edits marked (A1).
 - **Amendment 2026-10-19 (approved, owner, 2026-10-20, D40):** `hello` ships one notification template, `hello.greeted` (`Manifest.Templates`), sent to the actor from `Greet` through `Deps.Notify`, so the reference covers the path (module-contract.md, D39, notify Proposed change 4); F32 to F36. See "Amendment 2026-10-19 (approved, owner, 2026-10-20, D40): the `hello.greeted` template" before Open questions.
 - **Package:** `internal/modules/hello` (with `internal/modules/hello/greeting`,
   `internal/modules/hello/postgres`) and `internal/contracts/greeter`
@@ -36,7 +37,7 @@ trim, no control characters); `SignalGreeted = "hello.greeted"`, `PayloadPerson 
 `greetings.write`, no body, 201). Fragment `openapi.json` embedded; schemas
 `HelloPublicGreeting`, `HelloBanner`, `HelloGreeting`, `HelloGreeted`.
 **`greeting`:** `ID = model.ID[marker]`, `Greeting{ID, Person model.PersonID, Text,
-CreatedAt}` (D44: `id`, `greeting`, `created_at` tagged `privacy:"internal"`; `Manifest.Views` lists it, no `Groups`) with `Validate()`. **`postgres`:** `Migrations fs.FS` (`0001_init.sql` creates
+CreatedAt}` (D44: `id`, `greeting`, `created_at` tagged `privacy:"internal"`; `Manifest.Views` lists it with `PublicGreeting`, `Banner` (both `public`) and hello's `Greeting` (`internal`) (A1); no `Groups`) with `Validate()`. **`postgres`:** `Migrations fs.FS` (`0001_init.sql` creates
 `hello.greeting`), `NewStore(db.DB) (*Store, error)`.
 **`contracts/greeter`:** `const Name = "greeter"`; `Greeter{Greeting(ctx) (string, error)}`;
 `Banner{Key string}` (a message key `module.<contributor>.banner.<ident>`).
@@ -244,7 +245,7 @@ var Manifest = module.Manifest{
 	Provides:      []module.Capability{greeter.Name},
 	Defines:       []module.ExtensionPointDecl{{Name: PointBanner, Accepts: acceptsBanner}},
 	ContributesTo: []module.ExtensionPoint{PointBanner},
-	Views:         []any{greeting.Greeting{}}, // D44: privacy-tags; no Groups (every field is internal)
+	Views:         []any{PublicGreeting{}, Banner{}, Greeting{}, greeting.Greeting{}}, // D44, A1: every wire type; no Groups (public or internal only)
 }
 
 func init() { module.Register(Manifest, New) }
@@ -428,25 +429,29 @@ schemas and the base ones (api F16). The web client's types come from this docum
 ## Types
 
 ```go
-// PublicGreeting is GET /public-greeting's body.
+// PublicGreeting is GET /public-greeting's body. Served to anyone, so every field is
+// public (A1); PublicGreeting passes it through privacy.Filter with the zero Viewer, which
+// would drop a non-public field added by mistake.
 type PublicGreeting struct {
-	Greeting string   `json:"greeting"`
-	Banners  []Banner `json:"banners"` // never null: an empty array when nobody contributes
+	Greeting string   `json:"greeting" privacy:"public"`
+	Banners  []Banner `json:"banners" privacy:"public"` // never null: an empty array when nobody contributes
 }
 
-// Banner is one contribution, as the screen needs it.
+// Banner is one contribution, as the screen needs it. Public (A1): shown to anyone.
 type Banner struct {
-	Module string `json:"module"` // Contribution.Module
-	Key    string `json:"key"`    // greeter.Banner.Key
+	Module string `json:"module" privacy:"public"` // Contribution.Module
+	Key    string `json:"key" privacy:"public"`    // greeter.Banner.Key
 }
 
-// Greeting is GET /greeting's body.
+// Greeting is GET /greeting's body: the actor's own counts (A1: internal; signed in).
 type Greeting struct {
-	Greeting string `json:"greeting"`
-	Mine     int    `json:"mine"` // the actor's own rows
-	Seen     int    `json:"seen"` // hello.greeted deliveries this process counted since Start
+	Greeting string `json:"greeting" privacy:"internal"`
+	Mine     int    `json:"mine" privacy:"internal"` // the actor's own rows
+	Seen     int    `json:"seen" privacy:"internal"` // hello.greeted deliveries this process counted since Start
 }
 ```
+
+All four are in `Manifest.Views` (A1). No field is `personal` or grouped, so there is nothing for a regional to configure.
 
 Uses `model.PersonID`, `greeting.Greeting`, `greeting.ID`, `module.Export`,
 `module.Deletion`, `signals.Signal`.
@@ -757,6 +762,8 @@ Decision 2's seam list gains nothing: `Deps.Notify` is a core field taken as is,
 ## Amendment 2026-10-20 (D44): privacy tags
 
 `hello` is the template for `privacy-tags.md`. `greeting.Greeting` tags `id`, `greeting` and `created_at` `privacy:"internal"` (`Person` is `json:"-"`, so exempt); `Manifest.Views = []any{greeting.Greeting{}}` and `Manifest.Groups` is empty (every field is internal, so there is nothing for a regional to configure and no `visibility_*` setting). `Greeting` and `Greet` pass each returned `greeting.Greeting` through `privacy.Filter` with the zero-group policy (it reports no audited fields, since nothing is `personal`), so the call shape is the one module authors copy. `Conformance` runs the new rule `views_tagged` over `Views` (`WithoutViews()` is not used here). Failure mode F37: a field added to `greeting.Greeting` without a tag fails the conformance rule and `Manifest.Validate` (`Invalid`, `views[0].<Field>`), `TestManifest_UntaggedViewField_ReturnsInvalid`.
+
+**A1 (2026-10-20, awaiting owner approval; privacy-tags A1.3).** The paragraph above counted one wire type; `hello` has four. `Manifest.Views = []any{PublicGreeting{}, Banner{}, Greeting{}, greeting.Greeting{}}`: `PublicGreeting` and `Banner` fields are `privacy:"public"` (the route has no actor), `hello.Greeting` and `greeting.Greeting` fields `privacy:"internal"`; `Groups` stays empty. `Filter` runs in every use case that returns one of them: `Greeting` and `Greet` build the viewer with `privacy.ViewerOf(ctx, s.authz, actor, nil)` (the actor the use case took from `identity.PersonFrom` first; no groups, so no authz call) and pass the result and the zero `Relation`; `PublicGreeting` passes `privacy.Viewer{}` (the anonymous viewer; `ViewerOf` is never called on a public route) over the `PublicGreeting` value and then over each `Banner` in `Banners` (the container-then-elements shape of privacy-tags Behavior 4). F37 is unchanged except that `views[i]` indexes the four types in that order. Failure mode F38 (A1): `PublicGreeting` with a non-public field added to `PublicGreeting` or `Banner` (a test-only fixture, through the same `Filter` call) answers a body without that key; `TestPublicGreeting_ZeroViewer_PublicFieldsOnly` (`privacytest.AssertHidden` on the handler's body, with `AssertPresent` for `greeting`, `banners`, `module`, `key`). `TestViews_Tagged` runs `privacy.Check(Manifest.Views, nil)` and passes.
 
 ## Open questions
 

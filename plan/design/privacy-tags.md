@@ -1,39 +1,40 @@
 # privacy-tags
 
 - **Status:** Approved (2026-10-20, D44)
+- **Amendment A1 (2026-10-20, awaiting owner approval):** `Viewer.Extents` is keyed by group name, not by permission; `ViewerOf` takes the actor (`person model.PersonID`) because `authz.Authorizer` cannot tell it who the actor is and `privacy` may not import `identity`; every grouped field needs `omitempty`/`omitzero` whatever its kind (a zeroed pointer without it serializes `null`, which is a marker); `Check` also rejects an auditable field whose JSON name does not fit `audit.Entry.Fields`; the conformance rules `views_tagged` and `visibility_settings_declared` run right after `manifest_valid`; the `privacy.audience.*` keys live in the shell's catalogues under `web/`; `hello` tags and lists all four of its wire types. See "Amendment A1" before Open questions, which also lists the test expectations that change. Edits marked (A1) below are part of it.
 - **Package:** `internal/core/privacy` (+ `privacytest`)   **UI:** none
 - **Depends on specs:** `model` (`Sensitivity`, `PersonID`, `DepartmentID`), `lib-errs`, `lib-core` (`validate`), `authz` (`Authorizer.ExtentOf`, `Extent`, `Permission`, `PermissionDecl.Reaches`), `settings` (`Reader`, `Decl`, `Enum`), `audit` (the `Entry.Fields`/`Level` shape a filter result feeds), `module-contract` (`Manifest`, `moduletest`)   **Used by:** every module with response types (`volunteers` first, `hello` as the template), `module` (`Manifest.Validate`, `moduletest`), later `people`, `identity`, `notify` (Proposed changes)
 
 ## Summary
 
-**Purpose.** Decide, field by field, which of a record's fields a viewer gets back, from a `privacy` struct tag on each response field and the regional's choice of audience per named field group. Package `internal/core/privacy`; imports `model`, `lib`, `core/authz` (the `Authorizer` and leaf types), `core/settings` (the `Reader` and leaf types). Never `core/identity`, `core/module`, `core/people`, `api`, `app`, `config` or a module. No tables, routes, signals or screens. `core/module` imports it (`Manifest.Views`, `Manifest.Groups`).
+**Purpose.** Decide, field by field, which of a record's fields a viewer gets back, from a `privacy` struct tag on each response field and the regional's choice of audience per named field group. Package `internal/core/privacy`; imports `model`, `lib`, `core/authz` (the `Authorizer` and leaf types), `core/settings` (the `Reader` and leaf types), `core/audit` (the constants `MaxFields`, `MaxFieldBytes` only; A1). Never `core/identity`, `core/module`, `core/people`, `api`, `app`, `config` or a module. No tables, routes, signals or screens. `core/module` imports it (`Manifest.Views`, `Manifest.Groups`).
 
-**The tag.** `privacy:"<level>[,group=<name>]"` on every exported field of a response type that reaches the wire (`json:"-"` fields are exempt). `<level>` is a `model.Sensitivity` name. A `personal` or `sensitive` field must name a group; a `public` or `internal` field may. A grouped field must be omittable on the wire (pointer, slice, map, or `omitempty`/`omitzero`), so a hidden field is absent, never empty.
+**The tag.** `privacy:"<level>[,group=<name>]"` on every exported field of a response type that reaches the wire (`json:"-"` fields are exempt). `<level>` is a `model.Sensitivity` name. A `personal` or `sensitive` field must name a group; a `public` or `internal` field may. A grouped field's `json` tag must carry `omitempty` or `omitzero`, whatever the field's kind (A1: a zeroed pointer, slice or map without one serializes as `"x": null`, which is a marker), so a hidden field is absent, never `null` or empty. An auditable field (`personal` or `sensitive`) has a JSON name that fits `audit.Entry.Fields`: `[a-z][a-z0-9_]*`, at most `audit.MaxFieldBytes` (A1).
 
 **Exported (`privacy`).**
 - `Audience` (ident; built-in `AudienceNobody = "nobody"`, `AudienceSelf = "self"`, `AudienceHolders = "holders"`, `AudienceSignedIn = "signed_in"`; `Validate`).
 - `Group{Name string, Permission authz.Permission, Default Audience, Options []Audience, Extra []Audience}` (+`Validate`): a named set of fields the regional configures as one setting `visibility_<name>` (kind `Enum`, options = `Options`, default `Default`). `Permission` is who counts as `holders` (held site-wide, or at the record's department when department-scoped). `Extra` names module-defined audiences (for example `booked`) the service asserts per record.
 - `Settings(groups []Group) ([]settings.Decl, error)`: the `visibility_<name>` declarations a manifest or core area appends to its settings.
-- `Check(views []any, groups []Group) error`: the conformance check over response types (every exported wire field tagged, levels valid, groups known, personal/sensitive grouped, grouped fields omittable, nested structs walked).
+- `Check(views []any, groups []Group) error`: the conformance check over response types (every exported wire field tagged, levels valid, groups known, personal/sensitive grouped, grouped fields `omitempty`/`omitzero`, auditable names within audit's grammar and length, nested structs walked).
 - `Policy` (`map[string]Audience`, one entry per group); `PolicyOf(ctx, settings.Reader, []Group) (Policy, error)` reads the current audiences (never cached; settings decision 10).
-- `Viewer{Person model.PersonID, Extents map[authz.Permission]authz.Extent}`; `ViewerOf(ctx, authz.Authorizer, []Group) (Viewer, error)`: one `ExtentOf` per distinct group permission; a `Permission` error means "not held". The zero `Viewer` is anonymous.
+- `Viewer{Person model.PersonID, Extents map[string]authz.Extent}` (A1: keyed by **group name**: where the viewer holds that group's `Permission`); `ViewerOf(ctx, authz.Authorizer, person model.PersonID, []Group) (Viewer, error)` (A1: the service passes the actor it already has; a zero `person` is `Unauthenticated` without calling authz): one `ExtentOf` per distinct group permission, its extent copied to every group naming it; a `Permission` error means "not held" (no entry). The zero `Viewer` is anonymous; a public use case passes `privacy.Viewer{}` to `Filter` and never calls `ViewerOf`.
 - `Relation{Subject model.PersonID, Department model.DepartmentID, Also []Audience}`: what one record is to the viewer.
 - `Result{Fields []string, Level model.Sensitivity}`: the JSON names of the returned fields that must be audited (level `personal` about someone else, or `sensitive`), and the highest level among them; `Result.Audited()` reports whether an entry is due.
 - `Filter(v any, pol Policy, viewer Viewer, rel Relation) (Result, error)`: zeroes, in place, every field of `*v` the viewer may not see; shallow (top-level and embedded fields); the service calls it once per record that has its own subject.
 - `(Policy).Shows(group string, viewer Viewer, rel Relation) bool`: the predicate `Filter` applies, for a service to ask before loading an expensive field.
 - `privacytest.AssertHidden(t, body []byte, jsonNames ...string)`, `privacytest.AssertPresent(t, body, names...)`.
 
-**The rule** (`Shows`). The viewer's audiences for a record are `{signed_in}` when `viewer.Person` is set, plus `self` when it equals `rel.Subject`, plus `holders` when `Extents[group.Permission]` is `Site` or covers `rel.Department`, plus `rel.Also`. A grouped field is returned when the policy's audience for its group is in that set, or when the viewer is the subject and the audience is not `nobody`; `nobody` never. An ungrouped field: `public` always, `internal` for a signed-in viewer. No superuser special case: the superuser holds every permission, so is a `holders` everywhere, and is not `self` anywhere.
+**The rule** (`Shows`). The viewer's audiences for a record are `{signed_in}` when `viewer.Person` is set, plus `self` when it equals `rel.Subject`, plus `holders` when `Extents[group.Name]` (A1) is `Site` or covers `rel.Department`, plus `rel.Also`. A grouped field is returned when the policy's audience for its group is in that set, or when the viewer is the subject and the audience is not `nobody`; `nobody` never. An ungrouped field: `public` always, `internal` for a signed-in viewer. No superuser special case: the superuser holds every permission, so is a `holders` everywhere, and is not `self` anywhere.
 
 **Key decisions.** 1 Enforcement is in the service, not in `httpx.WriteJSON` (decision 2 under Behavior): the service knows the subject, the department and the per-record audiences; the encoder knows none, and the audit entry must be recorded before the response is written. 2 The tag is the single declaration (level and group); who may see a group is data (`visibility_<group>` settings) so a regional changes it without code, and the audience vocabulary is extensible per module (`Extra`) so "booked on this shift" is expressible without a core change. 3 A hidden field is absent, never a placeholder, and the response says nothing about why (privacy-data: a `403` or a marker would confirm what exists). 4 Audit stays the caller's: `Filter` reports what must be audited; the service records `<module>.<record>.read` after loading and before returning (go-conventions). 5 Action permissions stay authz's: tags never decide whether a use case runs or a record is visible; they shape the fields of a record the service has already decided to return. 6 `Reaches` stays declared on permissions (authz uses it for separation-of-duties rules); `Manifest.Validate` cross-checks it against the groups a module's own permission guards. 7 Types are parsed once and cached (`sync.Map` by `reflect.Type`); `Filter` is a loop over a parsed plan, no allocation per field. 8 First version: no nested recursion in `Filter`, no OpenAPI generation, no browser-side counterpart, no per-person consent integration (Later).
 
-**Errs kinds callers handle.** `Check`, `Group.Validate`, `Settings`: `Invalid` (field paths `views[i].<Field>`, `groups[j].<field>`; codes `required`, `malformed`, `one_of`, `unknown`, `duplicate`, `not_omittable`, `ungrouped`, `not_struct`). `Filter`: `Internal` (not a pointer to a struct; an untagged field or unknown group reached at run time; a group missing from `pol`): fail closed, nothing returned. `ViewerOf`: `Unauthenticated`, `Invalid` (an undeclared permission), store kinds; never `Permission`. `PolicyOf`: the reader's kinds (`Invalid`, `Unavailable`, `Timeout`, `Canceled`). `Shows`: cannot fail (unknown group is `false`).
+**Errs kinds callers handle.** `Check`, `Group.Validate`, `Settings`: `Invalid` (field paths `views[i].<Field>`, `groups[j].<field>`; codes `required`, `malformed`, `one_of`, `unknown`, `duplicate`, `not_omittable`, `ungrouped`, `not_struct`, `too_many`, `too_long` (A1)). `Filter`: `Internal` (not a pointer to a struct; an untagged field or unknown group reached at run time; a group missing from `pol`): fail closed, nothing returned. `ViewerOf`: `Unauthenticated` (zero `person`, A1), `Invalid` (an undeclared permission), store kinds; never `Permission`. `PolicyOf`: the reader's kinds (`Invalid`, `Unavailable`, `Timeout`, `Canceled`). `Shows`: cannot fail (unknown group is `false`).
 
-**Owns.** The tag grammar; the setting key pattern `visibility_<group>` in every area that declares groups (titles `module.<name>.setting.visibility_<group>.title|description|option.<audience>`, core areas `core.<area>.setting.…`); `Manifest.Views []any` and `Manifest.Groups []Group` (module-contract Proposed change 1); the `moduletest` rule `views_tagged`; the catalogue keys for the built-in audiences `privacy.audience.<name>` in the shell (web-shell Proposed change 5).
+**Owns.** The tag grammar; the setting key pattern `visibility_<group>` in every area that declares groups (titles `module.<name>.setting.visibility_<group>.title|description|option.<audience>`, core areas `core.<area>.setting.…`); `Manifest.Views []any` and `Manifest.Groups []Group` (module-contract Proposed change 1); the `moduletest` rules `views_tagged` and `visibility_settings_declared` (run right after `manifest_valid`, A1); the catalogue keys for the built-in audiences `privacy.audience.<name>`, which are frontend text in the shell's catalogues `web/src/shell/messages/<lang>.json` (web-shell Proposed change 5); no Go package holds them (A1).
 
-**Expects of dependencies.** `authz`: `ExtentOf` answering `Permission` when not held, `Extent.Covers`, `PermissionDecl.Reaches`. `settings`: a scoped `Reader.Text` for `Enum`, decision 5 (an unparseable stored value yields the default). `module`: `Manifest.Validate` calls `Check` and the `Reaches` and settings cross-checks; `moduletest.Conformance` runs `views_tagged`. `audit`: `Entry.Fields` tokens ≤ `MaxFieldBytes`, `MaxFields`. `people` (Proposed change 3): `Directory.LegalNamesOf` for the first `personal` group a module shows.
+**Expects of dependencies.** `authz`: `ExtentOf` answering `Permission` when not held, `Extent.Covers`, `PermissionDecl.Reaches`. `settings`: a scoped `Reader.Text` for `Enum`, decision 5 (an unparseable stored value yields the default). `module`: `Manifest.Validate` calls `Check` and the `Reaches` and settings cross-checks; `moduletest.Conformance` runs `views_tagged` and `visibility_settings_declared` second and third, and its own fixture modules (routes, no response type) pass `WithoutViews()` (A1). `audit`: `Entry.Fields` names match `[a-z][a-z0-9_]*`, at most `MaxFieldBytes` each and `MaxFields` per entry; `Check` enforces all three at build time (A1). `people` (Proposed change 3): `Directory.LegalNamesOf` for the first `personal` group a module shows.
 
-**Open questions:** none: Q-PRIV1 to Q-PRIV4 were settled with the recommendations (owner, 2026-10-20, D44): the four built-in audiences plus module extras; `people` adopts the tags later; OpenAPI marking Later; the `volunteer-coordinator` starter role is added. **Proposed changes elsewhere:** 9, listed at the end; 1 to 8 applied 2026-10-20 (D44); 9 (`06-open-questions.md`) is the plan-keeper's.
+**Open questions:** none: Q-PRIV1 to Q-PRIV4 were settled with the recommendations (owner, 2026-10-20, D44): the four built-in audiences plus module extras; `people` adopts the tags later; OpenAPI marking Later; the `volunteer-coordinator` starter role is added. **Proposed changes elsewhere:** 9, listed at the end; 1 to 8 applied 2026-10-20 (D44); 9 (`06-open-questions.md`) is the plan-keeper's. **Amendment A1** (awaiting owner approval) is the section before Open questions; its edits to `module-contract.md`, `module-hello.md` and `module-volunteers.md` were made alongside it and are marked (A1) there.
 
 ## Purpose
 
@@ -54,7 +55,7 @@ Decide, field by field, which of a record's fields a viewer gets back.
 | Whether the viewer may run the use case at all, or see the record at all (`Allow`, `AllowIn`, `ExtentOf`; `NotFound` for an invisible record) | `authz` and each service, before `Filter` is called |
 | Recording the audited read | the calling service, through its scoped `audit.Recorder`, with the `Result` |
 | Storing or editing the `visibility_<group>` values; the settings screen | `settings` |
-| Who the viewer is | `identity` (`PersonFrom`), passed in as `Viewer.Person` by the service |
+| Who the viewer is | `identity` (`PersonFrom`); the service passes the actor to `ViewerOf` (A1), or the zero `Viewer` for an anonymous reader |
 | Column-level sensitivity in the Data tables, retention, export and deletion | each spec's Data section; `people` orchestrates export and deletion |
 | A person's own sharing choices (opt-in, opt-out) | the module's own data (for example `volunteers.unlisted`) or a `people` consent; a service turns them into `Relation.Also` or into not loading the field |
 | Keeping personal data out of logs, spans and signals | `telemetry`, `signals`, go-conventions |
@@ -114,8 +115,11 @@ func Settings(groups []Group) ([]settings.Decl, error)
 // fails errs.Invalid listing every problem: an exported field without a privacy tag whose
 // json tag is not "-"; a level that is not public|internal|personal|sensitive; a group
 // name not in groups; a personal or sensitive field with no group (code ungrouped); a
-// grouped field that is not a pointer, slice or map and lacks omitempty/omitzero (code
-// not_omittable); a view that is not a struct (not_struct). Named and embedded struct
+// grouped field whose json tag lacks omitempty/omitzero, whatever its kind (code
+// not_omittable; A1); an auditable (personal or sensitive) field whose JSON name is
+// longer than audit.MaxFieldBytes (too_long) or does not match [a-z][a-z0-9_]*
+// (malformed) (A1); more auditable fields than audit.MaxFields (too_many); a view that
+// is not a struct (not_struct). Named and embedded struct
 // fields, slice and map elements and pointers are walked, so a nested response type is
 // checked through its container; a type implementing json.Marshaler or
 // encoding.TextMarshaler is a leaf. Consumers: Manifest.Validate; moduletest views_tagged.
@@ -134,18 +138,25 @@ func PolicyOf(ctx context.Context, r settings.Reader, groups []Group) (Policy, e
 // (volunteers' shift-mates list needs a NamesOf call it should not make for nothing).
 func (p Policy) Shows(group string, viewer Viewer, rel Relation) bool
 
-// Viewer is who is looking: the actor and the extents they hold for each group permission.
-// The zero Viewer is anonymous (public fields only). Consumer: a service, once per use case.
+// Viewer is who is looking: the actor and, per group name, where the actor holds that
+// group's Permission (A1: keyed by Group.Name, so Filter and Shows, which know only the
+// group a field names, need no permission lookup). A group with no entry is not held
+// anywhere. The zero Viewer is anonymous (public fields only); a public use case passes
+// it to Filter directly and never calls ViewerOf. Consumer: a service, once per use case.
 type Viewer struct {
 	Person  model.PersonID
-	Extents map[authz.Permission]authz.Extent
+	Extents map[string]authz.Extent // by Group.Name
 }
 
-// ViewerOf builds the viewer from the actor in ctx: one ExtentOf per distinct group
-// Permission (a Permission error means not held and is not returned). Fails
-// Unauthenticated (no actor), Invalid (a permission not declared in this installation),
-// store kinds.
-func ViewerOf(ctx context.Context, az authz.Authorizer, groups []Group) (Viewer, error)
+// ViewerOf builds the viewer for person, the actor the service already holds from
+// identity.PersonFrom(ctx) (A1: an Authorizer answers for the actor in ctx but cannot
+// say who that is, and this package may not import identity; person must be that actor,
+// which ViewerOf cannot check). It calls ExtentOf once per distinct Group.Permission and
+// stores the extent under every group naming it; a Permission error means not held and
+// leaves those groups absent. Fails Unauthenticated when person is zero (before any
+// authz call, so it holds with no groups too), Invalid (a permission not declared in
+// this installation), store kinds. Never Permission.
+func ViewerOf(ctx context.Context, az authz.Authorizer, person model.PersonID, groups []Group) (Viewer, error)
 
 // Relation is what one record is to the viewer.
 type Relation struct {
@@ -194,8 +205,8 @@ var Manifest = module.Manifest{
 	Settings: append(ownSettings, mustSettings(vol.Groups)...), // privacy.Settings; Validate checks it
 }
 
-// service.go, inside Roster
-viewer, err := privacy.ViewerOf(ctx, s.authz, vol.Groups)
+// service.go, inside Roster (actor is the model.PersonID the use case took from identity.PersonFrom first)
+viewer, err := privacy.ViewerOf(ctx, s.authz, actor, vol.Groups)
 pol, err := privacy.PolicyOf(ctx, s.settings, vol.Groups)
 var entries []audit.Entry
 for i := range roster.Entries {
@@ -234,7 +245,7 @@ Owned pattern, declared by each adopter through `Settings(groups)`:
 |---|---|---|---|---|
 | `<area>.visibility_<group>` | enum | the group's `Default` | the group's `Options` (`one_of`) | settings admin |
 
-Catalogue keys: `module.<name>.setting.visibility_<group>.title|description|option.<audience>` (core areas: `core.<area>.setting.…`). The shell holds `privacy.audience.nobody|self|holders|signed_in` as the fallback option titles so a module only words its `Extra` audiences (web-shell Proposed change 5).
+Catalogue keys: `module.<name>.setting.visibility_<group>.title|description|option.<audience>` (core areas: `core.<area>.setting.…`). The shell holds `privacy.audience.nobody|self|holders|signed_in` as the fallback option titles so a module only words its `Extra` audiences (web-shell Proposed change 5). They are frontend text: entries in `web/src/shell/messages/en.json` and `es.json`, checked by the shell's catalogue test; the Go `privacy` package carries no human-readable text, like a manifest (A1).
 
 ## UI
 
@@ -244,13 +255,14 @@ None of its own. Rules for every screen that shows a tagged type: an absent fiel
 
 1. **Order inside a use case.** Actor → input `Validate` → permission (`Allow`/`AllowIn`/`ExtentOf`) → load → `ViewerOf` and `PolicyOf` once → `Filter` per record (each with its own `Relation`) → audit entries from the `Result`s, recorded in one `Record` call (outside any `Read` transaction; a failure fails the use case, audit decision 3) → return. `Shows` may be asked before load to skip work (a `NamesOf` call, a join) the policy would discard.
 2. **Why the service, not the encoder.** A central filter in `httpx.WriteJSON` or an api middleware would have to learn, per response, whose data each nested record is, which department it belongs to and which module-defined audiences apply, and would have to audit after the handler returned; a failed audit could then no longer fail the use case before anything was loaded or counted. The service already holds the subject, the department, the extent it queried with and the transaction; one call there is explicit, testable with fakes and reviewable (the reviewer checks that every use case returning a response type calls `Filter`, as it checks for the permission call). The safety nets are mechanical: `Check` at `Register` and in `moduletest` (no untagged field ships), `Filter`'s `Internal` on an unchecked type (an unfiltered path cannot leak by accident if it calls `Filter`; one that never calls it is the review's job), and the per-module privacy tests in the Test plan.
-3. **The audiences of a viewer for a record** are a set, not a ladder (see Summary, "The rule"): `signed_in` ⊂ every signed-in viewer; `self` when `viewer.Person == rel.Subject` (zero never equals zero: an anonymous viewer is nobody's self); `holders` when `viewer.Extents[g.Permission]` is `Site` or `Covers(rel.Department)` (a department-scoped permission never covers a zero department; a site permission is held or not); `rel.Also` as given, restricted to the group's `Extra` (an `Also` naming a built-in audience is ignored, so a module cannot promote a viewer to `holders` by mistake). A grouped field is returned when `pol[g.Name]` is in the set, or when the viewer is the subject and `pol[g.Name] != nobody`. An ungrouped `internal` field needs `viewer.Person` set; `public` needs nothing.
-4. **What `Filter` zeroes.** A hidden field is set to its zero value (`nil` for a pointer, slice or map; the zero struct or scalar otherwise, which `omitempty`/`omitzero` then drops). It never allocates, copies or reads the hidden value, and never logs. It walks top-level fields and the fields of embedded structs (they are promoted on the wire); it does not enter named struct fields, slices or maps: a container such as `Roster{Entries []RosterEntry}` is filtered after each entry, with the container's own relation (usually no subject).
+3. **The audiences of a viewer for a record** are a set, not a ladder (see Summary, "The rule"): `signed_in` ⊂ every signed-in viewer; `self` when `viewer.Person == rel.Subject` (zero never equals zero: an anonymous viewer is nobody's self); `holders` when `viewer.Extents[g.Name]` (A1) is `Site` or `Covers(rel.Department)` (a department-scoped permission never covers a zero department; a site permission is held or not); `rel.Also` as given, restricted to the group's `Extra` (an `Also` naming a built-in audience is ignored, so a module cannot promote a viewer to `holders` by mistake). A grouped field is returned when `pol[g.Name]` is in the set, or when the viewer is the subject and `pol[g.Name] != nobody`. An ungrouped `internal` field needs `viewer.Person` set; `public` needs nothing.
+4. **What `Filter` zeroes.** A hidden field is set to its zero value (`nil` for a pointer, slice or map; the zero struct or scalar otherwise), which the field's `omitempty`/`omitzero` then drops from the body (A1: `encoding/json` writes a nil pointer, slice or map as `null` unless the tag says to omit it, and `null` tells the reader the field exists; so `Check` requires the option on every grouped field, and a slice or map whose empty-but-visible value must still appear uses `omitzero`, which drops only nil). It never allocates, copies or reads the hidden value, and never logs. It walks top-level fields and the fields of embedded structs (they are promoted on the wire); it does not enter named struct fields, slices or maps: a container such as `Roster{Entries []RosterEntry}` is filtered after each entry, with the container's own relation (usually no subject).
 5. **What `Result` reports.** For each returned grouped field: level `sensitive` always; level `personal` when the viewer is not the subject (`model.Sensitivity.ReadIsAudited(self)`); `internal` and `public` never. `Fields` are the JSON names in field order (deduplicated), bounded by `audit.MaxFields` (a type with more auditable fields than that fails `Check`); `Level` is the highest. A caller whose `Result.Audited()` is false records nothing for that record.
 6. **Parsing and caching.** The plan for a `reflect.Type` is built once and kept in a `sync.Map`; `Check` and `Filter` share it. A plan records, per wire field: index path, JSON name, level, group, omittable. Embedded fields are flattened as `encoding/json` promotes them. `Check` fails on a type whose JSON name is duplicated through embedding only when both are grouped (the ambiguity is `encoding/json`'s to resolve; the tag check does not try).
 7. **Settings read.** `PolicyOf` calls `Reader.Text` per group; a stored value outside the group's current `Options` (an upgrade removed one) comes back as the default from settings (settings decision 5) and `PolicyOf` logs nothing (it has no logger; the settings service counts `stale_values`).
 8. **Concurrency and lifecycle.** Every function is safe for concurrent use; there is nothing to construct, start, stop or close. No goroutines, no I/O beyond `ExtentOf` and the settings map lookup.
 9. **Read-only copy.** Everything works (reads only); the caller's audit entries spool as audit decision 4 says.
+10. **Who the viewer is** (A1). The service resolves the actor first (`identity.PersonFrom(ctx)`; it already does, before its permission check) and passes that `model.PersonID` to `ViewerOf`, which passes the same `ctx` to `ExtentOf` so authz answers for the same actor. A use case that serves anonymous readers (a public route) does not call `ViewerOf`: it passes `privacy.Viewer{}` to `Filter`, which then keeps `public` fields only, so a non-public field added to a public response type by mistake is dropped rather than shipped. A use case with an optional actor builds the viewer either way: `ViewerOf` when `PersonFrom` reports one, the zero `Viewer` otherwise. `ViewerOf` with a person and no groups makes no authz call and returns `Viewer{Person: person}`.
 
 ## Failure modes
 
@@ -261,11 +273,13 @@ None of its own. Rules for every screen that shows a tagged type: an absent fiel
 | F3 | `Check` | level not one of the four names | Invalid (`one_of`) | fix | `TestCheck_BadLevel_ReturnsInvalid` |
 | F4 | `Check` | `group=` names an undeclared group | Invalid (`unknown`) | declare it | `TestCheck_UnknownGroup_ReturnsInvalid` |
 | F5 | `Check` | `personal` or `sensitive` field with no group | Invalid (`ungrouped`) | add a group | `TestCheck_PersonalWithoutGroup_ReturnsInvalid` |
-| F6 | `Check` | grouped field is a plain scalar or struct without `omitempty`/`omitzero` | Invalid (`not_omittable`) | make it omittable | `TestCheck_GroupedNotOmittable_ReturnsInvalid` |
+| F6 | `Check` | a grouped field whose `json` tag lacks `omitempty`/`omitzero`: a scalar, a struct, **and (A1) a pointer, slice or map too** | Invalid (`not_omittable`) | add the option | `TestCheck_GroupedNotOmittable_ReturnsInvalid` (table: scalar, struct, pointer, slice, map; each passes with `omitempty` or `omitzero`) |
 | F7 | `Check` | a view is not a struct or pointer to one | Invalid (`not_struct`) | | `TestCheck_NotStruct_ReturnsInvalid` |
 | F8 | `Check` | a nested named struct, slice element or map value has an untagged field | Invalid naming the path (`views[i].Entries.LegalName`) | | `TestCheck_WalksNestedTypes` |
 | F9 | `Check` | a type implementing `json.Marshaler`/`TextMarshaler` (`time.Time`, `model.ID`) | treated as a leaf; nil | | `TestCheck_MarshalerIsLeaf` |
 | F10 | `Check` | more auditable fields than `audit.MaxFields` | Invalid (`too_many {max}`) | split the type | `TestCheck_TooManyAuditable_ReturnsInvalid` |
+| F10a (A1) | `Check` | an auditable (`personal` or `sensitive`) field whose JSON name is longer than `audit.MaxFieldBytes` | Invalid (`views[i].<Field>` `too_long {max}`) | shorten the JSON name | `TestCheck_AuditableNameTooLong_ReturnsInvalid` |
+| F10b (A1) | `Check` | an auditable field whose JSON name does not match `[a-z][a-z0-9_]*` (`legalName`, `legal-name`) | Invalid (`views[i].<Field>` `malformed`) | rename it (snake case) | `TestCheck_AuditableNameNotAuditGrammar_ReturnsInvalid` |
 | F11 | `Group.Validate` | `holders` offered without a `Permission`; malformed permission | Invalid (`permission` `required`/`malformed`) | | `TestGroupValidate_HoldersWithoutPermission_ReturnsInvalid` |
 | F12 | `Group.Validate` | `Default` not in `Options`; fewer than two options; duplicate; unknown audience (neither built-in nor `Extra`) | Invalid (`default` `one_of`; `options` `too_few`/`duplicate`/`unknown`) | | `TestGroupValidate_Options_Table` |
 | F13 | `Group.Validate` | `Extra` names a built-in audience | Invalid (`extra` `duplicate`) | rename | `TestGroupValidate_ExtraCollidesBuiltin_ReturnsInvalid` |
@@ -286,10 +300,12 @@ None of its own. Rules for every screen that shows a tagged type: an absent fiel
 | F28 | `Filter` | embedded struct with grouped fields | its fields decided like top-level ones | | `TestFilter_EmbeddedWalked` |
 | F29 | `Filter` | a named struct field or slice holding grouped fields | untouched (the caller filters elements first) | | `TestFilter_NestedNotEntered` |
 | F30 | `Filter` | hidden value | never read, logged or copied (`telemetrytest` capture clean; the zeroed memory has no marker) | | `TestFilter_HiddenValueNeverLogged` |
-| F31 | `ViewerOf` | no actor | Unauthenticated | 401 | `TestViewerOf_NoActor_ReturnsUnauthenticated` |
-| F32 | `ViewerOf` | `ExtentOf` answers `Permission` for a group permission | not an error; the permission is absent from `Extents` | | `TestViewerOf_NotHeld_IsAbsent` |
+| F31 (A1) | `ViewerOf` | `person` is zero, with or without groups | Unauthenticated; no authz call | 401 | `TestViewerOf_NoActor_ReturnsUnauthenticated` (two cases: groups and none; the `authztest` fake records no call) |
+| F32 (A1) | `ViewerOf` | `ExtentOf` answers `Permission` for a group permission | not an error; every group naming that permission is absent from `Extents` | | `TestViewerOf_NotHeld_IsAbsent` |
 | F33 | `ViewerOf` | `ExtentOf` answers `Invalid` (undeclared) or a store kind | that kind | fail the use case | `TestViewerOf_AuthzError_Propagates` |
-| F34 | `ViewerOf` | two groups share a permission | one `ExtentOf` call | | `TestViewerOf_DistinctPermissionsOnce` |
+| F34 (A1) | `ViewerOf` | two groups share a permission | one `ExtentOf` call; both group names carry the same extent | | `TestViewerOf_DistinctPermissionsOnce` |
+| F39 (A1) | `ViewerOf` | a person and no groups | `Viewer{Person: person}`, nil `Extents`, no authz call | | `TestViewerOf_NoGroups_NoAuthzCall` |
+| F40 (A1) | `Filter` | the zero `Viewer` against a type with `public`, `internal` and grouped fields under every policy | `public` kept; everything else zeroed; empty `Result` | serve public routes with it | `TestFilter_ZeroViewer_PublicOnly_AllPolicies` |
 | F35 | `PolicyOf` | reader fails | its kind | fail the use case | `TestPolicyOf_ReaderError_Propagates` |
 | F36 | `PolicyOf` | a stored value outside `Options` | the group's default (settings decision 5) | | `TestPolicyOf_StaleValue_UsesDefault` (through `settingstest`) |
 | F37 | `Shows` | unknown group | false | | `TestShows_UnknownGroup_False` |
@@ -305,13 +321,50 @@ No external technology is wrapped: reflection and `encoding/json` from the stand
 
 - **Unit:** every row above, table-driven over policy × viewer × relation; the plan cache (`TestPlan_ParsedOnce`, `-race`); `Check` on the `hello` and `volunteers` view types as fixtures of a well-tagged module; a fixture type per `Check` failure.
 - **Privacy:** `TestFilter_HiddenValueNeverLogged` with `telemetrytest.New(t)` and a marker value; a fuzz test that `Filter` never panics on arbitrary tagged structs (`FuzzFilter`).
-- **Conformance (module-contract Proposed change 1):** `moduletest` rule `views_tagged` runs `Check(manifest.Views, manifest.Groups)` and fails when `Views` is empty while the module has routes (a module with routes but no response types says so with `WithoutViews()`); rule `visibility_settings_declared` checks `Settings(Groups)` ⊆ `Manifest.Settings`.
+- **Conformance (module-contract Proposed change 1):** `moduletest` rule `views_tagged` runs `Check(manifest.Views, manifest.Groups)` and fails when `Views` is empty while the module has routes (a module with routes but no response types says so with `WithoutViews()`); rule `visibility_settings_declared` checks `Settings(Groups)` ⊆ `Manifest.Settings`. Both run right after `manifest_valid` (second and third; A1): a broken manifest is reported before anything is built, and the rules need no fixture. `moduletest`'s own fixture modules in `conformance_test.go` have routes (`http.NotFoundHandler`) and no response type, so their `Conformance` calls pass `WithoutViews()`; one fixture (`untaggedView`) lists an untagged type for F65 (A1).
 - **Per adopter (in each module's own tests, listed in its spec):** for each response type with a grouped field, a test that a viewer in no audience gets a body without the field (`privacytest.AssertHidden`) and a viewer in the audience gets it (`AssertPresent`) plus the audit entry; the volunteers rows are F126 to F128 and F134 to F141 there.
 - **Integration:** none of its own (no I/O); covered by the adopters' integration tests.
 
 ## Later
 
 Named so the boundary is explicit: a recursive `Filter` with a subject resolver, if containers with per-element subjects become common; OpenAPI marks (`x-bms-privacy: {level, group}`) generated from the tags and checked by `api` against the fragment (Q-PRIV3); a browser-side `privacy` map so screens can show "set by your regional" help text for absent fields; `people` consents as a built-in audience (`consented:<purpose>`), once a module needs an opt-in group; a per-person audience ("the people I lead") when a membership contract exists (volunteers Proposed change 1); `bms check` listing every group and its current audience for an operator.
+
+## Amendment A1 (2026-10-20, awaiting owner approval): two interface contradictions and six smaller points
+
+Raised by the implementer against the Approved text. Each item names the choice, the reason and the alternative not taken. The inline edits above are marked (A1); `module-contract.md`, `module-hello.md` and `module-volunteers.md` were edited alongside (marked (A1) there) so the three stay consistent with this one.
+
+**A1.1 `Filter` and `Shows` could not find the viewer's extent.** `Policy` is keyed by group name, the tag carries only `group=<name>`, and `Viewer.Extents` was keyed by permission; nothing in `Filter`'s or `Shows`' arguments mapped a group to its permission. *Chosen:* `Viewer.Extents map[string]authz.Extent`, keyed by `Group.Name`; `ViewerOf` still calls `ExtentOf` once per distinct permission (F34) and writes the extent under every group naming it. *Why:* the viewer's extents are consumed per group, so keying them per group puts the join where the data is produced (once per use case) instead of where it is consumed (once per field per record); `Filter`'s and `Shows`' signatures stay as approved, the `Policy` literal tests write stays a plain map, and a hand-built `Viewer` in a test reads as "holder of group X here". *Not taken:* (B) passing `groups` to `Filter` and `Shows` widens every call site and repeats a lookup per field; (C) a `Policy` struct carrying the permission per group makes `Policy` opaque (no literal in tests) and leaves `Viewer` saying something (`Extents` by permission) that no consumer asks.
+
+**A1.2 `ViewerOf` could not learn `Viewer.Person`.** `authz.Authorizer` answers for the actor in `ctx` but exposes only `Allow`, `AllowIn` and `ExtentOf`; `privacy` may not import `identity`; and with no groups there was no `ExtentOf` call to produce F31's `Unauthenticated`. *Chosen:* `ViewerOf(ctx, az, person model.PersonID, groups)`; a zero `person` is `Unauthenticated` before any authz call. *Why:* every use case already resolves the actor before its permission check (Behavior 1), so passing it costs nothing and keeps `privacy` free of `identity`; failing on a zero person keeps F31 and makes the anonymous path explicit: a public use case passes `privacy.Viewer{}` to `Filter` (Behavior 10, F40). *Not taken:* an `actorFunc` seam (a second way to say the same thing; the service has the ID in hand); returning the zero `Viewer` for a zero person (a service that forgot its actor check would silently serve public fields instead of failing).
+
+**A1.3 `hello` has four wire types, not one.** Only `Greet` returns `greeting.Greeting`; `Greeting` returns `hello.Greeting{Greeting, Mine, Seen}`, and `PublicGreeting{Greeting, Banners}` and `Banner{Module, Key}` are wire types too. *Chosen:* all four tagged and listed in `Views`: `PublicGreeting` and `Banner` fields `public` (the route has no actor), `hello.Greeting` and `greeting.Greeting` fields `internal`; `Filter` in all three use cases: `Greeting` and `Greet` with `ViewerOf`, `PublicGreeting` with the zero `Viewer` over the container and over each `Banner`. *Why:* `Check` guarantees that a type is tagged, not that a public route's type is all `public`; only `Filter` with the zero `Viewer` enforces "public fields only" for an anonymous reader, and the template should show that shape as well as the signed-in one. The per-`Banner` call shows the container-then-elements shape (Behavior 4) without a second module. *Not taken:* `Filter` only in `Greeting` and `Greet` (the implementer's proposal): it leaves the reviewer's rule "every use case that returns a response type calls `Filter`" with an exception in the template itself.
+
+**A1.4 `null` is a marker.** A zeroed `nil` pointer, slice or map without `omitempty`/`omitzero` encodes as `"x": null`, which tells the reader the field exists (decision 3 forbids a marker). *Chosen:* `Check` requires `omitempty` or `omitzero` on every grouped field, whatever its kind (F6). `omitzero` is the choice for a slice or map whose empty-but-visible value must still appear (`[]`), since it drops only the nil value; `omitempty` is fine for a pointer. *Not taken:* having `Filter` detect the kind and rely on the encoder: the encoder's behavior is what produces the marker.
+
+**A1.5 Conformance rule order.** `views_tagged` and `visibility_settings_declared` run right after `manifest_valid`, before `templates_register`: both read the manifest only, and a tagging problem should be named before the rig builds the module. *Why not last:* the rules after `manifest_valid` assume a well-formed manifest; a `Views` mistake would otherwise surface as a confusing failure in a later rule.
+
+**A1.6 `moduletest`'s own fixtures.** The fixture modules in `conformance_test.go` have routes (`http.NotFoundHandler`) and no response type; after A1.5 their `Conformance` calls fail `views_tagged` unless they pass `WithoutViews()`. They do; one new fixture (`untaggedView`: `Views` listing a struct with an untagged exported field) proves F65.
+
+**A1.7 Where the `privacy.audience.*` keys live.** They are frontend catalogue entries in `web/src/shell/messages/<lang>.json` (the shell's catalogues, checked by the shell's catalogue test), not anything in Go: the `privacy` package, like a manifest, carries no human-readable text.
+
+**A1.8 `Check` and audit's field grammar.** `Result.Fields` go straight into `audit.Entry.Fields`, which `audit.Entry.Validate` rejects when a name is longer than `audit.MaxFieldBytes` (64) or outside `[a-z][a-z0-9_]*`; that would fail a use case at run time, on the first audited read. *Chosen:* `Check` rejects an auditable field whose JSON name breaks either rule (F10a `too_long`, F10b `malformed`); `privacy` imports `core/audit` for the two constants (core contracts may import each other acyclically; `audit` does not import `privacy`). The grammar is restated in `privacy` rather than exported from `audit`, which would be a change to an Implemented spec for one regexp; `TestCheck_AuditableNameNotAuditGrammar_ReturnsInvalid` also feeds the rejected names to `audit.Entry.Validate` so the two cannot drift apart unnoticed.
+
+**Test expectations that change** (for the test-author writing from the Approved text; everything else stands):
+
+| Test | Before | After A1 |
+|---|---|---|
+| Any helper building a `Viewer` (`holderSite`, `holderIn` in `helpers_test.go`) | `Extents[authz.Permission]` | `Extents[string]` keyed by group name; the helpers take group names |
+| `TestFilter_Holders_Table` (F21), `TestFilter_Extra_Table` (F23), any `Shows` test | the held permission is looked up through the group | the viewer's entry is under the group name; two groups sharing a permission each need their own entry |
+| `TestViewerOf_NoActor_ReturnsUnauthenticated` (F31) | an empty ctx | `person` zero, two cases (with and without groups); the `authztest` fake records no `ExtentOf` call |
+| `TestViewerOf_NotHeld_IsAbsent` (F32) | the permission is absent from `Extents` | every group naming that permission is absent |
+| `TestViewerOf_DistinctPermissionsOnce` (F34) | one call | one call, and both group names carry the same extent |
+| every `ViewerOf` call | `ViewerOf(ctx, az, groups)` | `ViewerOf(ctx, az, person, groups)` with `ctx` from `authztest.WithActor(ctx, authz.Actor{Person: person})` |
+| `TestCheck_GroupedNotOmittable_ReturnsInvalid` (F6) | a pointer, slice or map without `omitempty` passes | it fails `not_omittable`; the table adds pointer, slice and map rows, each passing with `omitempty` or `omitzero` |
+| `TestCheck_WellTaggedType_Passes` and every fixture type with a grouped pointer, slice or map field | no `omitempty` needed | the fixture's grouped fields carry `omitempty` or `omitzero` |
+| New: `TestCheck_AuditableNameTooLong_ReturnsInvalid` (F10a), `TestCheck_AuditableNameNotAuditGrammar_ReturnsInvalid` (F10b), `TestViewerOf_NoGroups_NoAuthzCall` (F39), `TestFilter_ZeroViewer_PublicOnly_AllPolicies` (F40) | — | as the rows say |
+| `moduletest` conformance tests (`conformance_test.go`) | fixtures without `WithoutViews()` | every fixture passes `WithoutViews()` except `untaggedView`; the rule order has `views_tagged`, `visibility_settings_declared` second and third |
+| `hello`: `TestManifest_UntaggedViewField_ReturnsInvalid` (F37 there), `TestViews_Tagged` | `Views = [greeting.Greeting{}]` | `Views` lists `PublicGreeting{}`, `Banner{}`, `Greeting{}` (hello's), `greeting.Greeting{}`; new `TestPublicGreeting_ZeroViewer_PublicFieldsOnly` (hello F38) |
+| `volunteers` | `ViewerOf(ctx, authz, Groups)` | `ViewerOf(ctx, authz, actor, Groups)`; F126 to F141 unchanged otherwise |
 
 ## Open questions
 
