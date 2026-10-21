@@ -7,6 +7,7 @@
 - **Amended 2026-10-18 (M2 build, accepted deviations):** implementation deviations recorded in Behavior, "Accepted implementation deviations (M2 build, 2026-10-18)": a nil `Deps.Authz` denies everything (the rule for modules copying hello); migration 0002 is the person FK, `RESTRICT`, with a preflight.
 - **Amendment 2026-10-20 (approved, owner, D44; privacy-tags Proposed change 4):** the reference module tags `greeting.Greeting` (`id`, `greeting`, `created_at` all `privacy:"internal"`; `Person` stays `json:"-"`), declares `Views: []any{greeting.Greeting{}}` and no `Groups`, and calls `privacy.Filter` in every use case that returns a `greeting.Greeting` (`Greeting`, `Greet`), so module authors copy the shape. See "Amendment 2026-10-20 (D44): privacy tags" before Open questions.
 - **Amendment A1 (2026-10-20, approved 2026-10-21, D45; privacy-tags A1.3):** `hello` has four wire types, so all four are tagged and listed in `Views`: `PublicGreeting` and `Banner` (`public`), `hello.Greeting` and `greeting.Greeting` (`internal`); `Filter` runs in all three use cases, `PublicGreeting` with the zero `Viewer` (public fields only); `ViewerOf` takes the actor. F38 added. Edits marked (A1).
+- **Amendment A2 (2026-10-21, awaiting owner approval; privacy-tags A2.2, A2.7):** every `internal` field carries `omitempty` (`omitzero` on `id` and `created_at`, whose kinds `omitempty` never omits), so a hidden field is absent, never a placeholder; a signed-in reader with `mine` 0 gets no `mine` key and the screen shows the `=0` wording. `PublicGreeting` filters through an unexported helper `publicView[T any](v *T) error`, which is the seam F38 lacked: the test calls it with a test-only type. Edits marked (A2).
 - **Amendment 2026-10-19 (approved, owner, 2026-10-20, D40):** `hello` ships one notification template, `hello.greeted` (`Manifest.Templates`), sent to the actor from `Greet` through `Deps.Notify`, so the reference covers the path (module-contract.md, D39, notify Proposed change 4); F32 to F36. See "Amendment 2026-10-19 (approved, owner, 2026-10-20, D40): the `hello.greeted` template" before Open questions.
 - **Package:** `internal/modules/hello` (with `internal/modules/hello/greeting`,
   `internal/modules/hello/postgres`) and `internal/contracts/greeter`
@@ -37,7 +38,7 @@ trim, no control characters); `SignalGreeted = "hello.greeted"`, `PayloadPerson 
 `greetings.write`, no body, 201). Fragment `openapi.json` embedded; schemas
 `HelloPublicGreeting`, `HelloBanner`, `HelloGreeting`, `HelloGreeted`.
 **`greeting`:** `ID = model.ID[marker]`, `Greeting{ID, Person model.PersonID, Text,
-CreatedAt}` (D44: `id`, `greeting`, `created_at` tagged `privacy:"internal"`; `Manifest.Views` lists it with `PublicGreeting`, `Banner` (both `public`) and hello's `Greeting` (`internal`) (A1); no `Groups`) with `Validate()`. **`postgres`:** `Migrations fs.FS` (`0001_init.sql` creates
+CreatedAt}` (D44: `id`, `greeting`, `created_at` tagged `privacy:"internal"`, with `omitzero`, `omitempty`, `omitzero` (A2); `Manifest.Views` lists it with `PublicGreeting`, `Banner` (both `public`) and hello's `Greeting` (`internal`, every field `omitempty` (A2)) (A1); no `Groups`) with `Validate()`. **`postgres`:** `Migrations fs.FS` (`0001_init.sql` creates
 `hello.greeting`), `NewStore(db.DB) (*Store, error)`.
 **`contracts/greeter`:** `const Name = "greeter"`; `Greeter{Greeting(ctx) (string, error)}`;
 `Banner{Key string}` (a message key `module.<contributor>.banner.<ident>`).
@@ -189,10 +190,10 @@ type ID = model.ID[marker]
 
 // Greeting is one saved greeting: who greeted, with which word, when.
 type Greeting struct {
-	ID        ID             `json:"id" privacy:"internal"`
-	Person    model.PersonID `json:"-"`          // never on the wire; the caller already knows who they are
-	Text      string         `json:"greeting" privacy:"internal"`
-	CreatedAt time.Time      `json:"created_at" privacy:"internal"`
+	ID        ID             `json:"id,omitzero" privacy:"internal"`         // A2: an array kind, so omitzero
+	Person    model.PersonID `json:"-"`                                      // never on the wire; the caller already knows who they are
+	Text      string         `json:"greeting,omitempty" privacy:"internal"` // A2
+	CreatedAt time.Time      `json:"created_at,omitzero" privacy:"internal"` // A2: a struct kind, so omitzero
 }
 
 // Validate fails with errs.Invalid (joined validate.FieldErrors on "id", "person",
@@ -335,6 +336,12 @@ type service struct {
 // or errs.Internal when Links refuses PointBanner (a bug: it is declared).
 func (s *service) PublicGreeting(ctx context.Context) (PublicGreeting, error)
 
+// publicView runs privacy.Filter over v for the anonymous reader (the zero Viewer, no
+// policy, no relation): public fields stay, anything else is zeroed and, being omittable,
+// absent from the body. PublicGreeting calls it on the container and on each Banner; the
+// test calls it with a test-only type (A2; F38). Fails Internal as Filter does.
+func publicView[T any](v *T) error
+
 // Greeting is GET /greeting: the greeting word, how many times the actor has greeted
 // (own rows only) and how many hello.greeted deliveries this process has seen. Needs an
 // actor (errs.Unauthenticated) and PermissionGreetingsRead (errs.Permission). Span
@@ -444,14 +451,16 @@ type Banner struct {
 }
 
 // Greeting is GET /greeting's body: the actor's own counts (A1: internal; signed in).
+// A2: every internal field is omitempty, so a zero count is absent on the wire and the
+// screen reads absent as 0 (a signed-in reader is never denied an internal field).
 type Greeting struct {
-	Greeting string `json:"greeting" privacy:"internal"`
-	Mine     int    `json:"mine" privacy:"internal"` // the actor's own rows
-	Seen     int    `json:"seen" privacy:"internal"` // hello.greeted deliveries this process counted since Start
+	Greeting string `json:"greeting,omitempty" privacy:"internal"`
+	Mine     int    `json:"mine,omitempty" privacy:"internal"` // the actor's own rows
+	Seen     int    `json:"seen,omitempty" privacy:"internal"` // hello.greeted deliveries this process counted since Start
 }
 ```
 
-All four are in `Manifest.Views` (A1). No field is `personal` or grouped, so there is nothing for a regional to configure.
+All four are in `Manifest.Views` (A1). No field is `personal` or grouped, so there is nothing for a regional to configure. (A2) Every non-public field carries the omit option its kind needs (privacy-tags F6); `public` fields carry none, so `banners` is still `[]`, never absent, when nobody contributes. The TypeScript `HelloGreeting` has `mine?: number` and `seen?: number`.
 
 Uses `model.PersonID`, `greeting.Greeting`, `greeting.ID`, `module.Export`,
 `module.Deletion`, `signals.Signal`.
@@ -539,7 +548,7 @@ no `style` prop, logical properties (web-shell decision 21):
 | Part | Who | Calls | States |
 |---|---|---|---|
 | Greeting heading `module.hello.screen.greeting` (`"{greeting}!"`) and the banner list (one line per banner, text from the banner's key) | everyone | `GET /api/hello/public-greeting` | loading (`Loading` after 300 ms); error (`ErrorState` with retry; `network` has no reference); banners empty: the list is omitted, nothing says "no banners" |
-| Counts `module.hello.screen.mine` (`"You have greeted {mine, plural, =0 {never} one {once} other {# times}}"`) and `module.hello.screen.seen` | signed in (`useSession().signedIn`) | `GET /api/hello/greeting` | loading; forbidden (`403`: `ErrorState` with `error.permission`; the public part stays); error; `mine = 0` shows the same line (its own empty wording), no separate `EmptyState` |
+| Counts `module.hello.screen.mine` (`"You have greeted {mine, plural, =0 {never} one {once} other {# times}}"`) and `module.hello.screen.seen` | signed in (`useSession().signedIn`) | `GET /api/hello/greeting` | loading; forbidden (`403`: `ErrorState` with `error.permission`; the public part stays); error; `mine = 0` shows the same line (its own empty wording), no separate `EmptyState`; (A2) `mine` and `seen` are absent from the body when 0 (`omitempty`), and the screen reads absent as 0 |
 | `Button` `module.hello.screen.greet` | signed in | `POST /api/hello/greetings` | pending (disabled, no double submit); success (`Toast` `module.hello.screen.greeted`, both queries refetched); `read_only` (`ErrorSummary` under the button; the shell's banner already explains); `403` (`ErrorSummary`); other errors (`ErrorSummary` with reference) |
 | Signed out | everyone in M0 | — | only the public part renders; no sign-in prompt of its own (the frame has one) |
 
@@ -695,7 +704,7 @@ other markers are unused here). `hello` requires and uses no capability, so no
 
 **Web** (`web/`): `registry.test.ts` accepts the set; `scripts/check-web-module-imports.sh`
 passes; `Greeting.test.tsx` (Testing Library, mocked client) covers loading, loaded with
-and without banners, `403`, `network`, signed-in counts with `mine` 0 and 3, greet success
+and without banners, `403`, `network`, signed-in counts with `mine` 0 (A2: the key absent from the mocked body) and 3, greet success
 and `read_only`; `axe` on the screen; Playwright scenarios are web-shell's, run at the
 phone and desktop viewports by `make test-e2e`.
 
@@ -764,6 +773,8 @@ Decision 2's seam list gains nothing: `Deps.Notify` is a core field taken as is,
 `hello` is the template for `privacy-tags.md`. `greeting.Greeting` tags `id`, `greeting` and `created_at` `privacy:"internal"` (`Person` is `json:"-"`, so exempt); `Manifest.Views = []any{greeting.Greeting{}}` and `Manifest.Groups` is empty (every field is internal, so there is nothing for a regional to configure and no `visibility_*` setting). `Greeting` and `Greet` pass each returned `greeting.Greeting` through `privacy.Filter` with the zero-group policy (it reports no audited fields, since nothing is `personal`), so the call shape is the one module authors copy. `Conformance` runs the new rule `views_tagged` over `Views` (`WithoutViews()` is not used here). Failure mode F37: a field added to `greeting.Greeting` without a tag fails the conformance rule and `Manifest.Validate` (`Invalid`, `views[0].<Field>`), `TestManifest_UntaggedViewField_ReturnsInvalid`.
 
 **A1 (2026-10-20, approved 2026-10-21, D45; privacy-tags A1.3).** The paragraph above counted one wire type; `hello` has four. `Manifest.Views = []any{PublicGreeting{}, Banner{}, Greeting{}, greeting.Greeting{}}`: `PublicGreeting` and `Banner` fields are `privacy:"public"` (the route has no actor), `hello.Greeting` and `greeting.Greeting` fields `privacy:"internal"`; `Groups` stays empty. `Filter` runs in every use case that returns one of them: `Greeting` and `Greet` build the viewer with `privacy.ViewerOf(ctx, s.authz, actor, nil)` (the actor the use case took from `identity.PersonFrom` first; no groups, so no authz call) and pass the result and the zero `Relation`; `PublicGreeting` passes `privacy.Viewer{}` (the anonymous viewer; `ViewerOf` is never called on a public route) over the `PublicGreeting` value and then over each `Banner` in `Banners` (the container-then-elements shape of privacy-tags Behavior 4). F37 is unchanged except that `views[i]` indexes the four types in that order. Failure mode F38 (A1): `PublicGreeting` with a non-public field added to `PublicGreeting` or `Banner` (a test-only fixture, through the same `Filter` call) answers a body without that key; `TestPublicGreeting_ZeroViewer_PublicFieldsOnly` (`privacytest.AssertHidden` on the handler's body, with `AssertPresent` for `greeting`, `banners`, `module`, `key`). `TestViews_Tagged` runs `privacy.Check(Manifest.Views, nil)` and passes.
+
+**A2 (2026-10-21, awaiting owner approval; privacy-tags A2.2, A2.7).** Two things the A1 text got wrong. (1) An `internal` field without an omit option is zeroed for the anonymous reader but still encoded (`"mine": 0`), a placeholder privacy-tags decision 3 forbids; `privacy.Check` now requires the option on every non-public field, `omitzero` where the kind is a struct or array. So `greeting.Greeting` is `id,omitzero` (`model.ID` is `[16]byte`), `greeting,omitempty`, `created_at,omitzero` (`time.Time`), and `hello.Greeting` is `greeting,omitempty`, `mine,omitempty`, `seen,omitempty`. A signed-in reader with no greetings gets `{"greeting":"hello"}`; the screen renders the `=0` wording from an absent `mine`, and `HelloGreeting` in TypeScript has `mine?: number`, `seen?: number`. `PublicGreeting` and `Banner` stay as they are: `public` fields are never hidden and need no option, so `banners` is still `[]` when empty. (2) F38 named a "test-only fixture through the same `Filter` call", but `PublicGreeting`'s calls were hard-coded over types with nothing to hide, so removing them failed nothing. `PublicGreeting` now filters through `publicView[T any](v *T) error` (Interface, package `hello`): one `privacy.Filter(v, nil, privacy.Viewer{}, privacy.Relation{})`, called on the container and on each `Banner`. **F38 (A2)** reads: `publicView` over a test-only type with a `public` field and an `internal` `omitempty` field answers a value whose encoded body lacks the internal key; `TestPublicView_HidesNonPublicField` (`privacytest.AssertHidden` on the encoded body, `AssertPresent` for the public key). `TestPublicGreeting_ZeroViewer_PublicFieldsOnly` keeps asserting the route's body has `greeting`, `banners`, `module`, `key` and none of the other types' keys. That `PublicGreeting` calls `publicView` on every value is the reviewer's check, as privacy-tags Behavior 2 says of every `Filter` call. *Not taken:* a `publicFilter` function field on the service, a seam that exists only to be swapped in a test and that the template would teach every module to add.
 
 ## Open questions
 
