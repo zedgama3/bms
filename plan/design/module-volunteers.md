@@ -2,6 +2,7 @@
 
 - **Status:** Approved (2026-10-20, D43; D42's answers folded in; the D43 visibility amendment approved 2026-10-20, D44)
 - **Amended 2026-10-21 (owner, D46; privacy-tags A2):** every `internal` field of the response types carries `omitempty` (or `omitzero` for a struct or array, so `time.Time` shift bounds and `model.ID`s); the screens treat an absent `internal` count or flag as zero. F126 to F141 unchanged.
+- **Amendment V1 (2026-10-21, awaiting owner approval):** what the build and the reviews found. A shift the caller cannot see is `NotFound` on every method, `Permission` only on a visible one (F77, F81, F100, F110 reworded; F143 to F146); the three long lists (`ListShifts`, `MySchedule`, `ListMembers`) page with an opaque `Cursor` and return `Next` (`Page`, `ShiftList`, `ScheduleList`, `MemberViewList`), `MySchedule` has an upcoming and a past mode (past newest first) and shows a booking someone else canceled until the shift ends; a lead cannot waive a requirement for themself (`Invalid self` on `waive`, Q-VOL7); a person's own legal name under `visibility_legal_name = self` needs a people change (Proposed change 11, Q-VOL8) and F138 is relaxed until it lands; `RecordList.SelfUpload` tells the person whether uploads are on; `ShiftSummary` carries `DepartmentName` and `PositionName`; `VerifyInput`/`RecordInput.NoExpiry` clears an expiry; the reminder re-enqueues itself at the jobs horizon instead of firing early or never; `CopyShifts` keeps wall-clock times in the destination event's zone; the two signal handlers enqueue the on-demand job `volunteers.cancel-shifts`, which cancels in batches; `signup.booked_as` (migration `0002`) keeps who booked after a lead's deletion; list wrappers use `omitzero` so an empty list is `{"items":[]}`; `Verified()` is `verified_at not null`; the UI places Assign in the manage section, opens certificates through `Attachments`, and has a "never expires" switch. Inline edits are marked (V1); the record with the choices, the test expectations that change and the owner's questions is "Amendment V1" before Open questions.
 - **Package:** `internal/modules/volunteers` (leaf `volunteers/vol`, `volunteers/postgres`)   **UI:** `web/src/modules/volunteers/`
 - **Depends on specs:** `model`, `lib-errs`, `lib-core` (`clock`, `validate`), `db`, `module-contract` (`Manifest`, `Deps`, `PersonData`, `moduletest`), `module-hello` (the shape to copy), `identity` (`PersonFrom`), `authz` (`Allow`, `AllowIn`, `ExtentOf`, starter roles), `people` (`Deps.People`, `contracts/personpage`), `departments-events` (`Deps.Departments`, `Deps.Events`, `contracts/eventsetup`, the two signals), `audit`, `signals`, `notify` (`Deps.Notify`, `Manifest.Templates`), `settings` (`Deps.Settings`), `privacy-tags` (Draft: `privacy.Group`, `Filter`, `Manifest.Views`/`Groups`), `jobs` (Draft: `Deps.Jobs`), `files` (Draft: `Deps.Files`, `ReadUpload`, `Serve`, the per-route body cap), `api` (`httpx`), `web-shell`, `app` (`modules.go` line)   **Used by:** `app` (registry), `people` (person-page section, `PersonData`), `events` (event set-up provider); later `incidents`, `afterreports` and a trust feature through the signals and the capability sketched under "Later"
 
@@ -9,19 +10,19 @@
 
 **Purpose.** Staff a department's shifts with volunteers who hold what the position needs. The first feature module (D26, Phase 1). Five parts in one module: a **catalogue of qualifications** (department-specific or org-wide), **qualification records** that only leads verify (D40, D41), **positions** (roles in a department with qualification requirements and an access rule), **membership** (who belongs to a department), **shifts** (blocks of time in a position, usually for an event) with **sign-ups**. Imports `model`, `lib`, `core/module`, `core/identity` (`PersonFrom`, as the `actorFunc` seam), `core/authz` (leaf types), `core/audit` (`Ref`), `core/signals`, `core/notify`, `core/settings`, `core/privacy` (D43), `core/jobs`, `core/files`, `core/people`, `core/departments`, `core/events`, `contracts/personpage`, `contracts/eventsetup`. Never another module, `api`, `app`, `config`.
 
-**Exported (`volunteers`).** `Manifest` (`Name: "volunteers"`); `New(ctx, deps) (module.Module, error)` (no I/O; nil `DB`, `Authz`, `People`, `Departments`, `Events`, `Audit`, `Signals`, `Settings`, `Notify`, `Jobs`, `Files` fail `Invalid`). Permission constants `PermissionSignUp = "volunteers.shifts.signup"` (site), `PermissionShiftsManage`, `PermissionRostersRead`, `PermissionPositionsManage`, `PermissionMembersManage`, `PermissionQualificationsManage`, `PermissionQualificationsRead`, `PermissionQualificationsVerify` (all `ScopeDepartment`). Setting keys `SettingReminderLead = "reminder_lead"`, `SettingCancelCutoff = "cancel_cutoff"`, `SettingExpiryNoticeDays = "expiry_notice_days"`, `SettingSelfUpload = "self_upload"`, `SettingVisibilityShiftMates = "visibility_shift_mates"`, `SettingVisibilityLegalName = "visibility_legal_name"` (the two `privacy` groups' settings, D43), `SettingRetention = "retention"`. `Manifest.Groups = vol.Groups`, `Manifest.Views` = every `vol` response type (privacy-tags). Signals `SignalSignupBooked = "volunteers.signup-booked"`, `SignalSignupCanceled = "volunteers.signup-canceled"`, `SignalQualificationVerified = "volunteers.qualification-verified"`; payload keys `signup`, `shift`, `person`, `department`, `record`, `qualification`. Jobs `JobShiftReminder = "volunteers.shift-reminder"` (deferred), `JobExpiryScan = "volunteers.expiry-scan"` (daily), `JobPurge = "volunteers.purge"` (daily). Templates `volunteers.shift-reminder`, `volunteers.qualification-expiring`, `volunteers.qualification-verified`, `volunteers.qualification-rejected`, `volunteers.signup-removed`. Section `volunteers.summary` on the person page; an `eventsetup.Provider` that copies a previous event's shift grid within the caller's extent.
-**`vol` (leaf):** `PositionID`, `QualificationID`, `RecordID`, `MemberID`, `ShiftID`, `SignupID` (= `model.ID[...]`); `Date{Year, Month, Day}` (civil date, JSON `YYYY-MM-DD`); `Access` (`AccessOpen`, `AccessMembers`); `Qualification`, `Record` (+`Verified()`, `ValidOn(Date)`), `Position` (+`Requirements []QualificationID`, `HideShiftMates bool`), `Member`, `Shift` (+`Canceled()`, `Times() model.TimeRange`), `Signup` (+`WaivedBy`), `SignupStatus` (`Booked`, `Canceled`), `CancelReason` (`self`, `lead`, `shift_canceled`, `department_archived`, `event_closed`); the `*Input` and `*Query` types and the view types `ShiftSummary{Shift, Booked, Mine, Eligibility, Mates *ShiftMates}`, `ShiftMates{Names []string, Unlisted int}` (playa names only), `Eligibility{Eligible bool, Missing []QualificationID, Reason string}`, `RosterEntry{Signup; PlayaName; LegalName *string; Eligible}`, `ScheduleEntry`, `MemberView`; every type has `Validate()`; every field that reaches the wire carries a `json` and a `privacy` tag (D43), and `Groups = []privacy.Group{{Name: "shift_mates", Permission: PermissionSignUp, Default: holders, Options: nobody|booked|holders|signed_in, Extra: booked}, {Name: "legal_name", Permission: "people.contacts.read", Default: holders, Options: nobody|self|holders}}`. Constants `MaxNameBytes = 100`, `MaxDescriptionBytes = 2000`, `MaxLabelBytes = 100`, `MaxLocationBytes = 200`, `MaxSlots = 200`, `MaxShiftDuration = 48h`, `MaxValidityDays = 3650`, `MaxRequirements = 20`, `MaxList = 500`, `MaxIDs = 200`.
-**Service interfaces** (all on `*Service`, safe for concurrent use, nothing to close): `Qualifications` (`ListQualifications`, `CreateQualification`, `UpdateQualification`, `ArchiveQualification`), `Records` (`RecordsOf`, `RecordQualification`, `UploadCertificate`, `VerifyRecord`, `RejectRecord`, `RemoveRecord`, `PendingRecords`, `OpenCertificate`), `Positions` (`ListPositions`, `CreatePosition`, `UpdatePosition`, `ArchivePosition`, `SetRequirements`), `Members` (`ListMembers`, `AddMember`, `RemoveMember`, `MyDepartments`, `Leave`), `Shifts` (`ListShifts`, `GetShift`, `CreateShift`, `UpdateShift`, `CancelShift`, `CopyShifts`), `Signups` (`SignUp`, `Assign`, `CancelSignup`, `Roster`, `MySchedule`, `Listed`, `SetListed`); plus `PersonData`, `Sections` (personpage), `SetUp` (eventsetup).
+**Exported (`volunteers`).** `Manifest` (`Name: "volunteers"`); `New(ctx, deps) (module.Module, error)` (no I/O; nil `DB`, `Authz`, `People`, `Departments`, `Events`, `Audit`, `Signals`, `Settings`, `Notify`, `Jobs`, `Files` fail `Invalid`). Permission constants `PermissionSignUp = "volunteers.shifts.signup"` (site), `PermissionShiftsManage`, `PermissionRostersRead`, `PermissionPositionsManage`, `PermissionMembersManage`, `PermissionQualificationsManage`, `PermissionQualificationsRead`, `PermissionQualificationsVerify` (all `ScopeDepartment`). Setting keys `SettingReminderLead = "reminder_lead"`, `SettingCancelCutoff = "cancel_cutoff"`, `SettingExpiryNoticeDays = "expiry_notice_days"`, `SettingSelfUpload = "self_upload"`, `SettingVisibilityShiftMates = "visibility_shift_mates"`, `SettingVisibilityLegalName = "visibility_legal_name"` (the two `privacy` groups' settings, D43), `SettingRetention = "retention"`. `Manifest.Groups = vol.Groups`, `Manifest.Views` = every `vol` response type (privacy-tags). Signals `SignalSignupBooked = "volunteers.signup-booked"`, `SignalSignupCanceled = "volunteers.signup-canceled"`, `SignalQualificationVerified = "volunteers.qualification-verified"`; payload keys `signup`, `shift`, `person`, `department`, `record`, `qualification`. Jobs `JobShiftReminder = "volunteers.shift-reminder"` (deferred), `JobExpiryScan = "volunteers.expiry-scan"` (daily), `JobPurge = "volunteers.purge"` (daily), `JobCancelShifts = "volunteers.cancel-shifts"` (on demand, from the two signal handlers; V1). Templates `volunteers.shift-reminder`, `volunteers.qualification-expiring`, `volunteers.qualification-verified`, `volunteers.qualification-rejected`, `volunteers.signup-removed`. Section `volunteers.summary` on the person page; an `eventsetup.Provider` that copies a previous event's shift grid within the caller's extent.
+**`vol` (leaf):** `PositionID`, `QualificationID`, `RecordID`, `MemberID`, `ShiftID`, `SignupID` (= `model.ID[...]`); `Date{Year, Month, Day}` (civil date, JSON `YYYY-MM-DD`); `Access` (`AccessOpen`, `AccessMembers`); `Qualification`, `Record` (+`Verified()`, `ValidOn(Date)`), `Position` (+`Requirements []QualificationID`, `HideShiftMates bool`), `Member`, `Shift` (+`Canceled()`, `Times() model.TimeRange`), `Signup` (+`WaivedBy`), `SignupStatus` (`Booked`, `Canceled`), `CancelReason` (`self`, `lead`, `shift_canceled`, `department_archived`, `event_closed`); the `*Input` and `*Query` types (V1: `VerifyInput` and `RecordInput` gain `NoExpiry bool`; `ShiftQuery`, `ScheduleQuery` and the new `MemberQuery` embed `Page{Limit int; After Cursor}`; `Cursor` is an opaque string, `Invalid malformed` when it does not parse) and the view types `ShiftSummary{Shift, DepartmentName, PositionName, Booked, Mine, Eligibility, Mates *ShiftMates}` (V1: the two names), `ShiftMates{Names []string, Unlisted int}` (playa names only), `Eligibility{Eligible bool, Missing []QualificationID, Reason string}`, `RosterEntry{Signup; PlayaName; LegalName *string; Eligible}`, `ScheduleEntry`, `MemberView`, and the list wrappers `RecordList{Items, SelfUpload *bool}`, `ShiftList{Items, Next Cursor}`, `ScheduleList{Items, Next}`, `MemberViewList{Items, Next}` (V1; `items` is `omitzero` over a non-nil slice, so an empty list is `{"items":[]}`); every type has `Validate()`; every field that reaches the wire carries a `json` and a `privacy` tag (D43), and `Groups = []privacy.Group{{Name: "shift_mates", Permission: PermissionSignUp, Default: holders, Options: nobody|booked|holders|signed_in, Extra: booked}, {Name: "legal_name", Permission: "people.contacts.read", Default: holders, Options: nobody|self|holders}}`. Constants `MaxNameBytes = 100`, `MaxDescriptionBytes = 2000`, `MaxLabelBytes = 100`, `MaxLocationBytes = 200`, `MaxSlots = 200`, `MaxShiftDuration = 48h`, `MaxValidityDays = 3650`, `MaxRequirements = 20`, `MaxList = 500`, `MaxIDs = 200`.
+**Service interfaces** (all on `*Service`, safe for concurrent use, nothing to close): `Qualifications` (`ListQualifications`, `CreateQualification`, `UpdateQualification`, `ArchiveQualification`), `Records` (`RecordsOf`, `RecordQualification`, `UploadCertificate`, `VerifyRecord`, `RejectRecord`, `RemoveRecord`, `PendingRecords`, `OpenCertificate`), `Positions` (`ListPositions`, `CreatePosition`, `UpdatePosition`, `ArchivePosition`, `SetRequirements`), `Members` (`ListMembers`, `AddMember`, `RemoveMember`, `MyDepartments`, `Leave`), `Shifts` (`ListShifts`, `GetShift`, `CreateShift`, `UpdateShift`, `CancelShift`, `CopyShifts`), `Signups` (`SignUp`, `Assign`, `CancelSignup`, `Roster`, `MySchedule`, `Listed`, `SetListed`); plus `PersonData`, `Sections` (personpage), `SetUp` (eventsetup). V1: `RecordsOf` returns `RecordList`, `ListShifts` `ShiftList`, `MySchedule` `ScheduleList`, `ListMembers(ctx, MemberQuery)` `MemberViewList`.
 
-**Key decisions.** 1 a lead is whoever holds the department-scoped permission at that department; the starter roles seed every lead permission into `department-admin` only, never `participant`, which is how D41 ("only department leads verify") is kept as data a regional cannot loosen by accident. 2 a qualification record is verified by a lead or it does not count: a self-upload creates a `pending` record (`verified_by` null) and only `VerifyRecord` makes it count; there is no self-attestation path; self-upload is on by default (`self_upload = true`, D42). 3 a department-specific qualification is verified with `AllowIn(verify, q.Department)`; an org-wide one with `ExtentOf(verify)` not zero (any lead anywhere, D41). 4 a position's requirements are a set of qualifications; a person is eligible for a shift when every requirement has a verified record valid on the shift's start date in the shift's zone; age limits are a qualification ("Over 18", org-wide, indefinite), not a profile field or code. 5 a position's `access` is `open` (anyone eligible) or `members` (department members only); membership is a row a lead adds or a person leaves; join requests are Later. 6 a shift belongs to one position and optionally one event (`event_id` null = standing work such as winter inventory, Q-CORE10) and always carries an IANA zone (copied from the event, required otherwise). 7 bookings are serialised per person then per shift (advisory lock then `FOR UPDATE`), so slots and the no-overlap rule hold under concurrency; a person's booked shifts never overlap (`model.TimeRange.Overlaps`); a lead may `Assign` someone who lacks a requirement only with `Waive: true`, which records `waived_by`, audits `Reason waived` and flags the person on the roster; `SignUp` never waives (D42). 8 the shift reminder is a deferred job keyed by the sign-up ID, so a changed shift time moves it and the handler re-reads state; the expiry notice is a daily scan deduped by a column, not by notify's outbox. 9 the certificate is a `files` upload on the record (`Ref{Kind: "volunteers.qualification-record"}`, subject the person, level `personal`), served from this module's route after its own check; the record itself is `internal` (D42). 10 (D42, reshaped by D43) the full roster (person IDs, eligibility, waivers, links to the person page) is for `rosters.read` holders; volunteers see **who else is on a shift by playa name only** (`ShiftSummary.Mates` on `GetShift`, never a legal name, pronoun, contact or ID), as the `privacy` group `shift_mates` whose audience the regional sets in `visibility_shift_mates` (`nobody`; `booked`: only once the viewer holds a booking on that shift; `holders`: anyone who may volunteer, that is holders of `volunteers.shifts.signup`, the default per D43; `signed_in`: anyone who can see the shift), a position's `HideShiftMates` tightening it, and a person's own choice not to be listed (`SetListed(false)`): a person with no playa name yet, or unlisted, is counted in `Unlisted`, never named; these reads are `internal` and not audited. 17 (D43) "anyone who volunteers" is a holder of `volunteers.shifts.signup`, not a person with a booking: the list has to be visible before the first booking for the owner's reason to work, and a regional that restricts who may volunteer already restricts that permission. 18 (D43) legal names on the roster are the `privacy` group `legal_name` (`RosterEntry.LegalName`, `personal`, audience set in `visibility_legal_name`, default `holders` of `people.contacts.read` covering the shift's department), loaded through `Deps.People.LegalNamesOf` (people Proposed change, privacy-tags 3) only when the policy shows them, and audited twice by design: people's `people.person.read` for its data and this module's `volunteers.roster.read` for the roster; a new starter role `volunteer-coordinator` (authz, privacy-tags Proposed change 2) holds `rosters.read`, `qualifications.read` and people's two read permissions, so a fresh installation has the role the owner named. 19 (D43) the per-person opt-out stays: the owner's scenario has two sides (someone avoiding a person also has reason not to be found by them), the count still tells the viewer someone is withheld, and the lead's roster is unaffected. 11 sign-ups never carry to a new event; shifts do, through `events.event-setup` (within the caller's `shifts.manage` extent) and a lead's `CopyShifts`, idempotent through `copied_from`. 12 archiving a department or closing an event cancels its future shifts and their bookings from a signal handler (system actor, idempotent on state), telling each person once. 13 retention is one key, `volunteers.retention` (0 = forever, D30), enforced by `volunteers.purge` on ended shifts' sign-ups, canceled shifts and long-expired records (with their files); memberships are current state and are never purged. 14 no approval step on sign-up, no check-in or hours credit, no swaps, no anchored shifts, no capability yet: all Later. 15 regional differences are the seven settings (two of them visibility audiences, D43), the catalogue, the positions and the roles. 16 the org-wide catalogue is managed site-wide (`qualifications.manage` seeded into `department-steward`); a department's entries by that department's `department-admin` (D42). Every `internal` response field carries `omitempty`/`omitzero` and the screens read an absent count or flag as zero (D46).
+**Key decisions.** 1 a lead is whoever holds the department-scoped permission at that department; the starter roles seed every lead permission into `department-admin` only, never `participant`, which is how D41 ("only department leads verify") is kept as data a regional cannot loosen by accident. 2 a qualification record is verified by a lead or it does not count: a self-upload creates a `pending` record (`verified_by` null) and only `VerifyRecord` makes it count; there is no self-attestation path; self-upload is on by default (`self_upload = true`, D42). 3 a department-specific qualification is verified with `AllowIn(verify, q.Department)`; an org-wide one with `ExtentOf(verify)` not zero (any lead anywhere, D41). 4 a position's requirements are a set of qualifications; a person is eligible for a shift when every requirement has a verified record valid on the shift's start date in the shift's zone; age limits are a qualification ("Over 18", org-wide, indefinite), not a profile field or code. 5 a position's `access` is `open` (anyone eligible) or `members` (department members only); membership is a row a lead adds or a person leaves; join requests are Later. 6 a shift belongs to one position and optionally one event (`event_id` null = standing work such as winter inventory, Q-CORE10) and always carries an IANA zone (copied from the event, required otherwise). 7 bookings are serialised per person then per shift (advisory lock then `FOR UPDATE`), so slots and the no-overlap rule hold under concurrency; a person's booked shifts never overlap (`model.TimeRange.Overlaps`); a lead may `Assign` someone who lacks a requirement only with `Waive: true`, which records `waived_by`, audits `Reason waived` and flags the person on the roster; `SignUp` never waives (D42). 8 the shift reminder is a deferred job keyed by the sign-up ID, so a changed shift time moves it and the handler re-reads state; the expiry notice is a daily scan deduped by a column, not by notify's outbox. 9 the certificate is a `files` upload on the record (`Ref{Kind: "volunteers.qualification-record"}`, subject the person, level `personal`), served from this module's route after its own check; the record itself is `internal` (D42). 10 (D42, reshaped by D43) the full roster (person IDs, eligibility, waivers, links to the person page) is for `rosters.read` holders; volunteers see **who else is on a shift by playa name only** (`ShiftSummary.Mates` on `GetShift`, never a legal name, pronoun, contact or ID), as the `privacy` group `shift_mates` whose audience the regional sets in `visibility_shift_mates` (`nobody`; `booked`: only once the viewer holds a booking on that shift; `holders`: anyone who may volunteer, that is holders of `volunteers.shifts.signup`, the default per D43; `signed_in`: anyone who can see the shift), a position's `HideShiftMates` tightening it, and a person's own choice not to be listed (`SetListed(false)`): a person with no playa name yet, or unlisted, is counted in `Unlisted`, never named; these reads are `internal` and not audited. 17 (D43) "anyone who volunteers" is a holder of `volunteers.shifts.signup`, not a person with a booking: the list has to be visible before the first booking for the owner's reason to work, and a regional that restricts who may volunteer already restricts that permission. 18 (D43) legal names on the roster are the `privacy` group `legal_name` (`RosterEntry.LegalName`, `personal`, audience set in `visibility_legal_name`, default `holders` of `people.contacts.read` covering the shift's department), loaded through `Deps.People.LegalNamesOf` (people Proposed change, privacy-tags 3) only when the policy shows them, and audited twice by design: people's `people.person.read` for its data and this module's `volunteers.roster.read` for the roster; a new starter role `volunteer-coordinator` (authz, privacy-tags Proposed change 2) holds `rosters.read`, `qualifications.read` and people's two read permissions, so a fresh installation has the role the owner named. 19 (D43) the per-person opt-out stays: the owner's scenario has two sides (someone avoiding a person also has reason not to be found by them), the count still tells the viewer someone is withheld, and the lead's roster is unaffected. 11 sign-ups never carry to a new event; shifts do, through `events.event-setup` (within the caller's `shifts.manage` extent) and a lead's `CopyShifts`, idempotent through `copied_from`. 12 archiving a department or closing an event cancels its future shifts and their bookings from a signal handler (system actor, idempotent on state), telling each person once. 13 retention is one key, `volunteers.retention` (0 = forever, D30), enforced by `volunteers.purge` on ended shifts' sign-ups, canceled shifts and long-expired records (with their files); memberships are current state and are never purged. 14 no approval step on sign-up, no check-in or hours credit, no swaps, no anchored shifts, no capability yet: all Later. 15 regional differences are the seven settings (two of them visibility audiences, D43), the catalogue, the positions and the roles. 16 the org-wide catalogue is managed site-wide (`qualifications.manage` seeded into `department-steward`); a department's entries by that department's `department-admin` (D42). Every `internal` response field carries `omitempty`/`omitzero` and the screens read an absent count or flag as zero (D46). 20 (V1) every method that takes a shift ID applies the visibility rule first: an invisible or unknown shift is `NotFound`, a visible one the caller may not act on is `Permission`; qualifications, positions and departments are visible to every signed-in person, so their write methods answer `Permission` and only an unknown ID is `NotFound`. 21 (V1) a lead never waives for themself: `Assign` with `Person == actor` and `Waive` is `Invalid self` (Q-VOL7); another lead must waive. 22 (V1) long lists page by keyset `(starts, id)` (members: `(created_at, id)`) behind an opaque `Cursor`; a page may be short (rows dropped after the fetch) but `Next` never skips a row. 23 (V1) the two handlers enqueue `volunteers.cancel-shifts` (key `<reason>:<department or event ID>`) and the job cancels in batches of `MaxList` shifts per transaction, so handlers stay quick and no transaction grows with the department. 24 (V1) `CopyShifts` keeps each shift's wall-clock start and end in the destination event's zone, shifted by whole days (the civil difference of the events' start dates), so a copy across a DST change keeps "08:00". 25 (V1) the reminder horizon: a reminder due beyond `jobs.MaxDelay - 24h` is enqueued at the horizon and the handler re-enqueues itself (same `Key`) while `Starts - lead` is still ahead, so a far booking or a far-moved shift is never reminded early or never.
 
 **Errs kinds a caller handles.** Every use case: `Unauthenticated` (no actor), store kinds (`Unavailable`, `Timeout`, `Canceled`), `Unavailable` wrapping `db.ErrReadOnly` on writes. `Permission` (an action on a record the caller may see). `NotFound` (unknown ID, or one outside the caller's extent; never `Permission` for an invisible record). `Invalid` with field codes `required`, `too_long {max}`, `control_chars`, `range`, `malformed`, `one_of`, `too_many {max}`, `unknown`, `self`, `scope`, `hidden`. `Conflict` with codes `taken`, `archived`, `canceled`, `closed`, `full`, `overlap {shift}`, `unqualified {missing}`, `not_member`, `started`, `ended`, `cutoff`, `duplicate`, `status`, `in_use`, `pending_exists`. `Unsupported` (self-upload off; notify unconfigured is swallowed, never returned). `files`' kinds pass through `UploadCertificate` and `OpenCertificate` unchanged.
 
-**Owns.** Schema `volunteers`: tables `qualification`, `qualification_record`, `position`, `position_requirement`, `member`, `shift`, `signup`, `unlisted`. Eight permissions, seven settings (two of them `visibility_*` from the two `privacy` groups), three signals published, two subscribed (`departments.department-archived`, `events.event-closed`), three jobs, five templates, one person-page section, one event-setup contribution. Audit actions `volunteers.<record>.<verb>` listed under Behavior. Routes under `/api/volunteers/` and screens under `/volunteers/` listed under Interface and UI. Catalogue keys `module.volunteers.*`.
+**Owns.** Schema `volunteers`: tables `qualification`, `qualification_record`, `position`, `position_requirement`, `member`, `shift`, `signup` (V1: `booked_as`, migration `0002`), `unlisted`. Eight permissions, seven settings (two of them `visibility_*` from the two `privacy` groups), three signals published, two subscribed (`departments.department-archived`, `events.event-closed`), four jobs (V1), five templates, one person-page section, one event-setup contribution. Audit actions `volunteers.<record>.<verb>` listed under Behavior. Routes under `/api/volunteers/` and screens under `/volunteers/` listed under Interface and UI. Catalogue keys `module.volunteers.*`.
 
-**Expects of dependencies.** `jobs` (Approved): `Deps.Jobs jobs.Registrar`, `Register` in `Start`, `Enqueue` joining the transaction with `Key` reschedule semantics, `InJob`; `MaxEvery >= 24h`. `files` (Approved): `Deps.Files files.Store`, `Stage` outside the caller's transaction and `Attach` inside its `Write` transaction (with a deferred `Discard`), `ByRecord`, `Open` auditing a `personal` read, `DeleteByRecord`, `ReadUpload`, `Serve`, `module.Route.MaxBodyBytes`/`Timeout` (files Proposed change 1), `Accept` images and PDF. `authz`: `ExtentOf` for every list, `AllowIn` for one department's record. `people`: `NamesOf`, `people.directory.read` seeded to `department-admin` (leads search people to add members and record qualifications); `LegalNamesOf` (people.md, D44: `people.contacts.read` in any extent, audited per person; `peopletest.Fake.AddLegalName`). `privacy-tags` (Approved, D44): `Group`, `Settings`, `Check`, `PolicyOf`, `ViewerOf`, `Filter`, `Policy.Shows`, `Manifest.Views`/`Groups` through module-contract. `authz`: the `volunteer-coordinator` starter role (D44, migration `0003`; `Seed` applies the key at the first `bms migrate` after the role exists). `departments`/`events`: `Active`, `NamesOf`, `InfoOf` (`Zone`, `Dates`, `Closed`), the two signals, `GET /api/departments` and `GET /api/events` for pickers. `notify`: scoped `Send`, `Unsupported` treated as no e-mail. `settings`: a scoped `Reader`. `audit`: a `Recorder` scoped `volunteers`. `web-shell`: `useFormat` in the shift's zone, `FileField`/`Attachments` (files Proposed change 7).
+**Expects of dependencies.** `jobs` (Approved): `Deps.Jobs jobs.Registrar`, `Register` in `Start`, `Enqueue` joining the transaction with `Key` reschedule semantics, `InJob`; `MaxEvery >= 24h`. `files` (Approved): `Deps.Files files.Store`, `Stage` outside the caller's transaction and `Attach` inside its `Write` transaction (with a deferred `Discard`), `ByRecord`, `Open` auditing a `personal` read, `DeleteByRecord`, `ReadUpload`, `Serve`, `module.Route.MaxBodyBytes`/`Timeout` (files Proposed change 1), `Accept` images and PDF. `authz`: `ExtentOf` for every list, `AllowIn` for one department's record. `people`: `NamesOf`, `people.directory.read` seeded to `department-admin` (leads search people to add members and record qualifications); `LegalNamesOf` (people.md, D44: `people.contacts.read` in any extent, audited per person; `peopletest.Fake.AddLegalName`; V1 Proposed change 11: the actor's own ID answered without the permission, so `visibility_legal_name = self` works for a plain lead; until applied F138 holds only for a viewer who holds the permission somewhere). `privacy-tags` (Approved, D44): `Group`, `Settings`, `Check`, `PolicyOf`, `ViewerOf`, `Filter`, `Policy.Shows`, `Manifest.Views`/`Groups` through module-contract. `authz`: the `volunteer-coordinator` starter role (D44, migration `0003`; `Seed` applies the key at the first `bms migrate` after the role exists). `departments`/`events`: `Active`, `NamesOf`, `InfoOf` (`Zone`, `Dates`, `Closed`), the two signals, `GET /api/departments` and `GET /api/events` for pickers. `notify`: scoped `Send`, `Unsupported` treated as no e-mail. `settings`: a scoped `Reader`. `audit`: a `Recorder` scoped `volunteers`. `web-shell`: `useFormat` in the shift's zone, `FileField`/`Attachments` (files Proposed change 7).
 
-**Open questions:** Q-VOL1 to Q-VOL5 are closed by D42, Q-VOL6 by D43 (2026-10-20; decisions 17 to 19); none open. **Proposed changes elsewhere:** 10, listed at the end; all applied 2026-10-20 (D44) except 4 (settings terms: needs a design choice) and the `burn-domain` skill additions in 7 and 10 (main session).
+**Open questions:** Q-VOL1 to Q-VOL5 are closed by D42, Q-VOL6 by D43 (2026-10-20; decisions 17 to 19); V1 raises Q-VOL7 (no self-waiver), Q-VOL8 (own legal name under `self`) and Q-VOL9 (a canceled booking stays on the schedule), each with a recommendation, awaiting the owner. **Proposed changes elsewhere:** 11, listed at the end; 1 to 10 applied 2026-10-20 (D44) except 4 (settings terms: needs a design choice) and the `burn-domain` skill additions in 7 and 10 (main session); 11 (people's `LegalNamesOf` answering the actor without the permission) is V1's.
 
 **D43 amendment (2026-10-20).** The regional sets visibility through `privacy` groups: `visibility_shift_mates` replaces `show_shift_mates`; `visibility_legal_name` and `RosterEntry.LegalName` are new; every `vol` response type is tagged and listed in `Manifest.Views`; F126 to F128 are reworded and F134 to F141 added (`SetListed`'s row is now F142); the `volunteer-coordinator` starter role is named in `StarterRoles`.
 
@@ -132,7 +133,7 @@ type Record struct {
 	Certificate   files.FileID   // zero = none
 	CreatedAt, UpdatedAt time.Time
 }
-func (r Record) Verified() bool
+func (r Record) Verified() bool      // (V1) !VerifiedAt.IsZero(): VerifiedBy may be zeroed by that lead's deletion, the date stays
 func (r Record) ValidOn(d Date) bool // Verified() && (ExpiresOn.IsZero() || !ExpiresOn.Before(d))
 
 type RecordInput struct { // a lead records from their own training records (D40 way (a))
@@ -140,6 +141,7 @@ type RecordInput struct { // a lead records from their own training records (D40
 	Person        model.PersonID
 	AcquiredOn    Date
 	ExpiresOn     Date // zero = the catalogue default (AcquiredOn + ValidityDays), or indefinite
+	NoExpiry      bool // (V1) true = indefinite even when the catalogue has a validity; with ExpiresOn set: Invalid one_of
 }
 type UploadInput struct { // a person uploads a certificate (D40 way (b))
 	Qualification QualificationID
@@ -147,8 +149,18 @@ type UploadInput struct { // a person uploads a certificate (D40 way (b))
 	ExpiresOn     Date
 	Upload        *files.Multipart // the file; Accept = images and PDF
 }
-type VerifyInput struct{ AcquiredOn, ExpiresOn Date } // zero = keep what the person entered
-type PendingQuery struct{ Department model.DepartmentID } // zero = every pending record the caller may verify
+type VerifyInput struct {
+	AcquiredOn, ExpiresOn Date // zero = keep what the person entered
+	NoExpiry bool              // (V1) true = clear the expiry (the certificate never expires); with ExpiresOn set: Invalid one_of
+}
+type PendingQuery struct{ Department model.DepartmentID } // zero = every pending record the caller may verify; a department includes the org-wide pending records too (D41: its leads may verify them)
+// RecordList is the body of GET /people/{person}/qualifications (V1). SelfUpload is present
+// only when the person is the actor: whether UploadCertificate is on (self_upload), so the
+// My volunteering screen can show or hide the upload action without settings.read.
+type RecordList struct {
+	Items      []Record `json:"items,omitzero" privacy:"internal"`
+	SelfUpload *bool    `json:"self_upload,omitempty" privacy:"internal"`
+}
 
 type Position struct {
 	ID           PositionID
@@ -173,6 +185,28 @@ type MemberView struct {
 	Member
 	PlayaName string
 	Eligible  []PositionID // active positions of the department the person is eligible for today
+}
+// (V1) Paging shared by the three long lists. Cursor is opaque to clients: base64url of
+// "<sort key RFC3339Nano>|<id>" ((starts, id) for shifts and schedules, (created_at, id) for
+// members); a cursor that does not decode, or whose ID is not a valid model.ID, is Invalid
+// malformed on "after". The service fetches Limit + 1 rows: when the extra row exists, Next
+// is the cursor of the last returned row, else zero (absent). Next is computed from the
+// fetched rows before any Go-side filtering, so a page may be shorter than Limit but a
+// cursor never skips a row.
+type Cursor string
+func (c Cursor) IsZero() bool
+type Page struct {
+	Limit int    // 1..MaxList, default 100
+	After Cursor // zero = the first page
+}
+func (p Page) Validate() error
+type MemberQuery struct {
+	Department model.DepartmentID
+	Page
+}
+type MemberViewList struct {
+	Items []MemberView `json:"items,omitzero" privacy:"internal"`
+	Next  Cursor       `json:"next,omitempty" privacy:"internal"`
 }
 
 type Shift struct {
@@ -207,9 +241,14 @@ type ShiftQuery struct {
 	Department      model.DepartmentID // zero = all the caller may see
 	Event           model.EventID      // zero = any, including standing work
 	Position        PositionID
-	Within          model.TimeRange    // zero = from now on
+	Within          model.TimeRange    // zero = from now on; (V1) either bound alone is allowed: Start only = from then on, End only = from now until then; Start >= End is Invalid range
 	IncludeCanceled bool               // needs shifts.manage in that extent
-	Limit           int                // 1..MaxList, default 100
+	Page                               // (V1) replaces Limit; order (starts, id)
+}
+// ShiftList is the body of GET /shifts (V1).
+type ShiftList struct {
+	Items []ShiftSummary `json:"items,omitzero" privacy:"internal"`
+	Next  Cursor         `json:"next,omitempty" privacy:"internal"`
 }
 // Every vol type that reaches the wire carries json and privacy tags (privacy-tags, D43);
 // the tags are shown here only where a field is grouped or above internal. Everything
@@ -220,6 +259,8 @@ type ShiftQuery struct {
 // need are `json:"-"`.
 type ShiftSummary struct {
 	Shift
+	DepartmentName string   `json:"department_name,omitempty" privacy:"internal"` // (V1) from Deps.Departments.NamesOf, one batched call per list; "" when the directory does not know it
+	PositionName   string   `json:"position_name,omitempty" privacy:"internal"`   // (V1) from the position join
 	Booked      int         `json:"booked,omitempty" privacy:"internal"`
 	Mine        SignupID    `json:"mine,omitzero" privacy:"internal"` // the caller's booked sign-up, or zero
 	Eligibility Eligibility `json:"eligibility,omitzero" privacy:"internal"`
@@ -250,6 +291,8 @@ type Eligibility struct {
 	Eligible bool
 	Missing  []QualificationID // requirements without a valid record
 	Reason   string            // "", "not_member", "full", "started", "canceled", "closed", "archived", "overlap"
+	// (V1) When the viewer already holds a booking on the shift, Eligible is false with
+	// Reason "" and ShiftSummary.Mine is set: the screen shows "Booked", not a reason.
 }
 
 type SignupStatus string
@@ -266,14 +309,15 @@ type Signup struct {
 	Shift      ShiftID
 	Person     model.PersonID
 	Status     SignupStatus
-	BookedBy   model.PersonID // zero = the person themself
+	BookedBy   model.PersonID // zero = the person themself, or a lead since deleted (see BookedAs)
+	BookedAs   CancelReason   // (V1) "self" or "lead": who booked, kept after that lead's deletion (the export's role word)
 	WaivedBy   model.PersonID // the lead who assigned despite a missing requirement (D42); zero otherwise
 	CanceledAt time.Time
 	CanceledBy model.PersonID // zero = the system (a signal handler)
 	CancelReason CancelReason
 	CreatedAt, UpdatedAt time.Time
 }
-type AssignInput struct{ Person model.PersonID; Waive bool } // Waive: book even if unqualified; recorded and audited (D42)
+type AssignInput struct{ Person model.PersonID; Waive bool } // Waive: book even if unqualified; recorded and audited (D42). (V1) Person == actor with Waive is Invalid self on "waive": a lead never waives for themself (Q-VOL7); Person == actor without Waive is allowed (a lead books themself like anyone, until the shift ends)
 type RosterEntry struct { // Signup.WaivedBy non-zero flags a waiver
 	Signup
 	PlayaName string  `json:"playa_name,omitempty" privacy:"internal"`
@@ -281,8 +325,27 @@ type RosterEntry struct { // Signup.WaivedBy non-zero flags a waiver
 	Eligible  bool    `json:"eligible,omitempty" privacy:"internal"`
 }
 type Roster struct{ Shift Shift; Entries []RosterEntry }
-type ScheduleQuery struct{ Within model.TimeRange; IncludePast bool }
-type ScheduleEntry struct{ Signup; Shift Shift; Department, Position string }
+// (V1) ScheduleQuery has two modes. Past false (default): bookings whose shift has not
+// ended, soonest first, including sign-ups someone other than the person canceled (reason
+// lead, shift_canceled, department_archived, event_closed) so a removal is seen even
+// without e-mail (Q-VOL9); the person's own cancellations are not listed. Past true: booked
+// sign-ups whose shift has ended, newest first (so the latest work is on the first page).
+// Within narrows either mode; either bound alone is allowed.
+type ScheduleQuery struct {
+	Within model.TimeRange
+	Past   bool // replaces IncludePast
+	Page        // order (starts, id) ascending for upcoming, descending for past
+}
+type ScheduleEntry struct {
+	Signup
+	Shift      Shift  `json:"shift,omitzero" privacy:"internal"`
+	Department string `json:"department_name,omitempty" privacy:"internal"`
+	Position   string `json:"position_name,omitempty" privacy:"internal"`
+}
+type ScheduleList struct { // the body of GET /me/schedule (V1)
+	Items []ScheduleEntry `json:"items,omitzero" privacy:"internal"`
+	Next  Cursor          `json:"next,omitempty" privacy:"internal"`
+}
 ```
 
 ```go
@@ -318,11 +381,15 @@ type Qualifications interface {
 type Records interface {
 	// RecordsOf lists a person's records: their own without a permission, another's within
 	// the caller's qualifications.read extent, filtered to the qualifications of that
-	// extent plus org-wide ones. Audits nothing (records are internal, D42). F12-F13.
-	RecordsOf(ctx context.Context, person model.PersonID) ([]vol.Record, error)
+	// extent plus org-wide ones. Audits nothing (records are internal, D42). (V1) Returns
+	// RecordList; SelfUpload is set (the self_upload setting, read now) only when person is
+	// the actor. F12-F13, F147.
+	RecordsOf(ctx context.Context, person model.PersonID) (vol.RecordList, error)
 	// RecordQualification is way (a): a lead records a qualification as verified now, by
 	// the actor. Department-specific: qualifications.verify at that department; org-wide:
-	// any verify extent (D41). Never for oneself. F14-F20.
+	// any verify extent (D41). Never for oneself. (V1) Audits qualification-record.created
+	// and qualification-record.verified (two entries: the record came into being and was
+	// vouched for in one act). NoExpiry makes it indefinite whatever the catalogue says. F14-F20, F148.
 	RecordQualification(ctx context.Context, in vol.RecordInput) (vol.Record, error)
 	// Handler shape (files.md Behavior, D44): the handler calls files.ReadUpload, then
 	// Stage (outside the transaction, Accept files.Images and files.Documents); the use
@@ -336,7 +403,8 @@ type Records interface {
 	UploadCertificate(ctx context.Context, in vol.UploadInput) (vol.Record, error)
 	// VerifyRecord marks a pending record verified by the actor, optionally correcting the
 	// dates; permission as RecordQualification. Sends volunteers.qualification-verified
-	// to the person. F28-F32.
+	// to the person. (V1) A zero ExpiresOn keeps what the person entered; NoExpiry clears
+	// it (a certificate that never expires); both set is Invalid one_of. F28-F32, F148.
 	VerifyRecord(ctx context.Context, id vol.RecordID, in vol.VerifyInput) (vol.Record, error)
 	// RejectRecord deletes a pending record and its certificate (nothing to keep: it never
 	// counted) and sends volunteers.qualification-rejected. Permission as VerifyRecord. F33-F35.
@@ -374,8 +442,9 @@ type Positions interface {
 // (Proposed change 1).
 type Members interface {
 	// ListMembers lists a department's members with playa names (Deps.People.NamesOf) and
-	// the positions each is eligible for today; needs rosters.read at the department. F56-F57.
-	ListMembers(ctx context.Context, dept model.DepartmentID) ([]vol.MemberView, error)
+	// the positions each is eligible for today; needs rosters.read at the department. (V1)
+	// Paged by (created_at, id); the UI follows Next. F56-F57, F149.
+	ListMembers(ctx context.Context, q vol.MemberQuery) (vol.MemberViewList, error)
 	// AddMember needs members.manage at the department (Active); the person must exist
 	// (foreign key); duplicate is Conflict duplicate. F58-F62.
 	AddMember(ctx context.Context, dept model.DepartmentID, person model.PersonID) (vol.Member, error)
@@ -394,12 +463,16 @@ type Shifts interface {
 	// ListShifts: shifts the actor may see, with Booked, Mine and Eligibility computed for
 	// the actor: open-access positions of active departments for everyone; members-only
 	// ones for members; canceled ones and past ones inside the caller's shifts.manage or
-	// rosters.read extent. Never reveals a shift the actor may not see. F66-F67.
-	ListShifts(ctx context.Context, q vol.ShiftQuery) ([]vol.ShiftSummary, error)
+	// rosters.read extent. Never reveals a shift the actor may not see. (V1) Paged
+	// (ShiftList.Next); DepartmentName from one Departments.NamesOf per page, PositionName
+	// from the join; shifts of a department NamesOf does not return are dropped from the
+	// page (archived since) and the page may be short. F66-F67, F149.
+	ListShifts(ctx context.Context, q vol.ShiftQuery) (vol.ShiftList, error)
 	// GetShift: one shift with the same visibility rule (NotFound otherwise), plus Mates
 	// (who else is booked, playa names only) when the shift_mates policy shows it to this
 	// viewer (privacy.Policy.Shows, then Filter); absent otherwise. Not audited (internal).
-	// F68, F126-F134.
+	// (V1) A past shift the actor could otherwise see is returned (the list's "from now on"
+	// default is about volume, not secrecy; a bookmarked link keeps working). F68, F126-F134.
 	GetShift(ctx context.Context, id vol.ShiftID) (vol.ShiftSummary, error)
 	// CreateShift needs shifts.manage at the department (Active); the position must be
 	// active and of that department; an event must exist and not be closed; Zone comes
@@ -407,16 +480,23 @@ type Shifts interface {
 	CreateShift(ctx context.Context, dept model.DepartmentID, in vol.ShiftInput) (vol.Shift, error)
 	// UpdateShift: same checks; a time change moves every booked person's reminder and
 	// refuses when a booked person would then overlap another booking (Conflict overlap)
-	// or when Slots would fall below Booked (Conflict full). F77-F80.
+	// or when Slots would fall below Booked (Conflict full). (V1) The visibility rule runs
+	// before AllowIn: an invisible shift is NotFound, a visible one without shifts.manage@D
+	// is Permission (decision 20). F77-F80, F143.
 	UpdateShift(ctx context.Context, id vol.ShiftID, in vol.ShiftInput) (vol.Shift, error)
 	// CancelShift cancels the shift and every booked sign-up (reason shift_canceled),
 	// sending volunteers.signup-removed to each person. Idempotent (Conflict canceled on
-	// a second call). F81-F83.
+	// a second call). (V1) Visibility first, as UpdateShift. F81-F83, F144.
 	CancelShift(ctx context.Context, id vol.ShiftID) error
 	// CopyShifts copies the non-canceled shifts of one department from one event to
-	// another, shifting times by the difference of the events' starts; needs
-	// shifts.manage at the department; idempotent (a shift already copied from the same
-	// source is skipped). Returns the number created. F84-F88.
+	// another; needs shifts.manage at the department; idempotent (a shift already copied
+	// from the same source is skipped). Returns the number created. (V1) Times are copied
+	// as wall-clock times in the destination event's zone: each shift's civil start and end
+	// (in its own zone) are moved by the whole-day difference between the two events' start
+	// dates and re-anchored with time.Date in the destination zone, so "08:00–14:00" stays
+	// "08:00–14:00" across a DST change or a zone change; when the result would not satisfy
+	// Ends > Starts (a shift inside a skipped hour) Ends is Starts plus the source duration.
+	// F84-F88, F150.
 	CopyShifts(ctx context.Context, dept model.DepartmentID, from, to model.EventID) (int, error)
 }
 
@@ -425,12 +505,14 @@ type Signups interface {
 	// SignUp books the actor into a shift: needs shifts.signup; the shift must be visible,
 	// not canceled, not started, of an active department and an open event; the actor
 	// must be eligible (requirements, membership), the shift not full, and no other booked
-	// shift may overlap. Enqueues the reminder. Publishes volunteers.signup-booked. F89-F99.
+	// shift may overlap. Enqueues the reminder (V1: at the jobs horizon when the reminder
+	// time is further ahead, decision 25). Publishes volunteers.signup-booked. F89-F99, F151.
 	SignUp(ctx context.Context, shift vol.ShiftID) (vol.Signup, error)
-	// Assign books another person: needs shifts.manage at the department; allowed until
-	// the shift ends (walk-ons); the same rules, except that Waive (D42) records WaivedBy
-	// and audits Reason waived instead of refusing unqualified. Only Assign waives;
-	// SignUp never does. F100-F104.
+	// Assign books a person: needs shifts.manage at the department; allowed until the
+	// shift ends (walk-ons); the same rules, except that Waive (D42) records WaivedBy and
+	// audits Reason waived instead of refusing unqualified. Only Assign waives; SignUp
+	// never does. (V1) Visibility first (an invisible shift is NotFound); a lead may assign
+	// themself but never waive for themself (Invalid self, Q-VOL7). F100-F104, F145, F152.
 	Assign(ctx context.Context, shift vol.ShiftID, in vol.AssignInput) (vol.Signup, error)
 	// CancelSignup: the person cancels their own booking before the shift starts and
 	// before cancel_cutoff; a shifts.manage holder cancels any (reason lead, the person
@@ -440,11 +522,15 @@ type Signups interface {
 	// eligibility; needs rosters.read at the department. The lead's view; volunteers get
 	// ShiftSummary.Mates instead (D42). LegalName is filled from People.LegalNamesOf only
 	// when the legal_name policy shows it to this viewer, each entry filtered with its own
-	// subject, and the read audited volunteers.roster.read (D43). F110-F111, F135-F140.
+	// subject, and the read audited volunteers.roster.read (D43). (V1) Visibility first: an
+	// invisible shift is NotFound, a visible one without rosters.read@D is Permission.
+	// F110-F111, F135-F140, F146.
 	Roster(ctx context.Context, shift vol.ShiftID) (vol.Roster, error)
-	// MySchedule: the actor's bookings, upcoming by default, with shift, department and
-	// position names. Cannot fail beyond store kinds and Unauthenticated.
-	MySchedule(ctx context.Context, q vol.ScheduleQuery) ([]vol.ScheduleEntry, error)
+	// MySchedule: the actor's bookings with shift, department and position names. (V1) Two
+	// modes (ScheduleQuery): upcoming (not ended; soonest first; includes bookings someone
+	// else canceled, with the reason) and past (ended; booked only; newest first); paged.
+	// Fails Invalid on the page or window; otherwise only store kinds and Unauthenticated. F153.
+	MySchedule(ctx context.Context, q vol.ScheduleQuery) (vol.ScheduleList, error)
 	// Listed reports whether the actor's playa name is shown to other volunteers on their
 	// shifts (true unless SetListed(false) was called). Consumer: the My volunteering
 	// screen. Own record: cannot fail beyond store kinds and Unauthenticated.
@@ -456,7 +542,7 @@ type Signups interface {
 }
 
 // *Service implements Qualifications, Records, Positions, Members, Shifts, Signups,
-// module.Module (Start registers two subscriptions and three jobs; never writes; Stop is
+// module.Module (Start registers two subscriptions and four jobs (V1); never writes; Stop is
 // a no-op), module.RouteProvider, module.APIDescriber, module.Contributor
 // (personpage.Provider as Sections; eventsetup.Provider as SetUp) and module.PersonData.
 ```
@@ -469,7 +555,7 @@ type Signups interface {
 | `POST /qualifications` | `CreateQualification` | `qualifications.manage` (site for org-wide, `@D`) |
 | `PUT /qualifications/{qualification}` | `UpdateQualification` | same |
 | `POST /qualifications/{qualification}/archive` | `ArchiveQualification` | same |
-| `GET /people/{person}/qualifications` | `RecordsOf` | self, or `qualifications.read` extent |
+| `GET /people/{person}/qualifications` (V1: body `RecordList`, `self_upload` present for oneself) | `RecordsOf` | self, or `qualifications.read` extent |
 | `POST /people/{person}/qualifications` | `RecordQualification` | `qualifications.verify` |
 | `POST /me/qualifications` (multipart; `MaxBodyBytes = files.UploadCeiling`, `Timeout = files.UploadTimeout`) | `UploadCertificate` | self; setting `self_upload` |
 | `GET /qualification-records?department=` | `PendingRecords` | `qualifications.verify` extent |
@@ -482,12 +568,12 @@ type Signups interface {
 | `PUT /positions/{position}` | `UpdatePosition` | `positions.manage@D` |
 | `POST /positions/{position}/archive` | `ArchivePosition` | `positions.manage@D` |
 | `PUT /positions/{position}/requirements` | `SetRequirements` | `positions.manage@D` |
-| `GET /departments/{department}/members` | `ListMembers` | `rosters.read@D` |
+| `GET /departments/{department}/members?limit=&after=` (V1: paged, body `MemberViewList`) | `ListMembers` | `rosters.read@D` |
 | `POST /departments/{department}/members` | `AddMember` | `members.manage@D` |
 | `DELETE /departments/{department}/members/{person}` | `RemoveMember` | `members.manage@D` |
 | `GET /me/departments` | `MyDepartments` | self |
 | `DELETE /me/departments/{department}` | `Leave` | self |
-| `GET /shifts?department=&event=&position=&from=&to=&canceled=&limit=` | `ListShifts` | visibility rule |
+| `GET /shifts?department=&event=&position=&from=&to=&canceled=&limit=&after=` (V1: `after` is `ShiftList.next`; `from` or `to` alone allowed) | `ListShifts` | visibility rule |
 | `GET /shifts/{shift}` | `GetShift` | visibility rule |
 | `POST /departments/{department}/shifts` | `CreateShift` | `shifts.manage@D` |
 | `PUT /shifts/{shift}` | `UpdateShift` | `shifts.manage@D` |
@@ -497,11 +583,11 @@ type Signups interface {
 | `POST /shifts/{shift}/assign` `{person, waive}` | `Assign` | `shifts.manage@D` |
 | `DELETE /signups/{signup}` | `CancelSignup` | self or `shifts.manage@D` |
 | `GET /shifts/{shift}/roster` | `Roster` | `rosters.read@D` |
-| `GET /me/schedule?from=&to=&past=` | `MySchedule` | self |
+| `GET /me/schedule?from=&to=&past=&limit=&after=` (V1: paged, body `ScheduleList`) | `MySchedule` | self |
 | `GET /me/listing` | `Listed` | self |
 | `PUT /me/listing` `{listed}` | `SetListed` | self |
 
-Handlers are thin (`httpx.ReadJSON`, `httpx.WriteJSON`, `httpx.Fail`); list responses are wrapped objects (`{"items": [...]}`), as the M2 build settled. `GET` routes change nothing. The OpenAPI fragment names schemas `VolunteersQualification`, `VolunteersRecord`, `VolunteersPosition`, `VolunteersMember`, `VolunteersShift`, `VolunteersShiftSummary`, `VolunteersSignup`, `VolunteersRoster`, `VolunteersScheduleEntry`.
+Handlers are thin (`httpx.ReadJSON`, `httpx.WriteJSON`, `httpx.Fail`); list responses are wrapped objects (`{"items": [...]}`), as the M2 build settled. (V1) Every wrapper's `items` is `omitzero` and the service returns a non-nil slice, so an empty list encodes `{"items":[]}` and a client never has to treat an absent key as empty (D46 forbids only a placeholder for a hidden field; an empty list is the value). The paged wrappers add `next`, absent on the last page; a handler parses `after` into `vol.Cursor` without decoding it (the service validates). `GET` routes change nothing. The OpenAPI fragment names schemas `VolunteersQualification`, `VolunteersRecord`, `VolunteersPosition`, `VolunteersMember`, `VolunteersShift`, `VolunteersShiftSummary`, `VolunteersSignup`, `VolunteersRoster`, `VolunteersScheduleEntry`.
 
 ## Types
 
@@ -509,7 +595,7 @@ Defined in `vol` above. Uses `model.PersonID`, `model.DepartmentID`, `model.Even
 
 ## Data
 
-Schema `volunteers`; migration `postgres/migrations/0001_init.sql` (version 1). Every table has `created_at`, `updated_at` (`timestamptz not null`). Foreign keys to `core.person(id)`, `core.department(id)` and `core.event(id)` are `on delete restrict` (people calls `DeletePerson` first; departments and events are never deleted).
+Schema `volunteers`; migrations `postgres/migrations/0001_init.sql` and (V1) `0002_booked_as.sql` (version 2: `signup.booked_as`, backfilled `'lead'` where `booked_by is not null or waived_by is not null`, else `'self'`). Every table has `created_at`, `updated_at` (`timestamptz not null`). Foreign keys to `core.person(id)`, `core.department(id)` and `core.event(id)` are `on delete restrict` (people calls `DeletePerson` first; departments and events are never deleted).
 
 **`qualification`:** `id uuid pk`; `department_id uuid null` (FK department; null = org-wide); `name text` (1..100 bytes); `description text` (≤ 2000); `validity_days int null` (1..3650); `archived_at timestamptz null`. Unique index on `(coalesce(department_id, '00000000-0000-0000-0000-000000000000'), lower(name))` (`qualification_name_key`). Nothing personal; kept forever.
 
@@ -532,15 +618,15 @@ Partial unique index `(qualification_id, person_id) where verified_at is null` (
 
 **`member`:** `id`; `department_id` FK; `person_id` FK (internal: who belongs where, shown to leads and on the person page); `added_by uuid null` FK (internal). Unique `(department_id, person_id)`. Kept until removed or `DeletePerson`.
 
-**`shift`:** `id`; `department_id`, `position_id` FK; `event_id uuid null` FK event; `label` (1..100); `starts`, `ends timestamptz` (check `ends > starts and ends - starts <= interval '48 hours'`); `zone text`; `slots int` (1..200); `location` (≤ 200); `notes` (≤ 2000; internal; the form says "no personal information here"); `canceled_at null`; `cancel_reason text null` (check in the five reasons); `copied_from uuid null` FK `shift` set null; `created_by uuid null` FK person. Indexes `(department_id, starts)`, `(event_id, starts)`, `(position_id)`, unique `(copied_from, event_id) where copied_from is not null` (the idempotent copy). Nothing personal; `created_by` is internal; canceled rows purged by `volunteers.retention`.
+**`shift`:** `id`; `department_id`, `position_id` FK ((V1) a composite FK `(position_id, department_id) → position(id, department_id)` backs decision 6's "the position is of that department"; a violation is translated to `Invalid scope`, F71); `event_id uuid null` FK event; `label` (1..100); `starts`, `ends timestamptz` (check `ends > starts and ends - starts <= interval '48 hours'`); `zone text`; `slots int` (1..200); `location` (≤ 200); `notes` (≤ 2000; internal; the form says "no personal information here"); `canceled_at null`; `cancel_reason text null` (check in the five reasons); `copied_from uuid null` FK `shift` set null; `created_by uuid null` FK person. Indexes `(department_id, starts)`, `(event_id, starts)`, `(position_id)`, unique `(copied_from, event_id) where copied_from is not null` (the idempotent copy). Nothing personal; `created_by` is internal; canceled rows purged by `volunteers.retention`.
 
-**`signup`:** `id`; `shift_id` FK; `person_id` FK (internal: shift times with a person, per `privacy-data`'s table); `status text check in ('booked','canceled')`; `booked_by uuid null`, `waived_by uuid null`, `canceled_by uuid null` FK person (internal); `canceled_at null`; `cancel_reason null`. Partial unique `(shift_id, person_id) where status = 'booked'` (`signup_booked_key`); index `(person_id, status)`, `(shift_id, status)`. Kept until `DeletePerson` or `volunteers.retention` after the shift ends (history and, later, credit).
+**`signup`:** `id`; `shift_id` FK; `person_id` FK (internal: shift times with a person, per `privacy-data`'s table); `status text check in ('booked','canceled')`; `booked_by uuid null`, `waived_by uuid null`, `canceled_by uuid null` FK person (internal); (V1) `booked_as text not null check in ('self','lead')` (who booked, as a role word: survives the lead's deletion, which nulls `booked_by`); `canceled_at null`; `cancel_reason null`. Partial unique `(shift_id, person_id) where status = 'booked'` (`signup_booked_key`); index `(person_id, status)`, `(shift_id, status)`. Kept until `DeletePerson` or `volunteers.retention` after the shift ends (history and, later, credit).
 
 **`unlisted`:** `person_id uuid pk` FK person restrict; `created_at`. One row per person who chose not to appear in shift-mate lists (`SetListed(false)`); no row = listed. The row itself is `internal` and read only by the person (`Listed`) and by the list computation; nobody is told who opted out, only how many booked people are unlisted. Kept until `SetListed(true)` (the row is deleted) or `DeletePerson`; never purged by retention (it is current state, like `member`).
 
 **Operations and their permission:** every write names its permission in Interface; `ListShifts`, `GetShift` and the roster filter with `ExtentOf` (`shifts.manage`, `rosters.read`) and the membership join; `GetShift`'s `Mates` needs no permission beyond seeing the shift: it is gated by the `shift_mates` policy (`visibility_shift_mates`: `holders` of `shifts.signup` by default, `booked` asserted from the actor's own booking) and the position's `hide_shift_mates`; `Roster`'s `LegalName` is gated by the `legal_name` policy (`holders` of `people.contacts.read` covering the department by default) and by people's own check inside `LegalNamesOf`; the system paths used by the jobs, the signal handlers, `ExportPerson` and `DeletePerson` take no actor and are reachable only from those callers (never a route).
 
-**Export** (`ExportPerson`, one JSON document): `memberships` (department ID and name, since), `listed` (`true`/`false`), `signups` (shift label, department, position, times, zone, status, reasons, whether a requirement was waived, who booked or canceled as role words, never names), `qualification_records` (qualification name, dates, verified yes/no and when, certificate file ID: files exports the bytes itself, files decision 13), `verified_for_others` (a count), `shifts_created` (a count). **Deletion** (`DeletePerson`, inside people's transaction, the ctx given): delete the person's sign-ups, memberships, `unlisted` row and records (calling `files.DeleteByRecord` per record), then set `verified_by`, `added_by`, `booked_by`, `waived_by`, `canceled_by`, `created_by` to null where they name the person (`Anonymized`); `Kept` empty. Idempotent.
+**Export** (`ExportPerson`, one JSON document): `memberships` (department ID and name, since), `listed` (`true`/`false`; (V1) absent when the module holds nothing about the person: an unknown person exports `{}`), `signups` (shift label, department, position, times, zone, status, reasons, whether a requirement was waived, who booked or canceled as role words, never names; (V1) `booked_by` is `booked_as`, and `canceled_by` is derived from `cancel_reason`: `self` → `self`, `lead` → `lead`, the three system reasons → `system`, so a lead's later deletion loses nothing), `qualification_records` (qualification name, dates, verified yes/no and when, certificate file ID: files exports the bytes itself, files decision 13), `verified_for_others` (a count), `shifts_created` (a count). **Deletion** (`DeletePerson`, inside people's transaction, the ctx given): delete the person's sign-ups, memberships, `unlisted` row and records (calling `files.DeleteByRecord` per record), then set `verified_by`, `added_by`, `booked_by`, `waived_by`, `canceled_by`, `created_by` to null where they name the person (`Anonymized`); `Kept` empty. Idempotent.
 
 **Carry-over to a new event:** positions, qualifications, records and members are standing; shifts copy (`SetUp`, `CopyShifts`); sign-ups never. **Module off:** data stays, routes and screens disappear.
 
@@ -571,12 +657,14 @@ Own records need no permission: `RecordsOf(self)`, `UploadCertificate`, `RemoveR
 
 No consumer exists today; they are the hooks `afterreports` (shifts worked) and a trust feature (D18) will subscribe to, and they cost one `Publish` each.
 
-**Subscribed** (handlers registered in `Start`, run as the system, idempotent on state, quick):
+**Subscribed** (handlers registered in `Start`, run as the system, idempotent, quick; (V1) each handler only enqueues the job below, decision 23):
 
 | Signal | Handler | On failure |
 |---|---|---|
-| `departments.department-archived` `{department}` | cancel every non-canceled shift of the department whose `ends` is in the future (`cancel_reason department_archived`) and its booked sign-ups (same reason), sending `volunteers.signup-removed` once per person per shift (notify `Key` `removed:<signup>`); a second delivery finds nothing to do | logged and counted by `signals`; retried by `jobs` for `Unavailable`/`Timeout`; the archive stands and `SignUp` refuses anyway (`Active` false), so a lost delivery leaves stale rows a lead can cancel by hand |
-| `events.event-closed` `{event}` | the same for the event's future shifts (`event_closed`) | same; `SignUp` refuses anyway (`Closed`) |
+| `departments.department-archived` `{department}` | (V1) `Jobs.Enqueue{Name: volunteers.cancel-shifts, Key: "department_archived:<department>", Args: {department}}`; a second delivery is a no-op on the key while the job waits, and a second run of the job finds nothing to do | `Enqueue` failing is the handler's error: logged and counted by `signals`, retried by `jobs` for `Unavailable`/`Timeout`; the archive stands and `SignUp` refuses anyway (`Active` false), so a lost delivery leaves stale rows a lead can cancel by hand |
+| `events.event-closed` `{event}` | (V1) the same with `Key "event_closed:<event>"`, `Args {event}` | same; `SignUp` refuses anyway (`Closed`) |
+
+**`volunteers.cancel-shifts`** (V1; on demand, `Timeout 5m`): in batches of `MaxList` shifts, each its own `Write` transaction: cancel the department's (or event's) non-canceled shifts whose `ends` is in the future (`cancel_reason` from the key's reason) and their booked sign-ups (same reason), audit `shift.canceled` and `signup.canceled`, publish `signup-canceled` and send `volunteers.signup-removed` once per sign-up (notify `Key` `removed:<signup>`); repeat until a batch is empty. Idempotent on state: a retry resumes where it stopped. Args name a department or an event, never a person.
 
 Not subscribed: `events.event-changed` (the shift screen shows "outside the event's dates" from `InfoOf` at render time); `people.person-deleted` (`DeletePerson` already ran); `departments.department-restored` (a lead recreates shifts).
 
@@ -604,33 +692,36 @@ All screens phone-first (web-shell decision 21), `useT` with typed keys, `{term_
 
 | Screen | Who | Actions | Empty / error / forbidden |
 |---|---|---|---|
-| `/volunteers/` Shifts | every signed-in person | filter by event, department, day; each card shows label, department, position, times, free slots, and **Sign up**, **Booked** or why not (`Eligibility`: missing qualifications named, members only, full, overlap) | "No shifts to show yet" with the filters; a 403 on sign-up shows the shell's forbidden state |
-| `/volunteers/shifts/:shift` | as visible | sign up, cancel my booking; **Who else is on this shift** (when `mates` is present: the playa names, then "and {n} not listed" when `unlisted` > 0; plain text, no links; the section is absent when `mates` is null, with no hint why); roster (roster readers) with playa names linking to `/people/:person`, a legal name next to the playa name when `legal_name` is present on the entry (no column at all when it is absent on every entry), an eligibility flag and a **requirement waived** flag; **Assign** (playa-name search through `GET /api/people/search`, a **Waive requirements** switch that explains the waiver is recorded), edit, cancel (managers) | NotFound state for an invisible shift; canceled banner; "No one else is booked yet" when `mates` is present and empty |
-| `/volunteers/me` My volunteering | self | upcoming and past bookings with cancel; my departments with leave; my qualifications with status (pending, verified, expires on, expired) and **Upload a certificate** (`FileField`, when `self_upload` is on; hidden otherwise); **Show my playa name to others on my shifts** (a switch from `GET /me/listing`, saved with `PUT /me/listing`, with the note that leads always see the roster) | "You have no shifts booked" with a link to Shifts |
+| `/volunteers/` Shifts | every signed-in person | filter by event, department, day; each card shows label, department and position (V1: from `department_name` and `position_name` on the summary, no per-department position fetch), times, free slots, and **Sign up**, **Booked** or why not (`Eligibility`: missing qualifications named, members only, full, overlap); (V1) the list asks `limit=100` and shows **Show more** while `next` is present, appending the next page | "No shifts to show yet" with the filters; a 403 on sign-up shows the shell's forbidden state |
+| `/volunteers/shifts/:shift` | as visible | sign up, cancel my booking; **Who else is on this shift** (when `mates` is present: the playa names, then "and {n} not listed" when `unlisted` > 0; plain text, no links; the section is absent when `mates` is null, with no hint why); **Roster** section (`rosters.read@D` holders only) with playa names linking to `/people/:person`, a legal name next to the playa name when `legal_name` is present on the entry (no column at all when it is absent on every entry), an eligibility flag and a **requirement waived** flag; (V1) **Manage** section (`shifts.manage@D` holders only, independent of the roster section): **Assign** (playa-name search through `GET /api/people/search`, a **Waive requirements** switch that explains the waiver is recorded and is disabled when the chosen person is the viewer, Q-VOL7), edit, cancel; a manager without `rosters.read` sees Manage and no roster, a roster reader without `shifts.manage` sees the roster and no Manage | NotFound state for an invisible shift; canceled banner; "No one else is booked yet" when `mates` is present and empty |
+| `/volunteers/me` My volunteering | self | upcoming and past bookings (V1: two tabs from `past=false`/`past=true`, each paged with **Show more**; an upcoming booking someone else canceled is shown struck through with its reason, "removed by a lead", "shift canceled", "{term_department} archived", "{term_event} closed", until the shift passes, Q-VOL9) with cancel; my departments with leave; my qualifications with status (pending, verified, expires on, expired, never expires) and **Upload a certificate** (`FileField`, shown when `self_upload` on the person's own `GET /people/{person}/qualifications` is true, hidden otherwise; V1: the screen reads the flag from that body, never from `GET /api/settings`); **Show my playa name to others on my shifts** (a switch from `GET /me/listing`, saved with `PUT /me/listing`, with the note that leads always see the roster) | "You have no shifts booked" with a link to Shifts |
 | `/volunteers/admin` | holders of any lead permission | the departments the viewer leads (from `session.permissions` `p@D` and `GET /api/departments`), pending certificates count | "You lead no department yet" |
-| `/volunteers/departments/:department` | leads | tabs: **Shifts** (by event, fill counts, new, copy from a previous event), **Positions** (list, new, edit with a **Hide who's on shifts from other volunteers** switch, requirements picker, archive), **Members** (list with eligibility per position, add by search, remove), **Qualifications** (the department's catalogue; org-wide ones read-only here), **Pending** (certificates to verify: open the file, correct dates, verify or reject) | each tab's empty state names the action; forbidden tabs are hidden by `session.permissions` and answer the shell's forbidden state if reached |
+| `/volunteers/departments/:department` | leads | tabs: **Shifts** (by event, fill counts, new, copy from a previous event; V1: paged with **Show more**), **Positions** (list, new, edit with a **Hide who's on shifts from other volunteers** switch, requirements picker, archive), **Members** (list with eligibility per position, add by search, remove; V1: paged with **Show more**), **Qualifications** (the department's catalogue; org-wide ones read-only here), **Pending** (certificates to verify, the org-wide pending ones included and labelled "org-wide" (D41): open the file, correct dates, verify or reject; V1: the verify form has an **Expires on** date and a **Never expires** switch that clears and disables the date, sending `no_expiry: true`; the certificate opens through the shell's `Attachments` row, which fetches through `@/api`: a 404 shows "This certificate is no longer available", a 503 with `Retry-After` the shell's "not available on this copy yet", and success opens the bytes; never a raw link to the route) | each tab's empty state names the action; forbidden tabs are hidden by `session.permissions` and answer the shell's forbidden state if reached |
 | `/volunteers/departments/:department/shifts/new`, `/volunteers/shifts/:shift/edit` | `shifts.manage@D` | the form: position, event (or standing work with a zone), label, start and end in the zone, slots, location, notes ("no personal information") | field errors inline (`module.volunteers.field.<code>`) |
-| `/volunteers/people/:person` | `qualifications.read`/`.verify` holders | a person's records in the viewer's extent; **Record a qualification** (way (a)); open certificate; remove | NotFound outside the extent |
+| `/volunteers/people/:person` | `qualifications.read`/`.verify` holders | a person's records in the viewer's extent; **Record a qualification** (way (a); V1: with the same **Never expires** switch); open certificate (V1: through `Attachments`, as on the Pending tab); remove | NotFound outside the extent |
 | `/volunteers/qualifications` | site-wide `qualifications.manage` | the org-wide catalogue: new, edit, archive | |
 
 The person page shows section `volunteers.summary` (title `module.volunteers.section.summary.title`): items **Departments** (names, to the viewer's extent), **Upcoming shifts** (count, `Href` `/volunteers/me` for the person themself).
 
 ## Behavior
 
-- **Actor and checks, in order:** actor (`identity.PersonFrom`; none → `Unauthenticated`), input `Validate`, permission, then state. A record outside the caller's extent is `NotFound` (privacy-data); an action the caller may not take on a visible record is `Permission`.
+- **Actor and checks, in order:** actor (`identity.PersonFrom`; none → `Unauthenticated`), input `Validate`, permission, then state. A record outside the caller's extent is `NotFound` (privacy-data); an action the caller may not take on a visible record is `Permission`. (V1, decision 20) For a shift, "visible" is `ListShifts`' rule, evaluated for the actor before `AllowIn` in `GetShift`, `UpdateShift`, `CancelShift`, `SignUp`, `Assign` and `Roster`: in the actor's `shifts.manage` or `rosters.read` extent (any state), or not canceled and either open-access or members-only in a department the actor belongs to. Unknown and invisible are the same `NotFound`. Qualifications, positions, departments and events are visible to every signed-in person (they label what one signs up for), so their write methods answer `Permission` for a holder-less caller and `NotFound` only for an unknown ID (F7, F10, F45, F49 read that way; an archived position by ID is still visible: archiving hides it from pickers, not from the person who has its link).
+- **Paging** (V1, decision 22): `ListShifts`, `MySchedule` and `ListMembers` fetch `Limit + 1` rows in their stable order, return the first `Limit`, and set `Next` to the last returned row's cursor when the extra row exists. `ListShifts` drops rows whose department `Departments.NamesOf` no longer returns (archived since the handlers ran) after the fetch; `Next` still comes from the fetched rows, so the next page starts after the last fetched row and nothing is skipped; a short page is not "the end": only an absent `next` is. A cursor from another list, another order or another person's query simply yields the rows after that key (no secret is in it: a `starts` and an ID the caller could see).
 - **Eligibility** (`eligible(person, shift, now)`): department `Active`; shift not canceled; event (if any) not `Closed`; position not archived; if `Access == members`, a `member` row exists; every requirement has a `Record.ValidOn(DateOf(shift.Starts, shift.Zone))`; `Booked < Slots`; no booked sign-up of the person whose shift `Times().Overlaps(shift.Times())`. `ListShifts` computes it for the actor with the actor's records and bookings loaded once.
 - **Visibility plumbing** (D43, every use case that returns a `vol` response type): after the permission check and the load, `privacy.ViewerOf(ctx, authz, actor, Groups)` (A1, privacy-tags A1.2: `actor` is the `model.PersonID` the use case took from `identity.PersonFrom` before its permission check; `viewer.Extents` is keyed by group name, A1.1, which changes nothing here since the service only hands `viewer` on to `Shows` and `Filter`) and `privacy.PolicyOf(ctx, settings, Groups)` once, then `privacy.Filter` per record with `Relation{Subject: the entry's person (zero for a shift or position), Department: the record's department, Also: [booked] when the viewer holds a booked sign-up on that shift}`; the audit entries the `Result`s call for are recorded in one `Record` before returning. Types with no grouped field (`Qualification`, `Position`, `Shift`, `Member`, `ScheduleEntry`, ...) still pass through `Filter` (it is cheap and keeps the rule uniform: a later grouped field needs no new call site).
 - **Shift-mates** (`GetShift`, D42, D43): after the visibility rule passes, `Mates` is loaded when the position's `hide_shift_mates` is false and `pol.Shows(GroupShiftMates, viewer, rel)` is true (`visibility_shift_mates` read now, never cached; `rel.Also` carries `booked` when the actor holds a `booked` sign-up on this shift); otherwise `Mates` stays nil, `Filter` would zero it anyway, and the response says nothing about why. When loaded: the shift's `booked` sign-ups other than the actor's, joined with `unlisted`; for the listed ones `Deps.People.NamesOf` (one call, at most `MaxSlots` IDs); a person whose playa name is `""` or who is missing from the map (no profile yet, deleted) is counted in `Unlisted` with the opted-out, never shown by any other field (the module has no access to a legal name and asks for none). `Names` is sorted and may repeat (two burners may share a playa name, people decision 3; pronouns are not shown because the owner said names only). `ListShifts` never fills `Mates` (one `NamesOf` per shift would not scale on a list and the card shows the fill count). Canceled shifts show it too (what was booked is not secret from someone who could see the shift). Not audited: everything shown is `internal`, and the per-read audit a `personal` field would get would log every volunteer's every glance at a shift page without protecting anything (the same reasoning as the qualification record, decision 9).
 - **Roster legal names** (`Roster`, D43): after `rosters.read@D` passes and the entries are loaded, the service asks `pol.Shows(GroupLegalName, viewer, Relation{Subject: entry.Person, Department: shift.Department})` per entry; when any entry shows, one `Deps.People.LegalNamesOf` call with those persons (people checks `people.contacts.read` for the actor and audits its own `people.person.read` per person; a `Permission` from people, which happens only if the group's permission and people's rule disagree, is answered by leaving every `LegalName` nil, never by failing the roster, and is logged once); a person people omits stays nil. (D45: for a viewer who holds `people.contacts.read` only in department scope, people answers only for people the `people.membership` providers report as members of that department, and for nobody while no provider is registered, so those entries stay nil; a site holder is answered for all. `Shows` decides the audience; people decides reach.) Then `Filter` per entry; the `Result`s with `legal_name` become one `volunteers.roster.read` entry per subject (`Fields [legal_name]`, `Level personal`, `Record` the shift), recorded in one call. Under `nobody`, or when `Deps.People` has no `LegalNamesOf` yet, people is never asked.
 - **Listing choice** (`SetListed`): one `Write` transaction: `false` inserts the `unlisted` row (`ON CONFLICT DO NOTHING`), `true` deletes it; audits `volunteers.listing.changed` (`Subject` the actor, `Reason` `listed` or `unlisted`) only when a row changed, so a repeat is a no-op. Takes effect on the next `GetShift`; nothing is recomputed or notified. The choice is one per person, not per shift: someone avoiding another person wants to be absent from every list, and a per-shift switch would make them choose each time on a phone.
-- **Booking** (`SignUp`, `Assign`): one `Write` transaction: `pg_advisory_xact_lock(hashtext(person_id))`, then `SELECT ... FROM volunteers.shift WHERE id = $1 FOR UPDATE`, re-check eligibility, insert, audit `volunteers.signup.created` (Fields `[person, shift]`, `Reason` `self`, `lead` or `waived`; `waived` means `Assign` with `Waive: true` booked someone eligibility refused for a missing requirement, D42; `Waive: true` on an eligible person records nothing special and `WaivedBy` stays zero), publish `signup-booked`, and when `reminder_lead > 0` and `Starts - lead > now`, `Jobs.Enqueue{Name: volunteers.shift-reminder, Key: <signup id>, Args: {signup}, RunAt: Starts - lead}`. The partial unique index is the backstop for a duplicate (`Conflict duplicate`).
-- **Reminder job** (`volunteers.shift-reminder`, `Timeout 30s`): loads the sign-up; if `Booked`, the shift not canceled and `Starts` in the future, `Notify.Send{Template: volunteers.shift-reminder, To: person, Key: "reminder:<signup>:<starts unix>", Vars: {label, department, position, starts (formatted in the zone, English day and month names in M4), zone, location}, Link: "/volunteers/shifts/<id>"}`; `Unsupported` is logged once and the job succeeds; any other `Send` error is returned (retried by kind). Otherwise a no-op. A time change re-enqueues with the same `Key`, which moves the row (jobs decision 3).
+- **Booking** (`SignUp`, `Assign`): one `Write` transaction: `pg_advisory_xact_lock(hashtext(person_id))`, then `SELECT ... FROM volunteers.shift WHERE id = $1 FOR UPDATE`, re-check eligibility, insert, audit `volunteers.signup.created` (Fields `[person, shift]`, `Reason` `self`, `lead` or `waived`; `waived` means `Assign` with `Waive: true` booked someone eligibility refused for a missing requirement, D42; `Waive: true` on an eligible person records nothing special and `WaivedBy` stays zero), publish `signup-booked`, and when `reminder_lead > 0` and `Starts - lead > now`, `Jobs.Enqueue{Name: volunteers.shift-reminder, Key: <signup id>, Args: {signup}, RunAt: min(Starts - lead, now + ReminderHorizon)}` where (V1, decision 25) `ReminderHorizon = jobs.MaxDelay - 24h`: a reminder further ahead than jobs can schedule is parked at the horizon rather than dropped. `booked_as` is `self` from `SignUp`, `lead` from `Assign`. The partial unique index is the backstop for a duplicate (`Conflict duplicate`).
+- **Reminder job** (`volunteers.shift-reminder`, `Timeout 30s`): loads the sign-up; if canceled, the shift canceled or `Starts` past, a no-op. (V1) Otherwise reads `reminder_lead` now and computes `due = Starts - lead`: if `due > now`, the shift was moved later (or the booking was parked at the horizon) and the handler re-enqueues itself with the same `Key` at `min(due, now + ReminderHorizon)` and sends nothing; else `Notify.Send{Template: volunteers.shift-reminder, To: person, Key: "reminder:<signup>:<starts unix>", Vars: {label, department, position, starts (formatted in the zone, English day and month names in M4), zone, location}, Link: "/volunteers/shifts/<id>"}`; `Unsupported` is logged once and the job succeeds; any other `Send` error is returned (retried by kind). A time change inside the horizon re-enqueues with the same `Key`, which moves the row (jobs decision 3); a change beyond it parks the row at the horizon and the handler carries it forward. The notify `Key` carries `starts`, so a shift moved after a reminder was sent is reminded once more for its new time.
 - **Expiry scan** (`volunteers.expiry-scan`, `Every 24h`, `Timeout 5m`): reads `expiry_notice_days` (0 → return); for each verified record with `expires_on` within `[today, today+N]` (today in UTC), `expiry_notified_on` null and no other valid record of the same qualification for the person, sends `volunteers.qualification-expiring` (`Key` `expiring:<record>`, Vars `{qualification, expires_on, days}`) and sets `expiry_notified_on`, each in its own small transaction so a failure loses one notice, not the batch.
 - **Purge** (`volunteers.purge`, `Every 24h`, `Timeout 5m`): reads `retention` (0 → return); deletes sign-ups whose shift `ends < now - retention`, canceled shifts with `canceled_at < now - retention` and no sign-ups left, and records with `expires_on < now - retention` (with `files.DeleteByRecord`), in batches of 500; audits `volunteers.purge.ran` with counts in `Reason`.
 - **Notifications** (all through `deps.Notify`, inside the transaction, `Unsupported` swallowed with one log line): `qualification-verified` (`Key` `verified:<record>`), `qualification-rejected` (`rejected:<record>`, the name only; no reason text in M4), `signup-removed` (`removed:<signup>`; Vars `{label, starts, zone, reason}` where reason is a token the template words). Vars carry nothing about anyone but the recipient.
+- **Schedule** (`MySchedule`, V1): upcoming mode lists `status = booked` rows and rows canceled with a reason other than `self` whose shift has not ended, so a person sees "removed by the lead" or "shift canceled" where the booking was until the shift passes (Q-VOL9); past mode lists `booked` rows whose shift ended, newest first. Department names come from one `Departments.NamesOf` per page.
+- **Person page** (`Sections`, V1): `Departments.NamesOf` is called in chunks of `MaxIDs` (a viewer whose extent covers more departments than one call takes still gets every name); the upcoming-shift count is one query per request.
 - **Audit** (actions `volunteers.*`, in the `Write` transaction): `qualification.created|changed|archived`, `qualification-record.created|verified|rejected|deleted|read` (read: certificate opened by someone other than the person, Level personal, Fields `[certificate]`; recorded outside any transaction before returning), `position.created|changed|archived|requirements-changed`, `member.created|deleted`, `shift.created|changed|canceled|copied`, `signup.created|canceled`, `roster.read` (D43: a legal name returned on a roster entry; `Subject` the entry's person, `Fields [legal_name]`, `Level personal`; recorded outside any transaction before returning), `listing.changed`, `purge.ran`. `Subject` is the person concerned where one is. `Reason` is a token (`self`, `lead`, `waived`, `shift_canceled`, `department_archived`, `event_closed`, `setup`, `listed`, `unlisted`). A `Record` error fails the use case.
 - **Event set-up** (`SetUp(ctx, Request{Event, CopyFrom})`): with `CopyFrom` zero returns `Items 0`; otherwise `ExtentOf(shifts.manage)` and, for each department in the extent (every department when `Site`) that has non-canceled shifts in `CopyFrom`, runs `CopyShifts`; idempotent through `copied_from` (a second run finds every source already copied). The caller's permission is the extent; a caller with no extent gets `Items 0` and no error (an event admin who leads nothing copies nothing; leads copy their own later).
-- **Concurrency:** `*Service` is safe for concurrent use; the booking locks above; `SetRequirements` and `UpdateShift` take `FOR UPDATE` on their row. **Lifecycle:** `Start` subscribes twice and registers three jobs (no I/O); `Stop` does nothing; no goroutines.
+- **Concurrency:** `*Service` is safe for concurrent use; the booking locks above; `SetRequirements` and `UpdateShift` take `FOR UPDATE` on their row. **Lifecycle:** `Start` subscribes twice and registers four jobs (V1; no I/O); `Stop` does nothing; no goroutines.
 - **Read-only copy:** every read works (rosters and schedules offline-ish, 09 §12); every write fails `Unavailable` wrapping `db.ErrReadOnly`; the jobs do not run there (jobs decision 4).
 
 ## Failure modes
@@ -648,7 +739,7 @@ Store kinds (`Unavailable`, `Timeout`, `Canceled`) apply to every method that re
 | F7 | `UpdateQualification` | unknown or outside extent | NotFound | show | `TestUpdateQualification_Unknown_ReturnsNotFound` |
 | F8 | `UpdateQualification` | input changes the department | Invalid `scope` | field error | `TestUpdateQualification_ChangesDepartment_ReturnsInvalid` |
 | F9 | `UpdateQualification` | archived | Conflict `archived` | show | `TestUpdateQualification_Archived_ReturnsConflict` |
-| F10 | `ArchiveQualification` | not permitted / unknown | Permission / NotFound | | `TestArchiveQualification_NotLead_ReturnsPermission` |
+| F10 | `ArchiveQualification` | not permitted (the entry is visible to all, decision 20) / unknown | Permission / NotFound | | `TestArchiveQualification_NotLead_ReturnsPermission` |
 | F11 | `ArchiveQualification` | already archived | Conflict `archived` | show | `TestArchiveQualification_Twice_ReturnsConflict` |
 | F12 | `RecordsOf` | another person, no `qualifications.read` extent | Permission | forbidden | `TestRecordsOf_OtherPersonNoPermission_ReturnsPermission` |
 | F13 | `RecordsOf` | outside the extent: records of other departments' qualifications | (filtered, not an error) | | `TestRecordsOf_FiltersToExtent` |
@@ -687,7 +778,7 @@ Store kinds (`Unavailable`, `Timeout`, `Canceled`) apply to every method that re
 | F46 | `CreatePosition` | department archived | Conflict `archived` | | `TestCreatePosition_ArchivedDepartment_ReturnsConflict` |
 | F47 | `CreatePosition` | invalid name, access not `one_of` | Invalid | | `TestCreatePosition_InvalidInput_Table` |
 | F48 | `CreatePosition` | name taken in the department | Conflict `taken` | | `TestCreatePosition_DuplicateName_ReturnsConflict` |
-| F49 | `UpdatePosition` / `ArchivePosition` | unknown or outside extent | NotFound | | `TestUpdatePosition_Unknown_ReturnsNotFound` |
+| F49 | `UpdatePosition` / `ArchivePosition` | unknown | NotFound (V1: positions are visible to all, so only an unknown ID; without `positions.manage@D` it is Permission, as F45) | | `TestUpdatePosition_Unknown_ReturnsNotFound`, `TestUpdatePosition_NotLead_ReturnsPermission` |
 | F50 | `ArchivePosition` | future non-canceled shifts exist | Conflict `in_use` | cancel them first | `TestArchivePosition_FutureShifts_ReturnsConflict` |
 | F51 | `ArchivePosition` | already archived | Conflict `archived` | | `TestArchivePosition_Twice_ReturnsConflict` |
 | F52 | `SetRequirements` | no `positions.manage@D` | Permission | | `TestSetRequirements_NotLead_ReturnsPermission` |
@@ -709,17 +800,17 @@ Store kinds (`Unavailable`, `Timeout`, `Canceled`) apply to every method that re
 | F68 | `GetShift` | invisible shift | NotFound | | `TestGetShift_MembersOnlyNonMember_ReturnsNotFound` |
 | F69 | `CreateShift` | no `shifts.manage@D` | Permission | | `TestCreateShift_NotDepartmentLead_ReturnsPermission` |
 | F70 | `CreateShift` | department archived | Conflict `archived` | | `TestCreateShift_ArchivedDepartment_ReturnsConflict` |
-| F71 | `CreateShift` | position of another department, archived or unknown | Invalid `scope` / Conflict `archived` / Invalid `unknown` | | `TestCreateShift_Position_Table` |
+| F71 | `CreateShift` | position of another department (V1: the composite FK violation translated at the store), archived or unknown | Invalid `scope` / Conflict `archived` / Invalid `unknown` | | `TestCreateShift_Position_Table` |
 | F72 | `CreateShift` | event unknown | Invalid `unknown` | | `TestCreateShift_UnknownEvent_ReturnsInvalid` |
 | F73 | `CreateShift` | event closed | Conflict `closed` | | `TestCreateShift_ClosedEvent_ReturnsConflict` |
 | F74 | `CreateShift` | `Ends <= Starts`, longer than 48h, slots out of range, label invalid | Invalid `range`/`too_long`/`required` | | `TestCreateShift_InvalidInput_Table` |
 | F75 | `CreateShift` | no event and zone missing or not IANA | Invalid `required`/`malformed` | | `TestCreateShift_StandingWorkBadZone_ReturnsInvalid` |
 | F76 | `CreateShift` | `Events.InfoOf` fails | its kind | | `TestCreateShift_EventsFail_ReturnsError` |
-| F77 | `UpdateShift` | unknown / outside extent | NotFound | | `TestUpdateShift_Unknown_ReturnsNotFound` |
+| F77 | `UpdateShift` | unknown, or invisible to the actor (V1: the visibility rule, decision 20) | NotFound | | `TestUpdateShift_Unknown_ReturnsNotFound`, `TestUpdateShift_InvisibleShift_ReturnsNotFound` |
 | F78 | `UpdateShift` | canceled | Conflict `canceled` | | `TestUpdateShift_Canceled_ReturnsConflict` |
 | F79 | `UpdateShift` | slots below booked | Conflict `full` | | `TestUpdateShift_SlotsBelowBooked_ReturnsConflict` |
 | F80 | `UpdateShift` | new time overlaps a booked person's other shift | Conflict `overlap {shift}` | | `TestUpdateShift_CreatesOverlap_ReturnsConflict` |
-| F81 | `CancelShift` | no permission / unknown | Permission / NotFound | | `TestCancelShift_NotLead_ReturnsPermission` |
+| F81 | `CancelShift` | visible but no `shifts.manage@D` / unknown or invisible (V1) | Permission / NotFound | | `TestCancelShift_VisibleNotLead_ReturnsPermission`, `TestCancelShift_InvisibleShift_ReturnsNotFound` |
 | F82 | `CancelShift` | already canceled | Conflict `canceled` | | `TestCancelShift_Twice_ReturnsConflict` |
 | F83 | `CancelShift` | `Jobs.Enqueue` not involved; notify `Unsupported` | nil | | `TestCancelShift_NotifyUnsupported_Succeeds` |
 | F84 | `CopyShifts` | no permission | Permission | | `TestCopyShifts_NotLead_ReturnsPermission` |
@@ -738,7 +829,7 @@ Store kinds (`Unavailable`, `Timeout`, `Canceled`) apply to every method that re
 | F97 | `SignUp` | overlaps a booked shift | Conflict `overlap {shift}` | | `TestSignUp_Overlap_ReturnsConflict` |
 | F98 | `SignUp` | already booked | Conflict `duplicate` | | `TestSignUp_Twice_ReturnsConflict` |
 | F99 | `SignUp` | two concurrent bookings for the last slot | one `Conflict full` | | `TestSignUp_LastSlotRace_OneWins` (integration) |
-| F100 | `Assign` | no `shifts.manage@D` | Permission | | `TestAssign_NotLead_ReturnsPermission` |
+| F100 | `Assign` | visible shift, no `shifts.manage@D` (V1) | Permission | | `TestAssign_VisibleNotLead_ReturnsPermission` |
 | F101 | `Assign` | shift ended | Conflict `ended` | | `TestAssign_Ended_ReturnsConflict` |
 | F102 | `Assign` | unqualified without `Waive` | Conflict `unqualified` | | `TestAssign_UnqualifiedNoWaive_ReturnsConflict` |
 | F103 | `Assign` | unqualified with `Waive` | nil, `WaivedBy` set, audited `waived` | | `TestAssign_Waive_RecordsWaiver` |
@@ -748,15 +839,17 @@ Store kinds (`Unavailable`, `Timeout`, `Canceled`) apply to every method that re
 | F107 | `CancelSignup` | own, inside `cancel_cutoff` | Conflict `cutoff` | contact the lead | `TestCancelSignup_InsideCutoff_ReturnsConflict` |
 | F108 | `CancelSignup` | already canceled | Conflict `status` | | `TestCancelSignup_Twice_ReturnsConflict` |
 | F109 | `CancelSignup` | lead cancels; notify `Unsupported` | nil | | `TestCancelSignup_ByLead_NotifiesOrLogs` |
-| F110 | `Roster` | no `rosters.read@D` | Permission | | `TestRoster_NoPermission_ReturnsPermission` |
-| F111 | `Roster` | unknown shift | NotFound | | `TestRoster_Unknown_ReturnsNotFound` |
+| F110 | `Roster` | visible shift, no `rosters.read@D` (V1) | Permission | | `TestRoster_VisibleNoPermission_ReturnsPermission` |
+| F111 | `Roster` | unknown shift, or invisible to the actor (V1) | NotFound | | `TestRoster_Unknown_ReturnsNotFound`, `TestRoster_InvisibleShift_ReturnsNotFound` |
 | F112 | reminder handler | sign-up canceled, shift canceled or started | nil, nothing sent | | `TestReminder_StaleSignup_SendsNothing` |
+| F112a | reminder handler | `Starts - lead` still ahead (shift moved later, or parked at the horizon) (V1) | nil; re-enqueued with the same `Key` at `min(due, now + ReminderHorizon)`; nothing sent | | `TestReminder_DueStillAhead_ReenqueuesAndSendsNothing` |
 | F113 | reminder handler | `Send` fails `Unavailable` | Unavailable (jobs retries) | | `TestReminder_NotifyUnavailable_ReturnsUnavailable` |
 | F114 | reminder handler | payload lacks `signup` | Invalid (fails, no retry) | | `TestReminder_BadArgs_ReturnsInvalid` |
 | F115 | expiry scan | one `Send` fails | continues; returns the first error after the batch | | `TestExpiryScan_OneFailure_ContinuesAndReports` |
 | F116 | expiry scan | run twice in a day | second sends nothing (`expiry_notified_on`) | | `TestExpiryScan_Idempotent` |
-| F117 | signal handlers | second delivery | no-op | | `TestDepartmentArchived_Idempotent`, `TestEventClosed_Idempotent` |
-| F118 | signal handlers | payload lacks the key | Invalid | | `TestDepartmentArchived_BadPayload_ReturnsInvalid` |
+| F117 | signal handlers | second delivery (V1: one `cancel-shifts` row per key; the job run twice finds nothing) | no-op | | `TestDepartmentArchived_EnqueuesCancelJobOnce`, `TestEventClosed_EnqueuesCancelJobOnce`, `TestCancelShiftsJob_Idempotent` |
+| F117a | `cancel-shifts` job | more than `MaxList` future shifts; one batch fails (V1) | batches, each its own transaction; the error is returned and the retry resumes | | `TestCancelShiftsJob_Batches`, `TestCancelShiftsJob_BatchFails_ResumesOnRetry` |
+| F118 | signal handlers / `cancel-shifts` job | payload or args lack the key | Invalid | | `TestDepartmentArchived_BadPayload_ReturnsInvalid`, `TestCancelShiftsJob_BadArgs_ReturnsInvalid` |
 | F119 | `SetUp` | caller has no extent | `Result{Items: 0}`, nil | | `TestSetUp_NoExtent_CopiesNothing` |
 | F120 | `SetUp` | one department's copy fails | its error (events reports `Failed`); earlier departments' copies stand (each its own transaction) | run set-up again | `TestSetUp_PartialFailure_ReportsError` |
 | F121 | `Sections` | viewer may see none of the person's departments | person absent from the map | | `TestSections_NoExtent_OmitsPerson` |
@@ -771,7 +864,7 @@ Store kinds (`Unavailable`, `Timeout`, `Canceled`) apply to every method that re
 | F135 | `Roster` | `visibility_legal_name` is `nobody` | no `legal_name` key on any entry; `LegalNamesOf` never called; no `roster.read` entry | | `TestRoster_LegalNameNobody_NeverAsksPeople` |
 | F136 | `Roster` | `holders`: viewer holds `people.contacts.read` site-wide or covering the department | `legal_name` present where people knows one; one `volunteers.roster.read` per such entry, `Fields [legal_name]`, `Level personal` | | `TestRoster_LegalNameHolder_ShowsAndAudits` |
 | F137 | `Roster` | `holders`: viewer holds `rosters.read@D` but no `people.contacts.read` (a plain lead) | no `legal_name` key; `LegalNamesOf` never called; no audit | | `TestRoster_LeadWithoutContactsRead_NoLegalName` |
-| F138 | `Roster` | `self`: the viewer is on the roster | their own entry carries `legal_name`, the others do not; no audit (self) | | `TestRoster_LegalNameSelf_OwnEntryOnly` |
+| F138 | `Roster` | `self`: the viewer is on the roster | their own entry carries `legal_name`, the others do not; no audit (self). (V1, Q-VOL8) Until people's Proposed change 11 lands, people answers the actor's own ID only when the actor holds `people.contacts.read` somewhere (people F67), so a plain lead's own entry stays without `legal_name`; the test seeds the viewer with the permission, and `TestRoster_LegalNameSelf_PlainLead_NoLegalName` pins the interim behavior (people fake answering `Permission` → every entry nil, logged once, F139) | | `TestRoster_LegalNameSelf_OwnEntryOnly`, `TestRoster_LegalNameSelf_PlainLead_NoLegalName` (interim) |
 | F139 | `Roster` | `LegalNamesOf` fails `Permission` / a store kind | every `legal_name` nil, logged once / that kind | show / show error | `TestRoster_PeoplePermission_HidesQuietly`, `TestRoster_PeopleUnavailable_ReturnsError` |
 | F140 | `Roster` | the `roster.read` audit `Record` fails | its kind; no roster returned | show error | `TestRoster_AuditFails_ReturnsError` |
 | F141 | `Register` / `New` | a `vol` response type with an untagged wire field, or `Manifest.Settings` lacking a `visibility_*` decl | Invalid from `Manifest.Validate` (`bms check`, every test) | fix the type | `TestManifest_Valid` and `moduletest` `views_tagged` |
@@ -781,8 +874,28 @@ Store kinds (`Unavailable`, `Timeout`, `Canceled`) apply to every method that re
 | F132 | `GetShift` | `People.NamesOf` fails | its kind; nothing returned | show error | `TestGetShift_NamesFail_ReturnsError` |
 | F133 | `ListShifts` | any mode | `mates` absent on every summary | | `TestListShifts_NeverFillsMates` |
 | F142 | `SetListed` | same value twice | nil; no second audit entry | | `TestSetListed_Idempotent` |
+| F143 | `UpdateShift` | visible shift (open-access, or members-only in the actor's department), no `shifts.manage@D` (V1) | Permission | forbidden | `TestUpdateShift_VisibleNotLead_ReturnsPermission` |
+| F144 | `CancelShift` | invisible shift: members-only in a department the actor is not in and no extent (V1) | NotFound | NotFound state | covered by F81's second test |
+| F145 | `Assign` | invisible shift (V1) | NotFound | | `TestAssign_InvisibleShift_ReturnsNotFound` |
+| F146 | `Roster` | invisible shift (V1) | NotFound | | covered by F111's second test |
+| F147 | `RecordsOf` | the person is the actor / another person (V1) | `SelfUpload` set to the setting / nil (absent) | show or hide the upload | `TestRecordsOf_Self_CarriesSelfUpload`, `TestRecordsOf_Other_OmitsSelfUpload` |
+| F148 | `VerifyRecord` / `RecordQualification` | `NoExpiry` with `ExpiresOn` set (V1) | Invalid `one_of` on `no_expiry` | field error | `TestVerifyRecord_NoExpiryWithDate_ReturnsInvalid`, `TestRecordQualification_NoExpiryWithDate_ReturnsInvalid` |
+| F148a | `VerifyRecord` | `NoExpiry` on a record the person gave an expiry (V1) | nil; `ExpiresOn` zero; `ValidOn` any later date | | `TestVerifyRecord_NoExpiry_ClearsExpiry` |
+| F149 | `ListShifts` / `MySchedule` / `ListMembers` | `after` does not decode, or its ID is malformed; `limit` out of range (V1) | Invalid `malformed` on `after` / `range` on `limit` | field error | `TestListShifts_BadCursor_ReturnsInvalid`, `TestMySchedule_BadCursor_ReturnsInvalid`, `TestListMembers_BadCursor_ReturnsInvalid` |
+| F149a | `ListShifts` | more rows than `Limit`; a department archived since the handlers ran (V1) | `Next` set from the fetched rows; the archived department's rows dropped, the page short, `Next` still set | follow `Next` | `TestListShifts_Pages_NeverSkips`, `TestListShifts_ArchivedDepartment_ShortPageKeepsNext` |
+| F149b | `MySchedule` | past mode (V1) | newest first; booked rows only; paged | | `TestMySchedule_Past_NewestFirst` |
+| F150 | `CopyShifts` | source and target straddle a DST change, or differ in zone (V1) | wall-clock start and end kept in the destination zone; a shift inside a skipped hour keeps its duration | | `TestCopyShifts_AcrossDST_KeepsLocalTimes`, `TestCopyShifts_DifferentZone_KeepsLocalTimes` |
+| F151 | `SignUp` / `Assign` / `UpdateShift` | `Starts - lead` beyond `now + ReminderHorizon` (V1) | the reminder is enqueued (or moved) to `now + ReminderHorizon` with the sign-up's `Key`; never dropped | | `TestSignUp_FarFuture_ParksReminderAtHorizon`, `TestUpdateShift_MovedBeyondHorizon_ParksReminder` |
+| F152 | `Assign` | `Person == actor` with `Waive` (V1, Q-VOL7) | Invalid `self` on `waive` | field error; ask another lead | `TestAssign_SelfWaive_ReturnsInvalid` |
+| F152a | `Assign` | `Person == actor`, eligible, no `Waive` (V1) | nil; `BookedAs lead` | | `TestAssign_SelfEligible_Succeeds` |
+| F153 | `MySchedule` | a booking canceled by a lead or by the system, shift not ended / canceled by the person / shift ended (V1, Q-VOL9) | listed with `cancel_reason` / not listed / not listed in upcoming mode | show struck through with the reason | `TestMySchedule_OtherCanceled_ShownWithReason`, `TestMySchedule_SelfCanceled_Hidden` |
+| F154 | `ExportPerson` | the booking lead or canceling lead was deleted (V1) | `booked_by` from `booked_as`, `canceled_by` from `cancel_reason`: role words unchanged | | `TestExportPerson_AfterLeadDeleted_KeepsRoles` |
+| F155 | `ExportPerson` | the module holds nothing about the person (V1) | `{}`: no `listed` key | | `TestExportPerson_Unknown_IsEmpty` |
+| F156 | list handlers | empty result (V1) | body `{"items":[]}`, never `{}` | render empty state | `TestListHandlers_Empty_EncodeEmptyItems` (table over the seven list routes) |
+| F157 | `Sections` | the viewer's extent covers more than `MaxIDs` departments (V1) | names fetched in chunks; every department named | | `TestSections_ManyDepartments_ChunksNamesOf` |
+| F158 | `GetShift` | past shift the actor could otherwise see (V1) | returned (no `Permission`, no `NotFound`) | render with "ended" | `TestGetShift_PastVisible_Returns` |
 
-Methods without failure modes beyond the common ones (`MyDepartments`, `MySchedule`, `Listed`, `ListQualifications` of active entries) read only the actor's own rows or `internal` catalogue rows, so no permission, state or input check can fail; `SetListed` takes a bool about the actor, so only the common write failures and F142 apply. `privacy.Filter`'s own failures (`Internal` for an unchecked type) cannot occur at run time because `Manifest.Validate` runs `Check` over every `vol` response type (F141).
+Methods without failure modes beyond the common ones (`MyDepartments`, `Listed`, `ListQualifications` of active entries) read only the actor's own rows or `internal` catalogue rows, so no permission, state or input check can fail; `MySchedule` (V1) adds only the page and window validation of F149; `SetListed` takes a bool about the actor, so only the common write failures and F142 apply. `privacy.Filter`'s own failures (`Internal` for an unchecked type) cannot occur at run time because `Manifest.Validate` runs `Check` over every `vol` response type (F141).
 
 ## Lock-in check
 
@@ -795,14 +908,65 @@ No external technology is wrapped. Certificate storage, e-mail and scheduling go
 - **Privacy:** `telemetrytest` proves no playa name, legal name or file name in logs or spans; `notifytest.Sent()` vars carry only the recipient's data; signals carry IDs only; the shift-mate list is proven to carry playa names only (`TestGetShift_Mates_PlayaNamesOnly`: the JSON of `ShiftSummary` has no person ID, pronoun or legal-name marker from the seed, with `peopletest` seeded with a person whose playa name is empty, F129) and the shift-mate rule as a table over audience × position flag × booked × `shifts.signup` held (`TestShiftMates_Table`); the roster's legal name as a table over audience × `people.contacts.read` extent × self (`TestRosterLegalName_Table`, with `privacytest.AssertHidden`/`AssertPresent` on the handler's body and the `audittest` entries checked for `volunteers.roster.read`); `Check(Manifest.Views, Groups)` passes (`TestViews_Tagged`).
 - **Waiver tests** (D42): `TestSignUp_NeverWaives` (a `SignUp` body cannot carry `waive`; an unqualified self sign-up is `Conflict unqualified` whatever the lead holds) alongside F102-F103.
 - **Integration** (`//go:build integration`, PostgreSQL container): migrations on empty and previous; the booking race (F99); the partial unique indexes; `files` postgres store round trip for a certificate; the purge.
-- **Conformance:** `moduletest.Conformance(t, Manifest, New, provision, WithSeed(seed))` where the seed books the subject on a shift, adds a membership and a verified record with a certificate carrying the markers in its name.
+- **Conformance:** `moduletest.Conformance(t, Manifest, New, provision, WithSeed(seed))` where the seed books the subject on a shift, adds a membership and a verified record with a certificate whose file name is neutral (`certificate.pdf`; V1: a marker in the name would trip the rig's `no_personal_data_in_logs` rule through files' own log lines, and the file name is `personal` by the Data table, so it must never reach a log). That the certificate's name never reaches a log or span is proven separately by `TestOpenCertificate_NameNotLogged` with `telemetrytest` and a marker-named upload.
 - **UI:** `web-reviewer` at the phone viewport; smoke: sign up, see it in My volunteering, cancel; lead creates a shift, assigns, verifies a certificate.
 
 ## Later
 
 Named so the boundary is explicit (each a change to this spec, not a new module): sign-up approval by a lead before it counts (`volunteers.approval_required` per position); swaps; check-in/check-out with hours credit as dated records (D18); walk-on desk mode; anchored shifts (`ScheduleOf`); join requests; volunteer status from recent activity; per-position shift templates; the `qualifications` capability `contracts/qualifications` (`Name = "qualifications"`; `Holds(ctx, people []model.PersonID, key string) (map[model.PersonID]bool, error)` over a `key` token added to the catalogue, so `incidents` can ask "is this person a trained ranger" without this module's IDs); a `departments.department-page` section; pronouns next to shift-mates' playa names if the owner wants them (D42 said names only; it would be one more field in the `shift_mates` group); a `consented:<purpose>` audience for the listing if a regional wants opt-in (privacy-tags, "Later"); `events.schedule-changed`; dropping a disabled account from upcoming shifts (identity's unpublished signal).
 
+## Amendment V1 (raised 2026-10-21, awaiting owner approval): what the build and the reviews found
+
+Raised by `go-reviewer`, `web-reviewer` and the main session against the Approved text while the module was built (`internal/modules/volunteers`, `web/src/modules/volunteers`). Each item names the choice, the reason and the alternative not taken. The inline edits above are marked (V1); Status lines are unchanged until the owner approves. Three items need the owner (Q-VOL7 to Q-VOL9, under Open questions, each with a recommendation); the rest are technical and settled here.
+
+**V1.1 `Permission` or `NotFound` for a shift.** The failure-mode table said `NotFound` for a shift "outside the extent" (F77) and `Permission` for "no permission" (F81, F100, F110), and the build answered `Permission` for any shift the caller lacked `shifts.manage@D` on, including one they could not see, which confirms that the ID exists (privacy-data: a `403` never confirms an ID). *Chosen:* decision 20: every shift method runs the `ListShifts` visibility rule for the actor first; invisible or unknown is `NotFound`, visible-but-not-allowed is `Permission`. A lead of another department sees an open-access shift (everyone does) and gets `Permission` on it; a members-only shift of a department they are not in gets `NotFound`. Qualifications, positions, departments and events are visible to every signed-in person, so `Permission` stays on their write methods and `NotFound` means unknown (F10, F45, F49). *Not taken:* `NotFound` everywhere for a missing permission, which would make a lead's typo on a visible shift look like a dead link.
+
+**V1.2 Paging.** The SQL had a keyset cursor but the API exposed `limit` only; the UI asked for 500 and silently lost the rest; dropping inactive departments after the `LIMIT` could return a short page that looked like the end; `MySchedule` in past mode sorted oldest-first with a cap of 500 (losing the newest); `ListMembers` capped at 500 with no page. *Chosen:* decision 22: one `Page{Limit, After Cursor}` embedded in `ShiftQuery`, `ScheduleQuery` and the new `MemberQuery`; the three return `ShiftList`, `ScheduleList`, `MemberViewList` with `Next`; `Limit + 1` rows decide `Next`, computed before Go-side filtering so a short page never skips; the cursor is opaque (base64url of key and ID) so the sort key can change without an API change; `MySchedule` has an upcoming mode (soonest first) and a past mode (newest first) instead of `IncludePast`. The UI shows **Show more** (phone-first; no page numbers). *Not taken:* offset paging (`OFFSET` drifts while bookings arrive) and filtering inactive departments inside the query (the module may not read `core.department`, and the handlers already cancel an archived department's future shifts, so the Go-side drop is a rare race, not the rule).
+
+**V1.3 A person's own legal name under `visibility_legal_name = self`.** F138 said the viewer's own roster entry carries `legal_name`, but people's `LegalNamesOf` (D44, D46) answers the actor's own ID only when `people.contacts.read` is held somewhere (people F67), so a plain lead on their own roster never saw it. *Chosen (recommended to the owner, Q-VOL8):* Proposed change 11 to `people.md`: `LegalNamesOf` answers the actor's own ID without the permission (a self read, unaudited, like `Me`), and keeps `Permission` only when `ids` names anyone else and the permission is held nowhere. The person can already read their own legal name on `/me`, so nothing new is revealed, and the `self` audience (privacy-tags) means "the subject sees it" without a permission. Until applied, F138 holds only for a viewer who holds the permission somewhere and the interim test pins it. *Not taken:* relaxing F138 for good (then `self` would be a setting that works for coordinators and not for the people it names).
+
+**V1.4 What the screens could not know.** (a) A volunteer could not tell whether `self_upload` is on (`GET /api/settings` needs `settings.read`), so the upload action showed and then failed `Unsupported`. *Chosen:* `RecordList.SelfUpload *bool`, set only on a person's own `GET /people/{person}/qualifications`; the screen that shows the action is the screen that lists the records, so no new route, and a value scoped to the one setting the person may act on. *Not taken:* a `/me` document (nothing else needs one yet) or exposing the settings route. (b) The shift list fetched positions per department to label cards. *Chosen:* `ShiftSummary.DepartmentName` and `PositionName`, as `ScheduleEntry` already had, one `Departments.NamesOf` per page.
+
+**V1.5 Self-waiver (Q-VOL7).** `Assign` with `Person == actor` and `Waive` let a lead book themself without the qualification, which is self-attestation by another door (D41: never self-attested; D42: volunteers never waive for themselves, and a lead is a volunteer on that shift). *Chosen (recommended):* `Invalid self` on `waive` (decision 21, F152); the lead may still assign themself when eligible (F152a), and another lead of the department waives if needed. The UI disables the waive switch when the chosen person is the viewer. *Not taken:* allowing it with an audit entry (an audited breach is still a breach of D41).
+
+**V1.6 The reminder and `jobs.MaxDelay`.** A booking more than 366 days ahead got no reminder, and an `UpdateShift` that moved a shift beyond the horizon left the old queued row, which fired early. *Chosen:* decision 25: `ReminderHorizon = jobs.MaxDelay - 24h`; booking and update enqueue at `min(due, now + horizon)` with the sign-up's `Key`; the handler recomputes `due` from the shift and the current `reminder_lead` and re-enqueues itself (same `Key`) when `due` is still ahead (F112a, F151). A day of slack keeps the request inside `MaxDelay` whatever the clock skew between the enqueueing request and the runner. *Not taken:* dropping far reminders (a year-ahead booking is exactly the one that needs reminding) or a daily scan (one more job for the same effect).
+
+**V1.7 Copying across DST or zones.** `CopyShifts` moved each shift by the instant difference of the events' starts, so a copy across a DST change moved "08:00" to "07:00" or "09:00". *Chosen:* decision 24: whole-day civil delta, wall-clock times re-anchored with `time.Date` in the destination event's zone (F150). Leads think in local times; the rare shift inside a skipped hour keeps its duration. *Not taken:* copying instants (wrong for every spring and autumn burn) or asking the lead (one more step for a thing software can decide).
+
+**V1.8 Choices the reviewers accepted, now in the text.** (a) `Record.Verified()` is `!VerifiedAt.IsZero()`: `VerifiedBy` is nulled by that lead's deletion and the record must keep counting. (b) The composite FK `shift(position_id, department_id) → position(id, department_id)` backs decision 6 and is translated to `Invalid scope` (F71). (c) Export writes `listed` only when the module holds something; an unknown person exports `{}` (F155). (d) `GetShift` returns a past shift the actor could otherwise see (F158): the list's "from now on" is about volume. (e) `Eligibility` is `Eligible false, Reason ""` when the viewer already holds a booking; the screen reads `mine`. (f) `RecordQualification` audits `created` and `verified` (two entries: two facts). (g) List wrappers' `items` are `omitzero` over a non-nil slice so an empty list is `{"items":[]}` (F156); the Approved text's `omitempty` dropped the key and every client had to special-case it. (h) `Sections` chunks `Departments.NamesOf` by `MaxIDs` (F157). (i) The conformance seed's certificate name is neutral; a separate `telemetrytest` test proves a marker-named upload never reaches a log (the Test plan line that put markers in the name contradicted the rig's `no_personal_data_in_logs`). (j) The signal handlers no longer cancel a whole department in one transaction: they enqueue `volunteers.cancel-shifts` (decision 23, F117, F117a), which cancels in batches of `MaxList`; "handlers stay quick" is module-contract's rule and a department can hold hundreds of future shifts with thousands of bookings, each with an audit entry, a signal and a notice. *Not taken:* batching inside the handler (the delivery timeout bounds it, and a retry would re-run from the start). (k) A department-filtered `PendingRecords` includes every org-wide pending record: intended, since D41 lets any lead verify those; the Pending tab labels them. (l) `ShiftQuery.Within` accepts either bound alone, as `ScheduleQuery` did; `Start >= End` is `Invalid range`. (m) `signup.booked_as` (migration `0002`) keeps who booked after a lead's deletion, and the export derives `canceled_by` from `cancel_reason` (F154).
+
+**V1.9 From the web review.** (a) `VerifyRecord` treated a zero `ExpiresOn` as "keep", so a lead could not clear an expiry the volunteer entered on a certificate that never expires. *Chosen:* `NoExpiry bool` on `VerifyInput` and `RecordInput` (`Invalid one_of` with a date, F148, F148a); the forms get a **Never expires** switch. *Not taken:* `expires_on: null` versus omitted (invisible in a form and in OpenAPI). (b) `Assign` needs `shifts.manage@D` but sat inside the roster section (`rosters.read@D`), so a manager without roster rights could not assign. *Chosen:* a **Manage** section gated by `shifts.manage@D`, independent of the roster section. (c) Opening a certificate followed a raw link, so a 404 or 503 showed problem JSON in a new tab. *Chosen:* the shell's `Attachments` row (files Proposed change 7): fetch through `@/api`, 404 → "no longer available", 503 with `Retry-After` → "not available on this copy yet". (d) `MySchedule` hid canceled bookings, so a booking a lead removed vanished without a word. *Chosen (recommended, Q-VOL9):* upcoming mode lists bookings canceled by someone else, with the reason, until the shift ends (F153); self-cancellations stay hidden (the person did it); past mode lists booked rows only.
+
+**Test expectations that change** (everything else stands):
+
+| Test | Before | After V1 |
+|---|---|---|
+| `TestUpdateShift_Unknown_ReturnsNotFound` (F77) | unknown or outside the manage extent | unknown or invisible; new `TestUpdateShift_InvisibleShift_ReturnsNotFound`, `TestUpdateShift_VisibleNotLead_ReturnsPermission` (F143) |
+| `TestCancelShift_NotLead_ReturnsPermission` (F81) | any shift without manage | renamed `TestCancelShift_VisibleNotLead_ReturnsPermission` (open-access shift); new `TestCancelShift_InvisibleShift_ReturnsNotFound` (members-only, not a member) |
+| `TestAssign_NotLead_ReturnsPermission` (F100) | any shift | renamed `TestAssign_VisibleNotLead_ReturnsPermission`; new `TestAssign_InvisibleShift_ReturnsNotFound` (F145) |
+| `TestRoster_NoPermission_ReturnsPermission` (F110) | any shift | renamed `TestRoster_VisibleNoPermission_ReturnsPermission`; new `TestRoster_InvisibleShift_ReturnsNotFound` (F111, F146) |
+| `TestUpdatePosition_Unknown_ReturnsNotFound` (F49) | unknown or outside extent | unknown only; new `TestUpdatePosition_NotLead_ReturnsPermission` |
+| every `ListShifts`, `MySchedule`, `ListMembers` call | a slice | `ShiftList`/`ScheduleList`/`MemberViewList` with `Items` and `Next`; `ListMembers` takes `MemberQuery`; `ScheduleQuery.Past` replaces `IncludePast`; new F149, F149a, F149b tests |
+| every `RecordsOf` call | a slice | `RecordList`; new F147 tests |
+| `TestRoster_LegalNameSelf_OwnEntryOnly` (F138) | viewer without `people.contacts.read` | viewer holds it somewhere (interim); new `TestRoster_LegalNameSelf_PlainLead_NoLegalName` until Proposed change 11 lands, then it inverts to `..._ShowsOwn` |
+| `TestAssign_Waive_RecordsWaiver` (F103) | any person | another person; new `TestAssign_SelfWaive_ReturnsInvalid` (F152), `TestAssign_SelfEligible_Succeeds` (F152a) |
+| `TestReminder_StaleSignup_SendsNothing` (F112) | includes "shift moved later" as stale | moved-later is F112a: `TestReminder_DueStillAhead_ReenqueuesAndSendsNothing` (asserts `jobstest.Fake.Enqueued()` has the same `Key`) |
+| `TestDepartmentArchived_Idempotent`, `TestEventClosed_Idempotent` (F117) | the handler cancels; a second `Deliver` is a no-op | the handler enqueues once (`jobstest.Fake.Enqueued()`); `TestCancelShiftsJob_Idempotent` runs the job twice with `Fake.Run`; new F117a tests; F118 adds `TestCancelShiftsJob_BadArgs_ReturnsInvalid` |
+| `TestCopyShifts_*` (F84-F88) | instant delta | wall-clock in the destination zone; new F150 tests with a fake clock across a DST change |
+| `TestExportPerson_*` | `booked_by`/`canceled_by` role from the ID columns | from `booked_as` and `cancel_reason`; new F154, F155 tests |
+| `TestVerifyRecord_*` (F28-F32) | `VerifyInput{AcquiredOn, ExpiresOn}` | plus `NoExpiry`; new F148, F148a tests |
+| list handler tests | empty list → `{}` accepted | `{"items":[]}` (F156, table over the seven list routes) |
+| `TestMySchedule_*` | canceled rows absent | F153 tests; past mode newest first |
+| conformance seed | certificate name carries markers | neutral name; `TestOpenCertificate_NameNotLogged` |
+| `TestStart_Twice_ReturnsConflict` (F125), `TestManifest_Valid` | three jobs | four jobs (`volunteers.cancel-shifts`); migration version 2 |
+
 ## Open questions
+
+**Open (V1, 2026-10-21, awaiting the owner):**
+
+- **Q-VOL7. May a lead waive a requirement for themself?** Recommendation: no. D41 says nobody self-attests and D42 says volunteers never waive for themselves; a lead booking themself is a volunteer on that shift. `Assign` with `Person == actor` and `Waive` is `Invalid self`; another lead of the department waives (decision 21, F152). A lead may still book themself when eligible.
+- **Q-VOL8. Under `visibility_legal_name = self`, should a person see their own legal name on a roster without holding `people.contacts.read`?** Recommendation: yes, through Proposed change 11 (people's `LegalNamesOf` answers the actor's own ID without the permission, unaudited, as `Me` already does). Otherwise `self` works only for people who could see everyone's anyway. Until applied, F138 holds only for a viewer who holds the permission somewhere.
+- **Q-VOL9. When a lead or the system cancels someone's booking, should it stay on their schedule, marked, until the shift passes?** Recommendation: yes (F153): many people only have a phone and may not read e-mail; a booking that vanishes looks like a bug. The person's own cancellations are not listed. The alternative is to hide it and rely on `volunteers.signup-removed`, which is not sent when e-mail is unconfigured.
 
 **Closed by D42 (owner, 2026-10-20):**
 
@@ -816,7 +980,7 @@ Named so the boundary is explicit (each a change to this spec, not a new module)
 
 - **Q-VOL6. Is the shift-mate listing opt-out or opt-in?** The owner answered on a different axis: the regional sets visibility, with these defaults: playa names and who is on which shift visible to anyone who volunteers; legal names only to a volunteer coordinator and maybe some other roles; fields tagged so permissions can be enforced and changed later. Folded in as decisions 10 (reshaped), 17, 18 and 19: the `privacy` groups `shift_mates` (default `holders` of `shifts.signup`) and `legal_name` (default `holders` of `people.contacts.read`), the `volunteer-coordinator` starter role, and the per-person opt-out kept (the owner's scenario has two sides; the count shows someone is withheld; the roster is unaffected). The consent alternative is not needed: a regional that wants opt-in sets `visibility_shift_mates` to `nobody` until the Later `consented:<purpose>` audience exists (privacy-tags, "Later").
 
-**Open:** none.
+**Open:** Q-VOL7 to Q-VOL9 above (V1).
 
 This spec also depends on two specs, both now Approved (D43, D44): `jobs` (Q-JOBS1's screen is where a lead checks "did the reminder run"; Q-JOBS4 is not needed, deferred `RunAt` covers reminders; `MaxEvery` must stay ≥ 24h for the daily scans) and `files` (Q-FILES1 is indifferent to this module; Q-FILES5 stripping is right for certificates; Q-FILES6: this module exports file IDs, files exports the bytes). If either changes, Summary "Expects of dependencies" lists what to re-check.
 
@@ -832,6 +996,7 @@ This spec also depends on two specs, both now Approved (D43, D44): `jobs` (Q-JOB
 8. (D43; restates privacy-tags Proposed change 3) **`plan/design/people.md`:** `Directory.LegalNamesOf(ctx, []model.PersonID) (map[model.PersonID]string, error)` (permission `people.contacts.read` in any extent, audited per returned person, never on a route; `peopletest.Fake.AddLegalName`); `people.contacts.read` and `people.directory.read` gain `volunteer-coordinator` in `StarterRoles`. Until applied, `RosterEntry.LegalName` is declared, tagged and always absent.
 9. (D43; restates privacy-tags Proposed change 2) **`plan/design/authz.md`:** the `volunteer-coordinator` site starter role (`RoleVolunteerCoordinator`, migration `0003`). This module lists the key in `StarterRoles` now; `Seed` skips a key with no role and applies it at the first `bms migrate` after the role exists.
 10. (D43) **`plan/05-roadmap.md`, Phase 1:** `privacy-tags` is built before this module's services (privacy-tags Proposed change 7); **`.claude/skills/burn-domain/SKILL.md`, "Who may see what":** "Playa names and who is on which shift are, by default, visible to anyone who volunteers; legal names only to a volunteer coordinator and whichever other roles the regional chooses; the regional sets both (owner, 2026-10-20; D43)" (the main session records it).
+11. (V1, Q-VOL8; awaiting the owner) **`plan/design/people.md`, `Directory.LegalNamesOf`:** the actor's own ID is answered without `people.contacts.read` (a self read: no audit entry, as `Me`; still nothing when the regional's legal-name mode is hidden, F72); `Permission` (F67) applies only when `ids` names someone other than the actor and the permission is held in no extent. New row and test: `TestLegalNamesOf_SelfOnlyWithoutPermission_Answers`; F67's test passes `ids` with another person. `peopletest.Fake` follows. Summary line 46 and the D44 amendment paragraph change accordingly. Until applied, this module's F138 holds only for a viewer who holds the permission somewhere.
 
 ## Amendment 2026-10-20 (approved, owner, D44)
 
