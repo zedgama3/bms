@@ -18,7 +18,9 @@ type Content = io.ReadSeekCloser
 type Store interface {
 	// Stage spools, sniffs, strips, hashes and puts the upload in the owner's bucket. Called
 	// outside any transaction (Internal inside one). Consumers: every owner's upload
-	// handler, before it opens its transaction.
+	// handler, before it opens its transaction. A Body read error that is already a
+	// classified *errs.Error is returned unchanged (settings' MaxLogoBytes reader relies on
+	// it).
 	Stage(ctx context.Context, up Upload) (Staged, error)
 	// Attach binds a Staged object to a record inside the caller's Write transaction,
 	// inserting the row and recording files.file.created. Record.Kind's area must be the
@@ -30,7 +32,9 @@ type Store interface {
 	// Get answers one file's metadata. Consumers: an owner showing one attachment.
 	Get(ctx context.Context, id FileID) (File, error)
 	// ByRecord lists a record's files, oldest first. Consumers: an owner listing
-	// attachments, settings finding the logo, an owner's ExportPerson.
+	// attachments, settings finding the logo, an owner's ExportPerson. It may be called
+	// inside a Read transaction (no audit, no store I/O: settings reads the logo in its
+	// snapshot load).
 	ByRecord(ctx context.Context, rec audit.Ref) ([]File, error)
 	// Open answers the metadata and the bytes, auditing the read when the level requires it
 	// (decision 10). Called outside any transaction. Consumers: every owner's content route.

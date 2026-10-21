@@ -74,6 +74,7 @@ func (s *Service) publicAt(ctx context.Context) (Public, int64, error) {
 	p := Public{
 		Regional: s.regionalIn(ctx, sn),
 		Theme:    s.themeIn(ctx, sn) != "",
+		Logo:     sn.logo,
 		Terms:    make(map[string]map[string]string, len(Languages)),
 	}
 	for _, lang := range Languages {

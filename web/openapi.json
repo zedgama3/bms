@@ -2487,6 +2487,36 @@
         ],
         "type": "object"
       },
+      "SettingsLogoResult": {
+        "properties": {
+          "logo": {
+            "description": "The file ID after the call; empty after a removal.",
+            "type": "string"
+          },
+          "revision": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "logo"
+        ],
+        "type": "object"
+      },
+      "SettingsLogoUpload": {
+        "properties": {
+          "file": {
+            "description": "The image: PNG, JPEG or WebP, at most 2 MiB (2097152 bytes). Send it as the only part.",
+            "format": "binary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "type": "object"
+      },
       "SettingsPublic": {
         "properties": {
           "contact_email": {
@@ -2502,6 +2532,10 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "logo": {
+            "description": "The logo's file ID; empty when there is none. Request /api/settings/logo?v=\u003clogo\u003e, so a replaced logo is a new URL.",
+            "type": "string"
           },
           "name": {
             "type": "string"
@@ -2537,6 +2571,7 @@
           "timezone",
           "languages",
           "theme",
+          "logo",
           "terms"
         ],
         "type": "object"
@@ -6652,6 +6687,133 @@
           }
         },
         "summary": "Every declared setting with its default and value. Needs settings.read. A secret is reported as secret_set only.",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/logo": {
+      "delete": {
+        "operationId": "settingsRemoveLogo",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsLogoResult"
+                }
+              }
+            },
+            "description": "The revision and an empty logo."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Remove the logo. Needs settings.manage. With no logo it changes nothing and answers the current revision and an empty logo. 501 when the installation has no file store; 503 read_only on a read-only copy.",
+        "tags": [
+          "settings"
+        ]
+      },
+      "get": {
+        "operationId": "settingsLogo",
+        "parameters": [
+          {
+            "description": "The logo's file ID, to version the URL; ignored.",
+            "in": "query",
+            "name": "v",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "image/webp": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The image."
+          },
+          "304": {
+            "description": "The If-None-Match tag is the image's."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "security": [],
+        "summary": "The regional's logo (PNG, JPEG or WebP). No session needed. The shell requests it as /api/settings/logo?v=\u003clogo\u003e, the file ID from the public document; the query is ignored. ETag is the image's SHA-256 and a matching If-None-Match answers 304. 404 when there is no logo; 501 when the installation has no file store; 503 with Retry-After on a copy that has not yet received the image.",
+        "tags": [
+          "settings"
+        ]
+      },
+      "put": {
+        "operationId": "settingsSetLogo",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsLogoUpload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsLogoResult"
+                }
+              }
+            },
+            "description": "The revision and the new logo's file ID."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Replace the logo. Needs settings.manage. multipart/form-data with one file part named file (PNG, JPEG or WebP by its bytes, at most 2 MiB; metadata is removed). Field errors use the field file: too_large {max}, type, malformed, required. 409 with code quota when the site is out of file space; 501 when the installation has no file store; 503 read_only on a read-only copy.",
         "tags": [
           "settings"
         ]

@@ -10,6 +10,8 @@ export * from "./errors";
 export { Check } from "./Check";
 export { controlClass, Field } from "./Field";
 export type { ControlProps, FieldProps } from "./Field";
+export { FileField } from "./FileField";
+export type { FileFieldProps } from "./FileField";
 export { LOADING_DELAY_MS, Loading } from "./Loading";
 export { Table } from "./Table";
 export type { Column } from "./Table";

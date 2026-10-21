@@ -85,5 +85,20 @@
   "module.settings.field.unknown": "This isn't one we know.",
   "core.settings.row.default_zero": "Default: 0, which means off",
   "core.settings.row.default_named": "Default: {value}",
-  "core.settings.regional.color_status": "Contrast check"
+  "core.settings.regional.color_status": "Contrast check",
+  "core.settings.logo.heading": "Logo",
+  "core.settings.logo.current_alt": "The current logo",
+  "core.settings.logo.unavailable": "The logo can't be shown right now.",
+  "core.settings.logo.none": "No logo yet. The site shows its name, {name}, as text.",
+  "core.settings.logo.field": "Logo",
+  "core.settings.logo.hint": "PNG, JPEG or WebP, up to 2 MB. It is shown in the header of every page.",
+  "core.settings.logo.upload": "Upload",
+  "core.settings.logo.replace": "Replace",
+  "core.settings.logo.uploaded": "Logo updated",
+  "core.settings.logo.remove": "Remove logo",
+  "core.settings.logo.remove_confirm": "Remove the logo? The site will show its name as text instead.",
+  "core.settings.logo.remove_yes": "Remove",
+  "core.settings.logo.cancel": "Cancel",
+  "core.settings.logo.removed": "Logo removed",
+  "core.settings.logo.unsupported": "This installation can't store a logo."
 }

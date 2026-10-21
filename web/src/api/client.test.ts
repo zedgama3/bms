@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { api, ApiError, PROBLEM_CODES } from "@/api";
+import { api, ApiError, PROBLEM_CODES, upload } from "@/api";
 import type { paths } from "@/api";
-import { configureClient, makeApi, moduleOf, TIMEOUT_MS } from "@/api/internal";
+import { configureClient, makeApi, moduleOf, TIMEOUT_MS, UPLOAD_TIMEOUT_MS } from "@/api/internal";
 import type { ClientHooks } from "@/api/internal";
 import openapi from "../../openapi.json";
 import { installFetch, json, noContent, problem } from "@/test/fakeFetch";
@@ -335,5 +335,71 @@ describe("the codes table", () => {
       "/api/openapi.json",
     ];
     expect(Object.keys(openapi.paths)).toEqual(expect.arrayContaining(keys));
+  });
+});
+
+describe("upload", () => {
+  const png = () =>
+    new File([new Uint8Array([137, 80, 78, 71])], "logo.png", { type: "image/png" });
+
+  it("sends multipart with the plain fields first and the file last, no Content-Type of its own", async () => {
+    const f = installFetch(() => json({ logo: "abc", revision: 2 }));
+    const res = await upload<{ logo: string }>(
+      "/api/settings/logo",
+      { file: png(), fields: { note: "x" } },
+      { method: "PUT" },
+    );
+    expect(res.logo).toBe("abc");
+    const req = f.mock.calls[0]![0];
+    expect(req.method).toBe("PUT");
+    expect(req.headers.get("traceparent")).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-0[01]$/);
+    expect(req.headers.get("Content-Type")).toMatch(/^multipart\/form-data; boundary=/);
+    const sent = await req.text();
+    expect(sent.indexOf('name="note"')).toBeGreaterThan(-1);
+    expect(sent.indexOf('name="file"')).toBeGreaterThan(sent.indexOf('name="note"'));
+  });
+
+  it("defaults to POST", async () => {
+    const f = installFetch(() => noContent());
+    expect(await upload("/api/x/y", { file: png() })).toBeUndefined();
+    expect(f.mock.calls[0]![0].method).toBe("POST");
+  });
+
+  it("maps a 413 to payload_too_large, even with another body, and does not retry", async () => {
+    const f = installFetch(() => new Response("too big", { status: 413 }));
+    const e = await failure(upload("/api/settings/logo", { file: png() }, { method: "PUT" }));
+    expect(e.code).toBe("payload_too_large");
+    expect(e.status).toBe(413);
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+
+  it("carries field errors and the reference of a problem body", async () => {
+    installFetch(() =>
+      problem(400, {
+        code: "invalid",
+        fields: [{ field: "file", code: "type", reason: "x" }],
+      }),
+    );
+    const e = await failure(upload("/api/settings/logo", { file: png() }, { method: "PUT" }));
+    expect(e.code).toBe("invalid");
+    expect(e.fields[0]?.field).toBe("file");
+  });
+
+  it("gives up after UPLOAD_TIMEOUT_MS, not the 35 s of a plain call", async () => {
+    vi.useFakeTimers();
+    installFetch(
+      (req) =>
+        new Promise<Response>((_, reject) => {
+          req.signal.addEventListener("abort", () => reject(new DOMException("a", "AbortError")));
+        }),
+    );
+    let err: unknown;
+    const p = upload("/api/x/y", { file: png() }).catch((e: unknown) => (err = e));
+    await vi.advanceTimersByTimeAsync(TIMEOUT_MS + 1000);
+    expect(err).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(UPLOAD_TIMEOUT_MS);
+    await p;
+    expect((err as ApiError).code).toBe("network");
+    expect((err as ApiError).detail).toBe("timeout");
   });
 });

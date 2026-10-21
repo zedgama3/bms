@@ -73,6 +73,7 @@ func buildSettings(_ context.Context, a *assembly) error {
 		Audit:      rec,
 		Authz:      lazyAuthorizer{a: a},
 		Actor:      authzActor,
+		Files:      lazyFilesStore{a: a},
 		Areas:      settingsAreas(a),
 		SealingKey: a.cfg.Settings.SealingKey,
 	})
@@ -115,8 +116,9 @@ func settingsAreas(a *assembly) []settings.Area {
 }
 
 // settingsRoutes converts settings' routes (settings cannot import core/module) to module
-// routes: the public document and the stylesheet need no session, every other one does and
-// checks its permission inside the use case.
+// routes: the public document, the stylesheet and the logo need no session, every other one
+// does and checks its permission inside the use case. A route's body cap and deadline carry
+// over (zero means the shell's).
 func settingsRoutes(in []settings.Route) []module.Route {
 	out := make([]module.Route, len(in))
 	for i, r := range in {
@@ -124,7 +126,10 @@ func settingsRoutes(in []settings.Route) []module.Route {
 		if r.Public {
 			access = module.AccessPublic
 		}
-		out[i] = module.Route{Method: r.Method, Pattern: r.Pattern, Access: access, Handler: r.Handler}
+		out[i] = module.Route{
+			Method: r.Method, Pattern: r.Pattern, Access: access, Handler: r.Handler,
+			MaxBodyBytes: r.MaxBodyBytes, Timeout: r.Timeout,
+		}
 	}
 	return out
 }

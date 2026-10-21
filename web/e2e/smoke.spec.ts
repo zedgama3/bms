@@ -1,11 +1,13 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test as base } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
+import { deflateSync } from "node:zlib";
 
 /** The public settings document the shell reads at boot (`GET /api/settings/public`). */
 function publicSettings(over: Record<string, unknown> = {}) {
   return {
     name: "BMS",
+    logo: "",
     contact_email: "",
     language: "en",
     languages: ["en"],
@@ -2419,6 +2421,187 @@ test.describe("jobs: the background work screen", () => {
     await expect(page.getByText("You don't have access to this screen.")).toBeVisible();
     if (isPhone) await page.getByRole("button", { name: "Menu" }).tap();
     await expect(page.getByRole("link", { name: "Background work" })).toHaveCount(0);
+    await axe(page);
+  });
+});
+
+// ---- settings: the logo (D47), mocked at the network; a generated 1x1 PNG, no real image ----
+
+/** A 1x1 transparent PNG, built from its bytes so no image file sits in the repository. */
+const TINY_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+  "base64",
+);
+
+/** A solid w x h grey PNG built in memory (a wide one for the header's layout check). */
+function solidPng(w: number, h: number): Buffer {
+  const crcTable = Array.from({ length: 256 }, (_, n) => {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    return c >>> 0;
+  });
+  const crc = (b: Buffer) => {
+    let c = 0xffffffff;
+    for (const x of b) c = crcTable[(c ^ x) & 0xff]! ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  };
+  const chunk = (type: string, data: Buffer) => {
+    const body = Buffer.concat([Buffer.from(type, "ascii"), data]);
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length);
+    const sum = Buffer.alloc(4);
+    sum.writeUInt32BE(crc(body));
+    return Buffer.concat([len, body, sum]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0);
+  ihdr.writeUInt32BE(h, 4);
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 2; // RGB
+  const row = Buffer.concat([Buffer.from([0]), Buffer.alloc(w * 3, 0x80)]);
+  const raw = Buffer.concat(Array.from({ length: h }, () => row));
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk("IHDR", ihdr),
+    chunk("IDAT", deflateSync(raw)),
+    chunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+
+test.describe("settings: the logo", () => {
+  test("an admin uploads a logo, sees it in the header, and removes it behind a confirmation, with touch alone", async ({
+    page,
+  }, info) => {
+    only("default");
+    const isPhone = info.project.name === "phone";
+    await mockSettings(page, ["settings.read", "settings.manage"]);
+    const logo = { id: "", puts: 0, deletes: 0 };
+    // Later routes win: the public document now carries the logo's file ID.
+    await mockPublicSettings(page, () => publicSettings({ name: "BMS", logo: logo.id }));
+    await page.route("**/api/settings/logo**", (r) => {
+      const method = r.request().method();
+      if (method === "PUT") {
+        logo.puts++;
+        logo.id = `file-${logo.puts}`;
+        return r.fulfill({ json: { revision: 6, logo: logo.id } });
+      }
+      if (method === "DELETE") {
+        logo.deletes++;
+        logo.id = "";
+        return r.fulfill({ json: { revision: 7, logo: "" } });
+      }
+      return r.fulfill({ contentType: "image/png", body: TINY_PNG });
+    });
+    if (isPhone) await page.setViewportSize({ width: 320, height: 568 });
+    const check = async () => {
+      if (isPhone) {
+        await noHorizontalScroll(page);
+        await touchTargets(page);
+      }
+      await axe(page);
+    };
+
+    await page.goto("/settings");
+    const section = page.getByRole("region", { name: "Logo" });
+    await expect(
+      section.getByText(/No logo yet\. The site shows its name, BMS, as text\./),
+    ).toBeVisible();
+    await expect(section.getByRole("button", { name: "Upload" })).toBeDisabled();
+    await check();
+
+    // choosing a file changes nothing until Upload is pressed
+    await section
+      .getByLabel("Logo", { exact: true })
+      .setInputFiles({ name: "logo.png", mimeType: "image/png", buffer: TINY_PNG });
+    await expect(section.getByText(/Chosen file: logo\.png/)).toBeVisible();
+    expect(logo.puts).toBe(0);
+    await press(section.getByRole("button", { name: "Upload" }), isPhone);
+    await expect(page.getByText("Logo updated")).toBeVisible();
+    expect(logo.puts).toBe(1);
+    await expect(section.getByRole("img", { name: "The current logo" })).toHaveAttribute(
+      "src",
+      "/api/settings/logo?v=file-1",
+    );
+    const home = page.getByRole("banner").getByRole("link", { name: "BMS", exact: true });
+    await expect(home.getByRole("img", { name: "BMS" })).toBeVisible();
+    await expect(section.getByRole("button", { name: "Replace" })).toBeDisabled();
+    await check();
+
+    // remove: Cancel first, then confirm
+    await press(section.getByRole("button", { name: "Remove logo" }), isPhone);
+    const dialog = page.getByRole("dialog", { name: "Remove logo" });
+    await expect(dialog).toBeVisible();
+    await press(dialog.getByRole("button", { name: "Cancel" }), isPhone);
+    await expect(dialog).toBeHidden();
+    expect(logo.deletes).toBe(0);
+    await expect(section.getByRole("button", { name: "Remove logo" })).toBeFocused();
+    await press(section.getByRole("button", { name: "Remove logo" }), isPhone);
+    await press(dialog.getByRole("button", { name: "Remove", exact: true }), isPhone);
+    await expect(page.getByText("Logo removed")).toBeVisible();
+    expect(logo.deletes).toBe(1);
+    await expect(section.getByText(/No logo yet/)).toBeVisible();
+    await expect(home.getByRole("img")).toHaveCount(0);
+    await check();
+  });
+
+  test("a file the server refuses is explained on the input and the file is kept", async ({
+    page,
+  }, info) => {
+    only("default");
+    const isPhone = info.project.name === "phone";
+    await mockSettings(page, ["settings.read", "settings.manage"]);
+    await page.route("**/api/settings/logo**", (r) =>
+      r.fulfill({
+        status: 400,
+        contentType: "application/problem+json",
+        body: JSON.stringify({
+          status: 400,
+          code: "invalid",
+          fields: [{ field: "file", code: "type", reason: "not an image" }],
+        }),
+      }),
+    );
+    await page.goto("/settings");
+    const section = page.getByRole("region", { name: "Logo" });
+    await section
+      .getByLabel("Logo", { exact: true })
+      .setInputFiles({ name: "logo.png", mimeType: "image/png", buffer: TINY_PNG });
+    await press(section.getByRole("button", { name: "Upload" }), isPhone);
+    await expect(page.getByRole("alert")).toContainText("This kind of file isn't accepted.");
+    await expect(section.getByLabel("Logo", { exact: true })).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
+    await expect(section.getByText(/Chosen file: logo\.png/)).toBeVisible();
+    await axe(page);
+  });
+
+  test("a wide logo keeps the header on one screen width, with the Menu button in view", async ({
+    page,
+  }, info) => {
+    const isPhone = info.project.name === "phone";
+    only("default");
+    if (!isPhone) test.skip(true, "phone layout");
+    const wide = solidPng(600, 100);
+    await mockSettings(page, ["settings.read", "settings.manage"]);
+    await mockPublicSettings(page, () => publicSettings({ name: "BMS", logo: "wide-1" }));
+    await page.route("**/api/settings/logo**", (r) =>
+      r.fulfill({ contentType: "image/png", body: wide }),
+    );
+    await page.setViewportSize({ width: 320, height: 568 });
+    await page.goto("/settings");
+    const home = page.getByRole("link", { name: "BMS" }).first();
+    const img = home.getByRole("img");
+    await expect(img).toBeVisible();
+    await expect.poll(() => img.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBe(600);
+    const menu = page.getByRole("button", { name: "Menu" });
+    await expect(menu).toBeVisible();
+    await expect(menu).toBeInViewport({ ratio: 1 });
+    await noHorizontalScroll(page);
+    const box = await img.boundingBox();
+    expect(box?.width ?? 0).toBeLessThanOrEqual(192.5);
+    expect(box?.height ?? 0).toBeLessThanOrEqual(32.5);
+    await touchTargets(page);
     await axe(page);
   });
 });

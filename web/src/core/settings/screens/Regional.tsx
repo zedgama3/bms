@@ -3,6 +3,7 @@ import { ApiError } from "@/api";
 import { useT } from "@/i18n";
 import { Banner, EmptyState, linkButtonClass, Loading } from "@/ui";
 import { Forbidden } from "../Forbidden";
+import { LogoControls } from "../LogoControls";
 import { regionalControls } from "../RegionalControls";
 import { ScreenError } from "../ScreenError";
 import { SettingsForm } from "../SettingsForm";
@@ -58,6 +59,7 @@ export function Regional() {
           />
         </section>
       ) : null}
+      {regional ? <LogoControls canManage={canManage} /> : null}
       {q.data ? (
         <section aria-labelledby="settings-more" className="flex flex-col gap-3">
           <h2 id="settings-more" className="text-xl font-bold">

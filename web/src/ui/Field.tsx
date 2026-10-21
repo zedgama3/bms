@@ -19,6 +19,8 @@ export interface FieldProps {
   name: string;
   hint?: string;
   error?: FieldMessage | undefined;
+  /** `alert` when the error is raised by the control itself (not a submit), so it is announced. */
+  errorRole?: "alert";
   required?: boolean;
   type?: InputHTMLAttributes<HTMLInputElement>["type"];
   inputMode?: InputHTMLAttributes<HTMLInputElement>["inputMode"];
@@ -81,7 +83,11 @@ export function Field(props: FieldProps) {
         />
       )}
       {props.error ? (
-        <p id={errId} className="text-sm font-semibold text-danger">
+        <p
+          id={errId}
+          {...(props.errorRole ? { role: props.errorRole } : {})}
+          className="text-sm font-semibold text-danger"
+        >
           <span aria-hidden="true">! </span>
           <FieldMessageText message={props.error} />
         </p>

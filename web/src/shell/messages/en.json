@@ -1,4 +1,5 @@
 {
+  "shell.file.chosen": "Chosen file: {name} ({size})",
   "shell.skip": "Skip to content",
   "shell.menu": "Menu",
   "shell.nav.main": "Main",
@@ -100,6 +101,11 @@
   "field.incorrect": "That isn't right.",
   "field.self": "You can't do this to your own account.",
   "field.malformed": "This isn't in the expected form.",
+  "field.too_large": "The file is larger than {max, number} bytes.",
+  "field.type": "This kind of file isn't accepted.",
+  "field.quota": "The site has no room left for files.",
+  "field.too_many": "There are too many files. The most allowed is {max, number}.",
+  "field.order": "The files are not in a valid order.",
   "field.control_chars": "Must not contain control characters.",
   "field.unknown": "This value isn't valid: <en>{reason}</en>",
   "term.event": "event",
@@ -119,11 +125,11 @@
   "term.theme_camp.title": "Theme camp",
   "term.theme_camp.plural_title": "Theme camps",
   "privacy.audience.nobody": "Nobody",
-  "privacy.audience.nobody.description": "Hidden from everyone, including the person it is about.",
-  "privacy.audience.self": "Only the person it is about",
-  "privacy.audience.self.description": "Only the person the record is about can see it.",
-  "privacy.audience.holders": "People with access",
-  "privacy.audience.holders.description": "The person it is about, and people whose role lets them see this information.",
+  "privacy.audience.nobody.description": "Hidden from everyone, including the person this information is about.",
+  "privacy.audience.self": "Only the person this information is about",
+  "privacy.audience.self.description": "Only the person this information is about can see it.",
+  "privacy.audience.holders": "People whose role allows it",
+  "privacy.audience.holders.description": "The person this information is about, and people whose role lets them see it.",
   "privacy.audience.signed_in": "Everyone signed in",
-  "privacy.audience.signed_in.description": "The person it is about, and anyone signed in who can see the record."
+  "privacy.audience.signed_in.description": "The person this information is about, and anyone signed in who can see the record."
 }

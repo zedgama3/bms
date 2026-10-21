@@ -22,6 +22,7 @@ type snapshot struct {
 	values   map[string]string                       // full key -> text form (plain settings)
 	sealed   map[string][]byte                       // full key -> nonce || ciphertext (secrets)
 	terms    map[string]map[string]map[string]string // lang -> term -> form -> override
+	logo     string                                  // the logo's file ID, "" when none (decision 16)
 }
 
 // snapshotOf builds a snapshot from stored rows.
@@ -108,6 +109,9 @@ func (s *Service) load(ctx context.Context) (_ *snapshot, err error) {
 			return wrap(op, err)
 		}
 		sn = snapshotOf(rev, ss, ts)
+		if sn.logo, err = s.logoFileID(ctx); err != nil {
+			return wrap(op, err)
+		}
 		return nil
 	})
 	if err != nil {

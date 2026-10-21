@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/authz"
+	"github.com/zedgama3/bms/internal/core/files"
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/people"
 	"github.com/zedgama3/bms/internal/lib/errs"
@@ -122,6 +124,100 @@ func (l lazyAuthorizer) ExtentOf(ctx context.Context, p authz.Permission) (authz
 		return authz.Extent{}, nil
 	}
 	return l.a.authz.ExtentOf(ctx, p) //nolint:wrapcheck // the authorizer's own error
+}
+
+// lazyFilesStore is settings' files.Store (scoped "settings", for the logo) over a.files,
+// which files' part sets after settings is built: each method resolves the scoped store when
+// called and, until files is built, fails errs.Unavailable. It does no I/O of its own.
+type lazyFilesStore struct{ a *assembly }
+
+var _ files.Store = lazyFilesStore{}
+
+// filesOwner is the files owner and bucket of the settings area (the logo).
+const filesOwner = settingsArea
+
+// store resolves the scoped store, or fails errs.Unavailable before files is built.
+func (l lazyFilesStore) store(op string) (files.Store, error) {
+	if l.a.files == nil {
+		return nil, errs.E(op, errs.Unavailable, errors.New("the files service is not built yet"))
+	}
+	st, err := l.a.files.Scoped(filesOwner)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+	return st, nil
+}
+
+// Stage stages through the scoped store.
+func (l lazyFilesStore) Stage(ctx context.Context, up files.Upload) (files.Staged, error) {
+	st, err := l.store("app.lazyFilesStore.Stage")
+	if err != nil {
+		return files.Staged{}, err
+	}
+	return st.Stage(ctx, up) //nolint:wrapcheck // the store's own error
+}
+
+// Attach attaches through the scoped store.
+func (l lazyFilesStore) Attach(ctx context.Context, s files.Staged, at files.Attachment) (files.File, error) {
+	st, err := l.store("app.lazyFilesStore.Attach")
+	if err != nil {
+		return files.File{}, err
+	}
+	return st.Attach(ctx, s, at) //nolint:wrapcheck // the store's own error
+}
+
+// Discard discards through the scoped store.
+func (l lazyFilesStore) Discard(ctx context.Context, s files.Staged) error {
+	st, err := l.store("app.lazyFilesStore.Discard")
+	if err != nil {
+		return err
+	}
+	return st.Discard(ctx, s) //nolint:wrapcheck // the store's own error
+}
+
+// Get reads through the scoped store.
+func (l lazyFilesStore) Get(ctx context.Context, id files.FileID) (files.File, error) {
+	st, err := l.store("app.lazyFilesStore.Get")
+	if err != nil {
+		return files.File{}, err
+	}
+	return st.Get(ctx, id) //nolint:wrapcheck // the store's own error
+}
+
+// ByRecord lists through the scoped store.
+func (l lazyFilesStore) ByRecord(ctx context.Context, rec audit.Ref) ([]files.File, error) {
+	st, err := l.store("app.lazyFilesStore.ByRecord")
+	if err != nil {
+		return nil, err
+	}
+	return st.ByRecord(ctx, rec) //nolint:wrapcheck // the store's own error
+}
+
+// Open opens through the scoped store.
+func (l lazyFilesStore) Open(ctx context.Context, id files.FileID) (files.File, files.Content, error) {
+	st, err := l.store("app.lazyFilesStore.Open")
+	if err != nil {
+		return files.File{}, nil, err
+	}
+	return st.Open(ctx, id) //nolint:wrapcheck // the store's own error
+}
+
+// Delete deletes through the scoped store.
+func (l lazyFilesStore) Delete(ctx context.Context, id files.FileID) error {
+	st, err := l.store("app.lazyFilesStore.Delete")
+	if err != nil {
+		return err
+	}
+	return st.Delete(ctx, id) //nolint:wrapcheck // the store's own error
+}
+
+// DeleteByRecord deletes a record's files through the scoped store.
+func (l lazyFilesStore) DeleteByRecord(ctx context.Context, rec audit.Ref) (int, error) {
+	st, err := l.store("app.lazyFilesStore.DeleteByRecord")
+	if err != nil {
+		return 0, err
+	}
+	return st.DeleteByRecord(ctx, rec) //nolint:wrapcheck // the store's own error
 }
 
 // lazyIdentityPolicy is identity's PolicySource over a.settings, which settings' part sets

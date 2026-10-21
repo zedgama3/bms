@@ -315,7 +315,11 @@ func (s *Service) freshSnapshot(ctx context.Context, op string, rev int64) (*sna
 	if err != nil {
 		return nil, wrap(op, err)
 	}
-	return snapshotOf(rev, ss, ts), nil
+	sn := snapshotOf(rev, ss, ts)
+	if sn.logo, err = s.logoFileID(ctx); err != nil {
+		return nil, wrap(op, err)
+	}
+	return sn, nil
 }
 
 // finish records the entries, bumps the revision and arranges for next to replace the

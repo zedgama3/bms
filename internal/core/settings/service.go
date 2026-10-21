@@ -13,6 +13,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/db"
+	"github.com/zedgama3/bms/internal/core/files"
 	"github.com/zedgama3/bms/internal/core/settings/postgres"
 	"github.com/zedgama3/bms/internal/core/settings/rows"
 	"github.com/zedgama3/bms/internal/core/telemetry"
@@ -59,8 +60,13 @@ type Options struct {
 	Audit audit.Recorder // scoped "settings"
 	// Authz is taken as the interface, not as a built authz service: authz is built after
 	// settings, so app passes an adapter that resolves it on first use.
-	Authz           authz.Authorizer
-	Actor           authz.ActorFunc
+	Authz authz.Authorizer
+	Actor authz.ActorFunc
+	// Files is a files.Store scoped "settings" for the logo. Optional: nil means the three
+	// logo routes answer errs.Unsupported and Public.Logo is "". files is core part 10 and
+	// settings part 3, so app passes an adapter that resolves it on first use, as it does
+	// for Authz; a method called before files is built is errs.Unavailable.
+	Files           files.Store
 	Areas           []Area        // every area but "regional", which New adds
 	SealingKey      secret.Secret // optional; without it Secret values cannot be set or read
 	RefreshInterval time.Duration // 0 = DefaultRefreshInterval; 1s..10m
@@ -133,6 +139,7 @@ type Service struct {
 	audit  audit.Recorder
 	authz  authz.Authorizer
 	actorF authz.ActorFunc
+	files  files.Store // nil: no logo support
 
 	areas    []Area           // regional first, then core areas, then modules
 	index    map[string]entry // full key -> entry
@@ -192,7 +199,7 @@ func newService(o Options, st store) (*Service, error) {
 	}
 	s := &Service{
 		store: st, db: o.DB, clock: o.Clock, logger: o.Logger, tracer: o.Tracer, audit: o.Audit,
-		authz: o.Authz, actorF: o.Actor, sealer: sl, interval: o.RefreshInterval, defaults: defaults,
+		authz: o.Authz, actorF: o.Actor, files: o.Files, sealer: sl, interval: o.RefreshInterval, defaults: defaults,
 		loading: make(chan struct{}, 1), metrics: m,
 	}
 	if s.interval == 0 {

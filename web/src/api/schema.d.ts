@@ -1281,6 +1281,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/logo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The regional's logo (PNG, JPEG or WebP). No session needed. The shell requests it as /api/settings/logo?v=<logo>, the file ID from the public document; the query is ignored. ETag is the image's SHA-256 and a matching If-None-Match answers 304. 404 when there is no logo; 501 when the installation has no file store; 503 with Retry-After on a copy that has not yet received the image. */
+        get: operations["settingsLogo"];
+        /** Replace the logo. Needs settings.manage. multipart/form-data with one file part named file (PNG, JPEG or WebP by its bytes, at most 2 MiB; metadata is removed). Field errors use the field file: too_large {max}, type, malformed, required. 409 with code quota when the site is out of file space; 501 when the installation has no file store; 503 read_only on a read-only copy. */
+        put: operations["settingsSetLogo"];
+        post?: never;
+        /** Remove the logo. Needs settings.manage. With no logo it changes nothing and answers the current revision and an empty logo. 501 when the installation has no file store; 503 read_only on a read-only copy. */
+        delete: operations["settingsRemoveLogo"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings/public": {
         parameters: {
             query?: never;
@@ -2126,12 +2145,27 @@ export interface components {
             singular: string;
             singular_title: string;
         };
+        SettingsLogoResult: {
+            /** @description The file ID after the call; empty after a removal. */
+            logo: string;
+            /** Format: int64 */
+            revision: number;
+        };
+        SettingsLogoUpload: {
+            /**
+             * Format: binary
+             * @description The image: PNG, JPEG or WebP, at most 2 MiB (2097152 bytes). Send it as the only part.
+             */
+            file: string;
+        };
         SettingsPublic: {
             /** @description The regional's shared mailbox, shown to anyone; empty when none. */
             contact_email: string;
             /** @description The language before a person chooses. */
             language: string;
             languages: string[];
+            /** @description The logo's file ID; empty when there is none. Request /api/settings/logo?v=<logo>, so a replaced logo is a new URL. */
+            logo: string;
             name: string;
             /** @description No trailing slash; empty when unset. */
             public_url: string;
@@ -5205,6 +5239,109 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SettingsDocument"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    settingsLogo: {
+        parameters: {
+            query?: {
+                /** @description The logo's file ID, to version the URL; ignored. */
+                v?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The image. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                    "image/png": string;
+                    "image/webp": string;
+                };
+            };
+            /** @description The If-None-Match tag is the image's. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    settingsSetLogo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["SettingsLogoUpload"];
+            };
+        };
+        responses: {
+            /** @description The revision and the new logo's file ID. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsLogoResult"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    settingsRemoveLogo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The revision and an empty logo. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsLogoResult"];
                 };
             };
             /** @description An error. The body is a Problem. */

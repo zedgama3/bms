@@ -2,10 +2,12 @@ package settings
 
 import (
 	_ "embed" // the OpenAPI fragment
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 
+	"github.com/zedgama3/bms/internal/core/files"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/lib/httpx"
 )
@@ -39,8 +41,11 @@ func notModified(r *http.Request, revision int64) bool {
 	return false
 }
 
-// Routes returns the routes of the settings set, relative to /api/settings. The first two
-// are public (no session); the permission of the rest is checked inside the use case.
+// Routes returns the routes of the settings set, relative to /api/settings. GET /public,
+// GET /theme.css and GET /logo are public (no session); the permission of the rest is
+// checked inside the use case. PUT /logo takes at most 2*MaxLogoBytes of request body (the
+// field error of a file over MaxLogoBytes wins for anything near the cap) and
+// files.UploadTimeout; GET /logo gets files.ServeTimeout.
 // Handlers are thin: parse, call the service, httpx.Fail on error. Cannot fail.
 func (s *Service) Routes() []Route {
 	return []Route{
@@ -50,6 +55,12 @@ func (s *Service) Routes() []Route {
 		{Method: http.MethodPut, Pattern: "/values", Handler: s.setHandler()},
 		{Method: http.MethodGet, Pattern: "/terms", Handler: s.termsHandler()},
 		{Method: http.MethodPut, Pattern: "/terms/{lang}", Handler: s.setTermsHandler()},
+		{Method: http.MethodGet, Pattern: "/logo", Public: true, Handler: s.getLogoHandler(), Timeout: files.ServeTimeout},
+		{
+			Method: http.MethodPut, Pattern: "/logo", Handler: s.putLogoHandler(),
+			MaxBodyBytes: 2 * MaxLogoBytes, Timeout: files.UploadTimeout,
+		},
+		{Method: http.MethodDelete, Pattern: "/logo", Handler: s.deleteLogoHandler()},
 	}
 }
 
@@ -159,5 +170,50 @@ func (s *Service) setTermsHandler() http.Handler {
 			return
 		}
 		writeJSON(w, r, http.StatusOK, revisionBody{rev})
+	})
+}
+
+// getLogoHandler serves the logo. The ?v= query the shell adds only versions the URL.
+func (s *Service) getLogoHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		f, c, err := s.OpenLogo(r.Context())
+		if err != nil {
+			httpx.Fail(w, r, err)
+			return
+		}
+		files.Serve(w, r, f, c)
+		if err := c.Close(); err != nil {
+			s.logger.WarnContext(r.Context(), "the logo could not be closed",
+				slog.String("error.kind", errs.KindOf(err).String()))
+		}
+	})
+}
+
+// putLogoHandler reads the multipart upload (the file part is named "file") and replaces
+// the logo with it.
+func (s *Service) putLogoHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mp, err := files.ReadUpload(r, fieldFile)
+		if err != nil {
+			httpx.Fail(w, r, err)
+			return
+		}
+		res, err := s.SetLogo(r.Context(), mp.Name, mp.Body)
+		if err != nil {
+			httpx.Fail(w, r, err)
+			return
+		}
+		writeJSON(w, r, http.StatusOK, res)
+	})
+}
+
+func (s *Service) deleteLogoHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		res, err := s.RemoveLogo(r.Context())
+		if err != nil {
+			httpx.Fail(w, r, err)
+			return
+		}
+		writeJSON(w, r, http.StatusOK, res)
 	})
 }

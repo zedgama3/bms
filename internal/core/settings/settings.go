@@ -67,6 +67,9 @@ const (
 	actionTermChanged    audit.Action = "settings.term.changed"
 	actionTermReset      audit.Action = "settings.term.reset"
 
+	actionLogoChanged audit.Action = "settings.logo.changed"
+	actionLogoRemoved audit.Action = "settings.logo.removed"
+
 	kindSetting = "settings.setting"
 	kindTerm    = "settings.term"
 )
@@ -107,6 +110,10 @@ type Forms struct {
 type Public struct {
 	Regional
 	Theme bool `json:"theme"` // theme.css is not empty
+	// Logo is the logo's file ID ("" when none), from the snapshot (decision 16). The shell
+	// requests /api/settings/logo?v=<Logo> so a replaced logo is a new URL. Public, like
+	// every field here (decision 6).
+	Logo string `json:"logo"`
 	// Terms per language, flattened for the shell's {term_*} arguments:
 	// {"en": {"term_department": "department", "term_department_plural": "departments",
 	// "term_department_title": "Department", "term_department_plural_title": "Departments"}}
@@ -169,9 +176,12 @@ type FormChanges struct {
 }
 
 // Route is the shape app converts to module.Route (audit decision 14). Pattern is relative
-// to /api/settings.
+// to /api/settings. MaxBodyBytes and Timeout are module.Route's (api decision 32): zero
+// means the shell's; app copies them.
 type Route struct {
 	Method, Pattern string
 	Public          bool
 	Handler         http.Handler
+	MaxBodyBytes    int64
+	Timeout         time.Duration
 }

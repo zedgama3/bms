@@ -10,6 +10,7 @@ import {
   Dialog,
   EmptyState,
   Field,
+  FileField,
   LOADING_DELAY_MS,
   Loading,
   Table,
@@ -235,5 +236,71 @@ describe("Toast", () => {
     await expectNoAxeViolations(container);
     await userEvent.click(screen.getByRole("button", { name: "Dismiss" }));
     expect(screen.queryByText("Saved")).not.toBeInTheDocument();
+  });
+});
+
+describe("FileField", () => {
+  const png = (size = 10) => new File([new Uint8Array(size)], "logo.png", { type: "image/png" });
+
+  function Harness({ maxBytes, error }: { maxBytes?: number; error?: string }) {
+    const [file, setFile] = useState<File | null>(null);
+    return (
+      <FileField
+        label="Logo"
+        name="file"
+        hint="PNG only"
+        accept={["image/png", "image/jpeg"]}
+        {...(maxBytes !== undefined ? { maxBytes } : {})}
+        {...(error ? { error: { text: error } } : {})}
+        value={file}
+        onChange={setFile}
+      />
+    );
+  }
+
+  it("has a label, a hint, accept, a 44 px target, and shows the chosen file's name and size", async () => {
+    const { container } = renderUi(<Harness />);
+    const input = screen.getByLabelText("Logo", { selector: "input" });
+    expect(input).toHaveAttribute("type", "file");
+    expect(input).toHaveAttribute("name", "file");
+    expect(input).toHaveAttribute("accept", "image/png,image/jpeg");
+    expect(input.className).toMatch(/min-h-11/);
+    expect(input).toHaveAccessibleDescription("PNG only");
+    await userEvent.upload(input, png(2048));
+    expect(screen.getByText(/Chosen file: logo\.png \(2 kB\)/)).toBeInTheDocument();
+    await expectNoAxeViolations(container);
+  });
+
+  it("refuses a file over maxBytes at once with field.too_large and passes null", async () => {
+    renderUi(<Harness maxBytes={100} />);
+    const input = screen.getByLabelText("Logo", { selector: "input" });
+    await userEvent.upload(input, png(500));
+    expect(screen.getByText("The file is larger than 100 bytes.")).toBeInTheDocument();
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    // announced when it appears
+    expect(screen.getByRole("alert")).toHaveTextContent("The file is larger than 100 bytes.");
+    expect(screen.queryByText(/Chosen file/)).not.toBeInTheDocument();
+    await userEvent.upload(input, png(50));
+    expect(screen.queryByText(/larger than/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByText(/Chosen file: logo\.png/)).toBeInTheDocument();
+  });
+
+  it("accepts a type outside accept and leaves it to the server", async () => {
+    renderUi(<Harness />);
+    const odd = new File([new Uint8Array(4)], "a.gif", { type: "image/gif" });
+    await userEvent.upload(screen.getByLabelText("Logo", { selector: "input" }), odd, {
+      applyAccept: false,
+    });
+    expect(screen.getByText(/Chosen file: a\.gif/)).toBeInTheDocument();
+  });
+
+  it("shows an error from the server on the input", () => {
+    renderUi(<Harness error="This kind of file isn't accepted." />);
+    expect(screen.getByLabelText("Logo", { selector: "input" })).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
+    expect(screen.getByText("This kind of file isn't accepted.")).toBeInTheDocument();
   });
 });

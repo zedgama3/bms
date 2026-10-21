@@ -146,6 +146,10 @@ func (f *Fake) Stage(ctx context.Context, up files.Upload) (files.Staged, error)
 	pol := files.DefaultPolicy()
 	data, err := io.ReadAll(io.LimitReader(up.Body, pol.MaxBytes+1))
 	if err != nil {
+		var classified *errs.Error
+		if errors.As(err, &classified) { // like the real Stage: a classified body error is returned unchanged
+			return files.Staged{}, err //nolint:wrapcheck // the contract: a classified body error comes back unchanged
+		}
 		return files.Staged{}, errs.E(op, errs.Invalid, fmt.Errorf("read the body: %w", err))
 	}
 	if len(data) == 0 {

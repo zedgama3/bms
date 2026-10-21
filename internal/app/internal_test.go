@@ -905,9 +905,9 @@ func TestBuildParts_AgainstNoDatabase_SetsAuthenticatorRoutesAndRunnable(t *test
 	}
 }
 
-// settings' two public routes need no session; every other one is signed in and checks its
+// settings' public routes (the public document, the stylesheet and, from 2026-10-21, the logo) need no session; every other one is signed in and checks its
 // permission inside the use case.
-func TestSettingsRoutes_PublicOnlyThePublicDocumentAndTheStylesheet(t *testing.T) {
+func TestSettingsRoutes_PublicOnlyThePublicDocumentTheStylesheetAndTheLogo(t *testing.T) {
 	a := builtCore(t)
 	var got []string
 	for _, rs := range a.routeSets {
@@ -921,7 +921,7 @@ func TestSettingsRoutes_PublicOnlyThePublicDocumentAndTheStylesheet(t *testing.T
 		}
 	}
 	slices.Sort(got)
-	if want := []string{"GET /public", "GET /theme.css"}; !slices.Equal(got, want) {
+	if want := []string{"GET /logo", "GET /public", "GET /theme.css"}; !slices.Equal(got, want) {
 		t.Errorf("public settings routes = %v, want %v", got, want)
 	}
 }

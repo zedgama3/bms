@@ -1,4 +1,5 @@
 import type { components } from "@/api";
+import { DEFAULT_PUBLIC, publicStore } from "@/api/internal";
 import { addCatalogue, configureLanguages, REGIONAL_OWNER } from "@/i18n/internal";
 import { shellLanguages } from "./catalogues";
 import { DEFAULT_LANGUAGE, setRegionalName } from "./regional";
@@ -62,6 +63,12 @@ function applyTheme(on: boolean, reload: boolean): void {
  *  the default, the terms (merged over the catalogue's `term.*` entries) and the theme link. */
 export function applyPublic(doc: PublicDoc, reloadTheme = false): void {
   setRegionalName(doc.name);
+  // The name and the logo's file ID, for the header and the settings screen (`usePublic`).
+  const name = doc.name.trim() === "" ? DEFAULT_PUBLIC.name : doc.name;
+  // A server older than the logo sends no field: no logo.
+  const logo = doc.logo || "";
+  const now = publicStore.get();
+  if (now.name !== name || now.logo !== logo) publicStore.set({ name, logo });
 
   const offered = shellLanguages.filter((l) => doc.languages.includes(l));
   const languages = `${offered.join(",")}|${doc.language}`;
@@ -89,5 +96,6 @@ export function resetPublicForTest(): void {
   appliedTerms = "";
   appliedLanguages = "";
   themeVersion = 0;
+  publicStore.set(DEFAULT_PUBLIC);
   document.getElementById(THEME_ID)?.remove();
 }

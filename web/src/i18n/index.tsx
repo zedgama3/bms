@@ -109,6 +109,8 @@ export interface Format {
   time(instant: string | Date, zone?: string): string;
   dateTime(instant: string | Date, zone?: string): string;
   number(n: number): string;
+  /** A size such as "2 MB" (1024-based steps). */
+  bytes(n: number): string;
   relative(instant: string | Date): string;
   list(items: string[]): string;
 }
@@ -153,6 +155,21 @@ export function makeFormat(locale: string): Format {
     time: (v, zone) => fmt(v, zone, timeOpts, true),
     dateTime: (v, zone) => fmt(v, zone, { ...dateOpts, ...timeOpts }, true),
     number: (n) => new Intl.NumberFormat(locale).format(n),
+    bytes: (n) => {
+      const units = ["byte", "kilobyte", "megabyte", "gigabyte"] as const;
+      let i = 0;
+      let v = Math.max(0, n);
+      while (v >= 1024 && i < units.length - 1) {
+        v /= 1024;
+        i++;
+      }
+      return new Intl.NumberFormat(locale, {
+        style: "unit",
+        unit: units[i] ?? "byte",
+        unitDisplay: "short",
+        maximumFractionDigits: i === 0 ? 0 : 1,
+      }).format(v);
+    },
     relative: (v) => {
       const d = toDate(v);
       if (!d) return "";

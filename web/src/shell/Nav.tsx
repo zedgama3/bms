@@ -1,6 +1,7 @@
 import { useId, useState } from "react";
 import { Menu, X } from "lucide-react";
 import { Link, NavLink, useLocation } from "react-router";
+import { usePublic } from "@/api";
 import { useT } from "@/i18n";
 import { useRegionalName } from "./regional";
 import { navItems } from "./registryNav";
@@ -11,6 +12,34 @@ import { AccountControls } from "./AccountControls";
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>
   `inline-flex min-h-11 items-center rounded-md px-3 py-2 font-semibold ${isActive ? "bg-surface underline underline-offset-4" : "hover:bg-surface"}`;
+
+/** The home link: the logo when the regional has one (its alt is the regional's name, so the
+ *  link's name is the same as with text), else, or when the image will not load (a copy
+ *  without the bytes answers 503), the name as text. */
+function HomeLink({ name }: { name: string }) {
+  const { logo } = usePublic();
+  // The file ID that failed, so a replaced logo gets another try.
+  const [failed, setFailed] = useState("");
+  const showImage = logo !== "" && failed !== logo;
+  return (
+    <Link
+      to="/"
+      className="inline-flex min-h-11 min-w-11 items-center justify-center text-lg font-bold"
+    >
+      {showImage ? (
+        <img
+          src={`/api/settings/logo?v=${encodeURIComponent(logo)}`}
+          alt={name}
+          decoding="async"
+          className="max-h-8 w-auto max-w-[12rem] object-contain"
+          onError={() => setFailed(logo)}
+        />
+      ) : (
+        name
+      )}
+    </Link>
+  );
+}
 
 /** The header: the name (home link), the language menu, the person, and the navigation. On a
  *  phone the navigation is a disclosure "Menu" button opening a panel (aria-expanded); from
@@ -34,9 +63,7 @@ export function Header() {
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-bg">
       <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2">
-        <Link to="/" className="inline-flex min-h-11 items-center text-lg font-bold">
-          {regional}
-        </Link>
+        <HomeLink name={regional} />
         <div className="ms-auto flex items-center gap-2">
           <LanguageMenu />
           <button

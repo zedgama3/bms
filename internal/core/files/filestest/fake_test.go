@@ -295,3 +295,20 @@ func TestFake_SafeForConcurrentUse(_ *testing.T) {
 		<-done
 	}
 }
+
+type errReader struct{ err error }
+
+func (e errReader) Read([]byte) (int, error) { return 0, e.err }
+
+// Like the real Stage, the Fake returns a classified error from the body unchanged.
+func TestFake_Stage_ClassifiedBodyError_ReturnedUnchanged(t *testing.T) {
+	f := filestest.NewFake("volunteers")
+	want := errs.E("test.cap", errs.Conflict, errors.New("a classified failure"))
+	_, err := f.Stage(t.Context(), files.Upload{Name: "a.png", Accept: files.Images, Body: io.MultiReader(bytes.NewReader(pngBytes()), errReader{want})})
+	if !errors.Is(err, want) || !errs.Is(err, errs.Conflict) {
+		t.Fatalf("Stage = %v (kind %v), want the body's own error unchanged", err, errs.KindOf(err))
+	}
+	if n := len(f.Staged()); n != 0 {
+		t.Errorf("Staged = %d, want none", n)
+	}
+}

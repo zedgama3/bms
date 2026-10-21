@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import shellEn from "@/shell/messages/en.json";
@@ -759,5 +759,405 @@ describe("the shell's term entries", () => {
     }
     const have = Object.fromEntries(Object.entries(shellEn).filter(([k]) => k.startsWith("term.")));
     expect(have).toEqual(want);
+  });
+});
+
+describe("the logo section", () => {
+  const publicBody = (logo: string, name = "Dust Bowl") => ({
+    name,
+    logo,
+    contact_email: "",
+    language: "en",
+    languages: ["en"],
+    public_url: "",
+    theme: false,
+    timezone: "",
+    terms: {},
+  });
+  const png = (size = 8) => new File([new Uint8Array(size)], "logo.png", { type: "image/png" });
+
+  /** A tiny stateful server: the logo's file ID, changed by PUT and DELETE. */
+  function logoServer(initial = "", over: Routes = {}) {
+    const state = { logo: initial, puts: 0, deletes: 0 };
+    const routes = base({
+      "GET /api/settings/public": () => json(publicBody(state.logo)),
+      "PUT /api/settings/logo": () => {
+        state.puts++;
+        state.logo = "file-" + String(state.puts);
+        return json({ revision: 6, logo: state.logo });
+      },
+      "DELETE /api/settings/logo": () => {
+        state.deletes++;
+        state.logo = "";
+        return json({ revision: 7, logo: "" });
+      },
+      ...over,
+    });
+    return { state, routes };
+  }
+  const section = () => screen.getByRole("region", { name: "Logo" });
+  const pick = async (file = png()) =>
+    userEvent.upload(screen.getByLabelText("Logo", { selector: "input" }), file);
+
+  it("shows nothing of it while the document loads, then the section", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    const { routes } = logoServer("", {
+      "GET /api/settings/": async () => {
+        await gate;
+        return json(documentBody());
+      },
+    });
+    mountApp({ path: "/settings", session: ident(ADMIN), routes });
+    expect(await screen.findByRole("heading", { level: 1, name: "Settings" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Logo" })).not.toBeInTheDocument();
+    release();
+    expect(await screen.findByRole("heading", { level: 2, name: "Logo" })).toBeInTheDocument();
+  });
+
+  it("says there is no logo and names the regional; Upload waits for a file", async () => {
+    const { routes } = logoServer("");
+    mountApp({ path: "/settings", session: ident(ADMIN), routes });
+    await screen.findByRole("heading", { level: 2, name: "Logo" });
+    await screen.findByText("No logo yet. The site shows its name, Dust Bowl, as text.");
+    const upload = within(section()).getByRole("button", { name: "Upload" });
+    expect(upload).toBeDisabled();
+    expect(
+      within(section()).queryByRole("button", { name: "Remove logo" }),
+    ).not.toBeInTheDocument();
+    const input = screen.getByLabelText("Logo", { selector: "input" });
+    expect(input).toHaveAttribute("accept", "image/png,image/jpeg,image/webp");
+    expect(input).not.toHaveAttribute("capture");
+    expect(input).toHaveAccessibleDescription(/PNG, JPEG or WebP, up to 2 MB/);
+  });
+
+  it("shows the current logo, and the text when it will not load", async () => {
+    const { routes } = logoServer("abc123");
+    mountApp({ path: "/settings", session: ident(ADMIN), routes });
+    const img = await screen.findByRole("img", { name: "The current logo" });
+    expect(img).toHaveAttribute("src", "/api/settings/logo?v=abc123");
+    expect(img.className).toMatch(/max-h-24 w-auto/);
+    expect(within(section()).getByRole("button", { name: "Replace" })).toBeInTheDocument();
+    fireEvent.error(img);
+    expect(screen.getByText("The logo can't be shown right now.")).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: "The current logo" })).not.toBeInTheDocument();
+  });
+
+  it("uploads the chosen file only on Upload, then shows it and the header follows", async () => {
+    const { routes, state } = logoServer("");
+    const f = mountApp({ path: "/settings", session: ident(ADMIN), routes });
+    await screen.findByRole("heading", { level: 2, name: "Logo" });
+    await pick();
+    expect(screen.getByText(/Chosen file: logo\.png/)).toBeInTheDocument();
+    expect(state.puts).toBe(0);
+    await userEvent.click(within(section()).getByRole("button", { name: "Upload" }));
+    expect(await screen.findByText("Logo updated")).toBeInTheDocument();
+    const put = f.fetchMock.mock.calls.find(([r]) => r.method === "PUT")![0];
+    expect(new URL(put.url).pathname).toBe("/api/settings/logo");
+    const sent = await put.clone().text();
+    expect(sent).toMatch(/name="file"/);
+    const img = await screen.findByRole("img", { name: "The current logo" });
+    expect(img).toHaveAttribute("src", "/api/settings/logo?v=file-1");
+    const header = screen.getByRole("banner");
+    expect(await within(header).findByRole("img", { name: "Dust Bowl" })).toHaveAttribute(
+      "src",
+      "/api/settings/logo?v=file-1",
+    );
+    expect(within(section()).getByRole("button", { name: "Replace" })).toBeDisabled();
+    expect(screen.queryByText(/Chosen file/)).not.toBeInTheDocument();
+  });
+
+  it("refuses a file over 2 MB without a request", async () => {
+    const { routes, state } = logoServer("");
+    mountApp({ path: "/settings", session: ident(ADMIN), routes });
+    await screen.findByRole("heading", { level: 2, name: "Logo" });
+    await pick(png(2_097_153));
+    expect(screen.getByText("The file is larger than 2,097,152 bytes.")).toBeInTheDocument();
+    expect(within(section()).getByRole("button", { name: "Upload" })).toBeDisabled();
+    expect(state.puts).toBe(0);
+  });
+
+  const fieldCases: [string, number, string, Record<string, unknown>][] = [
+    ["too_large", 400, "The file is larger than 2,097,152 bytes.", { params: { max: "2097152" } }],
+    ["type", 400, "This kind of file isn't accepted.", {}],
+    ["malformed", 400, "This isn't in the expected form.", {}],
+    ["required", 400, "Required.", {}],
+  ];
+  for (const [code, status, text, extra] of fieldCases) {
+    it(`puts the server's ${code} on the file input`, async () => {
+      const { routes } = logoServer("", {
+        "PUT /api/settings/logo": () =>
+          problem(status, {
+            code: "invalid",
+            fields: [{ field: "file", code, reason: "r", ...extra }],
+          }),
+      });
+      mountApp({ path: "/settings", session: ident(ADMIN), routes });
+      await screen.findByRole("heading", { level: 2, name: "Logo" });
+      await pick();
+      await userEvent.click(within(section()).getByRole("button", { name: "Upload" }));
+      const alert = await screen.findByRole("alert");
+      expect(
+        within(alert).getByText(new RegExp(text.replace(/[.()]/g, "\\$&"))),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Logo", { selector: "input" })).toHaveAttribute(
+        "aria-invalid",
+        "true",
+      );
+      // the chosen file is kept for another try
+      expect(screen.getByText(/Chosen file: logo\.png/)).toBeInTheDocument();
+    });
+  }
+
+  it("shows the quota as the site having no room, for a 409", async () => {
+    const { routes } = logoServer("", {
+      "PUT /api/settings/logo": () =>
+        problem(409, {
+          code: "conflict",
+          fields: [{ field: "file", code: "quota", reason: "r", params: { max: "1" } }],
+        }),
+    });
+    mountApp({ path: "/settings", session: ident(ADMIN), routes });
+    await screen.findByRole("heading", { level: 2, name: "Logo" });
+    await pick();
+    await userEvent.click(within(section()).getByRole("button", { name: "Upload" }));
+    expect(
+      (await screen.findAllByText(/The site has no room left for files\./)).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("shows a 409 with no field as the quota too", async () => {
+    const { routes } = logoServer("", {
+      "PUT /api/settings/logo": () => problem(409, { code: "conflict" }),
+    });
+    mountApp({ path: "/settings", session: ident(ADMIN), routes });
+    await screen.findByRole("heading", { level: 2, name: "Logo" });
+    await pick();
+    await userEvent.click(within(section()).getByRole("button", { name: "Upload" }));
+    expect(
+      (await screen.findAllByText(/The site has no room left for files\./)).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("shows a 413 as too large with the known limit", async () => {
+    const { routes } = logoServer("", {
+      "PUT /api/settings/logo": () => new Response("big", { status: 413 }),
+    });
+    mountApp({ path: "/settings", session: ident(ADMIN), routes });
+    await screen.findByRole("heading", { level: 2, name: "Logo" });
+    await pick();
+    await userEvent.click(within(section()).getByRole("button", { name: "Upload" }));
+    expect(
+      (await screen.findAllByText(/The file is larger than 2,097,152 bytes\./)).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("says the copy is read-only on a read_only answer and keeps the file", async () => {
+    const { routes } = logoServer("", {
+      "PUT /api/settings/logo": () => problem(503, { code: "read_only" }),
+    });
+    mountApp({ path: "/settings", session: ident(ADMIN), routes });
+    await screen.findByRole("heading", { level: 2, name: "Logo" });
+    await pick();
+    await userEvent.click(within(section()).getByRole("button", { name: "Upload" }));
+    expect(
+      await within(section()).findByText(
+        "This copy is read-only, so this can't be saved right now.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Chosen file: logo\.png/)).toBeInTheDocument();
+    expect(within(section()).queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("replaces the controls with a note when the installation has no file store (501)", async () => {
+    const { routes } = logoServer("", {
+      "PUT /api/settings/logo": () => problem(501, { code: "unsupported" }),
+    });
+    mountApp({ path: "/settings", session: ident(ADMIN), routes });
+    await screen.findByRole("heading", { level: 2, name: "Logo" });
+    await pick();
+    await userEvent.click(within(section()).getByRole("button", { name: "Upload" }));
+    expect(await screen.findByText("This installation can't store a logo.")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Logo", { selector: "input" })).not.toBeInTheDocument();
+    expect(within(section()).queryByRole("button", { name: "Upload" })).not.toBeInTheDocument();
+  });
+
+  it("shows the generic error with its reference when the store is unreachable (503)", async () => {
+    const { routes } = logoServer("", {
+      "PUT /api/settings/logo": () =>
+        problem(503, { code: "unavailable", ref: "AB12-CD34" }, { "Retry-After": "5" }),
+    });
+    mountApp({ path: "/settings", session: ident(ADMIN), routes });
+    await screen.findByRole("heading", { level: 2, name: "Logo" });
+    await pick();
+    await userEvent.click(within(section()).getByRole("button", { name: "Upload" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("The server isn't available right now.");
+    expect(alert).toHaveTextContent("AB12-CD34");
+    // and another try is possible
+    expect(within(section()).getByRole("button", { name: "Upload" })).toBeEnabled();
+  });
+
+  it("shows an error summary for a 403 and for a network failure", async () => {
+    const { routes } = logoServer("", {
+      "PUT /api/settings/logo": () => problem(403, { code: "permission", ref: "AB12-CD34" }),
+    });
+    mountApp({ path: "/settings", session: ident(ADMIN), routes });
+    await screen.findByRole("heading", { level: 2, name: "Logo" });
+    await pick();
+    await userEvent.click(within(section()).getByRole("button", { name: "Upload" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "You don't have permission to do that.",
+    );
+  });
+
+  it("hides the controls but keeps the preview on a read-only copy", async () => {
+    const { routes } = logoServer("abc123");
+    mountApp({ path: "/settings", session: ident(ADMIN), routes, readOnly: () => true });
+    expect(await screen.findByRole("img", { name: "The current logo" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Logo", { selector: "input" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remove logo" })).not.toBeInTheDocument();
+    // The shell's banner and the regional form's note say it; the section does not repeat it.
+    expect(
+      within(section()).queryByText("This copy is read-only, so this can't be saved right now."),
+    ).not.toBeInTheDocument();
+  });
+
+  it("clears the upload's error when another file is picked", async () => {
+    const { routes } = logoServer("", {
+      "PUT /api/settings/logo": () => problem(500, { code: "internal", ref: "AB12-CD34" }),
+    });
+    mountApp({ path: "/settings", session: ident(ADMIN), routes });
+    await screen.findByRole("heading", { level: 2, name: "Logo" });
+    await pick();
+    await userEvent.click(within(section()).getByRole("button", { name: "Upload" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("AB12-CD34");
+    await pick(png(9));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("does not show a failed upload's error once a removal starts", async () => {
+    const { routes } = logoServer("abc123", {
+      "PUT /api/settings/logo": () => problem(500, { code: "internal", ref: "AB12-CD34" }),
+      "DELETE /api/settings/logo": () => problem(500, { code: "internal", ref: "CD34-EF56" }),
+    });
+    mountApp({ path: "/settings", session: ident(ADMIN), routes });
+    await screen.findByRole("img", { name: "The current logo" });
+    await pick();
+    await userEvent.click(within(section()).getByRole("button", { name: "Replace" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("AB12-CD34");
+    await userEvent.click(within(section()).getByRole("button", { name: "Remove logo" }));
+    const dialog = await screen.findByRole("dialog", { name: "Remove logo" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Remove" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("CD34-EF56");
+    expect(screen.queryByText(/AB12-CD34/)).not.toBeInTheDocument();
+  });
+
+  it("moves focus to the Logo heading when the 501 removes the controls, and announces it", async () => {
+    const { routes } = logoServer("", {
+      "PUT /api/settings/logo": () => problem(501, { code: "unsupported" }),
+    });
+    mountApp({ path: "/settings", session: ident(ADMIN), routes });
+    await screen.findByRole("heading", { level: 2, name: "Logo" });
+    await pick();
+    await userEvent.click(within(section()).getByRole("button", { name: "Upload" }));
+    const note = await screen.findByText("This installation can't store a logo.");
+    expect(note.closest('[role="status"]')).not.toBeNull();
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { level: 2, name: "Logo" })).toHaveFocus(),
+    );
+  });
+
+  it("does the same when the removal answers 501, closing the dialog", async () => {
+    const { routes } = logoServer("abc123", {
+      "DELETE /api/settings/logo": () => problem(501, { code: "unsupported" }),
+    });
+    mountApp({ path: "/settings", session: ident(ADMIN), routes });
+    await screen.findByRole("img", { name: "The current logo" });
+    await userEvent.click(within(section()).getByRole("button", { name: "Remove logo" }));
+    const dialog = await screen.findByRole("dialog", { name: "Remove logo" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Remove" }));
+    expect(await screen.findByText("This installation can't store a logo.")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Remove logo" })).not.toBeInTheDocument(),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { level: 2, name: "Logo" })).toHaveFocus(),
+    );
+  });
+
+  it("shows the preview and no controls to someone who can read but not manage", async () => {
+    const { routes } = logoServer("abc123");
+    mountApp({ path: "/settings", session: ident(["settings.read"]), routes });
+    expect(await screen.findByRole("img", { name: "The current logo" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Logo", { selector: "input" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Replace" })).not.toBeInTheDocument();
+  });
+
+  it("shows no section to someone who can manage but not read", async () => {
+    const { routes } = logoServer("abc123");
+    mountApp({ path: "/settings", session: ident(["settings.manage"]), routes });
+    await screen.findByText(/change settings but not read them/);
+    expect(screen.queryByRole("heading", { name: "Logo" })).not.toBeInTheDocument();
+  });
+
+  it("asks before removing; Cancel changes nothing and returns focus to Remove logo", async () => {
+    const { routes, state } = logoServer("abc123");
+    mountApp({ path: "/settings", session: ident(ADMIN), routes });
+    await screen.findByRole("img", { name: "The current logo" });
+    const remove = within(section()).getByRole("button", { name: "Remove logo" });
+    await userEvent.click(remove);
+    const dialog = await screen.findByRole("dialog", { name: "Remove logo" });
+    expect(
+      within(dialog).getByText("Remove the logo? The site will show its name as text instead."),
+    ).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(state.deletes).toBe(0);
+    expect(screen.getByRole("img", { name: "The current logo" })).toBeInTheDocument();
+    await waitFor(() => expect(remove).toHaveFocus());
+  });
+
+  it("removes the logo on confirm, says so, and shows the empty state", async () => {
+    const { routes, state } = logoServer("abc123");
+    mountApp({ path: "/settings", session: ident(ADMIN), routes });
+    await screen.findByRole("img", { name: "The current logo" });
+    await userEvent.click(within(section()).getByRole("button", { name: "Remove logo" }));
+    const dialog = await screen.findByRole("dialog", { name: "Remove logo" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Remove" }));
+    expect(await screen.findByText("Logo removed")).toBeInTheDocument();
+    expect(state.deletes).toBe(1);
+    expect(
+      await screen.findByText("No logo yet. The site shows its name, Dust Bowl, as text."),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText("Logo", { selector: "input" })).toHaveFocus());
+    expect(screen.queryByRole("img", { name: "Dust Bowl" })).not.toBeInTheDocument();
+  });
+
+  it("shows the error when removing fails and keeps the logo", async () => {
+    const { routes } = logoServer("abc123", {
+      "DELETE /api/settings/logo": () => problem(500, { code: "internal", ref: "AB12-CD34" }),
+    });
+    mountApp({ path: "/settings", session: ident(ADMIN), routes });
+    await screen.findByRole("img", { name: "The current logo" });
+    await userEvent.click(within(section()).getByRole("button", { name: "Remove logo" }));
+    const dialog = await screen.findByRole("dialog", { name: "Remove logo" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Remove" }));
+    // the error stays in the dialog, which stays open
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert).toHaveTextContent("Something went wrong.");
+    expect(alert).toHaveTextContent("AB12-CD34");
+    expect(screen.getByRole("dialog", { name: "Remove logo" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "The current logo", hidden: true })).toBeInTheDocument();
+    // Cancel clears it
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("has no accessibility violations with a logo and a chosen file", async () => {
+    const { routes } = logoServer("abc123");
+    const f = mountApp({ path: "/settings", session: ident(ADMIN), routes });
+    await screen.findByRole("img", { name: "The current logo" });
+    await pick();
+    await expectNoAxeViolations(f.container);
   });
 });

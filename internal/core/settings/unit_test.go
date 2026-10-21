@@ -862,6 +862,9 @@ var specRoutes = []routeSpec{
 	{"PUT", "/values", false},
 	{"GET", "/terms", false},
 	{"PUT", "/terms/{lang}", false},
+	{"GET", "/logo", true}, // logo, 2026-10-21
+	{"PUT", "/logo", false},
+	{"DELETE", "/logo", false},
 }
 
 func TestRoutes_MatchTheSpecTable(t *testing.T) {
@@ -906,7 +909,7 @@ func TestOpenAPI_NamesExactlyTheRoutes(t *testing.T) {
 		delete(described, key)
 	}
 	for extra := range described {
-		if !strings.HasPrefix(extra, "GET ") && !strings.HasPrefix(extra, "PUT ") {
+		if !strings.HasPrefix(extra, "GET ") && !strings.HasPrefix(extra, "PUT ") && !strings.HasPrefix(extra, "DELETE ") {
 			continue // tolerate non-operation keys such as "parameters"
 		}
 		t.Errorf("the fragment describes %s, which has no route", extra)

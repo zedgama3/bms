@@ -12,6 +12,9 @@ import { newTraceparent } from "./traceparent";
 
 /** The client gives up just after the server would (http.request_timeout defaults to 30 s). */
 export const TIMEOUT_MS = 35_000;
+/** An upload may take minutes on a slow phone connection; the server's own limit is files'
+ *  `UploadTimeout` (web-shell.md "M4 files additions", D47). */
+export const UPLOAD_TIMEOUT_MS = 600_000;
 /** The session endpoint: a 401 there means signed out, not "your session ended". */
 export const SESSION_ROUTE = "/api/accounts/session";
 /** Routes whose 401 never sends a person to sign-in: the session check, and the sign-in call
@@ -76,6 +79,10 @@ interface CallInfo {
   module: string;
   traceId: string;
   traceparent: string;
+  /** The give-up time for this call. */
+  timeoutMs: number;
+  /** An upload: a 413 is `payload_too_large` whatever body came with it. */
+  upload?: boolean;
 }
 
 function parseRetryAfter(h: string | null): number | undefined {
@@ -149,7 +156,7 @@ async function perform(req: Request, info: CallInfo): Promise<Response> {
   const timer = setTimeout(() => {
     timedOut = true;
     controller.abort();
-  }, TIMEOUT_MS);
+  }, info.timeoutMs);
   const relay = () => controller.abort();
   req.signal.addEventListener("abort", relay);
   if (req.signal.aborted) controller.abort();
@@ -207,6 +214,17 @@ async function perform(req: Request, info: CallInfo): Promise<Response> {
     }
 
     const is401 = res.status === 401;
+    if (info.upload && res.status === 413) {
+      // The route's body cap (or a proxy's) refused the upload: one code, whatever the body.
+      let ref: string | undefined;
+      try {
+        const b = JSON.parse(text) as Record<string, unknown>;
+        if (typeof b["ref"] === "string" && REF.test(b["ref"])) ref = b["ref"];
+      } catch {
+        // no problem body: nothing to keep
+      }
+      return fail(info, { ...base, status: 413, code: "payload_too_large", ref }, false);
+    }
     const retryAfter = parseRetryAfter(res.headers.get("Retry-After"));
     if ((res.headers.get("Content-Type") ?? "").includes("application/problem+json")) {
       let body: unknown;
@@ -295,6 +313,7 @@ export function makeApi<Paths extends object>(): Api<Paths> {
         module: moduleOf(path),
         traceId: trace.traceId,
         traceparent: trace.header,
+        timeoutMs: TIMEOUT_MS,
       };
       // The typed surface is the generic Call<> above; inside, the path is a string.
       const call = raw[key] as unknown as (
@@ -313,4 +332,42 @@ export function makeApi<Paths extends object>(): Api<Paths> {
     PATCH: make("PATCH"),
     DELETE: make("DELETE"),
   } as unknown as Api<Paths>;
+}
+
+/** What `upload` sends: the file under the name `file`, after any plain fields. */
+export interface UploadBody {
+  file: File;
+  fields?: Record<string, string>;
+}
+
+/** Sends one file as `multipart/form-data` (web-shell.md "M4 files additions"). Same trace,
+ *  cookie and ApiError handling as `api`; never retried (not idempotent); gives up after
+ *  UPLOAD_TIMEOUT_MS; a 413 rejects with code `payload_too_large`. Resolves with the parsed
+ *  body (undefined for 204). The browser sets the Content-Type, boundary included. */
+export async function upload<T = unknown>(
+  route: string,
+  body: UploadBody,
+  opts: CallOptions & { method?: "PUT" | "POST" } = {},
+): Promise<T> {
+  const method: Method = opts.method ?? "POST";
+  const trace = newTraceparent();
+  const info: CallInfo = {
+    method,
+    route,
+    module: moduleOf(route),
+    traceId: trace.traceId,
+    traceparent: trace.header,
+    timeoutMs: UPLOAD_TIMEOUT_MS,
+    upload: true,
+  };
+  const form = new FormData();
+  for (const [k, v] of Object.entries(body.fields ?? {})) form.append(k, v);
+  form.append("file", body.file);
+  const url = new URL(route, location.origin);
+  for (const [k, v] of Object.entries(opts.params?.query ?? {})) url.searchParams.set(k, String(v));
+  const init: RequestInit = { method, body: form };
+  if (opts.signal) init.signal = opts.signal;
+  const res = await perform(new Request(url, init), info);
+  const text = await res.text();
+  return (text.trim() === "" ? undefined : JSON.parse(text)) as T;
 }

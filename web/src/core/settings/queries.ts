@@ -39,3 +39,10 @@ export function useAfterSave() {
     [client],
   );
 }
+
+/** After a logo change: the frame re-reads the public document (resolves when it has), so the
+ *  header and the preview show the new logo without a reload. */
+export function useRefreshPublic() {
+  const client = useQueryClient();
+  return useCallback(() => client.invalidateQueries({ queryKey: PUBLIC_KEY }), [client]);
+}

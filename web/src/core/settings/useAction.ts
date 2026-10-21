@@ -25,5 +25,6 @@ export function useAction() {
       setBusy(false);
     }
   }, []);
-  return { busy, error, run };
+  const reset = useCallback(() => setError(null), []);
+  return { busy, error, run, reset };
 }

@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { mountApp } from "@/test/app";
 import { json, problem } from "@/test/fakeFetch";
@@ -22,6 +22,7 @@ const ident = (permissions: string[]) => ({
 
 const publicDoc = (over: Record<string, unknown> = {}) => ({
   name: "Dust Bowl",
+  logo: "",
   contact_email: "",
   language: "en",
   languages: ["en", "es"],
@@ -72,6 +73,48 @@ describe("the public settings document at boot", () => {
     expect(within(main).getByRole("link", { name: "Teams" })).toBeInTheDocument();
     expect(within(main).getByRole("link", { name: "Gatherings" })).toBeInTheDocument();
     expect(within(main).queryByRole("link", { name: "Departments" })).not.toBeInTheDocument();
+  });
+
+  it("shows the logo inside the home link, named for the regional, and the name as text when unset", async () => {
+    mountApp({
+      session: ident([]),
+      routes: {
+        "GET /api/settings/public": () => json(publicDoc({ logo: "f0e1d2c3" })),
+        "GET /api/people/me": () => problem(404, { code: "not_found" }),
+      },
+    });
+    const home = await screen.findByRole("link", { name: "Dust Bowl" });
+    const img = within(home).getByRole("img", { name: "Dust Bowl" });
+    expect(img).toHaveAttribute("src", "/api/settings/logo?v=f0e1d2c3");
+    expect(img).toHaveAttribute("decoding", "async");
+    expect(img).not.toHaveAttribute("loading");
+    expect(img.className).toMatch(/h-8 w-auto max-w-\[12rem\]/);
+  });
+
+  it("falls back to the name as text when the logo does not load", async () => {
+    mountApp({
+      session: ident([]),
+      routes: {
+        "GET /api/settings/public": () => json(publicDoc({ logo: "f0e1d2c3" })),
+        "GET /api/people/me": () => problem(404, { code: "not_found" }),
+      },
+    });
+    const home = await screen.findByRole("link", { name: "Dust Bowl" });
+    fireEvent.error(within(home).getByRole("img", { name: "Dust Bowl" }));
+    expect(within(home).queryByRole("img")).not.toBeInTheDocument();
+    expect(home).toHaveTextContent("Dust Bowl");
+  });
+
+  it("shows only the name while the document has no logo", async () => {
+    mountApp({
+      session: ident([]),
+      routes: {
+        "GET /api/settings/public": () => json(publicDoc()),
+        "GET /api/people/me": () => problem(404, { code: "not_found" }),
+      },
+    });
+    const home = await screen.findByRole("link", { name: "Dust Bowl" });
+    expect(within(home).queryByRole("img")).not.toBeInTheDocument();
   });
 
   it("uses the terms in screen titles and messages", async () => {

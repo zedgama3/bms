@@ -4,10 +4,12 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 import { makeApi } from "./client";
+import { publicStore } from "./public";
 import type { components, paths } from "./schema";
 import { useSession } from "./session";
 
-export type { CallOptions } from "./client";
+export { upload } from "./client";
+export type { CallOptions, UploadBody } from "./client";
 export { ApiError, PROBLEM_CODES, isAbort } from "./errors";
 export type {
   ClientCode,
@@ -30,6 +32,11 @@ export {
   useSessionCheckFailed,
 } from "./session";
 export type { Session } from "./session";
+
+/** The public settings document's parts a screen may need, kept by the frame (`applyPublic`):
+ *  the regional's name and the logo's file ID (`""` when there is no logo). */
+export const usePublic = publicStore.use;
+export type { PublicState } from "./public";
 
 export const api = makeApi<paths>();
 

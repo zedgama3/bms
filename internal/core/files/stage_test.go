@@ -689,6 +689,20 @@ func TestStage_BodyReadFails_ReturnsAnErrorAndCleansUp(t *testing.T) {
 	r.wantNoTempFiles()
 }
 
+// A body error that is already a classified *errs.Error comes back unchanged (files.md,
+// "Stage"; settings' MaxLogoBytes reader relies on it).
+func TestStage_ClassifiedBodyError_ReturnedUnchanged(t *testing.T) {
+	r := newRig(t)
+	want := errs.E("test.cap", errs.Conflict, errors.New("a classified failure"))
+	body := io.MultiReader(bytes.NewReader(pdfDoc("")), &failingReader{err: want})
+	_, err := r.vol.Stage(ctxT(t), files.Upload{Name: "a.pdf", Accept: files.Documents, Body: body})
+	if !errors.Is(err, want) || !errs.Is(err, errs.Conflict) {
+		t.Fatalf("Stage = %v (kind %v), want the body's own error unchanged", err, errs.KindOf(err))
+	}
+	r.wantNoObjects(ownerVol)
+	r.wantNoTempFiles()
+}
+
 // ---- Discard ----
 
 func TestDiscard_AfterStage_LeavesNothing(t *testing.T) {
