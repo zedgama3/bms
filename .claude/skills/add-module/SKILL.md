@@ -44,7 +44,9 @@ internal/modules/<name>/
                    module against a DB that refuses every statement (app.md decision 7)
                    Start registers signal handlers and jobs and never writes
                    Views and Groups in the manifest; privacy.Filter in every use case that
-                   returns a response type; visibility_<group> catalogue keys in en.json (D44)
+                   returns a response type; visibility_<group> catalogue keys in en.json (D44);
+                   every non-public field of a response type is omitempty, or omitzero
+                   when it is a struct or array (D46)
                    The module list is one line in internal/app/modules.go:
                    _ "github.com/zedgama3/bms/internal/modules/<name>" (plus the web
                    line, D31)

@@ -78,6 +78,9 @@ copy and can fork it. Features are modules.
     `people.contacts.read` for `department-admin` by department extent (amends people decision 9
     for contacts.read only); Q-FILES11 answered no (decision 25 final); the development `s3`
     compose profile moves from MinIO to SeaweedFS.
+- **Owner's answers 2026-10-21 (D46):** privacy-tags Amendment A2 approved as drafted, with
+    module-hello's A2 changes and Proposed changes 10–13 (module-contract, people,
+    module-volunteers, web-shell and go-conventions).
 - **Next steps:**
   1. Done 2026-10-16: the owner agreed [09-core-features.md](09-core-features.md)
      (milestones M0–M4, done criteria, spec order). `architect` drafted `model`, now Approved.

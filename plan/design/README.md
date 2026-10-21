@@ -30,7 +30,7 @@ The order follows dependencies: foundation first, then the core, then modules.
 | 14 | `jobs.md` | scheduled and deferred work | Implemented (2026-10-20; D44 amendments implemented) |
 | 15 | `settings.md` | runtime settings and terminology | Implemented (2026-10-19) |
 | 15b | `telemetry.md` | logs, traces, metrics, client error intake (D20) | Implemented (2026-10-17) |
-| 15c | `privacy-tags.md` | field-level privacy tags and the visibility filter (D43) | Approved (2026-10-20, D44; Amendment A1 approved 2026-10-21, D45) |
+| 15c | `privacy-tags.md` | field-level privacy tags and the visibility filter (D43) | Approved (2026-10-20, D44; Amendment A1 approved 2026-10-21, D45; Amendment A2 approved 2026-10-21, D46) |
 | 16 | `api.md` | router, middleware, error mapper, OpenAPI assembly | Implemented (2026-10-17) |
 | 17 | `web-shell.md` | UI frame, API client, module screen registry | Implemented (2026-10-17) |
 | 18 | `app.md` | composition root and lifecycle | Implemented (2026-10-17) |

@@ -739,3 +739,17 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
 - **Development object store:** the development `s3` compose profile switches from MinIO to
   SeaweedFS, because MinIO stopped publishing free images in 2025. This is for development and
   test only. bms still speaks plain S3 through `objects/s3` to any compatible store.
+
+## D46. privacy-tags Amendment A2 approved, with module-hello's changes and Proposed changes 10–13
+
+- **Status:** Accepted (2026-10-21), decided by the owner. The owner answered "Approved".
+- **privacy-tags Amendment A2 ([design/privacy-tags.md](design/privacy-tags.md), "Amendment A2"):
+  approved as drafted,** including module-hello's A2 changes and Proposed changes 10–13
+  (module-contract, people, module-volunteers, web-shell and go-conventions).
+- **Omit rule:** every non-public field, grouped or not, gets an omit rule per kind:
+  `omitzero` for Struct and Array kinds, and `omitempty` or `omitzero` otherwise.
+- **GroupLevels** is in the interface.
+- **Filter fails closed** on any plan problem.
+- **Check** rejects self-marshaling views and interface-kind fields.
+- **LegalNamesOf reach** never excludes the actor.
+- **hello** gets a `publicView` seam.
