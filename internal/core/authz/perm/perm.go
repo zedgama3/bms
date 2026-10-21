@@ -85,7 +85,8 @@ func (s Scope) String() string {
 // The starter role keys migration 0001 of authz creates (authz decision 12), here so that
 // packages authz records through, such as audit, can name them in a PermissionDecl without
 // importing authz, which re-exports them as authz.Role*. RoleParticipant is the base role;
-// RoleDepartmentAdmin is department-scoped; the rest are site roles.
+// RoleDepartmentAdmin is department-scoped; the rest are site roles. RoleVolunteerCoordinator
+// (D44) is created by migration 0003, not 0001.
 const (
 	RoleParticipant       = "participant"
 	RoleAccountAdmin      = "account-admin"
@@ -95,6 +96,9 @@ const (
 	RoleSettingsAdmin     = "settings-admin"
 	RoleAuditReviewer     = "audit-reviewer"
 	RoleDepartmentAdmin   = "department-admin"
+	// RoleVolunteerCoordinator is the site role of the person who coordinates volunteers
+	// across departments (authz decision 12, D44; migration 0003).
+	RoleVolunteerCoordinator = "volunteer-coordinator"
 )
 
 // SiteAdminRoles are the six site-wide administrative starter roles: the starter roles of

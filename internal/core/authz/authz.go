@@ -47,6 +47,8 @@ const (
 	RoleSettingsAdmin     = perm.RoleSettingsAdmin
 	RoleAuditReviewer     = perm.RoleAuditReviewer
 	RoleDepartmentAdmin   = perm.RoleDepartmentAdmin
+	// RoleVolunteerCoordinator is a site role created by migration 0003 (D44).
+	RoleVolunteerCoordinator = perm.RoleVolunteerCoordinator
 )
 
 // SiteAdminRoles are the six site-wide administrative starter roles: the starter roles of

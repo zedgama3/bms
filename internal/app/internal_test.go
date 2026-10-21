@@ -20,6 +20,7 @@ import (
 	"github.com/zedgama3/bms/internal/api"
 	"github.com/zedgama3/bms/internal/config"
 	"github.com/zedgama3/bms/internal/contracts/eventsetup"
+	"github.com/zedgama3/bms/internal/contracts/membership"
 	"github.com/zedgama3/bms/internal/contracts/personpage"
 	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/authz"
@@ -732,8 +733,8 @@ func TestCoreParts_Declare_SetsPermissionsSignalAndCommand(t *testing.T) {
 			t.Errorf("coreSignals = %v lacks %s", a.coreSignals, want)
 		}
 	}
-	if len(a.corePoints) != 2 || a.corePoints[0].Name != personpage.Point || a.corePoints[1].Name != eventsetup.Point {
-		t.Errorf("corePoints = %v, want %s then %s", a.corePoints, personpage.Point, eventsetup.Point)
+	if len(a.corePoints) != 3 || a.corePoints[0].Name != personpage.Point || a.corePoints[1].Name != membership.Point || a.corePoints[2].Name != eventsetup.Point {
+		t.Errorf("corePoints = %v, want %s, %s then %s", a.corePoints, personpage.Point, membership.Point, eventsetup.Point)
 	}
 	for _, pt := range a.corePoints {
 		if pt.Accepts(struct{}{}) {

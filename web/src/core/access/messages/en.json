@@ -19,6 +19,7 @@
   "core.access.role.settings-admin.title": "Settings administrator",
   "core.access.role.audit-reviewer.title": "Audit reviewer",
   "core.access.role.department-admin.title": "Administrator of a {term_department}",
+  "core.access.role.volunteer-coordinator.title": "Volunteer coordinator",
   "core.access.roles.title": "Roles",
   "core.access.roles.new": "New role",
   "core.access.roles.empty": "No roles yet.",

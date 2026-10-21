@@ -474,7 +474,7 @@ func newRig(t *testing.T, d db.DB, mods ...func(*people.Options)) *rig {
 // link hands the service its sources (no page providers).
 func (r *rig) link(sources ...people.Source) {
 	r.t.Helper()
-	wantNoErr(r.t, r.svc.Link(sources, nil))
+	wantNoErr(r.t, r.svc.Link(sources, nil, nil))
 }
 
 func actionsOf(es []audit.Entry) []string {

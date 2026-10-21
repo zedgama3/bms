@@ -95,7 +95,7 @@ func TestListPermissions_GrantsPermissionHolders_AreAllowed(t *testing.T) {
 
 // ---- reading roles ---------------------------------------------------------------------
 
-func TestListRoles_AfterMigrate_EightStarterRoles(t *testing.T) {
+func TestListRoles_AfterMigrate_NineStarterRoles(t *testing.T) {
 	r := newRigNoSeed(t)
 	roles, err := r.svc.ListRoles(r.sctx())
 	wantNoErr(t, err)
@@ -107,6 +107,7 @@ func TestListRoles_AfterMigrate_EightStarterRoles(t *testing.T) {
 		authz.RoleAccessAdmin: {authz.ScopeSite, false}, authz.RoleDepartmentSteward: {authz.ScopeSite, false},
 		authz.RoleEventAdmin: {authz.ScopeSite, false}, authz.RoleSettingsAdmin: {authz.ScopeSite, false},
 		authz.RoleAuditReviewer: {authz.ScopeSite, false}, authz.RoleDepartmentAdmin: {authz.ScopeDepartment, false},
+		authz.RoleVolunteerCoordinator: {authz.ScopeSite, false}, // D44, migration 0003
 	}
 	if len(roles) != len(want) {
 		t.Fatalf("%d roles, want %d", len(roles), len(want))
@@ -601,7 +602,7 @@ func TestDeleteRole_Base_ReturnsInvalid(t *testing.T) {
 // decision 2 (D36): every starter role but the base role may be deleted.
 func TestDeleteRole_StarterRoles_ExceptBase_MayBeDeleted(t *testing.T) {
 	r := newRig(t)
-	for _, key := range []string{authz.RoleAccountAdmin, authz.RoleDepartmentSteward, authz.RoleEventAdmin, authz.RoleSettingsAdmin, authz.RoleAuditReviewer, authz.RoleDepartmentAdmin, authz.RoleAccessAdmin} {
+	for _, key := range []string{authz.RoleAccountAdmin, authz.RoleDepartmentSteward, authz.RoleEventAdmin, authz.RoleSettingsAdmin, authz.RoleAuditReviewer, authz.RoleDepartmentAdmin, authz.RoleAccessAdmin, authz.RoleVolunteerCoordinator} {
 		ro := r.roleKey(key)
 		wantNoErr(t, r.svc.DeleteRole(r.sctx(), ro.ID))
 	}

@@ -24,9 +24,11 @@ func TestPermissions_MatchTheSpecTable(t *testing.T) {
 	}
 	table := map[authz.Permission]want{
 		permDirectory: {authz.ScopeDepartment, model.SensitivityInternal, []string{
-			authz.RoleAccountAdmin, authz.RoleAccessAdmin, authz.RoleAuditReviewer, authz.RoleDepartmentSteward, authz.RoleDepartmentAdmin,
+			authz.RoleAccountAdmin, authz.RoleAccessAdmin, authz.RoleAuditReviewer, authz.RoleDepartmentSteward, authz.RoleDepartmentAdmin, authz.RoleVolunteerCoordinator, // D44
 		}},
-		permContacts: {authz.ScopeDepartment, model.SensitivityPersonal, []string{authz.RoleAccountAdmin}},
+		// D44 (people.md, Permissions table and amendment part 3): account-admin, the
+		// volunteer-coordinator and the department-admin.
+		permContacts: {authz.ScopeDepartment, model.SensitivityPersonal, []string{authz.RoleAccountAdmin, authz.RoleVolunteerCoordinator, authz.RoleDepartmentAdmin}},
 		permManage:   {authz.ScopeSite, model.SensitivityPersonal, []string{authz.RoleAccountAdmin}},
 		permExport:   {authz.ScopeSite, model.SensitivitySensitive, []string{authz.RoleAccountAdmin}},
 		permDelete:   {authz.ScopeSite, model.SensitivitySensitive, []string{authz.RoleAccountAdmin}},
@@ -59,9 +61,10 @@ func TestPermissions_MatchTheSpecTable(t *testing.T) {
 	}
 }
 
-// Decision 9 and 20, D36: the base role holds none of them, and people.contacts.read is
-// seeded into account-admin only.
-func TestPermissions_BaseRoleHoldsNone_ContactsOnlyForAccountAdmin(t *testing.T) {
+// Decision 9 and 20, D36, D44: the base role holds none of them, and people.contacts.read
+// is not seeded into the other administrators (it is held by account-admin, the
+// volunteer-coordinator and the department-admin).
+func TestPermissions_BaseRoleHoldsNone_ContactsNotForOtherAdmins(t *testing.T) {
 	for _, d := range people.Permissions {
 		if slices.Contains(d.StarterRoles, authz.RoleParticipant) {
 			t.Errorf("%s is seeded into the base role", d.Name)
@@ -69,10 +72,10 @@ func TestPermissions_BaseRoleHoldsNone_ContactsOnlyForAccountAdmin(t *testing.T)
 		if d.Name == permContacts {
 			for _, role := range []string{
 				authz.RoleAccessAdmin, authz.RoleDepartmentSteward, authz.RoleEventAdmin, authz.RoleSettingsAdmin,
-				authz.RoleAuditReviewer, authz.RoleDepartmentAdmin, authz.RoleParticipant,
+				authz.RoleAuditReviewer, authz.RoleParticipant,
 			} {
 				if slices.Contains(d.StarterRoles, role) {
-					t.Errorf("people.contacts.read is seeded into %s; only account-admin holds it in M2", role)
+					t.Errorf("people.contacts.read is seeded into %s; it is not an everyday administrator permission", role)
 				}
 			}
 		}

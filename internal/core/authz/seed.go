@@ -19,9 +19,11 @@ const seedReasonPrefix = "seed:"
 var errRuleReadBack = errors.New("the rule just inserted cannot be read back")
 
 // Seed applies each declaration's StarterRoles once: for every (role key, permission) pair
-// not yet recorded in core.role_seed it adds the permission to the role with that key (when
-// one exists) and records the pair, so a regional's later edits are never undone and a
-// deleted starter role never returns. A site-only permission is not added to the
+// not yet recorded in core.role_seed it adds the permission to the role with that key and
+// records the pair, so a regional's later edits are never undone and a deleted starter role
+// never returns. A pair whose role does not exist is skipped and not recorded (D44), so a
+// module may list a starter role that a later migration creates and the pair is applied at
+// the first call after the role exists. A site-only permission is not added to the
 // department starter role (department-admin) and is retried at the next call. It runs in
 // one Write transaction under the invariants lock and is idempotent. Consumer: app's
 // migrate command, after db.Migrate, on the writing copy. Fails errs.Invalid for a bad

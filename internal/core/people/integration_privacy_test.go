@@ -27,7 +27,7 @@ func TestNoPersonalDataInLogsSpansMetricsOrAuditEntries(t *testing.T) {
 	failing := providerFunc(func(context.Context, []model.PersonID) (map[model.PersonID][]personpage.Section, error) {
 		return nil, errs.E("camps.Sections", errs.Unavailable, errors.New("camp service down"))
 	})
-	wantNoErr(t, r.svc.Link([]people.Source{good.source()}, []people.SectionProvider{{Module: "camps", Provider: failing}}))
+	wantNoErr(t, r.svc.Link([]people.Source{good.source()}, []people.SectionProvider{{Module: "camps", Provider: failing}}, nil))
 
 	_, actx := r.admin(permManage, permDirectory, permContacts, permExport, permDelete)
 

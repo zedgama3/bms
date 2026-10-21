@@ -62,15 +62,17 @@ const (
 )
 
 // Permissions lists the declarations of the five permissions above, with their starter
-// roles (people.md, "Permissions" and decisions 9 and 20).
+// roles (people.md, "Permissions" and decisions 9 and 20, amended by D44). Note that
+// department-admin holds people.contacts.read from D44, and until a module contributes
+// people.membership a department extent reaches every person (decision 9).
 var Permissions = []authz.PermissionDecl{
 	{
 		Name: PermissionDirectoryRead, Scope: authz.ScopeDepartment, Reaches: model.SensitivityInternal,
-		StarterRoles: []string{authz.RoleAccountAdmin, authz.RoleAccessAdmin, authz.RoleAuditReviewer, authz.RoleDepartmentSteward, authz.RoleDepartmentAdmin},
+		StarterRoles: []string{authz.RoleAccountAdmin, authz.RoleAccessAdmin, authz.RoleAuditReviewer, authz.RoleDepartmentSteward, authz.RoleDepartmentAdmin, authz.RoleVolunteerCoordinator},
 	},
 	{
 		Name: PermissionContactsRead, Scope: authz.ScopeDepartment, Reaches: model.SensitivityPersonal,
-		StarterRoles: []string{authz.RoleAccountAdmin},
+		StarterRoles: []string{authz.RoleAccountAdmin, authz.RoleDepartmentAdmin, authz.RoleVolunteerCoordinator},
 	},
 	{
 		Name: PermissionProfilesManage, Scope: authz.ScopeSite, Reaches: model.SensitivityPersonal,

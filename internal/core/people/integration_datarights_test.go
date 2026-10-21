@@ -797,7 +797,7 @@ func TestGet_ProviderFails_SectionMarkedFailed(t *testing.T) {
 	})
 	wantNoErr(t, r.svc.Link(nil, []people.SectionProvider{
 		{Module: "hello", Provider: good}, {Module: "camps", Provider: bad}, {Module: "later", Provider: later},
-	}))
+	}, nil))
 	me := r.insertPerson(seed{Playa: "Dusty Ember"})
 	prof, err := r.svc.Me(asPerson(ctxT(t), me))
 	wantNoErr(t, err)
@@ -828,7 +828,7 @@ func TestGet_ProviderBlocks_SectionTimesOut(t *testing.T) {
 		<-ctx.Done()
 		return nil, errs.E("slow.Sections", errs.KindOf(ctx.Err()), ctx.Err())
 	})
-	wantNoErr(t, r.svc.Link(nil, []people.SectionProvider{{Module: "slow", Provider: blocking}}))
+	wantNoErr(t, r.svc.Link(nil, []people.SectionProvider{{Module: "slow", Provider: blocking}}, nil))
 	me := r.insertPerson(seed{Playa: "Dusty Ember"})
 
 	type result struct {
@@ -878,7 +878,7 @@ func TestGet_Providers_SeeTheViewerAndOnePerson(t *testing.T) {
 		seenViewer = viewerOf(ctx)
 		return nil, nil // a person with nothing to show is simply absent
 	})
-	wantNoErr(t, r.svc.Link(nil, []people.SectionProvider{{Module: "spy", Provider: spy}}))
+	wantNoErr(t, r.svc.Link(nil, []people.SectionProvider{{Module: "spy", Provider: spy}}, nil))
 	prof, err := r.svc.Get(vctx, target)
 	wantNoErr(t, err)
 	if calls != 1 || len(seenIDs) != 1 || seenIDs[0] != target {

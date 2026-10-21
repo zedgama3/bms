@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/zedgama3/bms/internal/contracts/membership"
 	"github.com/zedgama3/bms/internal/contracts/personpage"
 	"github.com/zedgama3/bms/internal/core/module"
 	"github.com/zedgama3/bms/internal/core/people"
@@ -38,6 +39,13 @@ func declarePeople(a *assembly) error {
 		Name: personpage.Point,
 		Accepts: func(v any) bool {
 			_, ok := v.(personpage.Provider)
+			return ok
+		},
+	})
+	a.corePoints = append(a.corePoints, module.ExtensionPointDecl{
+		Name: membership.Point,
+		Accepts: func(v any) bool {
+			_, ok := v.(membership.Provider)
 			return ok
 		},
 	})
@@ -148,7 +156,19 @@ func linkPeople(_ context.Context, a *assembly) error {
 		}
 		sections = append(sections, people.SectionProvider{Module: c.Module, Provider: prov})
 	}
-	if err := a.people.Link(sources, sections); err != nil {
+	mcontribs, err := a.set.Contributors(membership.Point)
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+	var members []people.MembershipProvider
+	for _, c := range mcontribs {
+		prov, ok := c.Value.(membership.Provider)
+		if !ok {
+			return errs.E(op, errs.Internal, fmt.Errorf("module %q contributed a %T to %s, which is not a membership.Provider", c.Module, c.Value, membership.Point))
+		}
+		members = append(members, people.MembershipProvider{Module: c.Module, Provider: prov})
+	}
+	if err := a.people.Link(sources, sections, members); err != nil {
 		return err //nolint:wrapcheck // Link names itself
 	}
 	return nil

@@ -495,7 +495,7 @@ func TestLinkAccount_DroppedOrphan_IsAuditedAsTheSystemWithALinkReason(t *testin
 
 func TestDelete_LocksThePersonRow(t *testing.T) {
 	r := newWB(t, PermissionDataDelete)
-	if err := r.svc.Link(nil, nil); err != nil {
+	if err := r.svc.Link(nil, nil, nil); err != nil {
 		t.Fatalf("Link: %v", err)
 	}
 	victim := model.NewID[model.PersonID]()
@@ -520,7 +520,7 @@ func exportTwice(r *wbRig) (reads int, first, second error) {
 
 func TestExport_FailureBeforeTheAuditEntry_ReleasesTheCooldown(t *testing.T) {
 	r := newWB(t)
-	if err := r.svc.Link(nil, nil); err != nil {
+	if err := r.svc.Link(nil, nil, nil); err != nil {
 		t.Fatalf("Link: %v", err)
 	}
 	r.st.exportErr = errs.E("test", errs.Unavailable, errors.New("down"))
@@ -549,7 +549,7 @@ func TestExport_FailureAfterTheAuditEntry_KeepsTheCooldown(t *testing.T) {
 		t.Run(kind.String(), func(t *testing.T) {
 			r := newWB(t)
 			bad := failingSource{err: errs.E("test", kind, errors.New("down"))}
-			if err := r.svc.Link([]Source{{Name: "gamma", Exporter: bad}}, nil); err != nil {
+			if err := r.svc.Link([]Source{{Name: "gamma", Exporter: bad}}, nil, nil); err != nil {
 				t.Fatalf("Link: %v", err)
 			}
 			_, first, second := exportTwice(r)
@@ -568,7 +568,7 @@ func TestExport_FailureAfterTheAuditEntry_KeepsTheCooldown(t *testing.T) {
 
 func TestExport_CanceledBeforeTheAuditEntry_KeepsTheCooldown(t *testing.T) {
 	r := newWB(t)
-	if err := r.svc.Link(nil, nil); err != nil {
+	if err := r.svc.Link(nil, nil, nil); err != nil {
 		t.Fatalf("Link: %v", err)
 	}
 	r.st.exportErr = errs.E("test", errs.Canceled, errors.New("gone"))

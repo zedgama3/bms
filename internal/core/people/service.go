@@ -41,6 +41,7 @@ type store interface {
 	UpdatePerson(ctx context.Context, p rows.PersonPatch, now time.Time) (rows.Person, error)
 	PlayaNameOf(ctx context.Context, id model.PersonID) (string, error)
 	NamesOf(ctx context.Context, ids []model.PersonID) (map[model.PersonID]string, error)
+	LegalNamesOf(ctx context.Context, ids []model.PersonID) (map[model.PersonID]string, error)
 	Search(ctx context.Context, q rows.SearchQuery) ([]rows.Match, error)
 	LockDeletion(ctx context.Context, id model.PersonID) error
 	// DeleteOrphan deletes the person only when the row is empty and unreferenced; false
@@ -144,6 +145,11 @@ type Directory interface {
 	// process; the module audits the read it then performs. Fails Invalid for a bad
 	// purpose or a zero person.
 	ConsentOf(ctx context.Context, person model.PersonID, purpose Purpose) (bool, error)
+	// LegalNamesOf (D44) returns the legal name of each person among ids who has one.
+	// Requires people.contacts.read in any extent (errs.Permission otherwise); fails
+	// errs.Invalid when len(ids) > MaxNames; records one people.person.read per returned
+	// person (Fields [legal_name], Level personal) before returning. Never on a route.
+	LegalNamesOf(ctx context.Context, ids []model.PersonID) (map[model.PersonID]string, error)
 }
 
 // Options builds the service. Audit and Signals are scoped to "people" by app.
@@ -197,8 +203,9 @@ func (o Options) Validate() error {
 
 // linkState is what Link hands the service, frozen.
 type linkState struct {
-	sources  []Source
-	sections []SectionProvider
+	sources    []Source
+	sections   []SectionProvider
+	membership []MembershipProvider
 }
 
 // Service is people. Safe for concurrent use; nothing to close (no goroutines of its own).
@@ -520,8 +527,10 @@ func (c *cooldown) evict(now time.Time) {
 // Link hands the service the modules' PersonData and page providers, once, from app's link
 // step (after module Build, before api.New). Fails errs.Internal on a second call, a nil
 // provider or exporter, or a source without a name. Before Link, Export and Delete fail
-// errs.Internal and pages carry no sections.
-func (s *Service) Link(sources []Source, sections []SectionProvider) error {
+// errs.Internal and pages carry no sections. members are the modules' contributions to
+// people.membership (D44), in build order; with none (nil or empty), a department-scoped
+// directory or contacts extent reaches every person (decision 9).
+func (s *Service) Link(sources []Source, sections []SectionProvider, members []MembershipProvider) error {
 	const op = "people.Service.Link"
 	for _, src := range sources {
 		if src.Name == "" || src.Exporter == nil {
@@ -533,7 +542,15 @@ func (s *Service) Link(sources []Source, sections []SectionProvider) error {
 			return errs.E(op, errs.Internal, errors.New("a section provider needs a module name and a provider"))
 		}
 	}
-	st := &linkState{sources: append([]Source(nil), sources...), sections: append([]SectionProvider(nil), sections...)}
+	for _, m := range members {
+		if m.Module == "" || m.Provider == nil {
+			return errs.E(op, errs.Internal, errors.New("a membership provider needs a module name and a provider"))
+		}
+	}
+	st := &linkState{
+		sources: append([]Source(nil), sources...), sections: append([]SectionProvider(nil), sections...),
+		membership: append([]MembershipProvider(nil), members...),
+	}
 	if !s.linked.CompareAndSwap(nil, st) {
 		return errs.E(op, errs.Internal, errors.New("Link was already called"))
 	}

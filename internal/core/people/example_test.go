@@ -55,3 +55,20 @@ func Example_fakeDirectory() {
 	// 1 Dusty Ember
 	// true <nil>
 }
+
+// The fake directory answers LegalNamesOf for the legal names a test adds.
+func Example_fakeLegalNames() {
+	dir := peopletest.NewFake()
+	dusty := model.NewID[model.PersonID]()
+	ember := model.NewID[model.PersonID]()
+	dir.AddLegalName(dusty, "Dusty Example")
+
+	names, err := dir.LegalNamesOf(context.Background(), []model.PersonID{dusty, ember})
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Println(len(names), names[dusty])
+	// Output:
+	// 1 Dusty Example
+}

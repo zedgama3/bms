@@ -1,6 +1,7 @@
 package people
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -109,6 +110,81 @@ func (s *Service) ConsentOf(ctx context.Context, person model.PersonID, purpose 
 	return granted, nil
 }
 
+// LegalNamesOf returns the legal name of each person among ids who has one; unknown IDs
+// and people with none are omitted and not audited (F69). It needs people.contacts.read in
+// any extent (F67), whatever department it is limited to: the module that asks decides
+// whom it shows, and records the read it performs. One people.person.read (Fields
+// [legal_name], Level personal) is recorded per returned person before the map is
+// returned (decision 15). When the regional's legal-name mode is hidden it returns an empty
+// map without reading or auditing. It is for modules and is never on a route. Fails
+// errs.Unauthenticated without a signed-in person, errs.Permission (F67), errs.Invalid
+// (ids, too_many {max}) for more than MaxNames IDs (F68), the settings source's kinds, audit's
+// kinds and the store's.
+func (s *Service) LegalNamesOf(ctx context.Context, ids []model.PersonID) (_ map[model.PersonID]string, err error) {
+	const op = "people.Service.LegalNamesOf"
+	ctx, span := s.start(ctx, "legal-names-of")
+	defer endSpan(span, &err)
+	if _, err := s.actorPerson(ctx, op); err != nil {
+		return nil, err
+	}
+	if err := s.requireAnywhere(ctx, op, PermissionContactsRead); err != nil {
+		return nil, err
+	}
+	pol, err := s.policy(ctx)
+	if err != nil {
+		return nil, wrap(op, err)
+	}
+	if pol.LegalName == FieldHidden {
+		// Hidden mode hides the field and stops accepting it; stored values stay but are
+		// not shown to anyone, so nothing is read and nothing is audited.
+		return map[model.PersonID]string{}, nil
+	}
+	if len(ids) > MaxNames {
+		return nil, paramInvalid(op, "ids", codeTooMany, map[string]string{"max": fmt.Sprint(MaxNames)},
+			fmt.Sprintf("at most %d IDs", MaxNames))
+	}
+	unique := make([]model.PersonID, 0, len(ids))
+	seen := make(map[model.PersonID]struct{}, len(ids))
+	for _, id := range ids {
+		if _, dup := seen[id]; dup || id.IsZero() {
+			continue
+		}
+		seen[id] = struct{}{}
+		unique = append(unique, id)
+	}
+	span.SetAttrs(telemetry.Int("ids", len(unique)))
+	if len(unique) == 0 {
+		return map[model.PersonID]string{}, nil
+	}
+	names, err := s.store.LegalNamesOf(ctx, unique)
+	if err != nil {
+		return nil, wrap(op, err)
+	}
+	read := make([]model.PersonID, 0, len(names))
+	for id, name := range names {
+		if name != "" {
+			read = append(read, id)
+		}
+	}
+	slices.SortFunc(read, func(a, b model.PersonID) int { return bytes.Compare(a[:], b[:]) })
+	out := make(map[model.PersonID]string, len(read))
+	for chunk := range slices.Chunk(read, audit.MaxBatch) {
+		entries := make([]audit.Entry, len(chunk))
+		for i, id := range chunk {
+			out[id] = names[id]
+			entries[i] = audit.Entry{
+				Action: actionRead, Outcome: audit.Succeeded, Subject: id, Record: audit.RefOf(kindPerson, id),
+				Fields: []string{FieldLegalName}, Level: model.SensitivityPersonal,
+			}
+		}
+		if err := s.record(ctx, entries...); err != nil {
+			return nil, err
+		}
+	}
+	span.SetAttrs(telemetry.Int("returned", len(out)))
+	return out, nil
+}
+
 // PlayaNameOf is identity.NameSource: the person's playa name ("" until filled in). Fails
 // errs.NotFound when there is no row yet (identity shows ""), and with the store's kinds.
 func (s *Service) PlayaNameOf(ctx context.Context, person model.PersonID) (_ string, err error) {
@@ -130,8 +206,11 @@ type perms struct {
 }
 
 // viewerPerms asks the authorizer for what a profile page shows. For the person's own
-// profile only the permissions that are not implied by being the person are asked.
-func (s *Service) viewerPerms(ctx context.Context, self bool) (p perms, err error) {
+// profile only the permissions that are not implied by being the person are asked. For
+// someone else's, the contacts permission counts only when its extent reaches person (D44:
+// a department-scoped extent reaches that department's members once a module contributes
+// people.membership).
+func (s *Service) viewerPerms(ctx context.Context, self bool, person model.PersonID) (p perms, err error) {
 	if p.manage, err = s.holds(ctx, PermissionProfilesManage); err != nil {
 		return perms{}, err
 	}
@@ -141,9 +220,11 @@ func (s *Service) viewerPerms(ctx context.Context, self bool) (p perms, err erro
 	if self {
 		return p, nil
 	}
-	if p.contacts, err = s.anywhere(ctx, PermissionContactsRead); err != nil {
+	r, err := s.reachOf(ctx, PermissionContactsRead, []model.PersonID{person})
+	if err != nil {
 		return perms{}, err
 	}
+	p.contacts = r.has(person)
 	if p.export, err = s.holds(ctx, PermissionDataExport); err != nil {
 		return perms{}, err
 	}
@@ -372,7 +453,7 @@ func (s *Service) profileOf(ctx context.Context, op string, a authz.Actor, perso
 	if err != nil {
 		return Profile{}, wrap(op, err)
 	}
-	p, err := s.viewerPerms(ctx, true)
+	p, err := s.viewerPerms(ctx, true, a.Person)
 	if err != nil {
 		return Profile{}, wrap(op, err)
 	}
@@ -407,6 +488,16 @@ func (s *Service) Get(ctx context.Context, person model.PersonID) (_ Profile, er
 	if err := s.requireAnywhere(ctx, op, PermissionDirectoryRead); err != nil {
 		return Profile{}, err
 	}
+	// A department-scoped extent reaches only that department's members once a module
+	// contributes people.membership (F71). A person outside it is answered NotFound, never
+	// Permission, so the answer does not confirm the ID exists.
+	r, err := s.reachOf(ctx, PermissionDirectoryRead, []model.PersonID{person})
+	if err != nil {
+		return Profile{}, wrap(op, err)
+	}
+	if !r.has(person) {
+		return Profile{}, errs.E(op, errs.NotFound, errors.New("no such person"))
+	}
 	return s.otherProfile(ctx, op, person, func(ctx context.Context) (rows.Person, error) {
 		return s.store.GetPerson(ctx, person)
 	})
@@ -418,7 +509,7 @@ func (s *Service) otherProfile(ctx context.Context, op string, person model.Pers
 	if err != nil {
 		return Profile{}, wrap(op, err)
 	}
-	p, err := s.viewerPerms(ctx, false)
+	p, err := s.viewerPerms(ctx, false, person)
 	if err != nil {
 		return Profile{}, wrap(op, err)
 	}
@@ -599,7 +690,7 @@ func (s *Service) UpdateMe(ctx context.Context, in ProfileInput) (_ Profile, err
 	if err != nil {
 		return Profile{}, wrap(op, err)
 	}
-	p, err := s.viewerPerms(ctx, true)
+	p, err := s.viewerPerms(ctx, true, a.Person)
 	if err != nil {
 		return Profile{}, wrap(op, err)
 	}
@@ -788,14 +879,15 @@ func (s *Service) Search(ctx context.Context, q SearchQuery) (_ []Match, err err
 	if err != nil {
 		return nil, wrap(op, err)
 	}
-	found, err := s.store.Search(ctx, rows.SearchQuery{
+	query := rows.SearchQuery{
 		Q: text, Limit: limit,
 		LegalName:    contacts && pol.LegalName != FieldHidden,
 		Phone:        contacts && pol.Phone != FieldHidden,
 		ContactEmail: contacts,
-	})
+	}
+	found, err := s.searchWithin(ctx, op, query)
 	if err != nil {
-		return nil, wrap(op, err)
+		return nil, err
 	}
 	out := make([]Match, len(found))
 	var entries []audit.Entry
@@ -822,6 +914,87 @@ func (s *Service) Search(ctx context.Context, q SearchQuery) (_ []Match, err err
 	if len(entries) > 0 {
 		if err := s.record(ctx, entries...); err != nil {
 			return nil, err
+		}
+	}
+	return out, nil
+}
+
+// searchWithin runs the store search and narrows it to what the actor's extents reach
+// (D44). A site extent, or a department extent while no module contributes people.membership
+// (decision 9), changes nothing. Otherwise the store is asked for up to MaxSearchResults
+// rows and the result keeps only the people the directory extent reaches; a match on a
+// personal field counts only for a person the contacts extent reaches, so such a person
+// appears only when their playa name matches too (found by a second, name-only query) and
+// the personal flags are cleared. A directory that is larger than MaxSearchResults matches
+// may therefore show fewer than Limit results, never more than the extent allows.
+func (s *Service) searchWithin(ctx context.Context, op string, q rows.SearchQuery) ([]rows.Match, error) {
+	st, _ := s.links()
+	if len(st.membership) == 0 {
+		found, err := s.store.Search(ctx, q)
+		return found, wrap(op, err)
+	}
+	dirExt, err := s.authz.ExtentOf(ctx, PermissionDirectoryRead)
+	if err != nil {
+		return nil, wrap(op, err)
+	}
+	conExt := authz.Extent{}
+	personal := q.LegalName || q.Phone || q.ContactEmail
+	if personal {
+		if conExt, err = s.authz.ExtentOf(ctx, PermissionContactsRead); err != nil {
+			return nil, wrap(op, err)
+		}
+	}
+	if dirExt.Site && (!personal || conExt.Site) {
+		found, err := s.store.Search(ctx, q)
+		return found, wrap(op, err)
+	}
+	wide := q
+	wide.Limit = MaxSearchResults
+	found, err := s.store.Search(ctx, wide)
+	if err != nil {
+		return nil, wrap(op, err)
+	}
+	var byName map[model.PersonID]struct{}
+	if personal && !conExt.Site {
+		nameOnly := wide
+		nameOnly.LegalName, nameOnly.Phone, nameOnly.ContactEmail = false, false, false
+		named, err := s.store.Search(ctx, nameOnly)
+		if err != nil {
+			return nil, wrap(op, err)
+		}
+		byName = make(map[model.PersonID]struct{}, len(named))
+		for _, m := range named {
+			byName[m.ID] = struct{}{}
+		}
+	}
+	ids := make([]model.PersonID, len(found))
+	for i, m := range found {
+		ids[i] = m.ID
+	}
+	dir, err := s.reachOf(ctx, PermissionDirectoryRead, ids)
+	if err != nil {
+		return nil, wrap(op, err)
+	}
+	var con reach
+	if byName != nil {
+		if con, err = s.reachOf(ctx, PermissionContactsRead, ids); err != nil {
+			return nil, wrap(op, err)
+		}
+	}
+	out := make([]rows.Match, 0, min(len(found), q.Limit))
+	for _, m := range found {
+		if !dir.has(m.ID) {
+			continue
+		}
+		if byName != nil && !con.has(m.ID) {
+			if _, named := byName[m.ID]; !named {
+				continue
+			}
+			m.Legal, m.Phone, m.Email = false, false, false
+		}
+		out = append(out, m)
+		if len(out) == q.Limit {
+			break
 		}
 	}
 	return out, nil

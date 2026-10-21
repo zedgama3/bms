@@ -20,6 +20,7 @@ import (
 type Fake struct {
 	mu       sync.Mutex
 	names    map[model.PersonID]string
+	legal    map[model.PersonID]string
 	consents map[model.PersonID]map[people.Purpose]bool
 }
 
@@ -30,6 +31,7 @@ var _ people.Directory = (*Fake)(nil)
 func NewFake() *Fake {
 	return &Fake{
 		names:    map[model.PersonID]string{},
+		legal:    map[model.PersonID]string{},
 		consents: map[model.PersonID]map[people.Purpose]bool{},
 	}
 }
@@ -40,6 +42,18 @@ func (f *Fake) Add(id model.PersonID, name string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.names[id] = name
+}
+
+// AddLegalName sets the legal name LegalNamesOf returns for id, replacing an earlier one;
+// "" removes it. It does not make id a known person. Cannot fail.
+func (f *Fake) AddLegalName(id model.PersonID, name string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if name == "" {
+		delete(f.legal, id)
+		return
+	}
+	f.legal[id] = name
 }
 
 // Consent sets whether id consents to purpose. It does not make id a known person (the
@@ -70,6 +84,30 @@ func (f *Fake) NamesOf(_ context.Context, ids []model.PersonID) (map[model.Perso
 	out := make(map[model.PersonID]string, len(ids))
 	for _, id := range ids {
 		if name, ok := f.names[id]; ok {
+			out[id] = name
+		}
+	}
+	return out, nil
+}
+
+// LegalNamesOf returns the legal name set with AddLegalName for each of ids and omits the
+// rest. Fails errs.Invalid (field ids, code too_many) when len(ids) > people.MaxNames, like
+// the real service. The fake checks no permission and records no audit entry: a test of the
+// permission or the audit entry uses the real service. Unlike the real service it serves
+// any caller.
+func (f *Fake) LegalNamesOf(_ context.Context, ids []model.PersonID) (map[model.PersonID]string, error) {
+	const op = "peopletest.Fake.LegalNamesOf"
+	if len(ids) > people.MaxNames {
+		return nil, errs.E(op, errs.Invalid, &validate.FieldError{
+			Field: "ids", Code: "too_many", Params: map[string]string{"max": fmt.Sprint(people.MaxNames)},
+			Reason: fmt.Sprintf("at most %d IDs", people.MaxNames),
+		})
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make(map[model.PersonID]string, len(ids))
+	for _, id := range ids {
+		if name, ok := f.legal[id]; ok {
 			out[id] = name
 		}
 	}

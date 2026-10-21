@@ -97,6 +97,7 @@ export interface GeneratedKeys {
   "core.access.role.event-admin.title": true;
   "core.access.role.participant.title": true;
   "core.access.role.settings-admin.title": true;
+  "core.access.role.volunteer-coordinator.title": true;
   "core.access.roles.count": true;
   "core.access.roles.empty": true;
   "core.access.roles.everyone": true;

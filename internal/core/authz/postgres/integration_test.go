@@ -91,10 +91,10 @@ func count(t testing.TB, pool *db.Pool, sql string, args ...any) int {
 	return n
 }
 
-func TestMigration_AppliesOnEmptyDatabase_AndSeedsEightRoles(t *testing.T) {
+func TestMigration_AppliesOnEmptyDatabase_AndSeedsNineRoles(t *testing.T) {
 	pool := migrated(t)
-	if n := count(t, pool, "SELECT count(*) FROM core.role"); n != 8 {
-		t.Fatalf("%d roles, want 8", n)
+	if n := count(t, pool, "SELECT count(*) FROM core.role"); n != 9 {
+		t.Fatalf("%d roles, want 9", n)
 	}
 	if n := count(t, pool, "SELECT count(*) FROM core.role WHERE base"); n != 1 {
 		t.Fatalf("%d base roles", n)
@@ -104,6 +104,10 @@ func TestMigration_AppliesOnEmptyDatabase_AndSeedsEightRoles(t *testing.T) {
 	}
 	if n := count(t, pool, "SELECT count(*) FROM core.role WHERE key = 'department-admin' AND scope = 'department' AND NOT base"); n != 1 {
 		t.Error("department-admin is not a department role")
+	}
+	// D44, migration 0003: the ninth starter role is a non-base site role.
+	if n := count(t, pool, "SELECT count(*) FROM core.role WHERE key = 'volunteer-coordinator' AND scope = 'site' AND NOT base AND name = ''"); n != 1 {
+		t.Error("volunteer-coordinator is not the unnamed non-base site role")
 	}
 	if n := count(t, pool, "SELECT count(*) FROM core.role_permission"); n != 0 {
 		t.Errorf("%d permissions seeded by the migration, want none (Seed fills them)", n)
@@ -136,7 +140,7 @@ func TestMigration_Twice_IsNoOp(t *testing.T) {
 	if _, err := mig.Migrate(ctxT(t), []db.Set{identity.Set, people.Set, authz.Set}); err != nil {
 		t.Fatalf("second migrate: %v", err)
 	}
-	if n := count(t, pool, "SELECT count(*) FROM core.role"); n != 8 {
+	if n := count(t, pool, "SELECT count(*) FROM core.role"); n != 9 {
 		t.Fatalf("%d roles after a second migrate", n)
 	}
 }
@@ -160,7 +164,7 @@ func TestRole_Constraints(t *testing.T) {
 	}
 	wantRejected(t, ins(uid(), nil, "gate crew", "", "site", false), "a name that differs only in case")
 	// Unnamed starter roles do not collide with each other.
-	if n := count(t, pool, "SELECT count(*) FROM core.role WHERE name = ''"); n != 8 {
+	if n := count(t, pool, "SELECT count(*) FROM core.role WHERE name = ''"); n != 9 {
 		t.Errorf("%d unnamed roles", n)
 	}
 	if err := ins(uid(), nil, strings.Repeat("n", 64), strings.Repeat("d", 512), "site", false); err != nil {

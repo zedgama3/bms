@@ -44,6 +44,7 @@ var (
 	sqlUpdatePerson      = mustSQL("update_person.sql")
 	sqlPlayaName         = mustSQL("get_playa_name.sql")
 	sqlNamesOf           = mustSQL("names_of.sql")
+	sqlLegalNamesOf      = mustSQL("legal_names_of.sql")
 	sqlSearch            = mustSQL("search_people.sql")
 	sqlLockDeletion      = mustSQL("lock_person_deletion.sql")
 	sqlDeleteOrphan      = mustSQL("delete_orphan_person.sql")
@@ -381,6 +382,36 @@ func (s *Store) NamesOf(ctx context.Context, ids []model.PersonID) (map[model.Pe
 		name string
 	}
 	pairs, err := queryAll(ctx, s.db, op, sqlNamesOf, func(sc scanner) (pair, error) {
+		var (
+			p   pair
+			raw [16]byte
+		)
+		if err := sc.Scan(&raw, &p.name); err != nil {
+			return pair{}, err //nolint:wrapcheck // queryAll wraps with db.Wrap
+		}
+		p.id = model.PersonID(raw)
+		return p, nil
+	}, uuids(ids))
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[model.PersonID]string, len(pairs))
+	for _, p := range pairs {
+		out[p.id] = p.name
+	}
+	return out, nil
+}
+
+// LegalNamesOf returns the legal name of each known person who has one. Unknown IDs and
+// people with no legal name are omitted. The caller has checked people.contacts.read and
+// audits what it gets back.
+func (s *Store) LegalNamesOf(ctx context.Context, ids []model.PersonID) (map[model.PersonID]string, error) {
+	const op = "people.postgres.LegalNamesOf"
+	type pair struct {
+		id   model.PersonID
+		name string
+	}
+	pairs, err := queryAll(ctx, s.db, op, sqlLegalNamesOf, func(sc scanner) (pair, error) {
 		var (
 			p   pair
 			raw [16]byte
