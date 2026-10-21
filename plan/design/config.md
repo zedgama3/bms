@@ -374,7 +374,7 @@ holds an ID, a sensitivity or an address) and nothing from `core/`.
 | `data.dir` | `BMS_DATA_DIR` | path | `data` | non-empty after trimming; no NUL | audit, files |
 | `files.store` | `BMS_FILES_STORE` | enum | `disk` | `disk` or `s3` (anything else, `postgres` included, is `Invalid one_of`; F34) | files (through `app`) |
 | `files.dir` | `BMS_FILES_DIR` | path | `<data.dir>/files`, made absolute | non-empty after trimming; no NUL; holds `tmp/` always and `store/` for `disk` | files, app (`migrate` creates it) |
-| `files.s3_endpoint` | `BMS_FILES_S3_ENDPOINT` | URL | empty | when set: `http` or `https` URL with host; required when `files.store` is `s3` (F35) | files (`s3`) |
+| `files.s3_endpoint` | `BMS_FILES_S3_ENDPOINT` | endpoint | empty | when set: `host[:port]` or `http(s)://host[:port]` (no scheme means `https`, a loopback host means `http`); required when `files.store` is `s3` (F35) | files (`s3`) |
 | `files.s3_bucket` | `BMS_FILES_S3_BUCKET` | string | empty | when set: S3 bucket-name grammar (3..63 of `[a-z0-9.-]`); required for `s3` (F35) | files (`s3`) |
 | `files.s3_region` | `BMS_FILES_S3_REGION` | string | `us-east-1` | non-empty, <= 64 bytes, no NUL | files (`s3`) |
 | `files.s3_prefix` | `BMS_FILES_S3_PREFIX` | string | empty | <= 128 bytes of `[A-Za-z0-9._/-]`, no leading `/` | files (`s3`) |
