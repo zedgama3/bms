@@ -1,6 +1,6 @@
 # volunteers
 
-- **Status:** Approved (2026-10-20, D43; D42's answers folded in; the D43 visibility amendment is pending)
+- **Status:** Approved (2026-10-20, D43; D42's answers folded in; the D43 visibility amendment approved 2026-10-20, D44)
 - **Package:** `internal/modules/volunteers` (leaf `volunteers/vol`, `volunteers/postgres`)   **UI:** `web/src/modules/volunteers/`
 - **Depends on specs:** `model`, `lib-errs`, `lib-core` (`clock`, `validate`), `db`, `module-contract` (`Manifest`, `Deps`, `PersonData`, `moduletest`), `module-hello` (the shape to copy), `identity` (`PersonFrom`), `authz` (`Allow`, `AllowIn`, `ExtentOf`, starter roles), `people` (`Deps.People`, `contracts/personpage`), `departments-events` (`Deps.Departments`, `Deps.Events`, `contracts/eventsetup`, the two signals), `audit`, `signals`, `notify` (`Deps.Notify`, `Manifest.Templates`), `settings` (`Deps.Settings`), `privacy-tags` (Draft: `privacy.Group`, `Filter`, `Manifest.Views`/`Groups`), `jobs` (Draft: `Deps.Jobs`), `files` (Draft: `Deps.Files`, `ReadUpload`, `Serve`, the per-route body cap), `api` (`httpx`), `web-shell`, `app` (`modules.go` line)   **Used by:** `app` (registry), `people` (person-page section, `PersonData`), `events` (event set-up provider); later `incidents`, `afterreports` and a trust feature through the signals and the capability sketched under "Later"
 
@@ -18,9 +18,9 @@
 
 **Owns.** Schema `volunteers`: tables `qualification`, `qualification_record`, `position`, `position_requirement`, `member`, `shift`, `signup`, `unlisted`. Eight permissions, seven settings (two of them `visibility_*` from the two `privacy` groups), three signals published, two subscribed (`departments.department-archived`, `events.event-closed`), three jobs, five templates, one person-page section, one event-setup contribution. Audit actions `volunteers.<record>.<verb>` listed under Behavior. Routes under `/api/volunteers/` and screens under `/volunteers/` listed under Interface and UI. Catalogue keys `module.volunteers.*`.
 
-**Expects of dependencies.** `jobs` (Draft): `Deps.Jobs jobs.Registrar`, `Register` in `Start`, `Enqueue` joining the transaction with `Key` reschedule semantics, `InJob`; `MaxEvery >= 24h`. `files` (Draft): `Deps.Files files.Store`, `Create` inside the caller's `Write` transaction, `ByRecord`, `Open` auditing a `personal` read, `DeleteByRecord`, `ReadUpload`, `Serve`, `module.Route.MaxBodyBytes`/`Timeout` (files Proposed change 1), `Accept` images and PDF. `authz`: `ExtentOf` for every list, `AllowIn` for one department's record. `people`: `NamesOf`, `people.directory.read` seeded to `department-admin` (leads search people to add members and record qualifications); `LegalNamesOf` (proposed; until applied the roster carries no legal name and the coordinator follows the person-page link). `privacy-tags` (Draft): `Group`, `Settings`, `Check`, `PolicyOf`, `ViewerOf`, `Filter`, `Policy.Shows`, `Manifest.Views`/`Groups` through module-contract. `authz`: the `volunteer-coordinator` starter role (proposed; `Seed` skips the key until the role exists). `departments`/`events`: `Active`, `NamesOf`, `InfoOf` (`Zone`, `Dates`, `Closed`), the two signals, `GET /api/departments` and `GET /api/events` for pickers. `notify`: scoped `Send`, `Unsupported` treated as no e-mail. `settings`: a scoped `Reader`. `audit`: a `Recorder` scoped `volunteers`. `web-shell`: `useFormat` in the shift's zone, `FileField`/`Attachments` (files Proposed change 7).
+**Expects of dependencies.** `jobs` (Approved): `Deps.Jobs jobs.Registrar`, `Register` in `Start`, `Enqueue` joining the transaction with `Key` reschedule semantics, `InJob`; `MaxEvery >= 24h`. `files` (Approved): `Deps.Files files.Store`, `Stage` outside the caller's transaction and `Attach` inside its `Write` transaction (with a deferred `Discard`), `ByRecord`, `Open` auditing a `personal` read, `DeleteByRecord`, `ReadUpload`, `Serve`, `module.Route.MaxBodyBytes`/`Timeout` (files Proposed change 1), `Accept` images and PDF. `authz`: `ExtentOf` for every list, `AllowIn` for one department's record. `people`: `NamesOf`, `people.directory.read` seeded to `department-admin` (leads search people to add members and record qualifications); `LegalNamesOf` (people.md, D44: `people.contacts.read` in any extent, audited per person; `peopletest.Fake.AddLegalName`). `privacy-tags` (Approved, D44): `Group`, `Settings`, `Check`, `PolicyOf`, `ViewerOf`, `Filter`, `Policy.Shows`, `Manifest.Views`/`Groups` through module-contract. `authz`: the `volunteer-coordinator` starter role (D44, migration `0003`; `Seed` applies the key at the first `bms migrate` after the role exists). `departments`/`events`: `Active`, `NamesOf`, `InfoOf` (`Zone`, `Dates`, `Closed`), the two signals, `GET /api/departments` and `GET /api/events` for pickers. `notify`: scoped `Send`, `Unsupported` treated as no e-mail. `settings`: a scoped `Reader`. `audit`: a `Recorder` scoped `volunteers`. `web-shell`: `useFormat` in the shift's zone, `FileField`/`Attachments` (files Proposed change 7).
 
-**Open questions:** Q-VOL1 to Q-VOL5 are closed by D42, Q-VOL6 by D43 (2026-10-20; decisions 17 to 19); none open. **Proposed changes elsewhere:** 9, listed at the end; none applied (8 and 9 restate privacy-tags' 2 and 3).
+**Open questions:** Q-VOL1 to Q-VOL5 are closed by D42, Q-VOL6 by D43 (2026-10-20; decisions 17 to 19); none open. **Proposed changes elsewhere:** 10, listed at the end; all applied 2026-10-20 (D44) except 4 (settings terms: needs a design choice) and the `burn-domain` skill additions in 7 and 10 (main session).
 
 **D43 amendment (2026-10-20).** The regional sets visibility through `privacy` groups: `visibility_shift_mates` replaces `show_shift_mates`; `visibility_legal_name` and `RosterEntry.LegalName` are new; every `vol` response type is tagged and listed in `Manifest.Views`; F126 to F128 are reworded and F134 to F141 added (`SetListed`'s row is now F142); the `volunteer-coordinator` starter role is named in `StarterRoles`.
 
@@ -320,6 +320,11 @@ type Records interface {
 	// the actor. Department-specific: qualifications.verify at that department; org-wide:
 	// any verify extent (D41). Never for oneself. F14-F20.
 	RecordQualification(ctx context.Context, in vol.RecordInput) (vol.Record, error)
+	// Handler shape (files.md Behavior, D44): the handler calls files.ReadUpload, then
+	// Stage (outside the transaction, Accept files.Images and files.Documents); the use
+	// case then opens its Write transaction, runs the record checks and calls Attach{Record:
+	// Ref{Kind: "volunteers.qualification-record", ID}, Subject: person, Level:
+	// model.Personal, Replace: true}, with a deferred Discard of the staged upload.
 	// UploadCertificate is way (b): the actor creates a pending record for themself with
 	// the certificate stored through files (subject = actor, level personal). Refused when
 	// self_upload is off (Unsupported) or a pending record for that qualification exists.
@@ -655,7 +660,7 @@ Store kinds (`Unavailable`, `Timeout`, `Canceled`) apply to every method that re
 | F23 | `UploadCertificate` | sniffed type not image or PDF; too large | Invalid `type`/`too_large` (files) | field error | `TestUploadCertificate_WrongType_ReturnsInvalid` |
 | F24 | `UploadCertificate` | pending record exists for that qualification | Conflict `pending_exists` | show | `TestUploadCertificate_PendingExists_ReturnsConflict` |
 | F25 | `UploadCertificate` | qualification archived | Conflict `archived` | | `TestUploadCertificate_Archived_ReturnsConflict` |
-| F26 | `UploadCertificate` | files' `Create` fails (quota, blob down) | Conflict `quota` / Unavailable | show; rolled back | `TestUploadCertificate_FilesFails_RollsBack` |
+| F26 | `UploadCertificate` | files' `Stage` or `Attach` fails (quota, store down) | Conflict `quota` / Unavailable | show; rolled back | `TestUploadCertificate_FilesFails_RollsBack` |
 | F27 | `UploadCertificate` | read-only copy | Unavailable wrapping `ErrReadOnly` | 503 | covered by the per-package test |
 | F28 | `VerifyRecord` | not permitted for that qualification's scope | Permission | forbidden | `TestVerifyRecord_WrongDepartmentLead_ReturnsPermission` |
 | F29 | `VerifyRecord` | record outside the extent / unknown | NotFound | | `TestVerifyRecord_Unknown_ReturnsNotFound` |
@@ -809,7 +814,7 @@ Named so the boundary is explicit (each a change to this spec, not a new module)
 
 **Open:** none.
 
-This spec also depends on two Draft specs as written: `jobs` (Q-JOBS1's screen is where a lead checks "did the reminder run"; Q-JOBS4 is not needed, deferred `RunAt` covers reminders; `MaxEvery` must stay ≥ 24h for the daily scans) and `files` (Q-FILES1 is indifferent to this module; Q-FILES5 stripping is right for certificates; Q-FILES6: this module exports file IDs, files exports the bytes). If either changes, Summary "Expects of dependencies" lists what to re-check.
+This spec also depends on two specs, both now Approved (D43, D44): `jobs` (Q-JOBS1's screen is where a lead checks "did the reminder run"; Q-JOBS4 is not needed, deferred `RunAt` covers reminders; `MaxEvery` must stay ≥ 24h for the daily scans) and `files` (Q-FILES1 is indifferent to this module; Q-FILES5 stripping is right for certificates; Q-FILES6: this module exports file IDs, files exports the bytes). If either changes, Summary "Expects of dependencies" lists what to re-check.
 
 ## Proposed changes elsewhere
 
@@ -823,3 +828,18 @@ This spec also depends on two Draft specs as written: `jobs` (Q-JOBS1's screen i
 8. (D43; restates privacy-tags Proposed change 3) **`plan/design/people.md`:** `Directory.LegalNamesOf(ctx, []model.PersonID) (map[model.PersonID]string, error)` (permission `people.contacts.read` in any extent, audited per returned person, never on a route; `peopletest.Fake.AddLegalName`); `people.contacts.read` and `people.directory.read` gain `volunteer-coordinator` in `StarterRoles`. Until applied, `RosterEntry.LegalName` is declared, tagged and always absent.
 9. (D43; restates privacy-tags Proposed change 2) **`plan/design/authz.md`:** the `volunteer-coordinator` site starter role (`RoleVolunteerCoordinator`, migration `0003`). This module lists the key in `StarterRoles` now; `Seed` skips a key with no role and applies it at the first `bms migrate` after the role exists.
 10. (D43) **`plan/05-roadmap.md`, Phase 1:** `privacy-tags` is built before this module's services (privacy-tags Proposed change 7); **`.claude/skills/burn-domain/SKILL.md`, "Who may see what":** "Playa names and who is on which shift are, by default, visible to anyone who volunteers; legal names only to a volunteer coordinator and whichever other roles the regional chooses; the regional sets both (owner, 2026-10-20; D43)" (the main session records it).
+
+## Amendment 2026-10-20 (approved, owner, D44)
+
+The D43 visibility amendment is approved (Status line). Proposed changes 1 to 10 are settled as follows:
+
+1. (applied 2026-10-20, D44, in people.md) the `people.membership` extension point and `Provider`; this module contributes its `member` rows, and `people.contacts.read` is seeded into `department-admin`.
+2. (applied 2026-10-20, D44, in module-contract.md and the skills) `Deps.Jobs` and `Deps.Files`, and the `Conformance` fakes.
+3. (applied 2026-10-20, D44, in departments-events.md) positions are standing, so event set-up copies shifts only.
+4. (pending: needs a design choice) `settings` terms for modules (`Area.Terms`): the term-name collision rule across areas and where a module's defaults come from are not decided in the proposal; this module uses its own catalogue keys until then. Reported to the owner.
+5. (applied 2026-10-20, D44, in files.md) the example record kind is `volunteers.qualification-record`; `module.Route.MaxBodyBytes` and `Timeout` exist (api.md decision 32).
+6. (applied 2026-10-20, D44, in `plan/07-abstractions.md`) the `volunteers` line under "Modules".
+7. (applied) `plan/design/README.md` row 19 and the roadmap (`plan/05-roadmap.md`, Phase 1); the `burn-domain` skill additions wait for the main session.
+8. (applied 2026-10-20, D44, in people.md) `Directory.LegalNamesOf`, and `volunteer-coordinator` in `StarterRoles` of `people.contacts.read` and `people.directory.read`.
+9. (applied 2026-10-20, D44, in authz.md) the `volunteer-coordinator` role; `Seed` applies the key once the role exists.
+10. (applied 2026-10-20, D44, in `plan/05-roadmap.md`) privacy tags are built before this module's services; the `burn-domain` sentence is the main session's.

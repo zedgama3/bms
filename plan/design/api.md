@@ -87,6 +87,8 @@
 - D29 `Options.Validate` accepts port 0 (tests; config still refuses it). Every UI-handler response carries the CSP (404/405 bodies and assets included); `/api/` JSON carries none. Client gone and `ErrAbortHandler` record status 499 on span and histogram (owner 2026-10-17).
 - D30 accepted deviations: F10/F11/F14 are checked in `Options.Validate`; the request deadline uses `time.Now`, not the injected clock; the base context comes from `context.Background()` in `New`; a field's `UnmarshalJSON`/`UnmarshalText` failure is reported on `body.<path>` with code `malformed` and no echoed input; `Shutdown` closes a listener `Serve` never took.
 - D31 the mapper emits `fields` for a `409 conflict` that carries `validate.FieldError`s, as for `400 invalid`, so a duplicate names its field (owner, 2026-10-18).
+- D32 a route may raise its own body cap and timeout: `module.Route.MaxBodyBytes` (at most 1 GiB) and `Timeout` (at most 10 minutes), zero = the shell's `MaxBodyBytes` and `RequestTimeout`; the pipeline applies them after dispatch to `MaxBytesReader`, the ctx deadline and the connection's read and write deadlines, and a value above a ceiling is `Invalid` at `New` (F61; files.md Proposed change 1, owner 2026-10-20, D44).
+- D33 an upload route's OpenAPI fragment documents a `multipart/form-data` request body and a content route a binary response (`image/*`, `application/pdf`), so the generated client types them (files.md, D44).
 
 **Errors callers handle:** `Options.Validate`/`New`: `Invalid` (fields `http.addr`, `http.request_timeout`, `http.max_body_bytes`, `http.trusted_proxies`, `api.*`), `Conflict` (pattern or schema-name clash), `Invalid` for route/fragment mismatch or bad route token; `Listen`: `Unavailable` (in use), `Invalid`, `Conflict`; `Serve`: `Internal` (no Listen), `Unavailable`; `Shutdown`: `Timeout`/`Canceled` (late handlers may still run). `ReadJSON`: `Invalid` (wrapping `ErrUnsupportedMediaType` for 415; field `body` or JSON path), `*http.MaxBytesError` returned unchanged (413), `Timeout`, `Canceled`, `Internal` (bad dst). `WriteJSON`: `Internal` (unencodable), `Canceled` (write failed). Mapper checks sentinels before kind: `db.ErrReadOnly`, `intake.ErrRateLimited` (429, `Retry-After: 60`), `httpx.ErrUnsupportedMediaType`, `*http.MaxBytesError`. `Unavailable` adds `Retry-After: 5`.
 
@@ -147,7 +149,7 @@ Expose the core's and the modules' routes over HTTP with one request pipeline.
 | Deciding that a record the caller may not see is answered `404` rather than `403` | the service (privacy-data "Rules": a list must not reveal that a hidden record exists, and a single record the caller may not see is `NotFound`, never `Permission`; applied 2026-10-17 by Proposed change 2). The mapper maps whatever kind the service chose. |
 | A `Host` allowlist against DNS rebinding | nobody until the public URL setting exists (settings.md, D18); Proposed change 15 adds it then. Until then the front end's virtual host is the allowlist. |
 | Telling a later trusted-header identity provider (D15) that the peer is a trusted proxy | `identity`, when that provider is designed; this spec then adds a `httpx.TrustedPeerFrom(ctx)` accessor (Proposed change 9). The derivation already exists inside the pipeline. |
-| File uploads and downloads, range requests, streaming | `files.md` (Later). The body cap and `WriteTimeout` here are sized for JSON; `files` proposes what it needs. |
+| File uploads and downloads, range requests, streaming | `files.md`. The shell's body cap and `WriteTimeout` are sized for JSON; a route that takes or serves a file raises its own `MaxBodyBytes` and `Timeout` (decision 32) and sets its own content headers. Provided here: the per-route cap and timeout, the `multipart/form-data` and binary entries in a fragment (decision 33). |
 | Trust between regionals: `/.well-known/` documents, signed records | Q-TRUST, later; such a route is a core route set like any other. |
 | Audit of what a handler read or changed | `audit.md`, called by the handler's service. |
 
@@ -1071,9 +1073,9 @@ Outer layers, before routing, in order:
    `X-Read-Only: true` when `Database.ReadOnly()`. The CSP is added by whatever writes a
    `text/html` response (the UI handler, decision 12). No `Access-Control-*` header is
    ever set (decision 6).
-5. **Body cap:** `r.Body = http.MaxBytesReader(w, r.Body, MaxBodyBytes)` (F27).
+5. **Body cap:** `r.Body = http.MaxBytesReader(w, r.Body, MaxBodyBytes)` (F27); a route with `Route.MaxBodyBytes` above it is capped at that value instead, applied at dispatch (step 8; decision 32).
 6. **Deadline:** `ctx, cancel := context.WithTimeout(r.Context(), RequestTimeout)`, then
-   `http.NewResponseController(w).SetReadDeadline(deadline)` (decision 18; F28). An
+   `http.NewResponseController(w).SetReadDeadline(deadline)` (decision 18; F28); a route with `Route.Timeout` above `RequestTimeout` has its ctx deadline and the connection's read and write deadlines moved to that value at dispatch (decision 32). An
    error from `SetReadDeadline` other than `http.ErrNotSupported` is a bug in the chain
    and answers `500 internal` (F53); `ErrNotSupported` happens only off a real
    connection (an `httptest.ResponseRecorder`) and is logged once at debug.
@@ -1455,6 +1457,8 @@ A seam error is treated as `""` for that request and logged at warn once per min
 | F58 | pipeline | a mounted route answers with `ETag` (the settings public routes) | none: the response carries `Cache-Control: no-store` and the `ETag`; a matching `If-None-Match` gets `304`, also with `no-store`; a handler's own `Cache-Control` never reaches the client on `/api/` | nothing | `TestPipeline_MountedRouteWithETag_KeepsNoStore` (a fake route set in api's tests; `app`'s e2e repeats it on `GET /api/settings/public` and `/theme.css` once settings is built) |
 | F59 | pipeline (lands with `PublicOrigin`) | the seam fails | none: treated as unset for the request; one warn per minute, no URL in it | fix settings | `TestPipeline_PublicOriginFails_TreatedAsUnset` |
 | F60 (D40) | UI handler | a document request for `/accounts/password-reset` (with or without `?token=`) | none: the `text/html` response carries `Referrer-Policy: no-referrer`; any other document path keeps `strict-origin-when-cross-origin` | nothing | `TestUIHandler_PasswordResetPage_NoReferrer` (and `..._OtherPath_KeepsDefault`) |
+| F61 (D44) | `New` | a route's `MaxBodyBytes` above 1 GiB or `Timeout` above 10 minutes (or negative) | Invalid (`api.routes[i].max_body_bytes` / `.timeout`) | fix the route | `TestNew_RouteCapAboveCeiling_ReturnsInvalid` |
+| F62 (D44) | pipeline | a route with `Timeout` or `MaxBodyBytes` above the shell's | the route's own limits apply; a body over the route's cap is `413 payload_too_large` | nothing | `TestPipeline_RouteCapRaised_AppliesRouteLimits` |
 
 Proposed change 15 now reads: deferred, shape settled above; it is applied when a regional needs a front end that rewrites `Host`, or with `files`, whichever comes first.
 
@@ -1684,3 +1688,4 @@ this list until then. Item 17 needs nothing.
     the standard library and `lib`, and the `api` rule already denies modules, `app` and
     `config`. If the owner wants a strict allowlist for `internal/api` (stdlib, `lib`,
     `model`, `core`), add it as `list-mode: strict` on the `api` rule.
+18. **`plan/design/files.md` (row 16)** (applied 2026-10-20, D44, by files.md Proposed change 1 parts (a), (c), (d), (e): decisions 32 and 33, F61, F62; part (b) is not applied: it would let a handler set `Cache-Control` on `/api/`, which contradicts decision 12 as settled in the 2026-10-19 amendment (D40) and F58, and waits for the owner).

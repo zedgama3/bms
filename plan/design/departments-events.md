@@ -795,8 +795,8 @@ before every write that names a department (positions, shifts, memberships);
 screens for pickers (it may not import `web/src/core/departments/`). Events:
 `Deps.Events.InfoOf` for the zone its screens and notifications render shift times in and
 for `Closed` (refuse new sign-ups); `GET /api/events` for pickers; an
-`eventsetup.Provider` that copies shift templates and position lists from `CopyFrom`,
-idempotent per event; the signals above; later `ScheduleOf` for shifts anchored to a
+`eventsetup.Provider` that copies shifts from `CopyFrom` (positions are standing, so event
+set-up copies shifts only; module-volunteers, D44), idempotent per event; the signals above; later `ScheduleOf` for shifts anchored to a
 schedule item ("perimeter starts 90 minutes before `temple-burn`"). Department-scoped
 permissions (`volunteers.shifts.manage` at D) resolve through authz's `AllowIn`/`ExtentOf`;
 a shift's `event_id` is a nullable foreign key to `core.event(id)` (work with no event,

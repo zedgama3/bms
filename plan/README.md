@@ -69,10 +69,11 @@ copy and can fork it. Features are modules.
     reporting address set.
 - **Status update 2026-10-20 (not a decision):** `jobs` Implemented on feat/m1 (commit 42a101d:
     core area, /api/jobs routes, /jobs screen). The D41 identity reset-limit settings are
-    implemented (commit 3ba4c6c). Awaiting the owner: the `jobs.md` amendment (b) (reclaim step,
-    attempts limit, advisory name lock; Q-JOBS8–13) and the audit/app Q-JOBS6 amendment
-    (ActorFunc may answer ActorSystem). `files.md` (redesigned) and `privacy-tags.md` are Draft,
-    awaiting approval. Still open in M4: `volunteers`, `files`, privacy tags.
+    implemented (commit 3ba4c6c).
+- **Owner's answers 2026-10-20 (D44):** the audit/app Q-JOBS6 amendment and the `jobs.md`
+    amendment (b) (Q-JOBS8–13) approved, and the jobs follow-ups are being built; `files.md`
+    (redesigned) and `privacy-tags.md` approved; the module-volunteers D43 amendment approved.
+    Still open in M4: `volunteers`, `files`, privacy tags.
 - **Next steps:**
   1. Done 2026-10-16: the owner agreed [09-core-features.md](09-core-features.md)
      (milestones M0–M4, done criteria, spec order). `architect` drafted `model`, now Approved.

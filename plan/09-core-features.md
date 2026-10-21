@@ -59,7 +59,7 @@ Each milestone is something the owner can try on bms-vm, not just code.
 | **M1. Accounts** | 2, 8 (basic) | create the superuser by command, sign up, sign in and out, change a password, sign out everywhere else, disable and re-enable an account, set a temporary password |
 | **M2. People and permissions** | 3, 4, 9 (basic), 11 (basic) | edit a profile, give someone an admin job, see menus change, see who viewed whose contact details, download your own data, request deletion, export or delete one person (screen or command) |
 | **M3. Departments and events** | 5, 7 | set up departments and an event, add an event's schedule, copy a module's set-up into a new event, appoint a department's leadership, have that department manage itself, archive a department |
-| **M4. Ready for a module** | 6 | receive e-mail, reset a forgotten password by e-mail, see a scheduled purge run on the writer and show on `/jobs`; start `volunteers` |
+| **M4. Ready for a module** | 6, 10 | receive e-mail, reset a forgotten password by e-mail, see a scheduled purge run on the writer and show on `/jobs`, upload a logo and have a module attach a file to its record; start `volunteers` |
 
 ```
  M0  1. Installer and harness
@@ -70,11 +70,11 @@ Each milestone is something the owner can try on bms-vm, not just code.
       │
  M3  5. Departments and events ─▶ 7. Admin screens
       │
- M4  6. Notifications ─▶ e-mail password reset
+ M4  6. Notifications ─▶ e-mail password reset · 10. Files (an object store, attachments)
       │
       ▼ volunteers module (Phase 1)
 
- Later: 10. Files · 11. Export and deletion (self-service) · 12. Offline switchover · 13. Trust
+ Later: 11. Export and deletion (self-service) · 12. Offline switchover · 13. Trust
 ```
 
 ## 1. Installer and harness (MVP, M0)
@@ -271,13 +271,13 @@ training and certificates come with qualifications (§5, Q-QUAL), not as profile
   ranger department's field training or medical lead training) or is org-wide (for example
   ICS-100). Two ways in: (a) a lead records it from their own training records (for example
   the last training date the person took); (b) the person uploads a copy of their certificate
-  (needs `files`, Later) and a lead verifies the document is authentic. Any department lead
+  (needs `files`, M4) and a lead verifies the document is authentic. Any department lead
   can verify an org-wide qualification (D40).
   **Only department leads verify qualifications** (owner, 2026-10-20, D41): never ordinary
   volunteers, and never self-attested. A department-scoped qualification is verified only by a
   lead of that department. The capability shape and the data model are for the
   architect, with the `volunteers` spec; the core only provides departments, permissions and
-  (later) `files`.
+  `files` (M4).
 - An archived department keeps its history, takes no new work, and disappears from lists
   except to stewards. A department with nothing for an event simply shows nothing for it.
 - Leadership is a department-scoped grant (step 4) of the `department-admin` role; there's no separate leads table.
@@ -365,7 +365,7 @@ own spec (its screens, built as that core area's `ScreenSet` under `web/src/core
 **People can:**
 - *Settings admin:* set the regional's name, colors, contact address, public URL and
   default language (D28); choose terminology (four forms per word); change each module's
-  settings. The logo comes with `files` (Later).
+  settings. The logo is uploaded here and stored by `files` (M4, D44).
 
 **Done when:**
 - Settings are typed, have defaults, and are validated before saving; a module declares its
@@ -375,11 +375,9 @@ own spec (its screens, built as that core area's `ScreenSet` under `web/src/core
 
 **Specs:** `settings`.
 
-## 10. Files (Later)
+## 10. Files (M4)
 
-Attach files to records (incident photos, art proposals) under the record's permissions.
-Local disk first, S3-compatible storage optional. Files follow the data to the on-site copy
-(Q-OFFLINE). **Specs:** `files`.
+Attach files to records (incident photos, art proposals, certificates, the regional's logo) under the record's permissions. The bytes live in an object store (a simplified S3) on local disk by default, or on any S3-compatible store, never in the database (D43). A module attaches files through `Deps.Files`; the record's own permissions decide who may read them. Files follow the data to the on-site copy by the operator's sync until the switchover spec (Q-OFFLINE). **Specs:** `files`.
 
 ## 11. Data export and deletion
 
@@ -438,7 +436,8 @@ The architect drafts them in this order; each is reviewed before the next that d
 | 15 | `departments-events` | departments, archiving, leadership, events | M3 |
 | 16 | `jobs` | queued and scheduled work, writer only | M4 |
 | 17 | `notify` | e-mail and templates | M4 |
-| — | `files`, `switchover` | Later | — |
+| 18 | `files` | the object store and attachments, the logo's storage | M4 |
+| — | `switchover` | Later | — |
 
 ## Owner's answers (2026-10-16)
 

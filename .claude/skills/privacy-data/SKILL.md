@@ -31,6 +31,8 @@ When in doubt, pick the higher level.
   may not see is answered `errs.NotFound`, never `errs.Permission`, so a `403` never
   confirms that an ID exists; `Permission` is for an action the caller may not take on a
   record they may see.
+- **Fields carry a `privacy` tag** (`plan/design/privacy-tags.md`): every exported field of a response type names its level and, for `personal`, `sensitive` or configurable fields, a group; the regional sets each group's audience in `visibility_<group>`; the service calls `privacy.Filter` and audits what it reports.
+- **Attachments go through `files`** (`plan/design/files.md`): a module attaches bytes to its own record with `Deps.Files` (`Stage` before its transaction, `Attach` inside it), declaring the file's level and, for a file about a person, the `Subject`; the record's permission check decides who may read it, content reads of `personal` files about someone else and of `sensitive` files are audited, and `DeletePerson` deletes every file whose subject is the person. Deleted means the bytes leave the store too.
 - **Audit.** Every read of a `personal` field by someone other than the person, and every
   read of a `sensitive` field, writes an audit record (who, what record, when, why if the
   workflow asks).

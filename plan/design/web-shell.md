@@ -7,6 +7,8 @@
 - **Amended 2026-10-18 (owner approval of authz/people):** `session.permissions` holds `p` (site-wide) and `p@<department-id>`; `NavEntry.access: string[]` matches an entry when the session holds `p` exactly or any `p@...`; the M1 placeholder that showed every permissioned entry when the list was empty is removed (an empty list now means none); `web/src/core/access/` and `web/src/core/people/` are core areas (decision 3); after a session is established the frame calls `GET /api/people/me` once, applies `language` (mirrored to `localStorage["bms.lang"]`), sends a session with an empty `playa_name` (not the superuser) to `/people/me?first=1` once per session, and writes a signed-in person's language change with `PUT /api/people/me {language}`; `@/api` exports a `useMe()` hook limited to `core/people` and the frame; `@/ui` gains a date-only input helper; the smoke run adds "grant a role and see the menu change" and the two people flows, all at the phone viewport (authz.md Proposed change 7, people.md Proposed change 7).
 - **Amended 2026-10-18 (M1 build, accepted deviations):** implementation deviations recorded in Behavior, "Accepted implementation deviations (M1 build, 2026-10-18)"; the Interface gains the `@/api` additions and `ErrorState`'s `message` prop; the restricted-session gate holds the person on `/accounts/password` only.
 - **Amended 2026-10-18 (M2 build, accepted deviations):** implementation deviations recorded in Behavior, "Accepted implementation deviations (M2 build, 2026-10-18)": RouteAnnouncer, `@/api` additions, UI kit additions, known duplication; `web/src/core/audit/` built.
+- **Amended 2026-10-20 (D44, owner approval of privacy-tags):** catalogue keys `privacy.audience.nobody|self|holders|signed_in` (title and one-line description each) are the fallback option titles for every `visibility_*` setting; a screen renders nothing for a field the response omits (an absent field is never a placeholder). Proposed change 9.
+- **Amended 2026-10-20 (D44, owner approval of files):** Proposed change 7 (files.md) applied: `@/api` gains `upload(route, {file, fields}, opts)`; the UI kit gains `FileField` and `Attachments`; the header renders the logo from `Public.logo`; catalogue keys `field.too_large|type|quota|too_many|order|malformed`; the e2e smoke covers the logo round trip. Proposed change 8.
 - **Amended 2026-10-19 (D39, owner approval of settings and notify):** Proposed change 7 applied (settings.md Proposed change 8): the frame fetches `GET /api/settings/public` at boot, `termsOf` merges the document's terms over the catalogue's `term.*` entries (now with plural and title forms), `/api/settings/theme.css` is linked, `field.contrast` joins the field codes, `/settings` joins the admin nav, and `web/src/core/settings/` and `web/src/core/notify/` are core area folders. The logo is not part of M4 (it comes with the `files` spec): the header shows the regional's name as text.
 - **Package:** `web/` (pnpm workspace; `web/src/...`), plus the Go package `web`
   (`web/embed.go`, Go module `github.com/zedgama3/bms/web`) that embeds the built files for
@@ -80,6 +82,10 @@
 
 **Pending proposed changes:** items 5 (identity endpoints) and 15 (`docs/operating.md`) wait on targets not yet written; item 7 applied 2026-10-19 (D39) except `language.detect_browser` and the brand font (Later); items 6 and 13 applied 2026-10-18; the rest are applied.
 
+**M4 privacy additions (D44).** Catalogue keys `privacy.audience.nobody|self|holders|signed_in` (title and description) in the shell's `en` and `es` catalogues; the rule "an absent field renders nothing".
+
+**M4 files additions (D44).** `@/api` gains `upload(route, {file, fields}, opts)` (multipart through the same `fetch` path, fields before the file, the same `ApiError`; `fetch` stays inside `@/api`); `@/ui` gains `FileField` (phone-first input: `accept` from the kinds, `capture`, name and size, the file field codes) and `Attachments` (File rows with download and a remove button the screen enables; a `503` with `Retry-After` on a download shows "not available on this copy yet"); the header shows `/api/settings/logo?v=<Public.logo>` when set (the regional's name as `alt`, as text otherwise).
+
 **M2 build deviations (2026-10-18).** `RouteAnnouncer` moves focus only on a pathname change; `@/api` gains `useMe` and `useSetMe` and the client accepts multi-line NDJSON; the UI kit gains `ui/DateField`, `ui/Check` and a ref-accepting `Button`; `PersonPicker` is duplicated (candidate refactor noted); the audit screen is built in `web/src/core/audit/`.
 
 ## Purpose
@@ -146,7 +152,7 @@ Host every module's screens in one browser application.
 | Error display (`web/src/ui/errors/`) | Show a failed call to a person in their language, with the reference when it helps. | `ErrorState` (screens), `ErrorSummary` (forms), `useFieldErrors`, `messageFor(error)`. |
 | Reporter (`web/src/shell/report.ts`) | Collect what broke in the browser and deliver it to intake within its limits. | Installed first in `main.tsx`; the only code besides the client that talks to the network. |
 | Session and read-only stores (`web/src/shell/session.ts`, `readonly.ts`) | Hold who is signed in and whether this copy is read-only, for the frame and the client. | Plain stores read with `useSyncExternalStore`; memory only. |
-| UI kit (`web/src/ui/`) | The few accessible building blocks every screen uses. | `Button`, `Field` (label, hint, error), `Dialog` (native `<dialog>`), `Banner`, `EmptyState`, `Loading`, `Table`, `Toast`. No third-party component library (decision 12). |
+| UI kit (`web/src/ui/`) | The few accessible building blocks every screen uses. | `Button`, `Field` (label, hint, error), `Dialog` (native `<dialog>`), `Banner`, `EmptyState`, `Loading`, `Table`, `Toast`; from M4 `FileField` and `Attachments` (D44). No third-party component library (decision 12). |
 | Embed (`web/embed.go`) | Hand `app` the built files and their version. | `FS()`, `Version()`; stdlib and `lib/errs` only. |
 | Tooling (`web/package.json`, `web/scripts/`, Makefile targets) | Build, check and generate, with pinned OSI-licensed dependencies only. | `pnpm check`; `make web-check`, `web-build`, `openapi-check`; the license allowlist; the bundle budget. |
 
@@ -466,7 +472,7 @@ with the defaults below until `settings.md` provides the endpoint (Proposed chan
 | Value | Source when `settings` exists | Default now | Used for |
 |---|---|---|---|
 | Regional name | `GET /api/settings/public` | `BMS` | the header, `document.title` suffix, the home greeting |
-| Logo | same (a same-origin URL) | none (the name as text) | the header |
+| Logo | `Public.logo` (the file ID) gives `/api/settings/logo?v=<logo>`, a same-origin URL | none (the name as text) | the header; the regional's name is its `alt` |
 | Colours | `GET /theme.css` (same-origin stylesheet, decision 10) | the shipped palette | the whole frame; settings validates contrast (Proposed change 7) |
 | Default language | `GET /api/settings/public` | `en` | the language before a person chooses (decision 7) |
 | Offered languages | same | every language the shell's catalogue has | the language menu |
@@ -1260,3 +1266,5 @@ requirement (decision 21).
     code, the shell shows the server's English `reason` inside a translated wrapper
     message and reports the untranslated code; English is accepted as the last-resort
     fallback only inside such a wrapper (web-shell.md decision 2)."
+8. **`plan/design/files.md` (row 17)** (applied 2026-10-20, D44, by files.md Proposed change 7): `upload`, `FileField`, `Attachments`, the header logo, the catalogue keys `field.too_large`, `field.type`, `field.quota`, `field.too_many`, `field.order`, `field.malformed` (add to the `en` and `es` catalogues if absent), and the e2e logo round trip in the smoke test; ESLint keeps `fetch` inside `@/api`.
+9. **`plan/design/privacy-tags.md` (row 17)** (applied 2026-10-20, D44, by privacy-tags Proposed change 5): the `privacy.audience.*` catalogue keys and the rule "an absent field renders nothing".

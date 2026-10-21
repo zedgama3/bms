@@ -676,3 +676,45 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
 - **Volunteers ([design/module-volunteers.md](design/module-volunteers.md)): approved** as the
   spec, with the privacy tags above. Its seven proposed changes elsewhere are approved.
 - **Code of conduct:** the reporting address is `conduct@zg3.net`, set in CODE_OF_CONDUCT.md.
+
+## D44. Owner's answers of 2026-10-20: jobs and audit amendments, files and privacy tags approved
+
+- **Status:** Accepted (2026-10-20), decided by the owner. The owner answered "Approved with
+  recommendations", so each question below is approved with the recommendation shown.
+- **Audit and app (Q-JOBS6):** audit's ActorFunc may answer ActorSystem, only with no Person
+  and no Superuser. app's auditActor answers ActorSystem when `jobs.InJob(ctx)`, checked
+  before the session.
+- **jobs amendment (b), approved:**
+  - a reclaim step and an attempts limit on lapsed leases;
+  - an advisory lock on the job name for slot inserts and Run now;
+  - recorded deviations;
+  - Q-JOBS8: Retry of a failed scheduled slot is refused with Conflict while another row of
+    that name is open;
+  - Q-JOBS9: a run whose heartbeats fail past its lease is canceled (`lost_lease`) and writes
+    nothing more;
+  - Q-JOBS10: `bms check` reports a module Start failure in the jobs section without failing
+    the check;
+  - Q-JOBS11: a reclaim requeue counts in Ran.Released and `bms.jobs.runs{outcome=lost_lease}`;
+  - Q-JOBS12: `jobstest.NewFake` takes an optional clock (`WithClock`);
+  - Q-JOBS13: dedupe keys never carry a person ID (conformance check `jobs_key_not_person`).
+- **files (redesigned, [design/files.md](design/files.md)): Approved.**
+  - Q-FILES-SHAPE: an S3-like object store built into bms (`objects.Store`; disk default, s3
+    option), not a separate service.
+  - Q-FILES2: build disk and s3 in M4.
+  - Q-FILES3: no SVG logos yet.
+  - Q-FILES4: 25 MiB per file, no quota, 20 per record (settings).
+  - Q-FILES5: strip image metadata by default.
+  - Q-FILES6: export includes file bytes.
+  - Q-FILES7: the logo stays a settings feature.
+  - Q-FILES8: read-only copies get objects by operator sync (documented) for now.
+  - Q-FILES9: modules never get the raw object store.
+  - Q-FILES10: refuse to start on a publicly readable bucket.
+- **privacy tags ([design/privacy-tags.md](design/privacy-tags.md)): Approved.**
+  - Q-PRIV1: audiences `nobody`, `self`, `holders`, `signed_in`, plus module extras.
+  - Q-PRIV2: `people` adopts later (volunteers first, hello as the template).
+  - Q-PRIV3: OpenAPI marking later, generated.
+  - Q-PRIV4: add a `volunteer-coordinator` site starter role.
+- **volunteers D43 amendment ([design/module-volunteers.md](design/module-volunteers.md)):
+  approved.** Shift mates and legal names are privacy groups with the owner's defaults; the
+  per-person opt-out is kept.
+- **Proposed changes elsewhere:** every approved spec's Proposed changes elsewhere are approved.

@@ -5,6 +5,7 @@
 - **Amended 2026-10-18 (owner approval of audit/identity):** the M1 step of decision 2 is named: `actor` is `identity.PersonFrom` (false with no session, for a restricted session and inside a signal delivery); `GET /api/hello/greeting` with a session is `403` until the owner's base role exists (M2), and the request-driven `deliver:hello.greeted` assertion lands then (identity.md Proposed change 4).
 - **Amended 2026-10-18 (owner approval of authz/people):** the M2 step of decision 2 is named: `permissionChecker` is `deps.Authz`; both permissions declare `StarterRoles: []string{authz.RoleParticipant}` (decision 11); the app e2e asserts `GET /api/hello/greeting` is `200` for a signed-in participant and `POST /api/hello/greetings` drives `deliver:hello.greeted`; migration `0002` adds `FOREIGN KEY (person_id) REFERENCES core.person(id) ON DELETE RESTRICT` (replacing the "on delete cascade" sketch: `people` calls `DeletePerson` first and a cascade would hide a module that forgot something); `Manifest.Subscribes` may add `people.person-deleted` to reset the counter (optional, deferred); the e2e export shows `hello` inside the document (authz.md Proposed change 3, people.md Proposed change 8).
 - **Amended 2026-10-18 (M2 build, accepted deviations):** implementation deviations recorded in Behavior, "Accepted implementation deviations (M2 build, 2026-10-18)": a nil `Deps.Authz` denies everything (the rule for modules copying hello); migration 0002 is the person FK, `RESTRICT`, with a preflight.
+- **Amendment 2026-10-20 (approved, owner, D44; privacy-tags Proposed change 4):** the reference module tags `greeting.Greeting` (`id`, `greeting`, `created_at` all `privacy:"internal"`; `Person` stays `json:"-"`), declares `Views: []any{greeting.Greeting{}}` and no `Groups`, and calls `privacy.Filter` in every use case that returns a `greeting.Greeting` (`Greeting`, `Greet`), so module authors copy the shape. See "Amendment 2026-10-20 (D44): privacy tags" before Open questions.
 - **Amendment 2026-10-19 (approved, owner, 2026-10-20, D40):** `hello` ships one notification template, `hello.greeted` (`Manifest.Templates`), sent to the actor from `Greet` through `Deps.Notify`, so the reference covers the path (module-contract.md, D39, notify Proposed change 4); F32 to F36. See "Amendment 2026-10-19 (approved, owner, 2026-10-20, D40): the `hello.greeted` template" before Open questions.
 - **Package:** `internal/modules/hello` (with `internal/modules/hello/greeting`,
   `internal/modules/hello/postgres`) and `internal/contracts/greeter`
@@ -35,7 +36,7 @@ trim, no control characters); `SignalGreeted = "hello.greeted"`, `PayloadPerson 
 `greetings.write`, no body, 201). Fragment `openapi.json` embedded; schemas
 `HelloPublicGreeting`, `HelloBanner`, `HelloGreeting`, `HelloGreeted`.
 **`greeting`:** `ID = model.ID[marker]`, `Greeting{ID, Person model.PersonID, Text,
-CreatedAt}` with `Validate()`. **`postgres`:** `Migrations fs.FS` (`0001_init.sql` creates
+CreatedAt}` (D44: `id`, `greeting`, `created_at` tagged `privacy:"internal"`; `Manifest.Views` lists it, no `Groups`) with `Validate()`. **`postgres`:** `Migrations fs.FS` (`0001_init.sql` creates
 `hello.greeting`), `NewStore(db.DB) (*Store, error)`.
 **`contracts/greeter`:** `const Name = "greeter"`; `Greeter{Greeting(ctx) (string, error)}`;
 `Banner{Key string}` (a message key `module.<contributor>.banner.<ident>`).
@@ -187,10 +188,10 @@ type ID = model.ID[marker]
 
 // Greeting is one saved greeting: who greeted, with which word, when.
 type Greeting struct {
-	ID        ID             `json:"id"`
+	ID        ID             `json:"id" privacy:"internal"`
 	Person    model.PersonID `json:"-"`          // never on the wire; the caller already knows who they are
-	Text      string         `json:"greeting"`
-	CreatedAt time.Time      `json:"created_at"`
+	Text      string         `json:"greeting" privacy:"internal"`
+	CreatedAt time.Time      `json:"created_at" privacy:"internal"`
 }
 
 // Validate fails with errs.Invalid (joined validate.FieldErrors on "id", "person",
@@ -243,6 +244,7 @@ var Manifest = module.Manifest{
 	Provides:      []module.Capability{greeter.Name},
 	Defines:       []module.ExtensionPointDecl{{Name: PointBanner, Accepts: acceptsBanner}},
 	ContributesTo: []module.ExtensionPoint{PointBanner},
+	Views:         []any{greeting.Greeting{}}, // D44: privacy-tags; no Groups (every field is internal)
 }
 
 func init() { module.Register(Manifest, New) }
@@ -751,6 +753,10 @@ Decision 2's seam list gains nothing: `Deps.Notify` is a core field taken as is,
 | F36 | `Templates` (at `notify.Register`; `Conformance/templates_register`) | `greeted` lacks `en`, has a bad header, or does not parse | Invalid naming the file | fix the template | `Conformance/templates_register`, `TestTemplates_Parse` (`fstest`-free: the embedded FS) |
 
 **Test plan (added).** Unit: `notifytest.NewFake("hello")` as `Deps.Notify` (`SetConfigured(false)` for F33, `Fail(err)` for F34, `Sent()` for F35); `telemetrytest` asserts the debug line carries no ID. Conformance: unchanged call, now exercising `templates_register`. End to end (`app`, Mailpit, M4): with the SMTP settings set, `POST /api/hello/greetings` leaves one message in Mailpit whose subject names the regional and whose body holds the `/hello/` link; with the host cleared, the same request is `201` and Mailpit stays empty. The catalogue test (`app` F30) covers the new key once module-contract decision 8 derives `.template.<ident>.title` (Proposed change 10 below).
+
+## Amendment 2026-10-20 (D44): privacy tags
+
+`hello` is the template for `privacy-tags.md`. `greeting.Greeting` tags `id`, `greeting` and `created_at` `privacy:"internal"` (`Person` is `json:"-"`, so exempt); `Manifest.Views = []any{greeting.Greeting{}}` and `Manifest.Groups` is empty (every field is internal, so there is nothing for a regional to configure and no `visibility_*` setting). `Greeting` and `Greet` pass each returned `greeting.Greeting` through `privacy.Filter` with the zero-group policy (it reports no audited fields, since nothing is `personal`), so the call shape is the one module authors copy. `Conformance` runs the new rule `views_tagged` over `Views` (`WithoutViews()` is not used here). Failure mode F37: a field added to `greeting.Greeting` without a tag fails the conformance rule and `Manifest.Validate` (`Invalid`, `views[0].<Field>`), `TestManifest_UntaggedViewField_ReturnsInvalid`.
 
 ## Open questions
 

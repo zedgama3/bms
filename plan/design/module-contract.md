@@ -9,6 +9,8 @@
 - **Amended 2026-10-18 (M2 build, accepted deviations):** implementation deviations recorded in Behavior, "Accepted implementation deviations (M2 build, 2026-10-18)": `Deps.Authz` and `Deps.People` in `module.go`; Conformance fills them with fakes.
 - **Amended 2026-10-19 (D39, owner approval of settings and notify):** `SettingKind` and `SettingDecl` move to `core/settings` and are aliased here (`SettingBool` ... `SettingEnum`, plus the new `SettingSecret`); the setting key grammar is `[a-z][a-z0-9]*(_[a-z0-9]+)*` (underscores, at most 64 bytes); `Deps.Settings settings.Reader` (M4, scoped per module, bare keys) and `Deps.Notify notify.Notifier` (M4, scoped per module) are available; `Manifest` gains `Templates fs.FS`; `regional` joins the reserved names; there are no automatic retention keys (the module that runs the job declares them); `moduletest.Conformance` supplies `settingstest.NewFake` and `notifytest.NewFake` and gains the rule `templates_register`. Proposed changes 5 and 13 (notify) applied.
 - **Amended 2026-10-20 (D43, owner approval of jobs):** `Deps.Jobs jobs.Registrar` (M4) is available, scoped per module (`Scoped(m.Name)`; job names prefixed `<name>.`; `Register` in `Start`; `Enqueue` joins the caller's transaction; handlers are idempotent and run as the system); `moduletest.Conformance` supplies `jobstest.NewFake(manifest.Name)` when it is nil, scans `Fake.Enqueued()` in the leak rule and gains the rule `jobs_register_scoped`. Proposed change 13 (jobs) applied.
+- **Amended 2026-10-20 (D44, owner approval of privacy-tags):** `Manifest.Views []any` and `Manifest.Groups []privacy.Group`; `Manifest.Validate` runs `privacy.Check` and the settings and `Reaches` cross-checks; `moduletest.Conformance` gains the rules `views_tagged` and `visibility_settings_declared` and the option `WithoutViews()` (F62 to F65). Proposed change 20.
+- **Amended 2026-10-20 (D44, owner approval of files and the jobs follow-ups):** `Deps.Files files.Store` (M4, scoped per module); `Route` gains `MaxBodyBytes` and `Timeout` (api.md decision 32); `moduletest.Conformance` supplies `filestest.NewFake(manifest.Name)` and scans its `Files()` and `Staged()` names, and the jobs leak rule also checks `Fake.Enqueued()` keys against the seed person markers (`jobs_key_not_person`). Proposed change 19.
 - **Accepted 2026-10-20 (owner, D40):** the implementation deviations marked "(implementation, 2026-10-19)" in this spec are accepted as written; no text changed.
 - **Package:** `internal/core/module` (Go module `github.com/zedgama3/bms`), plus the test
   helper package `internal/core/module/moduletest`. **UI:** none of its own; the admin
@@ -50,7 +52,7 @@ Exported names (package `module`):
   each has `Validate() error`; idents `[a-z][a-z0-9]*(-[a-z0-9]+)*`, at most 64 bytes.
 - `SettingKind = settings.Kind` (`SettingBool|Int|Duration|Text|Enum|Secret`, zero invalid; the `Secret` kind is sealed at rest, D39), `SettingDecl = settings.Decl{Key, Kind,
   Default, Options, Check func(string) error `json:"-"`}` (aliases; the types are `core/settings`'s because it cannot import `module`; setting keys are `[a-z][a-z0-9]*(_[a-z0-9]+)*`, at most 64 bytes, not the hyphenated ident).
-- `Manifest{Name, Migrations fs.FS, Templates fs.FS (D39; files `<ident>.<lang>.tmpl`, notify names them `<name>.<ident>`), Permissions []authz.PermissionDecl, Settings, Publishes,
+- `Manifest{Name, Migrations fs.FS, Views []any and Groups []privacy.Group (D44; `Validate` runs `privacy.Check`), Templates fs.FS (D39; files `<ident>.<lang>.tmpl`, notify names them `<name>.<ident>`), Permissions []authz.PermissionDecl, Settings, Publishes,
   Subscribes []signals.Name, Provides/Requires/Uses []Capability, Defines
   []ExtensionPointDecl, ContributesTo []ExtensionPoint}`; `Validate()` joins every problem.
 - `Factory func(ctx, Deps) (Module, error)`; `Module` = `PersonData` + `Start(ctx) error` +
@@ -59,10 +61,10 @@ Exported names (package `module`):
   `Contributor.Contributions() map[ExtensionPoint]any`. `PersonData{ExportPerson(ctx,
   PersonID) (Export, error); DeletePerson(ctx, PersonID) (Deletion, error)}`; `Export{Data
   json.RawMessage}`, `Deletion{Deleted, Anonymized int, Kept []Kept}`, `Kept{Kind, Count}`.
-- `Route{Method, Pattern, Access, Handler}` (relative to `/api/<name>`; `Validate`),
+- `Route{Method, Pattern, Access, Handler, MaxBodyBytes, Timeout}` (relative to `/api/<name>`; `Validate`; the last two raise the shell's body cap and request timeout for one route, zero = the shell's, ceilings 1 GiB and 10 minutes, D44),
   `Access` (`AccessSignedIn` zero default, `AccessPublic`). `Deps{Logger, Tracer
   telemetry.Tracer, Clock, Links *Links, DB db.DB, Signals signals.Bus}`; later fields
-  Settings, Authz, People, Departments, Events, Audit, Jobs, Notify, Files (Audit M1, scoped per module: actions are prefixed `<name>.`; Departments and Events M3, unscoped, D37; Jobs (`jobs.Registrar`) M4, scoped per module, job names prefixed `<name>.`; Settings (`settings.Reader`, bare keys) and Notify (`notify.Notifier`, templates prefixed `<name>.`) M4, scoped per module, D39; the rest M2 to Later). The actor is `identity.PersonFrom(ctx)` (false inside a signal delivery and for a restricted session), taken as a seam (`actorFunc`) so tests use `identity.WithSession`; no `Deps` field.
+  Settings, Authz, People, Departments, Events, Audit, Jobs, Notify, Files (Files (`files.Store`) M4, scoped per module: the module's name is the owner and the bucket, D44; Audit M1, scoped per module: actions are prefixed `<name>.`; Departments and Events M3, unscoped, D37; Jobs (`jobs.Registrar`) M4, scoped per module, job names prefixed `<name>.`; Settings (`settings.Reader`, bare keys) and Notify (`notify.Notifier`, templates prefixed `<name>.`) M4, scoped per module, D39; the rest M2 to Later). The actor is `identity.PersonFrom(ctx)` (false inside a signal delivery and for a restricted session), taken as a seam (`actorFunc`) so tests use `identity.WithSession`; no `Deps` field.
 - `Set.Contributors(point) ([]Contribution, error)` for core definers (`Invalid` unless point is in `Env.CoreExtensionPoints`); `Factory` needs no database read (`openapi`/`check` build against `db.None()`); `Build`/`Start` run under 30 s, `Stop` shares `http.shutdown_timeout`; decision 9: every module ships `messages/en.json`.
 - `Links.Capability(name) (any, error)`, `Links.Contributors(point) ([]Contribution, error)`, `Contribution{Module, Value}`; frozen after `Build`, safe for concurrent use.
 - `Registry`: `NewRegistry`, `Default`, package `Register(Manifest, Factory)` (in `init`),
@@ -82,7 +84,7 @@ Exported names (package `module`):
   Options (owner-approved 2026-10-17): `WithCapability(name, impl)` (mandatory per `Requires`);
   exactly one of `WithSeed(Seed)` / `WithoutPersonData()`; `Seed func(ctx, Module, Subject)
   error`; `Subject{Person, LegalName, Email, Phone, Note}` (markers; the unknown-person ID is
-  unexported and distinct); rules (D39: `templates_register`; D43: `jobs_register_scoped`, and a nil `Deps.Jobs` becomes `jobstest.NewFake(manifest.Name)` with the leak rule scanning `Fake.Enqueued()`; a nil `Deps.Settings` becomes `settingstest.NewFake(manifest.Name, manifest.Settings)` and a nil `Deps.Notify` `notifytest.NewFake(manifest.Name)`, and the leak rule also scans `Fake.Sent()` vars and links for the seed markers) `rejects_wrong_capability_type`, `used_capability_absent_
+  unexported and distinct); rules (D44: `views_tagged`, `visibility_settings_declared`, with the option `WithoutViews()`; D39: `templates_register`; D43: `jobs_register_scoped`, and a nil `Deps.Jobs` becomes `jobstest.NewFake(manifest.Name)` with the leak rule scanning `Fake.Enqueued()` args and, as `jobs_key_not_person` (D44), the keys against the seed person markers; D44: a nil `Deps.Files` becomes `filestest.NewFake(manifest.Name)` and the leak rule scans the fake's `Files()` and `Staged()` names for the seed markers; a nil `Deps.Settings` becomes `settingstest.NewFake(manifest.Name, manifest.Settings)` and a nil `Deps.Notify` `notifytest.NewFake(manifest.Name)`, and the leak rule also scans `Fake.Sent()` vars and links for the seed markers) `rejects_wrong_capability_type`, `used_capability_absent_
   builds_and_starts`, `seeded_person_exports_data`, `seeded_person_delete_counts_and_is_
   idempotent`; the leak rule also asserts no `[email]` and scans the `audittest.Fake`'s recorded entries (`Reason`, `Fields`) for the seed markers and `[email]`; a nil `Deps.Audit` becomes `audittest.NewFake(manifest.Name)`; `module.StartRollbackTimeout` (10 s).
 - `module.IsCoreArea(name) bool` (the core areas reserved by `Manifest.Validate`; app.md F28 uses it).
@@ -279,6 +281,16 @@ type Manifest struct {
 	// and checks them at Register (D39). nil means the module sends nothing.
 	Templates fs.FS
 
+	// Views lists the response types the module sends on the wire (zero values); Groups the
+	// field groups they name (D44, privacy-tags.md). Validate runs privacy.Check(Views,
+	// Groups) (problems under views[i] and groups[j]), requires privacy.Settings(Groups) to
+	// be present in Settings with equal options and default (settings[k] missing/mismatch),
+	// and, for each group offering "holders" whose Permission this module declares, requires
+	// that permission's Reaches to be at least the highest level among the group's fields
+	// (permissions[i].reaches too_low). Both nil means the module sends no tagged types.
+	Views  []any
+	Groups []privacy.Group
+
 	// Publishes and Subscribes are signal names (D24). A published name starts with
 	// "<Name>."; a subscribed name is any valid name, declared by the core or by a module
 	// compiled in.
@@ -401,6 +413,13 @@ type Route struct {
 	Pattern string       // net/http ServeMux path syntax, starting with "/", e.g. "/shifts/{id}"
 	Access  Access       // who may reach it before any permission check
 	Handler http.Handler // must not be nil
+
+	// MaxBodyBytes and Timeout raise the shell's body cap (config http.max_body_bytes) and
+	// request timeout (http.request_timeout) for this route only; zero = the shell's. A
+	// route may only raise them, up to 1 GiB and 10 minutes (api.md decision 32). A route
+	// that takes or serves a file sets them (files.UploadCeiling, files.UploadTimeout).
+	MaxBodyBytes int64
+	Timeout      time.Duration
 }
 
 // Access says whether a route needs a signed-in person. The zero value is the safe one.
@@ -413,7 +432,7 @@ const (
 
 // Validate fails with errs.Invalid if Method is not one of the five, Pattern does not
 // start with "/" or contains a byte outside "[A-Za-z0-9._:/{}$-]" (so no space, "%", "+",
-// "," or ";"; "$" only for ServeMux's "{$}"), Access is out of range, or Handler is nil.
+// "," or ";"; "$" only for ServeMux's "{$}"), Access is out of range, or Handler is nil, or MaxBodyBytes is negative or above 1 GiB, or Timeout is negative or above 10 minutes.
 func (r Route) Validate() error
 
 // APIDescriber is implemented by a RouteProvider that documents its routes; every
@@ -469,7 +488,7 @@ type Deps struct {
 	// Audit    audit.Recorder    audit.md (row 12): M1; scoped per module, actions prefixed "<name>."
 	// Jobs     jobs.Registrar    jobs.md (row 14): M4; scoped per module (job names prefixed "<name>."); Provision sets a.deps.Jobs.Scoped(m.Name)
 	// Notify   notify.Notifier   notify.md (row 11): M4; scoped per module (templates prefixed "<name>.")
-	// Files    files.Store       files.md (row 13)
+	// Files    files.Store       files.md (row 13): M4; scoped per module (the module's name is the owner and the bucket); Provision sets a.deps.Files.Scoped(m.Name)
 }
 
 // Links is a module's view of the modules it cooperates with. Build fills it: providers
@@ -762,6 +781,11 @@ func WithSeed(seed Seed) Option
 // against the spec's Data section.
 func WithoutPersonData() Option
 
+// WithoutViews states that the module sends no response types on the wire (D44): the
+// rules views_tagged and visibility_settings_declared then pass trivially. Without it,
+// Manifest.Views must list every response type, tagged as privacy-tags.md describes.
+func WithoutViews() Option
+
 // Seed writes records about subject into the module built as mod, putting each of
 // subject's marker values into every field of the matching kind the records have (a
 // legal-name field gets LegalName, an e-mail field Email, a phone field Phone, a free-text
@@ -916,7 +940,7 @@ func (n Name) Publisher() string
 | `Events` | `departments-events.md` | shared (unscoped); `InfoOf`; `Conformance` supplies `eventstest.NewFake()` when nil; a foreign key to `core.event(id)` is allowed with `ON DELETE RESTRICT`; an `events.event-setup` contribution is idempotent per (event, module) (D37) | M3 |
 | `Jobs` | `jobs.md` | scoped per module (job names prefixed `<name>.`); `Register` in `Start`; `Enqueue` joins the caller's transaction; handlers are idempotent and run as the system, only on the writing copy; `Conformance` supplies `jobstest.NewFake(manifest.Name)` when nil | M4 |
 | `Notify` | `notify.md` | scoped per module (templates prefixed `<name>.`, shipped in `Manifest.Templates`); `Conformance` supplies `notifytest.NewFake(manifest.Name)` when nil (D39) | M4 |
-| `Files` | `files.md` | shared | Later |
+| `Files` | `files.md` | scoped per module (the module's name is the owner and the bucket); an upload is `Stage` before the module's transaction and `Attach` inside it; `Conformance` supplies `filestest.NewFake(manifest.Name)` when nil; no `Deps.Objects` | M4 |
 
 The actor is not a `Deps` field. A module that needs the signed-in person calls `identity.PersonFrom(ctx)` (false when there is no session, for a restricted session and inside `signals.InDelivery`); it imports `core/identity` for that and takes it as a seam (`actorFunc`, as `hello` does) so tests use `identity.WithSession` (identity.md Proposed change 5).
 
@@ -1231,7 +1255,7 @@ Standard library (`context`, `encoding/json`, `errors`, `fmt`, `io/fs`, `log/slo
 | F30 | `Plan.Build` | the same for `ContributesTo` and `Contributor` | Invalid | fix the module | `TestBuild_ContributionsMismatchManifest_ReturnsInvalid` |
 | F31 | `Plan.Build` | a contribution fails the definer's `Accepts` | Invalid, naming contributor, definer and point | fix the contributor | `TestBuild_ContributionRejectedByDefiner_ReturnsInvalid` |
 | F32 | consumer `Factory` (obligation) | a capability value does not implement the contract interface | Invalid from the consumer, naming the capability | stop start-up | `TestBuild_ConsumerRejectsProviderType_FailsStartup` (with a fake consumer) |
-| F33 | `Plan.Build`, `Route.Validate` | a route with a bad method, pattern not starting with `/` or containing a byte outside `[A-Za-z0-9._:/{}$-]` (a space, `%`, `+`, `,`, `;`), nil handler, out-of-range `Access`, or two routes with the same method and pattern | Invalid, naming module and route | fix the module | `TestBuild_InvalidOrDuplicateRoute_ReturnsInvalid` (its table includes `/caf%C3%A9` and `/a+b`; `/x/{$}` and `/files/{path...}` pass) |
+| F33 | `Plan.Build`, `Route.Validate` | a route with a bad method, pattern not starting with `/` or containing a byte outside `[A-Za-z0-9._:/{}$-]` (a space, `%`, `+`, `,`, `;`), nil handler, out-of-range `Access`, a `MaxBodyBytes` or `Timeout` outside its range (D44), or two routes with the same method and pattern | Invalid, naming module and route | fix the module | `TestBuild_InvalidOrDuplicateRoute_ReturnsInvalid` (its table includes `/caf%C3%A9` and `/a+b`; `/x/{$}` and `/files/{path...}` pass) |
 | F34 | `Plan.Build` | a `RouteProvider` without a non-empty `OpenAPI()` (no `APIDescriber`, or an empty result) | Invalid | add the fragment | `TestBuild_EmptyOpenAPI_ReturnsInvalid`, `TestBuild_RouteProviderWithoutDescriber_ReturnsInvalid` |
 | F35 | `Plan.Build` | `ctx` done | Canceled / Timeout | stop start-up | `TestBuild_ContextCanceled_ReturnsCanceled` |
 | F36 | `Plan.Build` | `schema` or `provision` nil | Invalid | fix app | `TestBuild_NilSchemaOrProvision_ReturnsInvalid` |
@@ -1259,6 +1283,12 @@ Standard library (`context`, `encoding/json`, `errors`, `fmt`, `io/fs`, `log/slo
 | F57 | `Conformance/no_personal_data_in_logs` (obligation, privacy-data) | a marker, or `[email]`, in any captured message, attribute, span name or stdout; or any `Violation` at cleanup | the rule fails | log IDs, never fields | mutants `logsSeededName`, `logsSeededEmailUnderBenignKey` (caught as `[email]`), `logsSeededEmailUnderDeniedKey` (caught as a `Violation`), `logsSeededNote`, `spansSeededPhone` |
 | F58 | `Conformance/templates_register` (obligation, D39) | a `Manifest.Templates` file does not parse, has a bad header, is not named `<ident>.<lang>.tmpl`, or an ident lacks `en` | the rule fails naming the file | fix the template (the same checks as `notify.Register`) | `TestConformance_BadTemplate_FailsRule` |
 | F59 | `Conformance/no_personal_data_in_logs` (obligation, D39) | a seed marker or `[email]` in a `notifytest.Fake.Sent()` var or link | the rule fails | pass only the recipient's own data, never a marker-bearing value (notify decision 10) | `TestConformance_NotifyVarLeak_FailsRule` |
+| F60 (D44) | `Conformance/files_leak` | a `Files()` or `Staged()` name of `filestest.Fake` carries a seed marker | the rule fails | name files by the record, never the person | `TestConformance_FilesNameCarriesSeedMarker_Fails` |
+| F61 (D44) | `Conformance/jobs_key_not_person` | an `Enqueued()` key contains a seed person marker | the rule fails | key by the record's own ID | `TestConformance_JobsKeyCarriesPersonMarker_Fails` |
+| F62 (D44) | `Manifest.Validate` | a `Views` type has an untagged wire field, a bad level or group, a personal or sensitive field without a group, or a grouped field that is not omittable | Invalid (`views[i].<Field>`) | tag it (privacy-tags) | `TestManifestValidate_UntaggedViewField_ReturnsInvalid` |
+| F63 (D44) | `Manifest.Validate` | `privacy.Settings(Groups)` is not present in `Settings` with equal options and default | Invalid (`settings[k]` `missing` or `mismatch`) | append `privacy.Settings(Groups)` | `TestManifestValidate_VisibilitySettingMissing_ReturnsInvalid` |
+| F64 (D44) | `Manifest.Validate` | a group offering `holders` whose `Permission` this module declares has a `Reaches` below its highest field level | Invalid (`permissions[i].reaches` `too_low`) | raise `Reaches` | `TestManifestValidate_HoldersPermissionReachesTooLow_ReturnsInvalid` |
+| F65 (D44) | `Conformance/views_tagged`, `visibility_settings_declared` | a module sends a response type that `Views` does not list, or `Views` lists a type with no tags (and `WithoutViews()` not passed) | the rule fails | list and tag the type | `TestConformance_ViewsNotTagged_Fails` |
 
 Members that cannot fail, and why: `Definer`, `Publisher`, `Permission.Module` (string
 split); the `String` methods (name or `Kind(<n>)`); `NewRegistry`, `Default` (allocation);
@@ -1459,3 +1489,5 @@ with the proposed answer:
 17. **`plan/design/telemetry.md`, `plan/design/app.md`:** none; decision 17 relies on `Scrub`'s
     documented `[email]` substitution as it stands, and decision 20 needs no app.md change.
 18. **`plan/design/settings.md` (row 15) and `notify.md` (row 11), the key grammar and the types (D39):** (applied 2026-10-19) see the Amended line, "Settings" and "Types" above: setting keys use underscores, `SettingKind`/`SettingDecl` are aliases of `settings.Kind`/`settings.Decl`, `regional` is reserved, `Manifest.Templates` is optional.
+19. **`plan/design/files.md` (row 13) and `jobs.md` Proposed change 11** (applied 2026-10-20, D44): `Deps.Files files.Store` (M4, scoped per module), `Route.MaxBodyBytes` and `Route.Timeout` with their `Validate` ceilings, the `Conformance` supply of `filestest.NewFake` and its leak rule, F60; and the rule `jobs_key_not_person` (F61).
+20. **`plan/design/privacy-tags.md` (row 4)** (applied 2026-10-20, D44, privacy-tags Proposed change 1): `Manifest.Views`, `Manifest.Groups`, the `Validate` cross-checks, the conformance rules `views_tagged` and `visibility_settings_declared` and the option `WithoutViews()`; the `add-module` skill layout line gains "`Views` and `Groups` in the manifest; `privacy.Filter` in every use case that returns a response type; `visibility_<group>` catalogue keys in `en.json`".

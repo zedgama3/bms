@@ -27,10 +27,11 @@ is tracked in [design/README.md](design/README.md).
                         ▼                              ▼
      ┌──────────────────────────────────────────────────────────────────────────┐
      │ core contracts: module · db · identity · authz · people · departments ·  │   core
-     │ events · signals · notify · audit · files · jobs · settings · telemetry  │
+     │ events · signals · notify · audit · files · jobs · settings · privacy ·  │
+     │ telemetry                                                                │
      └──────────────────────────────────┬───────────────────────────────────────┘
                                         │ implemented by
-       local, oidc (identity) · email (notify) · disk, s3-compatible (files) · postgres (db)
+       local, oidc (identity) · email (notify) · disk, s3-compatible (objects) · postgres (db)
                                         │
                                         ▼
                     model (shared value types) · lib (errs, clock, validate, secret, ...)  foundation
@@ -165,10 +166,10 @@ Rules (enforced by depguard and `make imports`):
   lookup and search, the person page with `people.person-page`, export and deletion across
   identity, authz and every module (`PersonData`) with deletion requests, the `export` and
   `delete` commands, the `people` routes and screens, signals
-  `people.person-created|deleted|deletion-requested`, and the contract `contracts/personpage`.
+  `people.person-created|deleted|deletion-requested`, `Directory.LegalNamesOf` (audited, `people.contacts.read`), and the contracts `contracts/personpage` and `contracts/membership` (D44).
 - **Doesn't do:** module-specific data about a person; the login address (`identity`); who may
   see a profile (`authz`); the person's own view of who read their data (`audit`, Later);
-  department membership (`volunteers`).
+  department membership (a module contributes it through `people.membership`; `volunteers` first).
 
 ### departments and events
 - **Purpose:** the regional's standing departments and its events (one per burn, D24), kept
@@ -206,13 +207,19 @@ Rules (enforced by depguard and `make imports`):
 - **Doesn't do:** authorization, analytics.
 
 ### files: attachments
-- **Purpose:** store and serve files attached to records, under the record's permissions.
-- **Owns:** the storage contract; local disk first, S3-compatible as an option.
+- **Purpose:** keep the bytes a module attaches to one of its records, with the record's permissions deciding who may read them.
+- **Owns:** the object-store contract `objects.Store` (a simplified S3: bucket, key, Put/Get/Head/Delete/List, SHA-256 verified at Put; never the database, D43) with the `disk` (default) and `s3` implementations and their conformance suite; the `Store` seam modules get as `Deps.Files`; the metadata (`core.file`, `core.file_tombstone`); the catalogue of accepted kinds (images and PDF), metadata stripping, the safe `Serve`, the audit of content reads, the person-data export and deletion backstop, the reap and sweep jobs, `bms files verify`, settings `files.max_bytes|quota_bytes|max_per_record`, config `files.*`. Spec: `plan/design/files.md`.
+- **Doesn't do:** permissions (the owning module), routes and screens (the owner; the logo is settings'), retention (the owner's job), running a store over the network (MinIO, Garage, SeaweedFS, Ceph through `s3`), keeping a copy's objects in sync (the operator; later `switchover`), virus scanning, thumbnails.
 
 ### jobs: background work
 - **Purpose:** run scheduled and deferred work (reminders, retention) once, with retries.
 - **Owns:** the `Registrar` contract (`Register`, `Enqueue`; = `Deps.Jobs`, scoped per owner), the table `core.job` (scheduled slots and deferred jobs, record references only), the runner (`SKIP LOCKED` leases with a heartbeat, backoff by `retry.Policy`, writer only), the `signals.Deferrer` implementation and `signals.redeliver`, `jobs.purge`, the status screen behind `jobs.read` / `jobs.manage`. Spec: `plan/design/jobs.md`.
 - **Doesn't do:** notify's sender loop (notify decision 2), retention periods (each area's setting), daily local-time schedules (Later), cross-process messaging.
+
+### privacy: who sees which field
+- **Purpose:** decide, field by field, which of a record's fields a viewer gets back.
+- **Owns:** the `privacy` struct tag, field groups and their `visibility_<group>` settings, the viewer's audiences, `Filter` and what it reports for audit, the `views_tagged` conformance rule. Spec: `plan/design/privacy-tags.md`.
+- **Doesn't do:** action permissions and record visibility (`authz`, each service), recording the audit entry (the caller), column sensitivity, retention, export and deletion (each spec, `people`).
 
 ### telemetry: logs, traces, metrics and client error reports (D20)
 - **Purpose:** let a maintainer find what happened in any one request from the reference
@@ -234,7 +241,7 @@ Rules (enforced by depguard and `make imports`):
 - **Purpose:** typed, validated settings per module and for the core (terminology, brand colours,
   default language (D28), retention periods (D30; default: keep forever)), editable by admins.
 - **Owns:** the declaration types (`Kind`, `Decl`, `Area`), `core.setting` and its revision, terminology (four forms per term per language), `regional.*`, the sealed `Secret` kind, scoped `Reader`s, `Regional` and `TermsFor`, the public document and `theme.css`, the settings screens.
-- **Doesn't do:** process configuration (`config`), the meaning of other areas' keys (their specs), enforcing retention (`jobs`), translations (web-shell), signals on change, the logo (comes with `files`).
+- **Doesn't do:** process configuration (`config`), the meaning of other areas' keys (their specs), enforcing retention (`jobs`), translations (web-shell), signals on change, storing the logo's bytes (`files`; the logo's routes and screen field are settings', D44).
 
 ## Delivery
 
@@ -297,6 +304,8 @@ Rules (enforced by depguard and `make imports`):
 Each gets its own spec (`plan/design/module-<name>.md`), written with the `add-module`
 skill: `volunteers`, `registrations`, `incidents`, `afterreports`. Module names are letters
 and digits only (`after-reports` is `afterreports` in code, schema and URLs).
+
+`volunteers`: qualifications and their verified records, positions, membership, shifts and sign-ups (spec `design/module-volunteers.md`).
 
 `hello` is the **reference module** (M0): the smallest module that touches the whole
 contract, copied by every later module author and used to calibrate `moduletest.Conformance`.

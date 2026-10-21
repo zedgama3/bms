@@ -4,6 +4,7 @@
 - Amended 2026-10-17 (owner): a `*_FILE` or secrets-file read error reports only the reason class (not found, permission denied, is a directory, unreadable), never the path (F8, F23); ctx is checked before and after each file read, it cannot interrupt a blocking open or read.
 - **Amended 2026-10-18 (owner approval of audit/identity):** Proposed change 6 applied in part for identity (HKDF info `bms identity session v1`, failed logins limited by `httpx.ClientAddrFrom`, rotation a later command, no new keys) and Proposed change 8 applied for audit (`Instance.Name` on every entry; the spool under `Data.Dir/audit/spool`, created by `Run` at start, failing `Invalid` under `data.dir`, printed by app as `BMS_DATA_DIR`).
 - **Amended 2026-10-19 (D39, owner approval of settings):** Proposed change 9 applied: catalogue key `settings.sealing_key` (`BMS_SETTINGS_SEALING_KEY`, `_FILE`, secrets-file field `settings_sealing_key`, `Generated`, when set 32..1024 bytes, no NUL), `Config.Settings{SealingKey secret.Secret}`, `bms migrate` generates it like the session key (decision 7); unset is not an error for any command (decision 17); failure rows F31 to F33.
+- **Amended 2026-10-20 (D44, owner approval of files):** Proposed change (files.md 3) applied: a `Files` section and the keys `files.store`, `files.dir`, `files.s3_*` (catalogue and Validate below, F34, F35); `S3-compatible access keys (files)` leaves "Later keys". Proposed change 14.
 - **Package:** `internal/config` (Go module `github.com/zedgama3/bms`; foundation-level, not
   a bms module). **UI:** none.
 - **Depends on specs:** `lib-errs.md` (Implemented): `errs.E`, `errs.Is`, kinds `Invalid`,
@@ -24,7 +25,7 @@
 **Exported names.**
 - `Prefix = "BMS_"`, `TestPrefix = "BMS_TEST_"` (never read by `Load`), `MaxSecretFileBytes = 64<<10`, `SecretsFileName = "secrets.json"`, `SecretsFieldSessionKey = "session_key"`, `SecretsFieldSettingsSealingKey = "settings_sealing_key"`.
 - `Key{Name, Env, Default, Required, Secret, Generated, Doc}` and `Keys() []Key` (copy of the single source of truth; `Env` = `BMS_` + upper-cased Name with `.` replaced by `_`).
-- `Config{Instance, DB, HTTP, Session, Settings, Secrets, Log, Data, Modules}`: immutable value, safe to log or marshal (credentials are `secret.Secret`). Sections: `Instance{Name}`, `DB{URL secret.Secret, MaxConns, ConnectTimeout, QueryTimeout}`, `HTTP{Addr, RequestTimeout, ShutdownTimeout, MaxBodyBytes int64, TrustedProxies []netip.Prefix, AllowPlaintext}`, `Session{Key secret.Secret}`, `Settings{SealingKey secret.Secret}`, `Secrets{File}`, `Log{Level slog.Level, Format LogFormat}` (`LogJSON`, `LogText`), `Data{Dir}`, `Modules{Disabled []string}`.
+- `Config{Instance, DB, HTTP, Session, Settings, Secrets, Log, Data, Files, Modules}`: immutable value, safe to log or marshal (credentials are `secret.Secret`). Sections: `Instance{Name}`, `DB{URL secret.Secret, MaxConns, ConnectTimeout, QueryTimeout}`, `HTTP{Addr, RequestTimeout, ShutdownTimeout, MaxBodyBytes int64, TrustedProxies []netip.Prefix, AllowPlaintext}`, `Session{Key secret.Secret}`, `Settings{SealingKey secret.Secret}`, `Secrets{File}`, `Log{Level slog.Level, Format LogFormat}` (`LogJSON`, `LogText`), `Data{Dir}`, `Files{Store FilesStore, Dir, S3Endpoint, S3Bucket, S3Region, S3Prefix string, S3PathStyle bool, S3AccessKey, S3SecretKey secret.Secret}` (`FilesDisk`, `FilesS3`; D44), `Modules{Disabled []string}`.
 - `Default() Config` (defaults applied, `db.url` unset, so `Validate` fails on `BMS_DB_URL` only); `Load(ctx, environ []string) (Config, error)`; `(Config) Validate() error` (no I/O).
 
 **Catalogue (variable: default, range).** `BMS_INSTANCE_NAME` main, 1..64 `[a-z0-9]([a-z0-9-]*[a-z0-9])?`; `BMS_DB_URL` (+`_FILE`) required secret, `postgres`/`postgresql` URL with host, <= 4096 bytes, no NUL; `BMS_DB_MAX_CONNS` 10, 1..1000; `BMS_DB_CONNECT_TIMEOUT` 30s, 1s..10m; `BMS_DB_QUERY_TIMEOUT` 10s, 100ms..10m; `BMS_HTTP_ADDR` 127.0.0.1:8080 (non-loopback needs trusted proxies or allow_plaintext); `BMS_HTTP_REQUEST_TIMEOUT` 30s, 1s..10m; `BMS_HTTP_SHUTDOWN_TIMEOUT` 15s, 1s..5m; `BMS_HTTP_MAX_BODY_BYTES` 1048576, 1024..1073741824; `BMS_HTTP_TRUSTED_PROXIES` empty, <= 64 prefixes or bare addresses, no zero-bit prefix; `BMS_HTTP_ALLOW_PLAINTEXT` false; `BMS_SESSION_KEY` (+`_FILE`, else secrets file) generated, when set 32..1024 bytes, no NUL; `BMS_SETTINGS_SEALING_KEY` (+`_FILE`, else the secrets file's `settings_sealing_key`) generated, when set 32..1024 bytes, no NUL, unset is never an error; `BMS_SECRETS_FILE` `<data.dir>/secrets.json`; `BMS_LOG_LEVEL` info (debug|info|warn|error); `BMS_LOG_FORMAT` json (json|text); `BMS_DATA_DIR` data; `BMS_MODULES_DISABLED` empty list, <= 64 unique non-empty items.
@@ -96,7 +97,7 @@ starts from.
 | Reloading configuration while running | nobody. Configuration is read once at start; changing it means a restart. Runtime changes are settings (09 §9: "take effect without a restart"). |
 | pgx's `PGHOST`, `PGPASSWORD`, ... fallbacks | `db` decides whether to honour them when it parses `DB.URL`; `config` neither reads nor clears them. |
 | Trimming, size caps and the `_FILE` convention for secrets held elsewhere | this spec covers only its own keys; `settings` decides how it stores a secret a regional enters (lib-secret "Not responsible for"). |
-| Later keys: OIDC issuer, client ID and client secret; the trusted-proxy-header provider (D15); S3-compatible access keys (`files`); TLS certificate and key if the binary ever serves TLS | the spec that needs them adds a section here through "Proposed changes elsewhere"; the catalogue grows, the mechanism does not change. |
+| Later keys: OIDC issuer, client ID and client secret; the trusted-proxy-header provider (D15); TLS certificate and key if the binary ever serves TLS | the spec that needs them adds a section here through "Proposed changes elsewhere"; the catalogue grows, the mechanism does not change. |
 | Later generated secrets beyond the session key and the sealing key | the same secrets file, a new field, added by `bms migrate` the same way (decision 7). The sealing key for `settings`' `Secret` values (the SMTP password) is the second field (D39). |
 
 ## Sub-abstractions
@@ -371,6 +372,15 @@ holds an ID, a sensitivity or an address) and nothing from `core/`.
 | `log.level` | `BMS_LOG_LEVEL` | enum | `info` | `debug`, `info`, `warn`, `error` | telemetry |
 | `log.format` | `BMS_LOG_FORMAT` | enum | `json` | `json`, `text` | telemetry |
 | `data.dir` | `BMS_DATA_DIR` | path | `data` | non-empty after trimming; no NUL | audit, files |
+| `files.store` | `BMS_FILES_STORE` | enum | `disk` | `disk` or `s3` (anything else, `postgres` included, is `Invalid one_of`; F34) | files (through `app`) |
+| `files.dir` | `BMS_FILES_DIR` | path | `<data.dir>/files`, made absolute | non-empty after trimming; no NUL; holds `tmp/` always and `store/` for `disk` | files, app (`migrate` creates it) |
+| `files.s3_endpoint` | `BMS_FILES_S3_ENDPOINT` | URL | empty | when set: `http` or `https` URL with host; required when `files.store` is `s3` (F35) | files (`s3`) |
+| `files.s3_bucket` | `BMS_FILES_S3_BUCKET` | string | empty | when set: S3 bucket-name grammar (3..63 of `[a-z0-9.-]`); required for `s3` (F35) | files (`s3`) |
+| `files.s3_region` | `BMS_FILES_S3_REGION` | string | `us-east-1` | non-empty, <= 64 bytes, no NUL | files (`s3`) |
+| `files.s3_prefix` | `BMS_FILES_S3_PREFIX` | string | empty | <= 128 bytes of `[A-Za-z0-9._/-]`, no leading `/` | files (`s3`) |
+| `files.s3_path_style` | `BMS_FILES_S3_PATH_STYLE` | bool | `true` | `true` or `false` | files (`s3`) |
+| `files.s3_access_key` | `BMS_FILES_S3_ACCESS_KEY` (+`_FILE`) | secret | empty | <= 1024 bytes, no NUL; required for `s3` (F35) | files (`s3`) |
+| `files.s3_secret_key` | `BMS_FILES_S3_SECRET_KEY` (+`_FILE`) | secret | empty | <= 1024 bytes, no NUL; required for `s3` (F35) | files (`s3`) |
 | `modules.disabled` | `BMS_MODULES_DISABLED` | list | empty | items non-empty after trimming, unique; ≤ 64; registered (checked by app) | app |
 
 Variables the process reads that are **not** in the catalogue and are not `BMS_*`:
@@ -635,6 +645,7 @@ logger; `cmd/bms` prints what `Load` returns.
 | `Secrets` | `File` non-empty after trimming and no NUL (F21, same rule as `data.dir`). |
 | `Log` | `Level` one of the four (F4; a hand-built `slog.Level(3)` is rejected); `Format` one of two (F4). |
 | `Data` | `Dir` non-empty after trimming and no NUL (F21). |
+| `Files` | `Store` one of the two (F34); `Dir` non-empty and no NUL; for `s3`: endpoint, bucket, access key and secret key set, else `Invalid` naming each missing variable (F35); the other store's keys are ignored but still checked for shape. |
 | `Modules` | each item non-empty after trimming, no duplicates, ≤ 64 items (F5). |
 
 Reasons never echo string input, following `lib-core`'s rule: "must be a postgres:// or
@@ -711,6 +722,8 @@ change 1). `cmd/bms` and `internal/app` are the only packages allowed to import
 | F31 | `Validate` | `settings.sealing_key` shorter than 32 or longer than 1024 bytes, or contains NUL (D39) | Invalid under `BMS_SETTINGS_SEALING_KEY`; never echoed | generate a proper key | `TestValidate_SealingKey_ReturnsInvalidWithoutEcho` |
 | F32 | `Load` | `settings.sealing_key` set by the environment (either form) and also present in the secrets file, or both `BMS_SETTINGS_SEALING_KEY` and `_FILE` set (D39) | Invalid under `BMS_SETTINGS_SEALING_KEY`, reason names both sources | remove one | `TestLoad_SealingKeyInEnvAndSecretsFile_ReturnsInvalid` |
 | F33 | `Load` | the secrets file's `settings_sealing_key` fails F31, or is not a string (D39) | Invalid under `BMS_SECRETS_FILE` (not a string) or `BMS_SETTINGS_SEALING_KEY` (length, NUL); never echoed | restore the file from backup | `TestLoad_SecretsFileBadSealingKey_ReturnsInvalid` |
+| F34 (D44) | `Load`, `Validate` | `files.store` is not `disk` or `s3` (`postgres` included) | Invalid under `BMS_FILES_STORE` (`one_of`) | fix the value | `TestLoad_FilesStoreUnknown_ReturnsInvalid` |
+| F35 (D44) | `Validate` | `files.store` is `s3` and the endpoint, bucket, access key or secret key is unset | Invalid, one `FieldError` per missing variable | set them or use `disk` | `TestValidate_FilesS3MissingKeys_ReportsEachVariable` |
 
 An unset `settings.sealing_key` is not a failure of `Load` or of any command (decision 17): `TestLoad_SealingKeyUnset_IsNotAnError`, `TestDefault_Validate_FailsOnlyOnRequired` (unchanged). A missing secrets file is not a failure of `Load` (decision 3): `TestLoad_SecretsFileAbsent_LeavesSessionKeyUnset`
 pins that `Load` succeeds and `Session.Key.IsSet()` is false.
@@ -920,3 +933,4 @@ None. The three questions in the first draft were answered by the owner on 2026-
     the setting's name" may read "with the environment variable's name" to match decision 4;
     the "Done when" list gains "`bms migrate` on a new installation generates the secrets
     file and prints the back-up notice" (decision 7).
+14. **`plan/design/files.md` (row 3)** (applied 2026-10-20, D44): the `Files` section and keys above, F34, F35; the `s3` access keys are secrets accepting `*_FILE`; `files.dir` defaults to `<data.dir>/files`.

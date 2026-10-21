@@ -153,6 +153,28 @@ linters:
           deny:
             - pkg: go.opentelemetry.io
               desc: "telemetry wraps the SDK; use telemetry.Tracer, Meter and slog (telemetry.md)"
+        minio-seam:
+          # files.md (D44): only the s3 implementation of the object store imports the
+          # S3 client library, so the rest of bms sees the objects.Store contract only.
+          files:
+            - "$all"
+            - "!**/internal/core/objects/s3/**"
+          deny:
+            - pkg: github.com/minio/minio-go
+              desc: "only internal/core/objects/s3 imports the S3 client (files.md)"
+        objects-impl-seam:
+          # files.md (D44): files and every module use core/objects through its contract
+          # package; the disk and s3 implementations are chosen by app (and tested in their
+          # own and the contract's packages).
+          files:
+            - "$all"
+            - "!**/internal/app/**"
+            - "!**/internal/core/objects/**"
+          deny:
+            - pkg: github.com/zedgama3/bms/internal/core/objects/disk
+              desc: "only app picks the disk object store (files.md)"
+            - pkg: github.com/zedgama3/bms/internal/core/objects/s3
+              desc: "only app picks the S3 object store (files.md)"
         api:
           files: ["**/internal/api/**"]
           deny:

@@ -8,8 +8,9 @@
 - **Amended 2026-10-18 (M2 build, accepted deviations):** implementation deviations recorded in Behavior, "Accepted implementation deviations (M2 build, 2026-10-18)": operator attribution, `migrate` and its exit statuses, command pre-parsing, new exported surface (`api.Permissions`, `core.modules.read`), the Imports list, and three open spec gaps for the architect.
 - **Amended 2026-10-19 (D39, owner approval of settings and notify):** the `settings` (part 3) and `notify` (part 9) rows of "How later core services plug in" are filled in (settings.md Proposed change 3, notify.md Proposed change 3); `internal/app/alert.go` implements `identity.Alerter` (notify.md Proposed change 7); the adapters `settingsPolicy`, `smtpSource`, `siteSource`, `retentionSource`, `lazyAlerter` and `lazyNotifier` are named; `coreSetOrder` gains `notify`; `bms check` prints the e-mail lines. No existing behaviour changes.
 - **Amendment 2026-10-19 (approved, owner, 2026-10-20, D40):** part 3 (`settings`) receives `Authz: lazyAuthorizer{a}` over `a.authz`, which part 4 sets, so no part is reordered (settings.md amendment of the same date); F31 to F33. `api.Options.PublicOrigin` waits (api.md amendment); when it lands `app` fills it over `a.settings.Regional`. See "Amendment 2026-10-19 (approved, owner, 2026-10-20, D40): `lazyAuthorizer` for settings" before Open questions.
+- **Amended 2026-10-20 (D44, owner approval of files):** the `files` row (part 10) of "How later core services plug in" is filled in (files.md Proposed change 4): the store from `cfg.Files`, `people.Source`, the two jobs, `migrate` creating `<files.dir>`, `check` printing the store, `bms files verify`, `svc.Start` failing on a public bucket; the files directory is part of the data directory's contents.
 - **Amended 2026-10-20 (D43, owner approval of jobs):** the `jobs` row (part 8) of "How later core services plug in" is filled in (jobs.md Proposed change 2): built after audit, settings and authz, `signals.New` receives `lazyDeferrer{a}` (no setter), `link` registers `audit.purge`, `auditActor` answers `ActorSystem` inside a job, `bms check` prints the registered jobs; Proposed change 8 applied.
-- **Amendment 2026-10-20 (awaiting owner approval; jobs Q-JOBS6):** `auditActor` answers `{Kind: audit.ActorSystem}, true` when `jobs.InJob(ctx)`, checked before the session and the operator; it depends on audit.md's amendment of the same date (the `ActorFunc` may answer the system), without which every `Record` from a module's job handler is `Internal`. Section "Amendment 2026-10-20" below; F34, F35.
+- **Amendment 2026-10-20 (approved, D44; jobs Q-JOBS6):** `auditActor` answers `{Kind: audit.ActorSystem}, true` when `jobs.InJob(ctx)`, checked before the session and the operator; it depends on audit.md's amendment of the same date (the `ActorFunc` may answer the system), without which every `Record` from a module's job handler is `Internal`. Section "Amendment 2026-10-20" below; F34, F35.
 - **Accepted 2026-10-20 (owner, D40):** the implementation deviations marked "(implementation, 2026-10-19)" in this spec are accepted as written; no text changed.
 - **Package:** `internal/app` (Go module `github.com/zedgama3/bms`), plus the helper package
   `internal/app/secrets` (the generated-secrets file) and the binary `cmd/bms`. **UI:**
@@ -52,12 +53,12 @@
 - `secrets.Ensure(ctx, path, fields) (created []string, err)`: creates the secrets file once (0600, dir 0700, 64 random bytes base64 per field), adds missing fields, never overwrites, atomic replace; `secrets.FieldBytes = 64`.
 - Unexported seams every later core spec writes against: `command{name, summary, usage, run}`, `process`, `assembly` (cfg, tel, dbc, pool, migrator, disp, plan, set, ui, coreSignals, corePoints, coreSets, corePerms, routeSets, authenticator, permissions, deps, runnables, commands), `coreDeps`, `part{name, declare, build, link}`, `runnable{name, start, stop}`, `closer`, `shutdown(...)`, `provision`, `skipSchema`.
 
-**Commands:** `serve`, `migrate`, `check`, `openapi`, `version`, `help` (later `create-superuser`, `rotate-secret` from identity; `export`, `delete` from people, added through parts).
+**Commands:** `serve`, `migrate`, `check`, `openapi`, `version`, `help` (later `create-superuser`, `rotate-secret` from identity; `export`, `delete` from people; `files verify` from files, added through parts).
 
 **Key decisions:**
 - D1 `app.Main` owns command line, config loading and exit status; second SIGINT/SIGTERM terminates immediately with the OS default (escape hatch; owner, 2026-10-17).
 - D2 commands are a table that parts' `declare` appends to; names unique.
-- D3 exactly four exit statuses; `check` uses the same numbers as `serve` would.
+- D3 exactly four exit statuses; `check` uses the same numbers as `serve` would for everything it can observe without starting: configuration, telemetry, the registry, the database, the schema, the build and `api.New`; what only `serve` does (`Set.Start` against a real database, the files probe, listening) is reported, not scored (Q-JOBS10, D44).
 - D4 `serve` logs to stdout; all other commands log to stderr so stdout carries the command's output alone (owner, 2026-10-17; D20 clarification).
 - D5 each command loads config itself; `version`, `help`, `openapi` load none.
 - D6 `serve` requires the session key from M0 (owner, 2026-10-17).
@@ -86,7 +87,7 @@
 
 **Proposed changes elsewhere (2026-10-17):** items 11 (settings, notify) applied 2026-10-19 (D39) as the part 3 and part 9 rows, plus 18 to 20 below. Applied to config, module-contract, db, telemetry, signals, web-shell, api, 07-abstractions, 09 §1, add-module and go-conventions; items 9 (identity) and the audit part of 11 applied 2026-10-18; item 10 (people) and 11 (authz) applied 2026-10-18 (owner approval of authz/people). Item 10 (departments-events) applied 2026-10-18 (D37): parts 6 `departments` and 7 `events`, jobs 8, notify 9, files 10. Item 8 (jobs) applied 2026-10-20 (D43). Pending: files (target not written), the D20 clarification (plan-keeper), the Makefile targets and `scripts/e2e.sh` (implementation, created when app is built), `docs/operating.md`.
 
-**M2 build deviations (2026-10-18).** authz is part 4 and people part 5; the audit actor is the system inside a job (`jobs.InJob`; amendment 2026-10-20, awaiting approval), else the session's person, else operator while `a.operator` is set (create-superuser, export, delete, migrate); `migrate` builds the parts and seeds after Migrate; `export`/`delete` pre-parse the ID (exit 2); commands build modules but do not start them; `api.Permissions` and `core.modules.read` (`StarterRoles: authz.SiteAdminRoles`) are exported. Three open spec gaps are listed in Behavior.
+**M2 build deviations (2026-10-18).** authz is part 4 and people part 5; the audit actor is the system inside a job (`jobs.InJob`; amendment 2026-10-20, approved D44), else the session's person, else operator while `a.operator` is set (create-superuser, export, delete, migrate); `migrate` builds the parts and seeds after Migrate; `export`/`delete` pre-parse the ID (exit 2); commands build modules but do not start them; `api.Permissions` and `core.modules.read` (`StarterRoles: authz.SiteAdminRoles`) are exported. Three open spec gaps are listed in Behavior.
 
 ## Purpose
 
@@ -96,7 +97,7 @@ Run the command the operator asked for over the core assembled from its configur
 
 - **Commands.** Parse the command line, run one command (`serve`, `migrate`, `check`,
   `openapi`, `version`, `help`; later `create-superuser`, `export`, `delete`,
-  `rotate-secret` from their specs), write its output to stdout and its problems to
+  `rotate-secret`, `files verify` from their specs), write its output to stdout and its problems to
   stderr, and return one documented exit status.
 - **Assembly.** Turn `config.Config` into the typed options of every core package
   (config.md decision 12), build the core in one fixed order (telemetry, database, signals,
@@ -113,7 +114,8 @@ Run the command the operator asked for over the core assembled from its configur
   (config.md decision 7) and apply the core's and the enabled modules' migrations in order
   (D17).
 - **The operator's view.** `bms check`: report configuration, telemetry, modules, database,
-  schema state, API and UI without starting, and exit with the status `serve` would.
+  schema state, API, jobs and UI without starting, and exit with the status `serve` would
+  reach before it starts the modules (decision 3).
 - **The seams for the rest of the core.** Define where each later core service hooks in (a
   *part*) so that `identity`, `authz`, `audit`, `settings`, `people`,
   `departments`, `events`, `jobs`, `notify` and `files` arrive as one new file each and no
@@ -151,7 +153,7 @@ Run the command the operator asked for over the core assembled from its configur
 | `Main` and the command table | Turn a command line into one command run with one exit status. | `cmd/bms` is a one-liner over it; later specs add commands to the table. |
 | `serve` | Build, start, serve, stop. | The only command that listens; the only one whose logs go to stdout. |
 | `migrate` | Create the secrets file on a new installation and apply migrations in order. | Refuses a read-only copy; 30 min budget. |
-| `check` | Report everything `serve` would check, without starting, and exit as `serve` would. | Continues past problems and reports them all. |
+| `check` | Report everything `serve` would check, without starting, and exit as `serve` would up to the point where `serve` starts the modules (decision 3). | Continues past problems and reports them all; a module `Start` failure under `db.None()` is printed, not scored (Q-JOBS10). |
 | `openapi` | Print the assembled OpenAPI document with no configuration and no I/O. | For `make openapi-check`; builds the modules against a database that refuses every statement. |
 | `version`, `help` | Print the build version; print usage. | No configuration, no I/O. |
 | Assembly and `provision` | Build the core in order and give each module its scoped `Deps`. | `assembly` is the one struct every part and every command works on. |
@@ -482,7 +484,17 @@ stale bundle apart from a bug.
    including `serve` stopping after a signal. A clean stop after `SIGTERM` is `0`, not
    `143`: the operator asked for it. A shutdown in which a closer failed or timed out is
    `1`, so an operator sees it in the unit's status. `check` uses the same numbers for
-   the same conditions, so `bms check; echo $?` predicts `bms serve`.
+   the same conditions, so `bms check; echo $?` predicts `bms serve` **up to the point
+   where `serve` starts the modules**: configuration, telemetry, the registry, the
+   database, the schema, the build and `api.New` are scored exactly as `serve` scores
+   them. What `check` cannot observe the same way is reported but never changes the
+   status: a module's `Start` is called under `db.None()` to learn its job registrations,
+   and a `Start` that fails there (a read it may legitimately make against a real
+   database, or a real fault) is printed in the jobs section as a problem line while
+   `serve` would stop on it (jobs Q-JOBS10, owner, 2026-10-20, D44); the files
+   public-bucket probe, the runner and listening on the port only run in `serve`. So a
+   `0` from `check` means "`serve` will get as far as starting the modules", and the
+   lines after `api:` say what it will find there.
 4. **`serve` logs to stdout; every other command logs to stderr and writes its output to
    stdout.** D20's "JSON on stdout" is about the server a collector tails. `openapi`
    must emit the document and nothing else on stdout (`make openapi-check` redirects
@@ -760,6 +772,13 @@ and the exit status is the worst one found (`ExitUsage` > `ExitSchema` > `ExitFa
    the stub `Database`, an empty `SchemaStatus`, `UI: nil` (decision 7): print `api: <n>
    operations` (counted over the document's `paths`), or the problem with `ExitUsage`
    (a routing or fragment problem is the build's) or `ExitFailure` (F25).
+6b. (M4, part 8) The jobs section: call the built set's `Start` under `checkTimeout` and
+   `db.None()`, print `jobs` and one line per registered name with its owner and
+   schedule (the runner's own, `audit.purge`, files' two, and what each module's `Start`
+   registered). A `Start` error is printed first as `modules did not start: <problem>`
+   and is **not** a problem for the status: it does not record `ExitFailure` and does
+   not count in `result:` (Q-JOBS10, D44; `TestCheck_ModuleStartFails_StillExit0AndJobsSectionShowsIt`, integration).
+   The modules are stopped before the next step.
 7. `web.FS()` and `web.Version()`: print `ui: built, version <v>` or `ui: not built` or
    `ui: built, version unknown`.
 8. Close the pool and telemetry. Print `result: ok` or `result: <n> problem(s)` and return
@@ -802,9 +821,9 @@ a later part may read what an earlier one set on the `assembly`.
 | 5 | `people` (M2) | `people.Set` in `coreSets` (set name `people`); `people.Permissions` to `corePerms`; core signals `people.person-created`, `people.person-deleted`, `people.deletion-requested`; extension point `people.person-page` (`Accepts`: a `personpage.Provider`); commands `export` and `delete` (`usage: <person-id>`; both require the session key like `create-superuser`; run `ExportCommand`/`DeleteCommand` after `Build` and `Link`) | `people.New` over `a.dbc`, the clock, telemetry scope `people`, `audit.Scoped("people")`, `a.disp.Scope("people", {the three}, {identity.SignalAccountCreated})`, `a.deps.authz`, the authz actor closure, `Accounts: a.identity`, `Access: a.authz`, `AuditCount: a.audit`, `Policy: nil` (settings' part sets a lazy adapter); sets `a.deps.people`; route set `people`; identity's `build` gets `Names: lazyNames{a}` (empty until `a.names` is set) | `link` converts `a.set.PersonData()` to `[]people.Source` and `a.set.Contributors(personpage.Point)` to `[]people.SectionProvider` and calls `Link` (Proposed change 2(a)) | — | `People` |
 | 6 | `departments` (M3; D37) | migration set `departments` (already in db's fixed order); `departments.Permissions` to `corePerms`; core signals `departments.department-created`, `departments.department-archived`, `departments.department-restored` | `departments.New` over `a.dbc`, the clock, telemetry scope `departments`, `audit.Scoped("departments")`, `a.disp.Scope("departments", published, nil)`, `a.deps.authz`, the authz actor closure; sets `a.departments` and `a.deps.departments`; route set `departments`; `lazyDepartments{a}` (in `core_adapters.go`) is what `buildAuthz` passes as authz's `Departments` | — | — | `Departments` (unscoped) |
 | 7 | `events` (M3; D37) | migration set `events`; `events.Permissions` to `corePerms`; core signals `events.event-created`, `events.event-changed`, `events.event-closed`, `events.event-reopened`; extension point `events.event-setup` (`module.ExtensionPointDecl{Name: eventsetup.Point, Accepts: a eventsetup.Provider}`) | `events.New` likewise (scope `events`, `SetupTimeout: events.DefaultSetupTimeout`); sets `a.events` and `a.deps.events`; route set `events`; `import _ "time/tzdata"` (in `app` or `cmd/bms`) so zone names resolve without system data | `a.set.Contributors(eventsetup.Point)` converted to `[]events.SetupProvider`, passed to `Link` | — | `Events` (unscoped) |
-| 8 | `jobs` (M4; D43) | migration set `jobs`; route set `jobs`; `jobs.Permissions` to `corePerms` | built after audit, settings and authz: `jobs.New` over the pool and `ReadOnly()`, `audit.Scoped("jobs")`, `a.deps.authz`, the actor closure, `a.disp` as `Redeliverer`, `cfg.Instance.Name` and the constants of Q-JOBS7 (`Workers` 2, `PollInterval` 10 s, `Lease` 2 m, `RunTimeout` 5 m); `signals.New` still runs before the parts and receives `Deferrer: lazyDeferrer{a}` (resolves `a.jobs` at call time, `Unavailable` before it is built), so no setter is needed; `a.deps.jobs` is scoped per module in `provision`; `auditActor` answers `ActorSystem` when `jobs.InJob(ctx)`, before the session and the operator (Q-JOBS6 as corrected; needs audit's amendment of 2026-10-20) | `link` registers `audit.purge` (hourly) through `a.jobs.Scoped("audit")` with a closure over `a.deps.audit.Purge` and `a.settings.Scoped("audit").Duration("retention")` (0 = skip); `bms check` prints the registered jobs; `migrate` is unaffected | `Run`/`Close`: started after `Set.Start`, stopped after HTTP drained and before `signals.Close` (the first of the runnables to stop) | `Jobs` (scoped) |
+| 8 | `jobs` (M4; D43) | migration set `jobs`; route set `jobs`; `jobs.Permissions` to `corePerms` | built after audit, settings and authz: `jobs.New` over the pool and `ReadOnly()`, `audit.Scoped("jobs")`, `a.deps.authz`, the actor closure, `a.disp` as `Redeliverer`, `cfg.Instance.Name` and the constants of Q-JOBS7 (`Workers` 2, `PollInterval` 10 s, `Lease` 2 m, `RunTimeout` 5 m); `signals.New` still runs before the parts and receives `Deferrer: lazyDeferrer{a}` (resolves `a.jobs` at call time, `Unavailable` before it is built), so no setter is needed; `a.deps.jobs` is scoped per module in `provision`; `auditActor` answers `ActorSystem` when `jobs.InJob(ctx)`, before the session and the operator (Q-JOBS6 as corrected; audit's amendment of 2026-10-20, D44) | `link` registers `audit.purge` (hourly) through `a.jobs.Scoped("audit")` with a closure over `a.deps.audit.Purge` and `a.settings.Scoped("audit").Duration("retention")` (0 = skip); `bms check` prints the registered jobs in its jobs section, and a module whose `Start` fails there (called under `db.None()`) is printed as a problem line and does not set `ExitFailure` (jobs Q-JOBS10, D44; `serve` still stops on a failing `Start`); `migrate` is unaffected | `Run`/`Close`: started after `Set.Start`, stopped after HTTP drained and before `signals.Close` (the first of the runnables to stop) | `Jobs` (scoped) |
 | 9 | `notify` (M4; D39) | migration set `notify` (`coreSetOrder` in `internal/app/core.go` gains `"notify"` after `"jobs"`); `notify.Permissions` to `corePerms` | `notify.New` over `a.dbc`, `a.clock`, `a.tel`, `audit.Scoped("notify")`, `a.authz`, the actor closure, the settings adapters `smtpSource` and `retentionSource` (over `Scoped("notify")`) and `siteSource` (over `Regional` and `TermsFor`), the recipient adapters (`AddressSource`: the account's address first, then people's `ContactEmailOf` on `NotFound` or empty; `LanguageSource` and `NameSource` over people's `LanguageOf` and `PlayaNameOf`), `Hostname` from `cfg.Instance.Name`; registers `identity.Templates`, `people.Templates` and `notify.Templates`; sets `a.notify`, `a.deps.notify` (scoped by `provision`: `Deps.Notify = a.deps.notify.Scoped(m.Name)`) and route set `notify`; the lazy adapters `lazyAlerter{a}` (identity's `Alerter`, `internal/app/alert.go`) and `lazyNotifier{a, owner: "people"}` (people's `Notify`) resolve `a.notify` at call time | `link` registers each built module's `Manifest.Templates`; `linkPeople` (not notify's `link`) adds `people.Source{Name: "notify", Exporter: a.notify}` (implementation, 2026-10-19; the part order puts notify after events, because jobs isn't built yet) | `Run`/`Close`: started after `Set.Start`, stopped after HTTP drained and before `signals.Close` (notify decision 2: its own sender loop, not `jobs`) | `Notify` (scoped) |
-| 10 | `files` (Later) | migration set `files` | the store over `cfg.Data.Dir` or S3-compatible options; `a.deps.Files` | — | — | `Files` |
+| 10 | `files` (M4; D44) | migration set `files` (`coreSetOrder` after `jobs`); `filesettings.Settings` as core area `files`; `files.Permissions` if any | the `objects.Store` from `cfg.Files` (`disk.New(filepath.Join(cfg.Files.Dir, "store"))` or `s3.New`); `files.New` with `audit.Scoped("files")`, the actor closure, `TempDir` `<files.dir>/tmp` and a `PolicySource` over a `files` `Reader`; `provision` sets `a.deps.Files = svc.Scoped(m.Name)` | appends `people.Source{Name: "files", Exporter: adapter}` after the modules; gives settings a lazy `files.Store` scoped `settings`; registers through `runner.Scoped("files")` the `jobs.Decl`s `files.reap` (`Every: files.ReapEvery`) and `files.sweep-orphans` (`Every: files.SweepEvery`), both `Timeout: files.JobTimeout`, closures over `svc.Reap` and `svc.SweepOrphans` (as `audit.purge`); `migrate` creates `<files.dir>`, `<files.dir>/tmp` and, for `disk`, `<files.dir>/store` (0700); `check` prints `files: <store> ok` or the `Ping` error; command `bms files verify` (prints the four counts; exit 0 when nothing is missing or mismatched, 1 otherwise, 2 on config) | `start` calls `svc.Start`; `Invalid` wrapping `objects.ErrPublic` is a start failure (exit 1, message under files.md Behavior), an unreachable store is not | `Files` (scoped) |
 
 **The superuser alert (D39).** `internal/app/alert.go` implements `identity.Alerter`: (implementation, 2026-10-19) the recipients are `authz.HoldersOf("accounts.manage")` plus every `notify.alert_addresses` entry; of the notify settings it reads only `alert_addresses`, never the whole SMTP config, so it never unseals the password. It sends `identity.superuser-signed-in` through the `identity`-scoped `Notifier` (`Send` to the holders, `SendTo` per alert address) under a short detached deadline; with no recipients it returns `Unsupported`. The alert's `Key` is always empty: at sign-in `ctx` can carry an old, unrelated session from the request's cookie, so a session-based key would let a reused cookie suppress later alerts. Errors return to identity, which logs and counts them (identity F27); on a read-only copy the send fails and the audit entry remains the record.
 
@@ -900,7 +919,7 @@ never `go.opentelemetry.io`, never `dbtest` or `telemetrytest` outside test file
 **M2 build (2026-10-18):**
 
 - **Part order.** authz is part 4 and people is part 5.
-- **Operator attribution.** The audit actor is the session's person, else operator while `a.operator` is set. `a.operator` is set by `create-superuser`, `export`, `delete` and `migrate`. (Amendment 2026-10-20, awaiting approval: the system inside a job comes first; see below.)
+- **Operator attribution.** The audit actor is the session's person, else operator while `a.operator` is set. `a.operator` is set by `create-superuser`, `export`, `delete` and `migrate`. (Amendment 2026-10-20, approved D44: the system inside a job comes first; see below.)
 - **`migrate`.** It builds the parts and seeds after `Migrate`. `migrateStatus`: a failing migration file exits 1 whatever its kind, and a migrator `Conflict` exits 3.
 - **`export` and `delete`.** They pre-parse the ID (exit 2) and `delete` refuses a read-only copy.
 - **Commands build modules but do not start them.**
@@ -1093,7 +1112,7 @@ The part 3 row's `build` cell reads `Authz: lazyAuthorizer{a}` (over `a.authz`, 
 | F32 | `lazyAuthorizer.ExtentOf` | `a.authz` nil | zero `Extent`, nil | as above | the same test |
 | F33 | `lazyAuthorizer.*` | `a.authz` set | the service's own answer and error, unwrapped (`//nolint:wrapcheck` as the other adapters) | — | `TestLazyAuthorizer_AfterAuthz_Delegates` |
 
-## Amendment 2026-10-20 (awaiting owner approval; jobs Q-JOBS6): the system actor inside a job
+## Amendment 2026-10-20 (approved, D44; jobs Q-JOBS6): the system actor inside a job
 
 Gap found while implementing jobs.md: Q-JOBS6 (approved, D43) has `auditActor` answer `ActorSystem` when `jobs.InJob(ctx)` "with no change to `audit`", but audit's `resolveActor` refuses anything from the `ActorFunc` but a person or the operator (`Internal`), so the wiring as approved would fail every `Record` in a module's job handler. audit.md's amendment of the same date widens the function's accepted answers by that one kind (and nothing else: an inconsistent system or operator is still `Internal`, F13b there). This amendment records `app`'s side, which is what Q-JOBS6 meant.
 
@@ -1195,7 +1214,7 @@ decision 17 (not in M0); the stderr logging of `migrate`, `check` and `openapi` 
     `a.plan.Permissions()`, sets `a.permissions` and `a.deps.Authz`.
     **`audit.md` (row 12):** (applied 2026-10-18, by audit.md Proposed change 1: part 1, built before identity; the table row names its `coreDeps` field and that `provision` scopes it).
     **`plan/design/settings.md` (row 15), `notify.md` (row 11):** (applied 2026-10-19, D39: parts 3 and 9 as the table "How later core services plug in" states; `Settings` and `Notify` are scoped by `provision`)
-    **`files.md` (row 13):** (pending: target not written) part 10 likewise.
+    **`files.md` (row 13):** (applied 2026-10-20, D44, the table row 10 above) part 10 as that row states.
 12. **`Makefile` and `scripts/e2e.sh`:** (pending: Makefile exists, but the new targets name web/, cmd/bms and scripts/e2e.sh, which are implementation created when app is built; adding them now would break make check) the targets in "The Makefile": add `VERSION`,
     `web-check`, `web-build`, `openapi-check`, `bin`, `run`, `migrate`, `test-e2e`,
     `check-go`; extend `check` and `imports`; add `scripts/e2e.sh`. `.gitignore` already
