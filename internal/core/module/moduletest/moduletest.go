@@ -239,7 +239,9 @@ func resolveOptions(m module.Manifest, opts []Option) (options, []string) {
 // export_unknown_person_is_empty, delete_unknown_person_is_zero_and_idempotent,
 // delete_read_only, export_is_json_object, seeded_person_exports_data,
 // seeded_person_delete_counts_and_is_idempotent, routes_under_prefix and
-// no_personal_data_in_logs.
+// no_personal_data_in_logs. The last also runs jobs_key_not_person as a subtest of its own
+// (no_personal_data_in_logs/jobs_key_not_person) on the same seeded run: a dedupe key never
+// carries the seeded person's ID.
 func Conformance(t *testing.T, m module.Manifest, f module.Factory, provision module.Provision, opts ...Option) {
 	t.Helper()
 	if f == nil {
@@ -902,6 +904,30 @@ func ruleNoPersonalDataInLogs(t *testing.T, r *rig) {
 	if err := enqueuedLeak(h.jobs.Enqueued()); err != nil {
 		t.Fatal(err)
 	}
+	// A dedupe key shows on the /jobs screen and in logs, so a module keys a job by the
+	// record's own ID (the sign-up, the shift, the upload), never by a person (jobs decision
+	// 22, Q-JOBS13). Same seeded run, so the seed runs once per rule.
+	t.Run("jobs_key_not_person", func(t *testing.T) {
+		if err := keyPersonLeak(h.jobs.Enqueued()); err != nil {
+			t.Error(err)
+		}
+	})
+}
+
+// keyPersonLeak returns an error when a job's dedupe key holds the seeded person's ID, with or
+// without its dashes, in any letter case.
+func keyPersonLeak(reqs []jobs.Request) error {
+	id := strings.ToLower(subject.Person.String())
+	forms := []string{id, strings.ReplaceAll(id, "-", "")}
+	for i, req := range reqs {
+		key := strings.ToLower(req.Key)
+		for _, f := range forms {
+			if strings.Contains(key, f) {
+				return fmt.Errorf("enqueued job %d (%s) has the seeded person's ID in its key; key a job by the record's own ID, never a person's", i, req.Name)
+			}
+		}
+	}
+	return nil
 }
 
 // enqueuedLeak returns an error when a job a module enqueued carries a seed marker or

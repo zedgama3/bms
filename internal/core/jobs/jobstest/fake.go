@@ -9,10 +9,12 @@ import (
 	"fmt"
 	"maps"
 	"sync"
+	"time"
 
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/jobs"
 	"github.com/zedgama3/bms/internal/core/jobs/internal/rules"
+	"github.com/zedgama3/bms/internal/lib/clock"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/lib/validate"
 	"github.com/zedgama3/bms/internal/model"
@@ -24,6 +26,7 @@ import (
 // demand. Safe for concurrent use.
 type Fake struct {
 	owner string
+	now   func() time.Time // the clock Enqueue bounds run_at against; the wall clock by default
 
 	mu       sync.Mutex
 	decls    []jobs.Decl
@@ -34,9 +37,29 @@ type Fake struct {
 
 var _ jobs.Registrar = (*Fake)(nil)
 
+// Option configures a Fake.
+type Option func(*Fake)
+
+// WithClock makes the Fake bound Request.RunAt (at most jobs.MaxDelay ahead) against c, the way
+// the real Runner bounds it against its own clock; the default is the wall clock, which is
+// all Request.Validate has. A nil c is ignored.
+func WithClock(c clock.Clock) Option {
+	return func(f *Fake) {
+		if c != nil {
+			f.now = c.Now
+		}
+	}
+}
+
 // NewFake returns a Registrar scoped to owner. Cannot fail.
-func NewFake(owner string) *Fake {
-	return &Fake{owner: owner, ids: map[string]jobs.JobID{}}
+func NewFake(owner string, opts ...Option) *Fake {
+	f := &Fake{owner: owner, now: time.Now, ids: map[string]jobs.JobID{}}
+	for _, o := range opts {
+		if o != nil {
+			o(f)
+		}
+	}
+	return f
 }
 
 // Register validates d as the real Registrar does and records it. Fails errs.Invalid for an
@@ -61,14 +84,14 @@ func (f *Fake) Register(d jobs.Decl) error {
 	return nil
 }
 
-// Enqueue validates r as the real Registrar does (Request.Validate, the owner's scope, a
-// handler registered for the name: field "name", code "unknown") and records it once the
+// Enqueue validates r as the real Registrar does (Request.ValidateAt with the Fake's clock, the
+// owner's scope, a handler registered for the name: field "name", code "unknown") and records it once the
 // transaction ctx carries commits (at once when it carries none; a rolled-back transaction
 // records nothing). It returns a fresh ID, the same one for a repeated (name, key). It checks
 // no permission. After Fail it returns that error once.
 func (f *Fake) Enqueue(ctx context.Context, r jobs.Request) (jobs.JobID, error) {
 	const op = "jobstest.Fake.Enqueue"
-	if err := r.Validate(); err != nil {
+	if err := r.ValidateAt(f.now()); err != nil {
 		return jobs.JobID{}, fmt.Errorf("%s: %w", op, err)
 	}
 	if err := rules.Scope(op, f.owner, string(r.Name)); err != nil {

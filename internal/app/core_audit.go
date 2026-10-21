@@ -10,6 +10,7 @@ import (
 	"github.com/zedgama3/bms/internal/config"
 	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/identity"
+	"github.com/zedgama3/bms/internal/core/jobs"
 	"github.com/zedgama3/bms/internal/core/module"
 	"github.com/zedgama3/bms/internal/lib/errs"
 )
@@ -71,11 +72,16 @@ func buildAudit(_ context.Context, a *assembly) error {
 	return nil
 }
 
-// auditActor is audit's ActorFunc: the session's person, or while a command that acts as the
-// operator runs (a.operator: create-superuser, export, delete, migrate) and there is no
-// session, the operator. Audit asks it only outside a signal delivery and only for an entry
-// that names no actor. It does no I/O.
+// auditActor is audit's ActorFunc, in this order: the system inside a job (jobs.InJob; it
+// comes before the session because a handler runs as the system with no session, and a
+// test's ctx may carry both); the session's person; while a command that acts as the
+// operator runs (a.operator: create-superuser, export, delete, migrate) the operator.
+// Audit asks it only outside a signal delivery (where it answers the system itself) and
+// only for an entry that names no actor. It does no I/O.
 func (a *assembly) auditActor(ctx context.Context) (audit.Actor, bool) {
+	if jobs.InJob(ctx) {
+		return audit.Actor{Kind: audit.ActorSystem}, true
+	}
 	if act, ok := actorFromSession(ctx); ok {
 		return act, true
 	}

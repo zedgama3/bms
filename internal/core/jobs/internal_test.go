@@ -319,3 +319,64 @@ func TestDeclared_ListsTheRunnersOwnJobsWithoutIO(t *testing.T) {
 		t.Errorf("signals.redeliver = %+v, want on demand, the default timeout, owner signals", got[1])
 	}
 }
+
+func TestRequestValidateAt_BoundFollowsTheGivenNow(t *testing.T) {
+	now := internalEpoch
+	for _, tc := range []struct {
+		name  string
+		runAt time.Time
+		ok    bool
+	}{
+		{"zero is now", time.Time{}, true},
+		{"just inside the bound", now.Add(MaxDelay - time.Hour), true},
+		{"past the bound", now.Add(MaxDelay + time.Hour), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := Request{Name: "volunteers.remind", RunAt: tc.runAt}.ValidateAt(now)
+			if tc.ok && err != nil {
+				t.Fatalf("ValidateAt = %v, want nil", err)
+			}
+			if !tc.ok && !errs.Is(err, errs.Invalid) {
+				t.Fatalf("ValidateAt = %v, want Invalid", err)
+			}
+		})
+	}
+}
+
+// failBeatStore fails every renewal with a store error; every other method is the embedded nil
+// interface.
+type failBeatStore struct{ store }
+
+func (failBeatStore) Heartbeat(context.Context, rows.ID, time.Time, time.Time, time.Time) (time.Time, bool, error) {
+	return time.Time{}, false, errs.E("test.fault", errs.Unavailable, errors.New("database unreachable"))
+}
+
+func TestBeat_FailedRenewalNearFence_CancelsBeforeANextBeatCouldPassIt(t *testing.T) {
+	r, clk := internalRunner(t, failBeatStore{})
+	beat := r.lease / 3
+	fence := internalEpoch.Add(r.lease)
+	for _, tc := range []struct {
+		name       string
+		now        time.Time
+		wantCancel bool
+	}{
+		{"a whole beat and more before the fence", fence.Add(-beat - time.Microsecond), false},
+		{"exactly one beat before the fence", fence.Add(-beat), true},
+		{"a few microseconds before the fence (an early tick)", fence.Add(-5 * time.Microsecond), true},
+		{"at the fence", fence, true},
+		{"after the fence", fence.Add(5 * time.Microsecond), true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := clk.Advance(tc.now.Sub(clk.Now())); err != nil {
+				t.Fatalf("Advance: %v", err)
+			}
+			f := &leaseFence{until: fence}
+			canceled := false
+			cont := r.beat(context.Background(), rows.ID{}, f, func() { canceled = true })
+			if cont == tc.wantCancel || canceled != tc.wantCancel || f.isLost() != tc.wantCancel {
+				t.Fatalf("beat continued = %v, canceled = %v, lost = %v; want canceled = %v",
+					cont, canceled, f.isLost(), tc.wantCancel)
+			}
+		})
+	}
+}

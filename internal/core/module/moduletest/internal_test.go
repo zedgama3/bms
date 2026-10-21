@@ -1,9 +1,11 @@
 package moduletest
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/zedgama3/bms/internal/core/audit"
+	"github.com/zedgama3/bms/internal/core/jobs"
 	"github.com/zedgama3/bms/internal/core/notify"
 )
 
@@ -53,6 +55,28 @@ func TestSentLeak_Table(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			if err := sentLeak(tc.msgs); (err != nil) != tc.wantErr {
 				t.Fatalf("sentLeak = %v, wantErr %v", err, tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestKeyPersonLeak_Table(t *testing.T) {
+	id := subject.Person.String()
+	for _, tc := range []struct {
+		name string
+		key  string
+		bad  bool
+	}{
+		{"no key", "", false},
+		{"a record's own ID", "shift:0b1c2d3e", false},
+		{"the person's ID", "person:" + id, true},
+		{"the person's ID, upper case", "p-" + strings.ToUpper(id), true},
+		{"the person's ID without dashes", "p." + strings.ReplaceAll(id, "-", ""), true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := keyPersonLeak([]jobs.Request{{Name: "hello.remind", Key: tc.key}})
+			if (err != nil) != tc.bad {
+				t.Fatalf("keyPersonLeak(%q) = %v, want error %v", tc.key, err, tc.bad)
 			}
 		})
 	}

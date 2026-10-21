@@ -272,7 +272,7 @@ func (r *Runner) pass(ctx, sctx context.Context, ts *tally, wg *sync.WaitGroup, 
 // before anything is scheduled or leased, in one Write transaction: back to queued while
 // attempts remain, failed with gave_up once they are used up, which stops a job that kills its
 // process every time from being leased forever. A gave_up row is counted and logged like a run
-// that failed; a requeued one is logged as a lost lease.
+// that failed; a requeued one is counted as released (outcome lost_lease) and logged.
 func (r *Runner) reclaim(ctx context.Context, now time.Time, ts *tally) error {
 	const op = "jobs.Runner.reclaim"
 	var got []rows.Reclaimed
@@ -295,6 +295,9 @@ func (r *Runner) reclaim(ctx context.Context, now time.Time, ts *tally) error {
 			r.logger.LogAttrs(ctx, slog.LevelWarn, "jobs: a job lost its lease at its last attempt and is given up", attrs...)
 			continue
 		}
+		// A requeue is a released run: counted in Ran.Released and bms.jobs.runs (Q-JOBS11).
+		ts.outcome(outcomeLostLease)
+		r.metrics.run(ctx, Name(g.Name), outcomeLostLease)
 		attrs = append(attrs, slog.String("outcome", outcomeLostLease))
 		r.logger.LogAttrs(ctx, slog.LevelWarn, "jobs: a job lost its lease and is queued again", attrs...)
 	}
@@ -664,7 +667,8 @@ func (r *Runner) logOutcome(ctx context.Context, lj rows.Lease, outcome string, 
 }
 
 // heartbeat renews the lease every Lease/3 until the returned stop is called, which waits for
-// the goroutine. A renewal that finds the lease lost cancels the run and marks the fence.
+// the goroutine. A renewal that finds the lease lost, or that fails once the clock has passed
+// the lease's expiry (Q-JOBS9), cancels the run and marks the fence.
 func (r *Runner) heartbeat(ctx context.Context, id rows.ID, fence *leaseFence, cancelRun context.CancelFunc) (stop func()) {
 	tk, err := r.clock.NewTicker(r.lease / 3)
 	if err != nil { // r.lease is validated; a bad ticker is a bug, and the run goes on unrenewed
@@ -694,7 +698,8 @@ func (r *Runner) heartbeat(ctx context.Context, id rows.ID, fence *leaseFence, c
 	}
 }
 
-// beat renews once; false means the lease is lost and the beating stops.
+// beat renews once; false means the lease is lost (taken, or about to expire without a renewal:
+// a failed renewal with no beat left before the fence) and the beating stops.
 func (r *Runner) beat(ctx context.Context, id rows.ID, fence *leaseFence, cancelRun context.CancelFunc) bool {
 	bctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), recordTimeout)
 	defer cancel()
@@ -702,9 +707,24 @@ func (r *Runner) beat(ctx context.Context, id rows.ID, fence *leaseFence, cancel
 	next, ok, err := r.store.Heartbeat(bctx, id, fence.get(), now.Add(r.lease), now)
 	switch {
 	case err != nil:
-		// Retried at the next beat; the run goes on while the lease has not expired.
-		r.logger.WarnContext(ctx, "jobs: could not renew the lease of a job", slog.String("job_id", id.String()),
+		// Retried at the next beat while that beat will still land before the fence. Past the
+		// fence the row is reclaimable by another writer, so this process stops the run (outcome
+		// lost_lease, nothing more written) instead of overlapping it until the handler's
+		// timeout. The test looks one beat ahead: a ticker's jitter puts the beat that should
+		// cancel a few microseconds before the fence about half the time, and testing only
+		// "now >= fence" would then let the run go on for a whole beat past the expiry (F52).
+		lapsed := !now.Add(r.lease / 3).Before(fence.get())
+		msg := "jobs: could not renew the lease of a job"
+		if lapsed {
+			msg = "jobs: could not renew the lease of a job before it expired; the run is canceled"
+		}
+		r.logger.WarnContext(ctx, msg, slog.String("job_id", id.String()),
 			slog.String("error.kind", errs.KindOf(err).String()))
+		if lapsed {
+			fence.markLost()
+			cancelRun()
+			return false
+		}
 		return true
 	case !ok:
 		fence.markLost()

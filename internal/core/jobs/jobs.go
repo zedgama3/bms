@@ -224,16 +224,25 @@ func (d Decl) Validate() error {
 
 // Request enqueues one deferred job.
 type Request struct {
-	Name  Name
-	Key   string    // optional dedupe key, [A-Za-z0-9._:-]{1,MaxKeyBytes}; "" = none
+	Name Name
+	// Key is the optional dedupe key, [A-Za-z0-9._:-]{1,MaxKeyBytes}; "" = none. Name the
+	// record's own ID (the sign-up, the shift, the upload), never a person ID: keys show on
+	// /jobs and in Status.Recent (conformance rule jobs_key_not_person).
+	Key   string
 	Args  Args      // may be empty
 	RunAt time.Time // zero = now; else at most MaxDelay ahead (the past is "now")
 }
 
 // Validate fails with errs.Invalid joining a validate.FieldError per problem: name, key
 // (malformed, too_long), args (the payload's rules, under "args"), run_at (range, at most
-// MaxDelay after the wall clock now). The Runner checks run_at against its own clock.
+// MaxDelay after the wall clock now). It uses the wall clock because a value type has no
+// clock to take; the Runner checks run_at against its own clock, and jobstest.Fake against the
+// clock it was given (ValidateAt).
 func (r Request) Validate() error { return r.validate(time.Now()) }
+
+// ValidateAt is Validate with now in place of the wall clock for the run_at bound. It is for
+// fakes that keep their own clock (jobstest.Fake); callers outside tests use Validate.
+func (r Request) ValidateAt(now time.Time) error { return r.validate(now) }
 
 func (r Request) validate(now time.Time) error {
 	v := validate.Errors{Op: "jobs.Request.Validate"}

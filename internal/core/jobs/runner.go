@@ -54,7 +54,11 @@ type store interface {
 	// Release gives a row back without counting the attempt; an empty token keeps last_error.
 	Release(ctx context.Context, id rows.ID, lease time.Time, token string, now time.Time) (bool, error)
 	// Retry and Cancel return the row's name and false when nothing matched; StatusOf says why.
-	Retry(ctx context.Context, id rows.ID, now time.Time) (string, bool, error)
+	// Retry with exclusive (a scheduled name) also needs that no row of the name is open, and
+	// the caller holds LockName for the name on the same transaction.
+	Retry(ctx context.Context, id rows.ID, now time.Time, exclusive bool) (string, bool, error)
+	// LockName takes the transaction-scoped advisory lock of a job name.
+	LockName(ctx context.Context, name string) error
 	Cancel(ctx context.Context, id rows.ID, now time.Time) (string, bool, error)
 	// StatusOf fails errs.NotFound when there is no such row.
 	StatusOf(ctx context.Context, id rows.ID) (name, status string, err error)

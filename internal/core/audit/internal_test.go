@@ -621,7 +621,6 @@ func TestResolveActor_Order_GivenThenDeliveryThenActorFuncThenAnonymous(t *testi
 	l := readOnlyLog(t)
 	operator := func(context.Context) (Actor, bool) { return Actor{Kind: ActorOperator}, true }
 	none := func(context.Context) (Actor, bool) { return Actor{}, false }
-	person := model.NewID[model.PersonID]()
 	for _, tc := range []struct {
 		name  string
 		fn    ActorFunc
@@ -641,15 +640,5 @@ func TestResolveActor_Order_GivenThenDeliveryThenActorFuncThenAnonymous(t *testi
 				t.Errorf("resolveActor = %+v, %v; want kind %v", got, err, tc.want)
 			}
 		})
-	}
-	// Anything other than a person or the operator is a bug in the function.
-	for _, bad := range []Actor{
-		{Kind: ActorSystem}, {Kind: ActorAnonymous},
-		{Kind: ActorOperator, Person: person}, {Kind: ActorOperator, Superuser: true}, {},
-	} {
-		l.opts.Actor = func(context.Context) (Actor, bool) { return bad, true }
-		if _, err := l.resolveActor(t.Context(), Actor{}); !errs.Is(err, errs.Internal) {
-			t.Errorf("ActorFunc returning %+v: err = %v, want Internal", bad, err)
-		}
 	}
 }

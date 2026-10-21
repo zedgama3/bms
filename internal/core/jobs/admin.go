@@ -153,15 +153,33 @@ func (r *Runner) RunNow(ctx context.Context, name Name) (_ JobID, err error) {
 }
 
 // Retry puts a Failed row back to Queued with run_at = now and attempts = 0, recording
-// jobs.job.retried. Needs jobs.manage. Fails errs.Unauthenticated, errs.Permission,
-// errs.NotFound, errs.Conflict (code "status") for a row not Failed, errs.Unavailable
-// wrapping db.ErrReadOnly, the audit error and store kinds.
+// jobs.job.retried. A scheduled name (Every > 0) never has two open rows, so Retry of one
+// is refused while another row of that name is Queued or Running; it checks under the name's
+// advisory lock, in the same Write transaction as RunNow. Needs jobs.manage. Fails
+// errs.Unauthenticated, errs.Permission, errs.NotFound, errs.Conflict (code "status") for a
+// row not Failed, errs.Conflict (code "running") for a scheduled name with a row open,
+// errs.Unavailable wrapping db.ErrReadOnly, the audit error and store kinds.
 func (r *Runner) Retry(ctx context.Context, id JobID) (err error) {
 	const op = "jobs.Runner.Retry"
 	ctx, span := r.span(ctx, "retry")
 	defer endSpan(span, &err)
 	return r.change(ctx, op, id, actionRetried, "only a failed job can be retried",
-		func(ctx context.Context, now time.Time) (string, bool, error) { return r.store.Retry(ctx, id, now) })
+		func(ctx context.Context, now time.Time) (string, bool, error) {
+			name, status, err := r.store.StatusOf(ctx, id)
+			if err != nil {
+				return "", false, err //nolint:wrapcheck // NotFound or a store kind; wrapped by change
+			}
+			// An unregistered name is not known to be scheduled; only a registered one with
+			// an Every is held to one open row.
+			e, registered := r.entryOf(Name(name))
+			exclusive := registered && e.decl.Every > 0 && status == Failed.String()
+			if exclusive {
+				if err := r.store.LockName(ctx, name); err != nil {
+					return "", false, err //nolint:wrapcheck // wrapped by change
+				}
+			}
+			return r.store.Retry(ctx, id, now, exclusive)
+		}, "a run of this job is already waiting or running")
 }
 
 // Cancel marks a Queued row Canceled, recording jobs.job.canceled. Needs jobs.manage. Fails
@@ -172,13 +190,14 @@ func (r *Runner) Cancel(ctx context.Context, id JobID) (err error) {
 	ctx, span := r.span(ctx, "cancel")
 	defer endSpan(span, &err)
 	return r.change(ctx, op, id, actionCanceled, "only a waiting job can be canceled",
-		func(ctx context.Context, now time.Time) (string, bool, error) { return r.store.Cancel(ctx, id, now) })
+		func(ctx context.Context, now time.Time) (string, bool, error) { return r.store.Cancel(ctx, id, now) }, "")
 }
 
 // change is the shared shape of Retry and Cancel: check, change the row and audit it in one
-// Write transaction; when nothing matched, say why.
+// Write transaction; when nothing matched, say why (openRefusal, when set, is the reason for a
+// row that is still Failed).
 func (r *Runner) change(ctx context.Context, op string, id JobID, action audit.Action, refusal string,
-	apply func(ctx context.Context, now time.Time) (string, bool, error)) error {
+	apply func(ctx context.Context, now time.Time) (string, bool, error), openRefusal string) error {
 	if err := r.require(ctx, op, PermissionManage); err != nil {
 		return err
 	}
@@ -194,8 +213,14 @@ func (r *Runner) change(ctx context.Context, op string, id JobID, action audit.A
 			return err //nolint:wrapcheck // wrapped below
 		}
 		if !ok {
-			if _, _, err := r.store.StatusOf(ctx, id); err != nil {
+			_, status, err := r.store.StatusOf(ctx, id)
+			if err != nil {
 				return err //nolint:wrapcheck // NotFound or a store kind; wrapped below
+			}
+			// A row still Failed after a Retry that matched nothing was refused by the
+			// open-row test, not by its status.
+			if openRefusal != "" && status == Failed.String() {
+				return conflict(op, "name", codeRunning, openRefusal)
 			}
 			return conflict(op, "status", codeStatus, refusal)
 		}

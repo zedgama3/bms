@@ -344,9 +344,19 @@ func (s *Store) named(ctx context.Context, op, query string, args ...any) (strin
 }
 
 // Retry puts a Failed row back to Queued, due now, with its attempts reset, and returns the
-// job's name. It reports false when nothing matched: ask StatusOf why.
-func (s *Store) Retry(ctx context.Context, id rows.ID, now time.Time) (string, bool, error) {
-	return s.named(ctx, "jobs.postgres.Retry", sqlRetry, [16]byte(id), utc(now))
+// job's name. With exclusive (a scheduled name) it also requires that no row of the name is
+// Queued or Running; the caller must have called LockName for the name on the same
+// transaction. It reports false when nothing matched: ask StatusOf why (a row still Failed
+// means the exclusive test refused).
+func (s *Store) Retry(ctx context.Context, id rows.ID, now time.Time, exclusive bool) (string, bool, error) {
+	return s.named(ctx, "jobs.postgres.Retry", sqlRetry, [16]byte(id), utc(now), exclusive)
+}
+
+// LockName takes the transaction-scoped advisory lock of name (lock_job_name.sql) that
+// serializes the "no row of this name is open" test with the write that follows it. Call it
+// inside the Write transaction, immediately before Retry with exclusive.
+func (s *Store) LockName(ctx context.Context, name string) error {
+	return s.lockName(ctx, "jobs.postgres.LockName", name)
 }
 
 // Cancel marks a Queued row Canceled and returns the job's name. It reports false when
