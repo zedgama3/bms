@@ -26,7 +26,7 @@ mark should be checked too.
 | **Event** | a gathering the regional puts on, with its dates: usually a burn, but also, for example, an after-burn decompression party. Work such as land clearing is **not** an event (owner, 2026-10-16) | edition (owner: burners won't understand it) |
 | **Decompression (decomp)** | a party some time after the burn; an event in its own right (owner, 2026-10-16) | |
 | **Participant** | anyone who attends | user (in the UI), attendee |
-| **Playa name** | the name a person goes by at burns; how people know each other | nickname, display name (in the UI) |
+| **Playa name** | the name a person goes by at burns; how people know each other | burn name (what burners often call it; the UI says display name), nickname |
 | **Department** | a standing part of the regional (Rangers, Gate, Greeters, Medical, DPW, Placement, Art...) | team (ambiguous) |
 | **Position** | a role within a department, often with requirements; for example Khaki and R12 on a Ranger team (owner, 2026-10-16) | sub-team |
 | **Lead** | a person leading a department | manager |
@@ -144,6 +144,12 @@ mark should be checked too.
   other volunteers. Real (legal) names are usually visible only to the volunteer coordinator
   and perhaps a few other roles. Some burns want different visibility, so it is a regional
   setting, not code.
+  Burn names are what everyone sees; legal names stay with the people whose role needs them
+  (owner, 2026-10-22).
+- **Burn names are unique among the volunteers for one event** (owner, 2026-10-22), so
+  volunteers, leads and radio traffic can tell people apart. The check happens when someone
+  signs up to volunteer for that event. Burn names in general (across events, or for people
+  not volunteering) are not required to be unique.
 - **Pairing happens on the day** (manuals): the shift supervisor pairs experienced with new,
   never partners or spouses.
 - **What volunteering earns differs** (manuals): at some burns hours earn ticket credit,
@@ -176,7 +182,8 @@ mark should be checked too.
   a lead of that department; an org-wide one can be verified by any department lead.
 - **Leads may waive a missing requirement** (owner, 2026-10-20). A lead can assign someone
   who lacks a required qualification, as an explicit, recorded waiver (who waived, what, when).
-  Volunteers can never waive a requirement for themselves.
+  Volunteers can never waive a requirement for themselves; a lead may waive one for themself,
+  as the same recorded waiver (owner, 2026-10-22).
 - **Department-specific or org-wide.** Some qualifications belong to one department, such as
   a ranger department's field training or medical lead training; others are org-wide, such as
   ICS-100.

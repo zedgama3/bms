@@ -25,7 +25,7 @@ copy and can fork it. Features are modules.
 ## Status
 
 - **Phase:** 0, foundations
-- **Last updated:** 2026-10-21
+- **Last updated:** 2026-10-22
 - **Done 2026-10-16:**
   - Repo scaffolded: plan, agents, skills, lint rules, dev compose. Methodology carried over
     from Sojourn (D7).
@@ -86,6 +86,11 @@ copy and can fork it. Features are modules.
     favicon from the logo, no pixel cap); privacy-audience label wording accepted ("the person
     this information is about"; the `holders` title becomes "People whose role allows it").
     The spec text and its Proposed changes are not yet applied.
+- **Owner's answers 2026-10-22 (no decision yet):** volunteers amendment V1 questions Q-VOL7
+    (a lead may waive for themself: yes), Q-VOL8 (no; burn names are seen by everyone, and must
+    be unique among volunteers for the same event) and Q-VOL9 (lead- or system-canceled bookings
+    stay on the schedule until the shift ends: yes). Recorded in 06-open-questions.md. V1 is
+    awaiting owner approval; D48 waits for that.
 - **Next steps:**
   1. Done 2026-10-16: the owner agreed [09-core-features.md](09-core-features.md)
      (milestones M0–M4, done criteria, spec order). `architect` drafted `model`, now Approved.
