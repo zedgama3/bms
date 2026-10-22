@@ -37,7 +37,7 @@ mark should be checked too.
 | **Alpha / mentored shift** | a newcomer's first, observed shift; mentors decide whether they join (manuals) | probation |
 | **Cadre** | the group of leads who run one team by consensus, year-round (manuals) | |
 | **Actual** | the board or LLC member on shift; faces outward (law enforcement, landowner, evictions); some burns use another word (manuals) | |
-| **Handle** | the radio name a volunteer uses on duty, often their playa name; some departments approve and reserve them (manuals) | callsign (in the UI) |
+| **Handle** | the radio name a volunteer uses on duty, often their playa name; some departments approve and reserve them (manuals); handles must be unique so radio traffic is unambiguous (owner, 2026-10-22) | callsign (in the UI) |
 | **Laminate (lam)** | the credential a volunteer or staff member wears (manuals) | badge |
 | **HQ / outpost** | a department's base / a field post, each with a check-in point (manuals) | |
 | **Walk-on** | a volunteer who turns up without a booked shift (manuals) | |
@@ -146,10 +146,15 @@ mark should be checked too.
   setting, not code.
   Burn names are what everyone sees; legal names stay with the people whose role needs them
   (owner, 2026-10-22).
-- **Burn names are unique among the volunteers for one event** (owner, 2026-10-22), so
-  volunteers, leads and radio traffic can tell people apart. The check happens when someone
-  signs up to volunteer for that event. Burn names in general (across events, or for people
-  not volunteering) are not required to be unique.
+- **Burn names are self-appointed and, in general practice, permanent** (owner, 2026-10-22).
+  bms does not allow two people the same burn name, and does not let someone rename themselves
+  to a name already taken. A name becomes eligible for retirement if it has not been used for
+  about five years. Names that are vulgar or inappropriate for other reasons also need a way
+  to be retired or refused; the process for both is still to be devised. Some regionals may
+  later want new names to go through an optional approval step.
+- **A person can have more than one burn name** (owner, 2026-10-22), for example the alias
+  they are known by plus a radio handle (Rangers and similar). Only the handle used on the
+  radio must be unique, so radio traffic is unambiguous.
 - **Pairing happens on the day** (manuals): the shift supervisor pairs experienced with new,
   never partners or spouses.
 - **What volunteering earns differs** (manuals): at some burns hours earn ticket credit,

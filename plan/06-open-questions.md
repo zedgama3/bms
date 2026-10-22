@@ -132,3 +132,17 @@ approved, so no decision is logged; D48 waits for that approval.
 - [x] **Q-VOL9:** When a lead or the system cancels someone's booking, should it stay on their
       schedule, marked, until the shift passes? Yes. → design/module-volunteers.md (Q-VOL9; V1
       pending approval)
+
+Answered 2026-10-22: two questions on burn names, for people amendment P1 (not yet drafted as
+a decision; nothing logged in 03-decisions.md).
+
+- [x] **Q-VOL10:** Are duplicate burn names allowed, and how are names retired? No duplicates
+      installation-wide. A retirement process comes later: a name may be retired if unused for
+      about 5 years, and a separate process (later) for names that are vulgar or otherwise
+      inappropriate. → Later (retirement process); people amendment P1 (pending)
+- [x] **Q-VOL11:** May someone rename themselves to a conflicting name, and do people have more
+      than one burn name? No conflicting names. For initial deployment, burn names are permanent
+      and self-appointed; approval pipelines come later. A person may hold several names (for
+      example an alias and a ranger radio handle); only the radio handle must be unique. The
+      multiple-names nuance may be deferred. → Later (approval pipelines, multiple names);
+      people amendment P1 (pending)

@@ -91,6 +91,13 @@ copy and can fork it. Features are modules.
     be unique among volunteers for the same event) and Q-VOL9 (lead- or system-canceled bookings
     stay on the schedule until the shift ends: yes). Recorded in 06-open-questions.md. V1 is
     awaiting owner approval; D48 waits for that.
+- **Owner's answers 2026-10-22 (no decision yet):** Q-VOL10 (burn names are unique
+    installation-wide; retiring names after about 5 years unused, and a process for
+    inappropriate names, come later) and Q-VOL11 (no conflicting names; burn names are
+    permanent and self-appointed for initial deployment; approval pipelines, and several names
+    per person such as an alias plus a unique radio handle, come later). Recorded in
+    06-open-questions.md. Both are to be carried by people amendment P1, being drafted by
+    the architect; no decision is logged yet.
 - **Next steps:**
   1. Done 2026-10-16: the owner agreed [09-core-features.md](09-core-features.md)
      (milestones M0–M4, done criteria, spec order). `architect` drafted `model`, now Approved.
