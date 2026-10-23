@@ -132,6 +132,8 @@ mark should be checked too.
   before it counts; a volunteer may cancel (reopening the slot) and is asked to swap or tell
   the department early; some teams refuse walk-ons and late arrivals, others fill open
   slots at shift change. A shift can only be booked after the training it needs.
+- **A person needs a burn name before booking a shift**: rosters, shift-mate lists and the
+  radio go by it.
 - **Check-in and check-out are recorded at a desk** (manuals). A missing check-out can
   trigger a search, and shift credit follows the check-out. Volunteers are on duty until
   released, and a lead may send a tired volunteer home without it counting against them.

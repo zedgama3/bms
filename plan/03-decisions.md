@@ -789,3 +789,28 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
   whether only handles must be unique is decided then.
 - **Reverses people decision 3** (playa names not unique).
 - **Closes** volunteers Q-VOL10 and Q-VOL11 as carried by P1.
+
+## D49. volunteers Amendment V1 approved
+
+- **Status:** Accepted (2026-10-23), decided by the owner. The owner's answer: "V1 approved."
+  [design/module-volunteers.md](design/module-volunteers.md), "Amendment V1", is approved as
+  the record in that spec stands; its choices are summarised here, and the spec's record is
+  the detail.
+- **Choices in V1:**
+  - A shift the caller cannot see is `NotFound`; `Permission` only on a visible shift.
+  - Long lists use keyset paging with "Show more"; `MySchedule` has an upcoming and a past
+    schedule.
+  - Legal-name group options are `nobody` or `holders`. `self` is removed (Q-VOL8).
+  - `RecordList.SelfUpload` is in the response; `ShiftSummary` carries names.
+  - A lead may waive a requirement for themself; the waiver is recorded (Q-VOL7).
+  - The reminder horizon re-enqueues itself.
+  - `CopyShifts` keeps wall-clock times.
+  - Shifts are canceled by the job `volunteers.cancel-shifts`, in batches.
+  - `signup.booked_as` is added by migration `0002`; response items use `omitzero`.
+  - Certificates use `NoExpiry` for a record that never expires; the UI has a Manage section
+    and opens certificates through Attachments.
+  - A booking canceled by someone else stays on the person's schedule until the shift ends
+    (Q-VOL9).
+  - Booking requires a playa name; without one the result is `Conflict unnamed`.
+  - A shift's event is immutable after creation.
+  - Uniqueness of playa names is carried by people, per D48.

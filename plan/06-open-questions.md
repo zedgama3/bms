@@ -122,19 +122,17 @@ Resolved 2026-10-21 (D47): the four logo questions raised by the settings logo a
 - [x] **Q-LOGO3:** Derive the favicon from the logo? No. → D47
 - [x] **Q-LOGO4:** Cap the logo's pixel dimensions? No. → D47
 
-Answered 2026-10-22: the three questions raised by the volunteers amendment V1. V1 is not yet
-approved, so no decision is logged; the V1 decision will take the next number after D48.
+Answered 2026-10-22: the three questions raised by the volunteers amendment V1. V1 was approved
+2026-10-23 as D49.
 
 - [x] **Q-VOL7:** May a lead waive a requirement for themself? Yes, allowed (against the
-      recommendation). → design/module-volunteers.md (Q-VOL7; V1 pending approval)
+      recommendation). → D49 (design/module-volunteers.md, Amendment V1)
 - [x] **Q-VOL8:** Under `visibility_legal_name = self`, should a person see their own legal name
       on a roster without `people.contacts.read`? No. Everyone sees burn names. Burn names must
       also be unique among people volunteering for the same event, enforced when they register
-      to volunteer for it. → design/module-volunteers.md (Q-VOL8; V1 pending approval, the
-      uniqueness rule being designed into V1)
+      to volunteer for it. → D49 (uniqueness carried by people per D48)
 - [x] **Q-VOL9:** When a lead or the system cancels someone's booking, should it stay on their
-      schedule, marked, until the shift passes? Yes. → design/module-volunteers.md (Q-VOL9; V1
-      pending approval)
+      schedule, marked, until the shift passes? Yes. → D49 (design/module-volunteers.md, Amendment V1)
 
 Answered 2026-10-22: two questions on burn names, for people amendment P1 (not yet drafted as
 a decision; nothing logged in 03-decisions.md).

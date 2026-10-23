@@ -90,7 +90,7 @@ copy and can fork it. Features are modules.
     (a lead may waive for themself: yes), Q-VOL8 (no; burn names are seen by everyone, and must
     be unique among volunteers for the same event) and Q-VOL9 (lead- or system-canceled bookings
     stay on the schedule until the shift ends: yes). Recorded in 06-open-questions.md. V1 is
-    awaiting owner approval; its decision will take the next number after D48.
+    approved 2026-10-23 as D49.
 - **Owner's answers 2026-10-22 (no decision yet):** Q-VOL10 (burn names are unique
     installation-wide; retiring names after about 5 years unused, and a process for
     inappropriate names, come later) and Q-VOL11 (no conflicting names; burn names are
