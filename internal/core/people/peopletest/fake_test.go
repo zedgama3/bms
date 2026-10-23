@@ -162,3 +162,34 @@ func TestFake_ConcurrentUse_IsSafe(t *testing.T) {
 		t.Errorf("got %d names, %v", len(got), err)
 	}
 }
+
+func TestFake_SetName_FirstNameAndRespelling(t *testing.T) {
+	f := peopletest.NewFake()
+	a := newPerson()
+	if err := f.SetName(a, " Dusty  Ember "); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.SetName(a, "Dusty Ember"); err != nil { // same string once trimmed: a no-op
+		t.Fatal(err)
+	}
+	if err := f.SetName(a, "DUSTY EMBER"); err != nil { // a respelling with the same key
+		t.Fatal(err)
+	}
+	got, err := f.NamesOf(context.Background(), []model.PersonID{a})
+	if err != nil || got[a] != "DUSTY EMBER" {
+		t.Errorf("got %v, %v", got, err)
+	}
+}
+
+func TestFake_RenameByManager_ReplacesASetName(t *testing.T) {
+	f := peopletest.NewFake()
+	a := newPerson()
+	f.Add(a, "Rude Name")
+	if err := f.RenameByManager(a, "Ember Glow"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := f.NamesOf(context.Background(), []model.PersonID{a})
+	if err != nil || got[a] != "Ember Glow" {
+		t.Errorf("got %v, %v", got, err)
+	}
+}

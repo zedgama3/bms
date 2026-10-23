@@ -8,7 +8,7 @@ import { publicStore } from "./public";
 import type { components, paths } from "./schema";
 import { useSession } from "./session";
 
-export { upload } from "./client";
+export { download, upload } from "./client";
 export type { CallOptions, UploadBody } from "./client";
 export { ApiError, PROBLEM_CODES, isAbort } from "./errors";
 export type {

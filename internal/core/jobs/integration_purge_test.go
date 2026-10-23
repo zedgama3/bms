@@ -77,21 +77,23 @@ func TestPurge_ReadOnly_DeletesNothing(t *testing.T) {
 	}
 }
 
-func TestPurge_FinishedKeyBlocksDedupeUntilPurged(t *testing.T) {
-	// A finished row still blocks its dedupe key until the purge removes it (Q-JOBS5).
+func TestPurge_PurgedKey_StartsAFreshRow(t *testing.T) {
+	// A finished row is reopened by its key until the purge removes it (J1, F43); after the
+	// purge the key starts a new row.
 	r := newIRig(t)
 	s := r.register(jobs.Decl{Name: "volunteers.remind", Handler: nop})
 	id := r.forceFinal("volunteers.remind", "k", "done", epoch.Add(-time.Hour))
-	got, err := s.Enqueue(ctxT(t), jobs.Request{Name: "volunteers.remind", Key: "k"})
+	got, err := s.Enqueue(ctxT(t), jobs.Request{Name: "volunteers.remind", Key: "k", RunAt: epoch.Add(time.Hour)})
 	wantNoErr(t, err)
-	if got != id {
-		t.Fatalf("Enqueue returned %v, want the finished row %v", got, id)
+	if got != id || r.byID(id).Status != "queued" {
+		t.Fatalf("Enqueue returned %v (status %s), want the finished row %v reopened", got, r.byID(id).Status, id)
 	}
+	old := r.forceFinal("volunteers.remind", "k2", "done", epoch.Add(-time.Hour))
 	r.advance(jobs.DoneTTL + 2*time.Hour)
-	r.runOnce() // purge removes it
-	fresh, err := s.Enqueue(ctxT(t), jobs.Request{Name: "volunteers.remind", Key: "k"})
+	r.runOnce() // purge removes the finished row
+	fresh, err := s.Enqueue(ctxT(t), jobs.Request{Name: "volunteers.remind", Key: "k2"})
 	wantNoErr(t, err)
-	if fresh == id {
-		t.Fatal("the purged key still deduped to the old row")
+	if fresh == old {
+		t.Fatal("the purged key still reached the old row")
 	}
 }

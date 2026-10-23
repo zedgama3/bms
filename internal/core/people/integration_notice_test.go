@@ -152,7 +152,7 @@ func TestLanguageOf_Table(t *testing.T) {
 	r := newIRig(t, false)
 	es := r.insertPerson(seed{Playa: mPlaya})
 	r.exec("UPDATE core.person SET language = 'es-MX' WHERE id = $1", [16]byte(es))
-	none := r.insertPerson(seed{Playa: mPlaya})
+	none := r.insertPerson(seed{Playa: mPlaya + " Two"})
 	tests := []struct {
 		name    string
 		p       model.PersonID

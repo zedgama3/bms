@@ -147,7 +147,7 @@ func TestLinkAccount_OrphanWithData_Kept(t *testing.T) {
 		local string
 	}{
 		{"playa name", func(f *linkFixture, o model.PersonID) {
-			f.exec("UPDATE core.person SET playa_name = $2 WHERE id = $1", [16]byte(o), "Dusty Ember")
+			f.exec("UPDATE core.person SET playa_name = $2, playa_name_key = $3 WHERE id = $1", [16]byte(o), "Dusty Ember", people.NameKey("Dusty Ember"))
 		}, "keep.playa"},
 		{"pronouns", func(f *linkFixture, o model.PersonID) {
 			f.exec("UPDATE core.person SET pronouns = $2 WHERE id = $1", [16]byte(o), "they/them")

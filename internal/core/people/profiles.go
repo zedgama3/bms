@@ -580,6 +580,10 @@ func patchOf(id model.PersonID, cur rows.Person, f profileFields) (rows.PersonPa
 		}
 	}
 	pick(FieldPlayaName, f.playaName, cur.PlayaName, &patch.PlayaName)
+	if patch.PlayaName != nil {
+		key := NameKey(*patch.PlayaName)
+		patch.PlayaNameKey = &key
+	}
 	pick(FieldPronouns, f.pronouns, cur.Pronouns, &patch.Pronouns)
 	pick(FieldLanguage, f.language, cur.Language, &patch.Language)
 	pick(FieldLegalName, f.legalName, cur.LegalName, &patch.LegalName)
@@ -596,12 +600,25 @@ func merged(cur rows.Person, patch rows.PersonPatch) rows.Person {
 		}
 	}
 	set(&cur.PlayaName, patch.PlayaName)
+	set(&cur.PlayaNameKey, patch.PlayaNameKey)
 	set(&cur.Pronouns, patch.Pronouns)
 	set(&cur.Language, patch.Language)
 	set(&cur.LegalName, patch.LegalName)
 	set(&cur.Phone, patch.Phone)
 	set(&cur.ContactEmail, patch.ContactEmail)
 	return cur
+}
+
+// reasonRename is the audit Reason of a change of a set playa name by a profile manager
+// (decision 30).
+const reasonRename = "rename"
+
+// renames reports whether patch changes the set playa name of cur to one with another key
+// (a rename), as against a first name or a respelling with the same key. cur.PlayaNameKey
+// is the stored key, so a backfilled row compares against what the index holds.
+func renames(cur rows.Person, patch rows.PersonPatch) bool {
+	return patch.PlayaName != nil && patch.PlayaNameKey != nil &&
+		cur.PlayaName != "" && *patch.PlayaNameKey != cur.PlayaNameKey
 }
 
 // requiredAfter fails errs.Invalid (field "required") for each required field that is
@@ -641,11 +658,20 @@ func (s *Service) checkContactEmail(ctx context.Context, op string, person model
 // body sets only the language); a hidden field in the input is refused. A missing row is created (the repair of decision 2). Records
 // people.person.changed (people.person.created and the people.person-created signal when
 // the row was missing) in the transaction. The repair takes the person's deletion lock and
-// fails errs.Unauthenticated when the account no longer exists. Fails errs.Unauthenticated, errs.Invalid (F5 to
-// F9), errs.Unavailable wrapping db.ErrReadOnly and store kinds.
+// fails errs.Unauthenticated when the account no longer exists. Once the row holds a playa
+// name, the same name again writes nothing, a respelling with the same NameKey is saved,
+// and any other name fails errs.Invalid (field playa_name, code permanent); a name whose
+// NameKey another person holds fails errs.Conflict (field playa_name, code taken) with
+// nothing audited or published. Fails errs.Unauthenticated, errs.Invalid (F5 to F9, F75),
+// errs.Conflict (F74), errs.Unavailable wrapping db.ErrReadOnly and store kinds.
 func (s *Service) UpdateMe(ctx context.Context, in ProfileInput) (_ Profile, err error) {
-	const op = "people.Service.UpdateMe"
-	ctx, span := s.start(ctx, "update-me")
+	return s.updateMe(ctx, "people.Service.UpdateMe", "update-me", in, false)
+}
+
+// updateMe is UpdateMe; manager says the actor holds people.profiles.manage and may rename
+// their own set playa name (Update on your own ID, decision 30).
+func (s *Service) updateMe(ctx context.Context, op, spanName string, in ProfileInput, manager bool) (_ Profile, err error) {
+	ctx, span := s.start(ctx, spanName)
 	defer endSpan(span, &err)
 	a, err := s.actorPerson(ctx, op)
 	if err != nil {
@@ -698,6 +724,10 @@ func (s *Service) UpdateMe(ctx context.Context, in ProfileInput) (_ Profile, err
 				return wrap(op, err)
 			}
 		}
+		renamed := renames(cur, patch)
+		if renamed && !manager {
+			return fieldInvalid(op, FieldPlayaName, codePermanent, "a playa name cannot be changed once it is set")
+		}
 		if !missing && len(changed) == 0 {
 			row = cur
 			return nil
@@ -707,7 +737,7 @@ func (s *Service) UpdateMe(ctx context.Context, in ProfileInput) (_ Profile, err
 			return wrap(op, err)
 		}
 		row = saved
-		return s.recordSave(ctx, a.Person, inserted, changed)
+		return s.recordSave(ctx, a.Person, inserted, changed, renamed)
 	})
 	if err != nil {
 		return Profile{}, wrap(op, err)
@@ -721,8 +751,11 @@ func (s *Service) UpdateMe(ctx context.Context, in ProfileInput) (_ Profile, err
 
 // recordSave records people.person.created (and publishes people.person-created) or
 // people.person.changed for a profile write, inside the caller's transaction.
-func (s *Service) recordSave(ctx context.Context, person model.PersonID, created bool, changed []string) error {
+func (s *Service) recordSave(ctx context.Context, person model.PersonID, created bool, changed []string, renamed bool) error {
 	e := audit.Entry{Action: actionChanged, Outcome: audit.Succeeded, Subject: person, Record: audit.RefOf(kindPerson, person)}
+	if renamed {
+		e.Reason = reasonRename
+	}
 	if created {
 		e.Action = actionCreated
 	}
@@ -787,7 +820,7 @@ func (s *Service) Create(ctx context.Context, in ProfileInput) (_ Profile, err e
 			return errs.E(op, errs.Internal, errors.New("a freshly generated person ID already has a row"))
 		}
 		row = saved
-		return s.recordSave(ctx, id, true, changed)
+		return s.recordSave(ctx, id, true, changed, false)
 	})
 	if err != nil {
 		return Profile{}, wrap(op, err)
@@ -797,9 +830,12 @@ func (s *Service) Create(ctx context.Context, in ProfileInput) (_ Profile, err e
 
 // Update changes another person's profile (a profile manager's edit): nil fields are left
 // alone, required modes are not enforced (decision 6), a hidden field is refused. Your own
-// ID behaves as UpdateMe. Needs people.profiles.manage. Records people.person.changed with
-// the names that changed. Fails errs.Permission (F14), errs.NotFound (F11), errs.Invalid
-// (F6, F8, F9) and store kinds.
+// ID behaves as UpdateMe, except that a holder of people.profiles.manage may rename their
+// own set playa name. Needs people.profiles.manage. Records people.person.changed with the
+// names that changed; a change of a set playa name to another NameKey carries Reason
+// "rename". A set name cannot be cleared. Fails errs.Permission (F14), errs.NotFound (F11),
+// errs.Invalid (F6, F8, F9, F79), errs.Conflict (field playa_name, code taken, F74) and
+// store kinds.
 func (s *Service) Update(ctx context.Context, person model.PersonID, in ProfileInput) (_ Profile, err error) {
 	const op = "people.Service.Update"
 	ctx, span := s.start(ctx, "update")
@@ -813,7 +849,15 @@ func (s *Service) Update(ctx context.Context, person model.PersonID, in ProfileI
 	}
 	span.SetAttrs(telemetry.ID("person_id", person))
 	if a.Person == person {
-		return s.UpdateMe(ctx, in)
+		// Your own ID is UpdateMe, except that a profile manager may rename their own set
+		// playa name (decision 30, F78).
+		manager := false
+		if in.PlayaName != nil {
+			if manager, err = s.holds(ctx, PermissionProfilesManage); err != nil {
+				return Profile{}, wrap(op, err)
+			}
+		}
+		return s.updateMe(ctx, op, "update-me", in, manager)
 	}
 	if err := s.require(ctx, op, PermissionProfilesManage); err != nil {
 		return Profile{}, err
@@ -838,6 +882,9 @@ func (s *Service) Update(ctx context.Context, person model.PersonID, in ProfileI
 		if err != nil {
 			return wrap(op, err)
 		}
+		if f.playaName != nil && *f.playaName == "" && cur.PlayaName != "" {
+			return fieldInvalid(op, FieldPlayaName, codeRequired, "a playa name cannot be cleared")
+		}
 		patch, changed := patchOf(person, cur, f)
 		if len(changed) == 0 {
 			row = cur
@@ -846,7 +893,7 @@ func (s *Service) Update(ctx context.Context, person model.PersonID, in ProfileI
 		if row, err = s.store.UpdatePerson(ctx, patch, s.now()); err != nil {
 			return wrap(op, err)
 		}
-		return s.recordSave(ctx, person, false, changed)
+		return s.recordSave(ctx, person, false, changed, renames(cur, patch))
 	})
 	if err != nil {
 		return Profile{}, wrap(op, err)

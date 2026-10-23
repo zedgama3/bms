@@ -51,12 +51,14 @@ type Lease struct {
 
 // Reclaimed is a row a sweep settled: a Running row whose lease had lapsed. Status is Queued
 // (back in the queue, last_error lost_lease) or Failed (last_error gave_up: its attempts reached
-// the limit). Attempts is the count the row holds.
+// the limit). Attempts is the count the row holds. Next is true when the row held a request
+// made during the run: it is Queued for that request (Attempts 0) whichever arm applied.
 type Reclaimed struct {
 	ID       ID
 	Name     string
 	Status   string
 	Attempts int
+	Next     bool
 }
 
 // Job is one row as the status screen sees it. Zero times and empty strings stand for NULL.

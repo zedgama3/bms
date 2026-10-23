@@ -41,6 +41,10 @@ type Person struct {
 	LegalName    string
 	Phone        string
 	ContactEmail string
+	// PlayaNameKey is people.NameKey(PlayaName) as the service computed it. Writes carry
+	// it with the name; only GetForUpdate reads it back (the permanence check compares
+	// against the stored key). Never logged: a key is a name.
+	PlayaNameKey string
 	CreatedBy    model.PersonID
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
@@ -108,8 +112,11 @@ type Match struct {
 // row and is empty on a new one; a pointer to "" clears the field. ContactEmail "" stores
 // NULL.
 type PersonPatch struct {
-	ID           model.PersonID
-	PlayaName    *string
+	ID        model.PersonID
+	PlayaName *string
+	// PlayaNameKey is set together with PlayaName (people.NameKey of it) and nil when
+	// PlayaName is.
+	PlayaNameKey *string
 	Pronouns     *string
 	Language     *string
 	LegalName    *string

@@ -1,0 +1,12 @@
+Subject: Reminder: {{.Vars.label}} starts soon
+Vars: label, department, position, starts, zone, location
+
+{{if .Recipient.PlayaName}}Hi {{.Recipient.PlayaName}},{{else}}Hi,{{end}}
+
+this is a reminder that you are booked on a shift.
+
+{{.Vars.label}} ({{.Vars.position}}, {{.Vars.department}})
+Starts: {{.Vars.starts}} ({{.Vars.zone}}){{if .Vars.location}}
+Where: {{.Vars.location}}{{end}}
+
+Details: {{.Link}}

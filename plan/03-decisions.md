@@ -814,3 +814,45 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
   - Booking requires a playa name; without one the result is `Conflict unnamed`.
   - A shift's event is immutable after creation.
   - Uniqueness of playa names is carried by people, per D48.
+
+## D50. jobs Amendment J1 and volunteers Amendment V2 approved
+
+- **Status:** Accepted (2026-10-23), decided by the owner. The owner's answer: "Proceed with all
+  six. Approved with your recommendations."
+- [design/jobs.md](design/jobs.md), "Amendment J1", and
+  [design/module-volunteers.md](design/module-volunteers.md), "Amendment V2", are approved.
+- **Q-JOBS14, answered yes:** the latest request for a `(name, key)` wins in every state.
+  - A queued row is moved.
+  - A final row (`done`, `failed`, `canceled`) is reopened as a fresh queued row.
+  - A running row holds the request in `next_run_at` and `next_args` (jobs migration
+    `0002_job_next`) and applies it when the run ends, including after a failed run.
+- **Replaces** the no-op for running and final rows in the approved jobs decision 3 (in
+  `design/jobs.md`; not a numbered decision here).
+- `jobstest.Fake` models row states with `Queued()` and `RunDue()`.
+- Fixes the volunteers reminder carry-forward and the move-after-reminder-sent hole with no
+  volunteers service change.
+- **Closes** Q-JOBS14.
+
+## D51. Follow-ups from the people P1 and volunteers V1 build and review
+
+- **Status:** Accepted (2026-10-23), decided by the owner. The owner's answer: "Proceed with all
+  six. Approved with your recommendations."
+- **(a) Migrator RAISE text:** the `db` Migrator lets through the message text of a `RAISE`
+  (SQLSTATE `P0001`) that a migration file raises, so people migration `0003` can name the
+  clashing person IDs (IDs only, never names). Other database errors stay scrubbed.
+- **(b) people `0003` guard:** the guard that stops the migration when the database's `lower()`
+  cannot fold non-ASCII letters and existing names contain them is kept, and extended to
+  ICU-provider databases (Greek final sigma, dotted capital I). The SQL twin's
+  collapse-then-trim, with an explicit whitespace class, replaces the spec's expression.
+- **(c) Waiver in export:** volunteers keeps the waiver flag in a person's export after the
+  waiving lead is deleted, as a `waived` boolean on signup (like `booked_as`).
+- **(d) peopletest.Fake:** `SetName` and `RenameByManager` are an accepted deviation.
+- **(e) Web spec wording catches up:**
+  - people error message keys are `module.people.field.taken` and `module.people.field.permanent`;
+  - web-shell records the `@/api` `download()` and the callback-based `ui/Attachments`
+    `AttachmentRow` with the tap-to-open link;
+  - "My volunteering"'s upcoming and past are toggle buttons, not tabs;
+  - one spelling, "organization";
+  - no "(required)" on a locked name;
+  - Attachments shows a message on an unexpected error;
+  - a paged list shows an error when its refresh fails.

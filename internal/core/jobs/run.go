@@ -288,6 +288,9 @@ func (r *Runner) reclaim(ctx context.Context, now time.Time, ts *tally) error {
 		attrs := []slog.Attr{
 			slog.String("job", g.Name), slog.String("job_id", g.ID.String()), slog.Int("attempt", g.Attempts),
 		}
+		if g.Next {
+			attrs = append(attrs, slog.Bool("next", true))
+		}
 		if g.Status == rows.Failed {
 			ts.outcome(outcomeFailed)
 			r.metrics.run(ctx, Name(g.Name), outcomeFailed)
@@ -606,18 +609,18 @@ func (r *Runner) settle(sctx context.Context, lj rows.Lease, fence *leaseFence, 
 	now := r.now()
 	lease := fence.get()
 	var (
-		ok  bool
-		err error
+		ok, next bool
+		err      error
 	)
 	switch v.kind {
 	case vDone:
-		ok, err = r.store.Complete(wctx, lj.ID, lease, now)
+		ok, next, err = r.store.Complete(wctx, lj.ID, lease, now)
 	case vRelease:
-		ok, err = r.store.Release(wctx, lj.ID, lease, v.token, now)
+		ok, next, err = r.store.Release(wctx, lj.ID, lease, v.token, now)
 	case vRequeue:
-		ok, err = r.store.Requeue(wctx, lj.ID, lease, v.token, v.runAt, now)
+		ok, next, err = r.store.Requeue(wctx, lj.ID, lease, v.token, v.runAt, now)
 	default:
-		ok, err = r.store.Fail(wctx, lj.ID, lease, v.token, now)
+		ok, next, err = r.store.Fail(wctx, lj.ID, lease, v.token, now)
 	}
 	outcome := v.outcome
 	if outcome == outcomeDropped {
@@ -635,13 +638,13 @@ func (r *Runner) settle(sctx context.Context, lj rows.Lease, fence *leaseFence, 
 	case !ok:
 		outcome = outcomeLostLease
 	}
-	r.logOutcome(sctx, lj, outcome, v, herr)
+	r.logOutcome(sctx, lj, outcome, v, herr, next && ok)
 	return result{outcome: outcome, err: herr}
 }
 
 // logOutcome writes the one line per outcome: identifiers, the outcome and the error's kind
 // and operation, never the arguments or the error's text.
-func (r *Runner) logOutcome(ctx context.Context, lj rows.Lease, outcome string, v verdict, herr error) {
+func (r *Runner) logOutcome(ctx context.Context, lj rows.Lease, outcome string, v verdict, herr error, next bool) {
 	level := slog.LevelInfo
 	switch outcome {
 	case outcomeOK, outcomeDropped:
@@ -658,6 +661,9 @@ func (r *Runner) logOutcome(ctx context.Context, lj rows.Lease, outcome string, 
 	}
 	if v.token != "" && outcome == outcomeFailed {
 		attrs = append(attrs, slog.String("reason", v.token))
+	}
+	if next { // a request made during the run was queued in place of the run's own end state
+		attrs = append(attrs, slog.Bool("next", true))
 	}
 	msg := "jobs: a job ran"
 	if outcome == outcomeNoHandler {

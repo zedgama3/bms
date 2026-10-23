@@ -1,4 +1,6 @@
 // The UI kit and error display every screen uses (decision 12).
+export { Attachments } from "./Attachments";
+export type { AttachmentRow } from "./Attachments";
 export { Banner } from "./Banner";
 export type { BannerTone } from "./Banner";
 export { Button, linkButtonClass } from "./Button";

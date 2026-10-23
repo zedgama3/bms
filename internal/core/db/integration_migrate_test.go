@@ -3,11 +3,13 @@
 package db_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"io/fs"
+	"log/slog"
 	"net/url"
 	"runtime"
 	"strings"
@@ -780,4 +782,87 @@ func TestMigrate_BootstrapDenied_ReturnsKind(t *testing.T) {
 	if strings.Contains(err.Error(), pw) {
 		t.Errorf("error leaks the password")
 	}
+}
+
+// F58 (D51): a migration's own RAISE EXCEPTION text reaches the error and the log; every other
+// database error stays scrubbed.
+func TestMigrate_RaiseException_PassesMessageThrough(t *testing.T) {
+	const msg = "refusing to migrate: 3 rows need a human look"
+	const detail = "run the cleanup then retry"
+	raise := "CREATE TABLE zeta.leftover (id integer);\n" +
+		"DO $$ BEGIN RAISE EXCEPTION '" + msg + "' USING DETAIL = '" + detail + "'; END $$;\n"
+	newSet := func(bad string) db.Set {
+		return mset("zeta", map[string]string{
+			"0001_good.sql": "CREATE TABLE zeta.ok (id integer);\n",
+			"0002_bad.sql":  bad,
+		})
+	}
+	logged := func(t *testing.T, p *db.Pool) (*db.Migrator, *bytes.Buffer) {
+		t.Helper()
+		var buf bytes.Buffer
+		m, err := db.NewMigrator(p, slog.New(slog.NewTextHandler(&buf, nil)))
+		if err != nil {
+			t.Fatalf("NewMigrator: %v", err)
+		}
+		return m, &buf
+	}
+
+	t.Run("P0001 message and detail pass through", func(t *testing.T) {
+		p, _ := tempDB(t)
+		m, buf := logged(t, p)
+		_, err := m.Migrate(ctxT(t), []db.Set{newSet(raise)})
+		if err == nil {
+			t.Fatal("a raising migration succeeded")
+		}
+		if !errs.Is(err, errs.Internal) {
+			t.Errorf("kind = %v, want Internal (P0001 is unclassified by Wrap)", errs.KindOf(err))
+		}
+		var dbErr *db.Error
+		if !errors.As(err, &dbErr) || dbErr.Code != "P0001" {
+			t.Errorf("no *db.Error with code P0001 survives withRaised in %v", err)
+		}
+		for _, want := range []string{msg, detail, "zeta", "0002"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("error lacks %q: %v", want, err)
+			}
+		}
+		if !strings.Contains(buf.String(), msg) {
+			t.Errorf("the log lacks the raised message:\n%s", buf.String())
+		}
+		if hasTable(t, p, "zeta.leftover") {
+			t.Error("the raising file was not rolled back")
+		}
+		if !hasTable(t, p, "zeta.ok") {
+			t.Error("the earlier file must stay applied")
+		}
+	})
+
+	t.Run("a non-P0001 failure carries no message text", func(t *testing.T) {
+		const marker = "leaky-marker-7"
+		bad := "CREATE TABLE zeta.u (v text UNIQUE);\n" +
+			"INSERT INTO zeta.u VALUES ('" + marker + "'), ('" + marker + "');\n"
+		p, _ := tempDB(t)
+		m, buf := logged(t, p)
+		_, err := m.Migrate(ctxT(t), []db.Set{newSet(bad)})
+		if err == nil {
+			t.Fatal("a failing migration succeeded")
+		}
+		if strings.Contains(err.Error(), marker) || strings.Contains(buf.String(), marker) {
+			t.Errorf("a data value leaked:\n%v\n%s", err, buf.String())
+		}
+		for _, leak := range []string{"duplicate key", "violates"} {
+			if strings.Contains(err.Error(), leak) {
+				t.Errorf("server message text %q reached the error: %v", leak, err)
+			}
+		}
+	})
+
+	t.Run("division by zero stays scrubbed", func(t *testing.T) {
+		p, _ := tempDB(t)
+		m, _ := logged(t, p)
+		_, err := m.Migrate(ctxT(t), []db.Set{newSet("SELECT 1/0;\n")})
+		if err == nil || strings.Contains(err.Error(), "division by zero") {
+			t.Errorf("err = %v, want a scrubbed error", err)
+		}
+	})
 }

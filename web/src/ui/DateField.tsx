@@ -41,6 +41,7 @@ export function DateField(
           type="date"
           className={controlClass}
           autoComplete="off"
+          {...(props.disabled ? { disabled: true } : {})}
           {...(min ? { min } : {})}
           {...(props.value !== undefined ? { value: props.value } : {})}
           {...(props.defaultValue !== undefined ? { defaultValue: props.defaultValue } : {})}

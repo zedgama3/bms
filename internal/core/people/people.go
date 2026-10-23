@@ -10,6 +10,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"golang.org/x/text/unicode/norm"
+
 	"github.com/zedgama3/bms/internal/contracts/personpage"
 	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/authz"
@@ -144,6 +146,7 @@ const (
 	codeTooMany    = "too_many"      // params: max
 	codeControl    = "control_chars" // a control character in a text field
 	codeHidden     = "hidden"        // a field the regional turned off
+	codePermanent  = "permanent"     // playa_name once it is set (UpdateMe)
 	codeHasAccount = "has_account"   // contact_email for a person who has an account
 	codeSelf       = "self"          // an action aimed at oneself that must not be
 	codeUnknown    = "unknown"       // an address no account has
@@ -520,6 +523,18 @@ func fieldInvalid(op, field, code, format string, args ...any) error {
 // paramInvalid is fieldInvalid with params.
 func paramInvalid(op, field, code string, params map[string]string, reason string) error {
 	return errs.E(op, errs.Invalid, &validate.FieldError{Field: field, Code: code, Params: params, Reason: reason})
+}
+
+// NameKey (decision 31) is the form in which two playa names are compared: NFKC
+// normalisation, leading and trailing space removed, each run of internal whitespace
+// replaced by one space, then lower-cased with strings.ToLower. "" for a blank name. It is
+// the one rule for "the same name": the store writes it to core.person.playa_name_key, the
+// unique index person_playa_name_key_idx enforces it, and modules that compare playa names
+// use it rather than their own copy. Pure: no I/O, cannot fail; the result may be longer
+// than MaxPlayaNameBytes (NFKC can expand a character), which no constraint limits because
+// the key is never shown or typed. Never logged: a key is a name.
+func NameKey(name string) string {
+	return strings.ToLower(strings.Join(strings.Fields(norm.NFKC.String(name)), " "))
 }
 
 // fieldConflict builds an errs.Conflict error carrying one validate.FieldError (the api

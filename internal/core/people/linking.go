@@ -49,7 +49,7 @@ func (s *Service) handleAccountCreated(ctx context.Context, sig signals.Signal) 
 		if !inserted {
 			return nil
 		}
-		return s.recordSave(ctx, person, true, nil)
+		return s.recordSave(ctx, person, true, nil, false)
 	})
 	return wrap(op, err)
 }

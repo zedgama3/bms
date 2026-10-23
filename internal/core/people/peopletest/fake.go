@@ -6,6 +6,7 @@ package peopletest
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/zedgama3/bms/internal/core/people"
@@ -37,11 +38,64 @@ func NewFake() *Fake {
 }
 
 // Add makes id a known person whose playa name is name ("" for one not filled in yet),
-// replacing an earlier name. Cannot fail.
+// replacing an earlier name. It is test set-up and enforces nothing: a test that seeds two
+// people with one NameKey is seeding a state the real service makes impossible (decision
+// 29), so use distinct names; SetName and RenameByManager enforce the rules. Cannot fail.
 func (f *Fake) Add(id model.PersonID, name string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.names[id] = name
+}
+
+// SetName is what UpdateMe does to a playa name, in memory: it sets id's playa name to name
+// (trimmed) and enforces the rules the real service and its unique index enforce (decisions
+// 29 and 30), so a module's test sees them. A blank name fails errs.Invalid (field
+// playa_name, code required). When id already has a name, the same string is a no-op, a
+// respelling with the same people.NameKey is saved, and any other name fails errs.Invalid
+// (code permanent). A name whose NameKey another person holds fails errs.Conflict (code
+// taken), naming nobody. An unknown id becomes known, as UpdateMe's repair does. Nothing is
+// changed on failure.
+func (f *Fake) SetName(id model.PersonID, name string) error {
+	return f.setName("peopletest.Fake.SetName", id, name, false)
+}
+
+// RenameByManager is what Update does to a set playa name for a holder of
+// people.profiles.manage, in memory: like SetName, except that a name with another
+// people.NameKey replaces a set one (decision 30). A blank name still fails errs.Invalid
+// (code required), and a name another person holds still fails errs.Conflict (code taken).
+func (f *Fake) RenameByManager(id model.PersonID, name string) error {
+	return f.setName("peopletest.Fake.RenameByManager", id, name, true)
+}
+
+func (f *Fake) setName(op string, id model.PersonID, name string, manager bool) error {
+	if id.IsZero() {
+		return errs.E(op, errs.Invalid,
+			&validate.FieldError{Field: "person", Code: validate.CodeRequired, Reason: "must be set"})
+	}
+	name = strings.TrimSpace(name)
+	key := people.NameKey(name)
+	if key == "" {
+		return errs.E(op, errs.Invalid,
+			&validate.FieldError{Field: "playa_name", Code: validate.CodeRequired, Reason: "must not be empty"})
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cur := f.names[id]
+	if cur == name {
+		return nil
+	}
+	if cur != "" && !manager && people.NameKey(cur) != key {
+		return errs.E(op, errs.Invalid,
+			&validate.FieldError{Field: "playa_name", Code: "permanent", Reason: "a playa name cannot be changed once it is set"})
+	}
+	for other, n := range f.names {
+		if other != id && people.NameKey(n) == key {
+			return errs.E(op, errs.Conflict,
+				&validate.FieldError{Field: "playa_name", Code: "taken", Reason: "another person already uses this playa name"})
+		}
+	}
+	f.names[id] = name
+	return nil
 }
 
 // AddLegalName sets the legal name LegalNamesOf returns for id, replacing an earlier one;

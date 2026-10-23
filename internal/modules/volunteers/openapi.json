@@ -1,0 +1,2181 @@
+{
+  "tags": [
+    {
+      "name": "volunteers",
+      "description": "Qualifications, positions, membership, shifts and sign-ups."
+    }
+  ],
+  "paths": {
+    "/qualifications": {
+      "get": {
+        "tags": [
+          "volunteers"
+        ],
+        "operationId": "volunteersListQualifications",
+        "summary": "The catalogue: active entries to everyone; archived=true needs qualifications.manage.",
+        "parameters": [
+          {
+            "name": "department",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          },
+          {
+            "name": "archived",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolunteersQualificationList"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "volunteers"
+        ],
+        "operationId": "volunteersCreateQualification",
+        "summary": "Add a catalogue entry. Org-wide needs qualifications.manage site-wide; a department's, at the department. 409 name taken, department archived.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VolunteersQualificationInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolunteersQualification"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/qualifications/{qualification}": {
+      "put": {
+        "tags": [
+          "volunteers"
+        ],
+        "operationId": "volunteersUpdateQualification",
+        "summary": "Change an entry. 400 scope when department differs; 409 archived, taken.",
+        "parameters": [
+          {
+            "name": "qualification",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VolunteersQualificationInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolunteersQualification"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/qualifications/{qualification}/archive": {
+      "post": {
+        "tags": [
+          "volunteers"
+        ],
+        "operationId": "volunteersArchiveQualification",
+        "summary": "Archive an entry. 409 archived.",
+        "parameters": [
+          {
+            "name": "qualification",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Archived."
+          }
+        }
+      }
+    },
+    "/people/{person}/qualifications": {
+      "get": {
+        "tags": [
+          "volunteers"
+        ],
+        "operationId": "volunteersRecordsOf",
+        "summary": "A person's records: their own (with self_upload), or another's with qualifications.read/verify.",
+        "parameters": [
+          {
+            "name": "person",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolunteersRecordList"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "volunteers"
+        ],
+        "operationId": "volunteersRecordQualification",
+        "summary": "A lead records a qualification as verified now. Needs qualifications.verify (org-wide: in any extent). 400 self, range, one_of (no_expiry with expires_on); 409 archived.",
+        "parameters": [
+          {
+            "name": "person",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VolunteersRecordInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolunteersRecord"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/qualifications": {
+      "post": {
+        "tags": [
+          "volunteers"
+        ],
+        "operationId": "volunteersUploadCertificate",
+        "summary": "Upload a certificate: creates a pending record that counts only once a lead verifies it. 501 when self-upload is off; 409 pending_exists, archived.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/VolunteersCertificateUpload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolunteersRecord"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/qualification-records": {
+      "get": {
+        "tags": [
+          "volunteers"
+        ],
+        "operationId": "volunteersPendingRecords",
+        "summary": "Pending records the caller may verify (qualifications.verify extent).",
+        "parameters": [
+          {
+            "name": "department",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolunteersRecordList"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/qualification-records/{record}/verify": {
+      "post": {
+        "tags": [
+          "volunteers"
+        ],
+        "operationId": "volunteersVerifyRecord",
+        "summary": "Verify a pending record, optionally correcting the dates or clearing the expiry (no_expiry). The body may be empty. 400 self, one_of; 409 status.",
+        "parameters": [
+          {
+            "name": "record",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VolunteersVerifyInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolunteersRecord"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/qualification-records/{record}/reject": {
+      "post": {
+        "tags": [
+          "volunteers"
+        ],
+        "operationId": "volunteersRejectRecord",
+        "summary": "Reject (delete) a pending record and its certificate. 409 status.",
+        "parameters": [
+          {
+            "name": "record",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Rejected."
+          }
+        }
+      }
+    },
+    "/qualification-records/{record}": {
+      "delete": {
+        "tags": [
+          "volunteers"
+        ],
+        "operationId": "volunteersRemoveRecord",
+        "summary": "Remove a record: one's own pending one, or any with qualifications.verify.",
+        "parameters": [
+          {
+            "name": "record",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed."
+          }
+        }
+      }
+    },
+    "/qualification-records/{record}/certificate": {
+      "get": {
+        "tags": [
+          "volunteers"
+        ],
+        "operationId": "volunteersOpenCertificate",
+        "summary": "The certificate bytes for the person or a lead who may read the record (audited).",
+        "parameters": [
+          {
+            "name": "record",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The certificate file.",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/departments/{department}/positions": {
+      "get": {
+        "tags": [
+          "volunteers"
+        ],
+        "operationId": "volunteersListPositions",
+        "summary": "A department's positions with requirements; archived=true needs positions.manage.",
+        "parameters": [
+          {
+            "name": "department",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          },
+          {
+            "name": "archived",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolunteersPositionList"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "volunteers"
+        ],
+        "operationId": "volunteersCreatePosition",
+        "summary": "Add a position. Needs positions.manage at the department. 409 taken, archived.",
+        "parameters": [
+          {
+            "name": "department",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VolunteersPositionInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolunteersPosition"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/positions/{position}": {
+      "put": {
+        "tags": [
+          "volunteers"
+        ],
+        "operationId": "volunteersUpdatePosition",
+        "summary": "Change a position. 409 taken, archived.",
+        "parameters": [
+          {
+            "name": "position",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VolunteersPositionInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolunteersPosition"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/positions/{position}/archive": {
+      "post": {
+        "tags": [
+          "volunteers"
+        ],
+        "operationId": "volunteersArchivePosition",
+        "summary": "Archive a position. 409 in_use (future shifts), archived.",
+        "parameters": [
+          {
+            "name": "position",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Archived."
+          }
+        }
+      }
+    },
+    "/positions/{position}/requirements": {
+      "put": {
+        "tags": [
+          "volunteers"
+        ],
+        "operationId": "volunteersSetRequirements",
+        "summary": "Replace the position's required qualifications. 400 too_many, duplicate, unknown, scope; 409 archived.",
+        "parameters": [
+          {
+            "name": "position",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VolunteersRequirementsInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolunteersPosition"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/departments/{department}/members": {
+      "get": {
+        "tags": [
+          "volunteers"
+        ],
+        "operationId": "volunteersListMembers",
+        "summary": "A department's members with playa names and eligible positions, a page at a time. Needs rosters.read.",
+        "parameters": [
+          {
+            "name": "department",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            },
+            "description": "Rows per page, 1 to 500; default 100."
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The next value of the previous page (opaque). Absent for the first page. 400 malformed when it is not one this list gave."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolunteersMemberViewList"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "volunteers"
+        ],
+        "operationId": "volunteersAddMember",
+        "summary": "Add a member. Needs members.manage. 400 unknown person; 409 duplicate, archived.",
+        "parameters": [
+          {
+            "name": "department",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VolunteersMemberInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolunteersMember"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/departments/{department}/members/{person}": {
+      "delete": {
+        "tags": [
+          "volunteers"
+        ],
+        "operationId": "volunteersRemoveMember",
+        "summary": "Remove a member. Needs members.manage. 404 not a member.",
+        "parameters": [
+          {
+            "name": "department",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          },
+          {
+            "name": "person",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed."
+          }
+        }
+      }
+    },
+    "/me/departments": {
+      "get": {
+        "tags": [
+          "volunteers"
+        ],
+        "operationId": "volunteersMyDepartments",
+        "summary": "The caller's memberships.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolunteersMemberList"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/departments/{department}": {
+      "delete": {
+        "tags": [
+          "volunteers"
+        ],
+        "operationId": "volunteersLeave",
+        "summary": "Leave a department; future bookings on its members-only positions are canceled.",
+        "parameters": [
+          {
+            "name": "department",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Left."
+          }
+        }
+      }
+    },
+    "/shifts": {
+      "get": {
+        "tags": [
+          "volunteers"
+        ],
+        "operationId": "volunteersListShifts",
+        "summary": "Shifts the caller may see, with booked, mine and eligibility, a page at a time (order starts; follow next). from or to alone is allowed. canceled=true or a past window needs shifts.manage/rosters.read. 400 malformed after.",
+        "parameters": [
+          {
+            "name": "department",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          },
+          {
+            "name": "event",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          },
+          {
+            "name": "position",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "canceled",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            },
+            "description": "Rows per page, 1 to 500; default 100."
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The next value of the previous page (opaque). Absent for the first page. 400 malformed when it is not one this list gave."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolunteersShiftList"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/shifts/{shift}": {
+      "get": {
+        "tags": [
+          "volunteers"
+        ],
+        "operationId": "volunteersGetShift",
+        "summary": "One shift (404 when the caller may not see it); mates (playa names of the others booked) only when the regional's policy shows it.",
+        "parameters": [
+          {
+            "name": "shift",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolunteersShiftSummary"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "volunteers"
+        ],
+        "operationId": "volunteersUpdateShift",
+        "summary": "Change a shift. 404 when the caller may not see it, 403 when visible without shifts.manage. 400 scope on event (a shift's event never changes); 409 canceled, full, overlap, closed.",
+        "parameters": [
+          {
+            "name": "shift",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VolunteersShiftInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolunteersShift"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/departments/{department}/shifts": {
+      "post": {
+        "tags": [
+          "volunteers"
+        ],
+        "operationId": "volunteersCreateShift",
+        "summary": "Add a shift. Needs shifts.manage at the department. 409 archived, closed.",
+        "parameters": [
+          {
+            "name": "department",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VolunteersShiftInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolunteersShift"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/shifts/{shift}/cancel": {
+      "post": {
+        "tags": [
+          "volunteers"
+        ],
+        "operationId": "volunteersCancelShift",
+        "summary": "Cancel the shift and its bookings. 404 when the caller may not see it, 403 when visible without shifts.manage. 409 canceled.",
+        "parameters": [
+          {
+            "name": "shift",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Canceled."
+          }
+        }
+      }
+    },
+    "/departments/{department}/shifts/copy": {
+      "post": {
+        "tags": [
+          "volunteers"
+        ],
+        "operationId": "volunteersCopyShifts",
+        "summary": "Copy the department's shifts from one event to another (idempotent).",
+        "parameters": [
+          {
+            "name": "department",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VolunteersCopyInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolunteersCopyResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/shifts/{shift}/signups": {
+      "post": {
+        "tags": [
+          "volunteers"
+        ],
+        "operationId": "volunteersSignUp",
+        "summary": "Book the caller. 404 when the shift is not visible. 409 unnamed (set a playa name first), canceled, started, archived, closed, not_member, unqualified (missing), full, overlap (shift), duplicate.",
+        "parameters": [
+          {
+            "name": "shift",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Booked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolunteersSignup"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/shifts/{shift}/assign": {
+      "post": {
+        "tags": [
+          "volunteers"
+        ],
+        "operationId": "volunteersAssign",
+        "summary": "Book another person (or oneself); waive records a missing requirement. Needs shifts.manage. 404 when the shift is not visible. 409 as sign-up (unnamed included, whatever waive says), ended.",
+        "parameters": [
+          {
+            "name": "shift",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VolunteersAssignInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Booked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolunteersSignup"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/signups/{signup}": {
+      "delete": {
+        "tags": [
+          "volunteers"
+        ],
+        "operationId": "volunteersCancelSignup",
+        "summary": "Cancel a booking: one's own (before the start and the cutoff) or any with shifts.manage. 409 status, started, cutoff.",
+        "parameters": [
+          {
+            "name": "signup",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Canceled."
+          }
+        }
+      }
+    },
+    "/shifts/{shift}/roster": {
+      "get": {
+        "tags": [
+          "volunteers"
+        ],
+        "operationId": "volunteersRoster",
+        "summary": "The roster with person IDs, playa names, waivers and eligibility; legal_name per the regional's policy. Needs rosters.read; 404 when the shift is not visible.",
+        "parameters": [
+          {
+            "name": "shift",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolunteersRoster"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/schedule": {
+      "get": {
+        "tags": [
+          "volunteers"
+        ],
+        "operationId": "volunteersMySchedule",
+        "summary": "The caller's bookings, a page at a time. Upcoming (default): not ended, soonest first, with bookings someone else canceled shown until the shift ends. past=true: ended, booked only, newest first. 400 malformed after.",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "past",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "false (default): bookings whose shift has not ended, soonest first, with the ones someone else canceled until the shift ends. true: booked sign-ups whose shift has ended, newest first."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            },
+            "description": "Rows per page, 1 to 500; default 100."
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The next value of the previous page (opaque). Absent for the first page. 400 malformed when it is not one this list gave."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolunteersScheduleList"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/listing": {
+      "get": {
+        "tags": [
+          "volunteers"
+        ],
+        "operationId": "volunteersListed",
+        "summary": "Whether the caller's playa name is shown to others on their shifts.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolunteersListing"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "volunteers"
+        ],
+        "operationId": "volunteersSetListed",
+        "summary": "Set the choice.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VolunteersListingInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolunteersListing"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "VolunteersQualification": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "department": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "validity_days": {
+            "type": "integer"
+          },
+          "archived_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "description": "A catalogue entry. department is absent for an org-wide entry; absent scalar fields read as their zero."
+      },
+      "VolunteersQualificationList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VolunteersQualification"
+            },
+            "description": "Always present; an empty list is []."
+          }
+        },
+        "description": "The list; items is always present.",
+        "required": [
+          "items"
+        ]
+      },
+      "VolunteersQualificationInput": {
+        "type": "object",
+        "properties": {
+          "department": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "validity_days": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "description": "department is absent for an org-wide entry and must equal the current one on update."
+      },
+      "VolunteersRecord": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "qualification": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "person": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "acquired_on": {
+            "type": "string",
+            "format": "date",
+            "description": "YYYY-MM-DD; absent when none"
+          },
+          "expires_on": {
+            "type": "string",
+            "format": "date",
+            "description": "YYYY-MM-DD; absent when none"
+          },
+          "verified_by": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "verified_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "certificate": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "description": "A person holds a qualification. verified_at absent = pending (does not count)."
+      },
+      "VolunteersRecordList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VolunteersRecord"
+            },
+            "description": "Always present; an empty list is []."
+          },
+          "self_upload": {
+            "type": "boolean",
+            "description": "Present only on the person's own list: whether uploading a certificate is turned on."
+          }
+        },
+        "description": "A person's records. self_upload is present only on the actor's own list.",
+        "required": [
+          "items"
+        ]
+      },
+      "VolunteersRecordInput": {
+        "type": "object",
+        "properties": {
+          "qualification": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "acquired_on": {
+            "type": "string",
+            "format": "date",
+            "description": "YYYY-MM-DD; absent when none"
+          },
+          "expires_on": {
+            "type": "string",
+            "format": "date",
+            "description": "YYYY-MM-DD; absent when none"
+          },
+          "no_expiry": {
+            "type": "boolean",
+            "description": "true = the record never expires, whatever the catalogue's default validity; with expires_on it is 400 one_of."
+          }
+        },
+        "required": [
+          "qualification",
+          "acquired_on"
+        ],
+        "description": "The person comes from the path."
+      },
+      "VolunteersVerifyInput": {
+        "type": "object",
+        "properties": {
+          "acquired_on": {
+            "type": "string",
+            "format": "date",
+            "description": "YYYY-MM-DD; absent when none"
+          },
+          "expires_on": {
+            "type": "string",
+            "format": "date",
+            "description": "YYYY-MM-DD; absent when none"
+          },
+          "no_expiry": {
+            "type": "boolean",
+            "description": "true = clear the expiry (the certificate never expires); with expires_on it is 400 one_of."
+          }
+        },
+        "description": "Absent dates keep what the person entered; no_expiry clears the expiry."
+      },
+      "VolunteersPosition": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "department": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "access": {
+            "type": "string",
+            "enum": [
+              "open",
+              "members"
+            ]
+          },
+          "requirements": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ID"
+            }
+          },
+          "hide_shift_mates": {
+            "type": "boolean"
+          },
+          "archived_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "VolunteersPositionList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VolunteersPosition"
+            },
+            "description": "Always present; an empty list is []."
+          }
+        },
+        "description": "The list; items is always present.",
+        "required": [
+          "items"
+        ]
+      },
+      "VolunteersPositionInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "access": {
+            "type": "string",
+            "enum": [
+              "open",
+              "members"
+            ]
+          },
+          "hide_shift_mates": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "access"
+        ]
+      },
+      "VolunteersRequirementsInput": {
+        "type": "object",
+        "properties": {
+          "qualifications": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        },
+        "required": [
+          "qualifications"
+        ]
+      },
+      "VolunteersMember": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "department": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "person": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "VolunteersMemberList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VolunteersMember"
+            },
+            "description": "Always present; an empty list is []."
+          }
+        },
+        "description": "The list; items is always present.",
+        "required": [
+          "items"
+        ]
+      },
+      "VolunteersMemberView": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "department": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "person": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "playa_name": {
+            "type": "string"
+          },
+          "eligible": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        },
+        "description": "eligible lists the active positions the person is eligible for today."
+      },
+      "VolunteersMemberViewList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VolunteersMemberView"
+            },
+            "description": "Always present; an empty list is []."
+          },
+          "next": {
+            "type": "string",
+            "description": "Pass as after for the next page; absent on the last page."
+          }
+        },
+        "description": "One page of the list; follow next until it is absent.",
+        "required": [
+          "items"
+        ]
+      },
+      "VolunteersMemberInput": {
+        "type": "object",
+        "properties": {
+          "person": {
+            "$ref": "#/components/schemas/ID"
+          }
+        },
+        "required": [
+          "person"
+        ]
+      },
+      "VolunteersShift": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "department": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "position": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "event": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "label": {
+            "type": "string"
+          },
+          "starts": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ends": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "zone": {
+            "type": "string",
+            "description": "IANA zone name."
+          },
+          "slots": {
+            "type": "integer"
+          },
+          "location": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "canceled_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cancel_reason": {
+            "type": "string",
+            "enum": [
+              "self",
+              "lead",
+              "shift_canceled",
+              "department_archived",
+              "event_closed"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "VolunteersShiftInput": {
+        "type": "object",
+        "properties": {
+          "position": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "event": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "label": {
+            "type": "string"
+          },
+          "starts": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ends": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "zone": {
+            "type": "string",
+            "description": "Required for standing work (no event); ignored when event is set."
+          },
+          "slots": {
+            "type": "integer"
+          },
+          "location": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "position",
+          "label",
+          "starts",
+          "ends",
+          "slots"
+        ]
+      },
+      "VolunteersEligibility": {
+        "type": "object",
+        "properties": {
+          "eligible": {
+            "type": "boolean"
+          },
+          "missing": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ID"
+            }
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "not_member",
+              "full",
+              "started",
+              "canceled",
+              "closed",
+              "archived",
+              "overlap"
+            ]
+          }
+        }
+      },
+      "VolunteersShiftMates": {
+        "type": "object",
+        "properties": {
+          "names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "unlisted": {
+            "type": "integer"
+          }
+        },
+        "description": "Playa names only. Present only on GET /shifts/{shift} and only when the regional's policy shows it to the viewer."
+      },
+      "VolunteersShiftSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "department": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "position": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "event": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "label": {
+            "type": "string"
+          },
+          "starts": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ends": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "zone": {
+            "type": "string",
+            "description": "IANA zone name."
+          },
+          "slots": {
+            "type": "integer"
+          },
+          "location": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "canceled_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cancel_reason": {
+            "type": "string",
+            "enum": [
+              "self",
+              "lead",
+              "shift_canceled",
+              "department_archived",
+              "event_closed"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "department_name": {
+            "type": "string",
+            "description": "The department's name; absent when the directory does not know it."
+          },
+          "position_name": {
+            "type": "string"
+          },
+          "booked": {
+            "type": "integer"
+          },
+          "mine": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "eligibility": {
+            "$ref": "#/components/schemas/VolunteersEligibility"
+          },
+          "mates": {
+            "$ref": "#/components/schemas/VolunteersShiftMates"
+          }
+        },
+        "description": "A shift with the viewer's figures; mates is absent on lists."
+      },
+      "VolunteersShiftList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VolunteersShiftSummary"
+            },
+            "description": "Always present; an empty list is []."
+          },
+          "next": {
+            "type": "string",
+            "description": "Pass as after for the next page; absent on the last page."
+          }
+        },
+        "description": "One page of the list; follow next until it is absent.",
+        "required": [
+          "items"
+        ]
+      },
+      "VolunteersCopyInput": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "to": {
+            "$ref": "#/components/schemas/ID"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ]
+      },
+      "VolunteersCopyResult": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "integer"
+          }
+        }
+      },
+      "VolunteersSignup": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "shift": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "person": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "booked",
+              "canceled"
+            ]
+          },
+          "waived": {
+            "type": "boolean"
+          },
+          "waived_by": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "canceled_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cancel_reason": {
+            "type": "string",
+            "enum": [
+              "self",
+              "lead",
+              "shift_canceled",
+              "department_archived",
+              "event_closed"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "VolunteersAssignInput": {
+        "type": "object",
+        "properties": {
+          "person": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "waive": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "person"
+        ]
+      },
+      "VolunteersRosterEntry": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "shift": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "person": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "booked",
+              "canceled"
+            ]
+          },
+          "waived": {
+            "type": "boolean"
+          },
+          "waived_by": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "canceled_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cancel_reason": {
+            "type": "string",
+            "enum": [
+              "self",
+              "lead",
+              "shift_canceled",
+              "department_archived",
+              "event_closed"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "playa_name": {
+            "type": "string"
+          },
+          "legal_name": {
+            "type": "string",
+            "description": "Present only when the regional's legal_name policy shows it to the viewer and people knows one."
+          },
+          "eligible": {
+            "type": "boolean"
+          }
+        },
+        "description": "waived flags a requirement waiver; it outlives waived_by."
+      },
+      "VolunteersRoster": {
+        "type": "object",
+        "properties": {
+          "shift": {
+            "$ref": "#/components/schemas/VolunteersShift"
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VolunteersRosterEntry"
+            }
+          }
+        }
+      },
+      "VolunteersScheduleEntry": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "shift": {
+            "$ref": "#/components/schemas/VolunteersShift"
+          },
+          "person": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "booked",
+              "canceled"
+            ]
+          },
+          "waived": {
+            "type": "boolean"
+          },
+          "waived_by": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "canceled_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cancel_reason": {
+            "type": "string",
+            "enum": [
+              "self",
+              "lead",
+              "shift_canceled",
+              "department_archived",
+              "event_closed"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "department_name": {
+            "type": "string"
+          },
+          "position_name": {
+            "type": "string"
+          }
+        },
+        "description": "id is the sign-up's; shift is the nested shift object."
+      },
+      "VolunteersScheduleList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VolunteersScheduleEntry"
+            },
+            "description": "Always present; an empty list is []."
+          },
+          "next": {
+            "type": "string",
+            "description": "Pass as after for the next page; absent on the last page."
+          }
+        },
+        "description": "One page of the list; follow next until it is absent.",
+        "required": [
+          "items"
+        ]
+      },
+      "VolunteersListing": {
+        "type": "object",
+        "properties": {
+          "listed": {
+            "type": "boolean"
+          }
+        },
+        "description": "Absent = false."
+      },
+      "VolunteersListingInput": {
+        "type": "object",
+        "properties": {
+          "listed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "listed"
+        ]
+      },
+      "VolunteersCertificateUpload": {
+        "type": "object",
+        "properties": {
+          "qualification": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "acquired_on": {
+            "type": "string",
+            "format": "date",
+            "description": "YYYY-MM-DD; absent when none"
+          },
+          "expires_on": {
+            "type": "string",
+            "format": "date",
+            "description": "YYYY-MM-DD; absent when none"
+          },
+          "file": {
+            "type": "string",
+            "format": "binary"
+          }
+        },
+        "required": [
+          "qualification",
+          "acquired_on",
+          "file"
+        ],
+        "description": "multipart/form-data; the text fields come before the file."
+      }
+    }
+  }
+}

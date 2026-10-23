@@ -1,0 +1,12 @@
+[
+ {"name":"queued_request_moves",       "existing":"queued",   "request":"before","handler":"",     "status":"queued","runAt":"request",  "attempts":0},
+ {"name":"done_request_reopens",       "existing":"done",     "request":"before","handler":"",     "status":"queued","runAt":"request",  "attempts":0},
+ {"name":"failed_request_reopens",     "existing":"failed",   "request":"before","handler":"",     "status":"queued","runAt":"request",  "attempts":0},
+ {"name":"canceled_request_reopens",   "existing":"canceled", "request":"before","handler":"",     "status":"queued","runAt":"request",  "attempts":0, "fakeSkips":true},
+ {"name":"running_request_ok",         "existing":"running",  "request":"during","handler":"ok",   "status":"queued","runAt":"request",  "attempts":0},
+ {"name":"running_request_fail",       "existing":"running",  "request":"during","handler":"fail", "status":"queued","runAt":"request",  "attempts":0},
+ {"name":"running_request_retry",      "existing":"running",  "request":"during","handler":"retry","status":"queued","runAt":"request",  "attempts":0, "fakeSkips":true},
+ {"name":"running_no_request_ok",      "existing":"running",  "request":"none",  "handler":"ok",   "status":"done",  "runAt":"original", "attempts":1},
+ {"name":"running_no_request_fail",    "existing":"running",  "request":"none",  "handler":"fail", "status":"failed","runAt":"original", "attempts":1},
+ {"name":"running_no_request_retry",   "existing":"running",  "request":"none",  "handler":"retry","status":"queued","runAt":"later",    "attempts":1, "fakeSkips":true}
+]

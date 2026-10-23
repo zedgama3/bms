@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { api, ApiError, PROBLEM_CODES, upload } from "@/api";
+import { api, ApiError, download, PROBLEM_CODES, upload } from "@/api";
 import type { paths } from "@/api";
 import { configureClient, makeApi, moduleOf, TIMEOUT_MS, UPLOAD_TIMEOUT_MS } from "@/api/internal";
 import type { ClientHooks } from "@/api/internal";
@@ -335,6 +335,28 @@ describe("the codes table", () => {
       "/api/openapi.json",
     ];
     expect(Object.keys(openapi.paths)).toEqual(expect.arrayContaining(keys));
+  });
+});
+
+describe("download", () => {
+  it("returns the bytes untouched, with a GET that accepts any type", async () => {
+    const fetchMock = installFetch(
+      () => new Response("%PDF-1.4 not json", { headers: { "Content-Type": "application/pdf" } }),
+    );
+    const blob = await download("/api/x/file");
+    expect(blob.type).toBe("application/pdf");
+    expect(blob.size).toBe(17);
+    const req = fetchMock.mock.calls[0]![0];
+    expect(req.method).toBe("GET");
+    expect(req.headers.get("Accept")).toContain("*/*");
+    expect(req.headers.get("traceparent")).toBeTruthy();
+  });
+
+  it("a failure is an ApiError from the problem body, with Retry-After kept", async () => {
+    installFetch(() => problem(503, { code: "unavailable" }, { "Retry-After": "30" }));
+    const e = await failure(download("/api/x/file"));
+    expect(e.status).toBe(503);
+    expect(e.retryAfter).toBe(30);
   });
 });
 

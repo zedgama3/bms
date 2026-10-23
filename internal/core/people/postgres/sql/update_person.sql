@@ -2,10 +2,14 @@
 -- NotFound. Same partial-update rules as upsert_person.sql (NULL: unchanged; '' clears;
 -- $7 '' clears contact_email).
 -- Args: $1 id uuid, $2 playa_name text, $3 pronouns text, $4 language text, $5 legal_name
--- text, $6 phone text, $7 contact_email text, $8 updated_at timestamptz.
+-- text, $6 phone text, $7 contact_email text, $8 updated_at timestamptz, $9 playa_name_key
+-- text (people.NameKey of $2; NULL exactly when $2 is NULL, so the key never drifts from the
+-- name; '' when $2 is '', which frees the name). A key another person holds fails 23505 on
+-- person_playa_name_key_idx (Conflict playa_name taken). The key is a name: never logged.
 -- Columns, in order: as get_person.sql.
 UPDATE core.person SET
     playa_name    = COALESCE($2::text, playa_name),
+    playa_name_key = COALESCE($9::text, playa_name_key),
     pronouns      = COALESCE($3::text, pronouns),
     language      = COALESCE($4::text, language),
     legal_name    = COALESCE($5::text, legal_name),

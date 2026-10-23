@@ -40,7 +40,6 @@ func init() {
 var (
 	sqlEnqueue     = mustSQL("enqueue_job.sql")
 	sqlDefer       = mustSQL("defer_job.sql")
-	sqlByKey       = mustSQL("get_job_by_key.sql")
 	sqlInsertSlot  = mustSQL("insert_scheduled_slot.sql")
 	sqlRunNow      = mustSQL("run_now_job.sql")
 	sqlLease       = mustSQL("lease_jobs.sql")
@@ -157,33 +156,25 @@ func deref(s *string) string {
 
 // ---- enqueue and schedule ----------------------------------------------------------------
 
-// Enqueue inserts one queued row for n or, when n.Key is set and a Queued row with that
-// (name, key) exists, moves that row to n.RunAt with n.Args. It returns the ID of the row that
-// now holds the request. A Running, Done, Failed or Canceled row with that key leaves the
-// request a no-op and its ID is returned. Runs on the caller's transaction.
+// Enqueue makes n the request of its (name, key) and returns the ID of the row that holds it.
+// Without a key it inserts a queued row. With a key the latest request wins (decision 3,
+// decision 23): a Queued row is moved to n.RunAt and n.Args, a Done, Failed or Canceled one is
+// reopened as Queued with its attempts reset, and a Running one keeps its state and holds the
+// request (next_run_at, next_args) for the statement that ends the run to apply. The statement
+// always returns the key's row. Runs on the caller's transaction.
 // Fails errs.Invalid for a constraint violation (a caller bug), errs.Unavailable wrapping
 // db.ErrReadOnly on a read-only copy.
 func (s *Store) Enqueue(ctx context.Context, n rows.New, now time.Time) (rows.ID, error) {
 	const op = "jobs.postgres.Enqueue"
-	// A row purged between the insert and the lookup is the one race: insert once more.
-	for range 2 {
-		ids, err := queryAll(ctx, s.db, op, sqlEnqueue, scanID,
-			[16]byte(n.ID), n.Name, textArg(n.Key), n.Args, utc(n.RunAt), textArg(n.TraceID), utc(now))
-		if err != nil {
-			return rows.ID{}, err
-		}
-		if len(ids) > 0 {
-			return ids[0], nil
-		}
-		existing, err := s.byKey(ctx, op, n.Name, n.Key)
-		if err == nil {
-			return existing, nil
-		}
-		if !errs.Is(err, errs.NotFound) {
-			return rows.ID{}, err
-		}
+	ids, err := queryAll(ctx, s.db, op, sqlEnqueue, scanID,
+		[16]byte(n.ID), n.Name, textArg(n.Key), n.Args, utc(n.RunAt), textArg(n.TraceID), utc(now))
+	if err != nil {
+		return rows.ID{}, err
 	}
-	return rows.ID{}, errs.E(op, errs.Conflict, errors.New("the job changed while it was being enqueued"))
+	if len(ids) != 1 {
+		return rows.ID{}, errs.E(op, errs.Internal, errors.New("the enqueue statement returned no row"))
+	}
+	return ids[0], nil
 }
 
 func scanID(sc scanner) (rows.ID, error) {
@@ -192,16 +183,23 @@ func scanID(sc scanner) (rows.ID, error) {
 	return rows.ID(id), err //nolint:wrapcheck // queryAll wraps with db.Wrap
 }
 
-// byKey returns the ID of the row with (name, key).
-func (s *Store) byKey(ctx context.Context, op, name, key string) (rows.ID, error) {
-	var (
-		id     [16]byte
-		status string
-	)
-	if err := s.db.QueryRow(ctx, sqlByKey, name, key).Scan(&id, &status); err != nil {
-		return rows.ID{}, db.Wrap(op, err)
+// settled runs a statement that takes a leased row out of running, RETURNING id, status, next.
+// It reports whether the lease still held (a row came back) and whether a held request was
+// applied (next: the row is queued for it instead of ending as the run's outcome says).
+func (s *Store) settled(ctx context.Context, op, query string, args ...any) (ok, next bool, err error) {
+	got, err := queryAll(ctx, s.db, op, query, func(sc scanner) (bool, error) {
+		var (
+			id     [16]byte
+			status string
+			held   bool
+		)
+		err := sc.Scan(&id, &status, &held)
+		return held, err //nolint:wrapcheck // queryAll wraps with db.Wrap
+	}, args...)
+	if err != nil || len(got) == 0 {
+		return false, false, err
 	}
-	return rows.ID(id), nil
+	return true, got[0], nil
 }
 
 // Defer inserts one queued row for n. A repeat of the same (name, key) is a no-op in every
@@ -270,7 +268,8 @@ func (s *Store) Lease(ctx context.Context, now time.Time, limit int, leasedUntil
 }
 
 // ReclaimExpired settles up to limit Running rows whose lease has lapsed: back to Queued with
-// last_error lost_lease while attempts < maxAttempts, to Failed with gave_up otherwise. Must
+// last_error lost_lease while attempts < maxAttempts, to Failed with gave_up otherwise; a row
+// with a held request becomes Queued for it instead, whichever arm (Reclaimed.Next). Must
 // run in a Write transaction. Fails errs.Unavailable wrapping db.ErrReadOnly on a read-only
 // copy.
 func (s *Store) ReclaimExpired(ctx context.Context, now time.Time, maxAttempts, limit int) ([]rows.Reclaimed, error) {
@@ -280,7 +279,7 @@ func (s *Store) ReclaimExpired(ctx context.Context, now time.Time, maxAttempts, 
 			id [16]byte
 			n  int32
 		)
-		if err := sc.Scan(&id, &r.Name, &r.Status, &n); err != nil {
+		if err := sc.Scan(&id, &r.Name, &r.Status, &n, &r.Next); err != nil {
 			return rows.Reclaimed{}, err //nolint:wrapcheck // queryAll wraps with db.Wrap
 		}
 		r.ID, r.Attempts = rows.ID(id), int(n)
@@ -304,25 +303,32 @@ func (s *Store) Heartbeat(ctx context.Context, id rows.ID, lease, next, now time
 	}
 }
 
-// Complete ends a leased row as done. It reports false when the lease was lost.
-func (s *Store) Complete(ctx context.Context, id rows.ID, lease, now time.Time) (bool, error) {
-	return s.returned(ctx, "jobs.postgres.Complete", sqlComplete, [16]byte(id), utc(lease), utc(now))
+// The four methods below take a leased row out of running. Each reports ok false when the
+// lease was lost (the row is not ours: write nothing more) and next true when the row held a
+// request made during the run, which the statement applied instead of the state the method
+// names: the row is Queued at the held time with attempts 0 (decision 23).
+
+// Complete ends a leased row as done (or applies the held request).
+func (s *Store) Complete(ctx context.Context, id rows.ID, lease, now time.Time) (ok, next bool, err error) {
+	return s.settled(ctx, "jobs.postgres.Complete", sqlComplete, [16]byte(id), utc(lease), utc(now))
 }
 
-// Fail ends a leased row as failed with a token. It reports false when the lease was lost.
-func (s *Store) Fail(ctx context.Context, id rows.ID, lease time.Time, token string, now time.Time) (bool, error) {
-	return s.returned(ctx, "jobs.postgres.Fail", sqlFail, [16]byte(id), utc(lease), token, utc(now))
+// Fail ends a leased row as failed with a token (or applies the held request, keeping the
+// token in last_error).
+func (s *Store) Fail(ctx context.Context, id rows.ID, lease time.Time, token string, now time.Time) (ok, next bool, err error) {
+	return s.settled(ctx, "jobs.postgres.Fail", sqlFail, [16]byte(id), utc(lease), token, utc(now))
 }
 
-// Requeue puts a leased row back to queued, due at runAt, keeping the attempt counted.
-func (s *Store) Requeue(ctx context.Context, id rows.ID, lease time.Time, token string, runAt, now time.Time) (bool, error) {
-	return s.returned(ctx, "jobs.postgres.Requeue", sqlRequeue, [16]byte(id), utc(lease), token, utc(runAt), utc(now))
+// Requeue puts a leased row back to queued, due at runAt, keeping the attempt counted (or
+// applies the held request instead, with no backoff).
+func (s *Store) Requeue(ctx context.Context, id rows.ID, lease time.Time, token string, runAt, now time.Time) (ok, next bool, err error) {
+	return s.settled(ctx, "jobs.postgres.Requeue", sqlRequeue, [16]byte(id), utc(lease), token, utc(runAt), utc(now))
 }
 
-// Release puts a leased row back to queued, due as before, without counting the attempt. An
-// empty token keeps the row's last_error.
-func (s *Store) Release(ctx context.Context, id rows.ID, lease time.Time, token string, now time.Time) (bool, error) {
-	return s.returned(ctx, "jobs.postgres.Release", sqlRelease, [16]byte(id), utc(lease), textArg(token), utc(now))
+// Release puts a leased row back to queued, due as before, without counting the attempt (or
+// applies the held request). An empty token keeps the row's last_error.
+func (s *Store) Release(ctx context.Context, id rows.ID, lease time.Time, token string, now time.Time) (ok, next bool, err error) {
+	return s.settled(ctx, "jobs.postgres.Release", sqlRelease, [16]byte(id), utc(lease), textArg(token), utc(now))
 }
 
 // ---- admin -------------------------------------------------------------------------------

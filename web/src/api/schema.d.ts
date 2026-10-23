@@ -944,7 +944,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create a person without an account. Needs people.profiles.manage. 400 playa_name required. */
+        /** Create a person without an account. Needs people.profiles.manage. 400 playa_name required; 409 (field playa_name, code taken) when another person already uses the name. */
         post: operations["peopleCreate"];
         delete?: never;
         options?: never;
@@ -961,7 +961,7 @@ export interface paths {
         };
         /** Your own profile, every field group, contacts, consents and the modules' sections. A person with no row yet gets an empty, incomplete profile (nothing is written). Read once per session by the frame. */
         get: operations["peopleMe"];
-        /** Change your own profile; absent or null fields are unchanged and an empty string clears one. 400 playa_name required, legal_name or phone required when the regional requires them, hidden for a field the regional turned off, has_account for contact_email, malformed, too_long, control_chars. */
+        /** Change your own profile; absent or null fields are unchanged and an empty string clears one. 400 playa_name required, legal_name or phone required when the regional requires them, hidden for a field the regional turned off, has_account for contact_email, malformed, too_long, control_chars; 400 playa_name permanent when a name is already set and the new one has another key (the same name, or a respelling with the same key, is accepted); 409 (field playa_name, code taken) when another person already uses the name. */
         put: operations["peopleUpdateMe"];
         post?: never;
         delete?: never;
@@ -1168,7 +1168,7 @@ export interface paths {
         };
         /** A person's profile as you may see it: internal fields with people.directory.read; personal fields and contacts with people.contacts.read (audited); consents with people.profiles.manage. Your own ID behaves as /me. 403 without people.directory.read; 404 for an unknown person. */
         get: operations["peopleGet"];
-        /** Change another person's profile. Needs people.profiles.manage; the regional's required modes are not enforced. Your own ID behaves as PUT /me. 404 for an unknown person. */
+        /** Change another person's profile. Needs people.profiles.manage; the regional's required modes are not enforced. Your own ID behaves as PUT /me, except that a holder of people.profiles.manage may rename their own set playa name. A set playa name may be changed (audited with the reason rename) but not cleared (400 playa_name required); 409 (field playa_name, code taken) when another person already uses the name. 404 for an unknown person. */
         put: operations["peopleUpdate"];
         post?: never;
         /** Delete a person and everything about them across identity, access and every module, in one transaction. Needs people.data.delete. 400 self; 403 for a superuser account; 404; 409 last_access_admin or in_use. Audit rows stay and are counted. */
@@ -1380,6 +1380,505 @@ export interface paths {
         put: operations["settingsSet"];
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/volunteers/departments/{department}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A department's members with playa names and eligible positions, a page at a time. Needs rosters.read. */
+        get: operations["volunteersListMembers"];
+        put?: never;
+        /** Add a member. Needs members.manage. 400 unknown person; 409 duplicate, archived. */
+        post: operations["volunteersAddMember"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/volunteers/departments/{department}/members/{person}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a member. Needs members.manage. 404 not a member. */
+        delete: operations["volunteersRemoveMember"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/volunteers/departments/{department}/positions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A department's positions with requirements; archived=true needs positions.manage. */
+        get: operations["volunteersListPositions"];
+        put?: never;
+        /** Add a position. Needs positions.manage at the department. 409 taken, archived. */
+        post: operations["volunteersCreatePosition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/volunteers/departments/{department}/shifts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add a shift. Needs shifts.manage at the department. 409 archived, closed. */
+        post: operations["volunteersCreateShift"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/volunteers/departments/{department}/shifts/copy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Copy the department's shifts from one event to another (idempotent). */
+        post: operations["volunteersCopyShifts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/volunteers/me/departments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's memberships. */
+        get: operations["volunteersMyDepartments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/volunteers/me/departments/{department}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Leave a department; future bookings on its members-only positions are canceled. */
+        delete: operations["volunteersLeave"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/volunteers/me/listing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether the caller's playa name is shown to others on their shifts. */
+        get: operations["volunteersListed"];
+        /** Set the choice. */
+        put: operations["volunteersSetListed"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/volunteers/me/qualifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload a certificate: creates a pending record that counts only once a lead verifies it. 501 when self-upload is off; 409 pending_exists, archived. */
+        post: operations["volunteersUploadCertificate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/volunteers/me/schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's bookings, a page at a time. Upcoming (default): not ended, soonest first, with bookings someone else canceled shown until the shift ends. past=true: ended, booked only, newest first. 400 malformed after. */
+        get: operations["volunteersMySchedule"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/volunteers/people/{person}/qualifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A person's records: their own (with self_upload), or another's with qualifications.read/verify. */
+        get: operations["volunteersRecordsOf"];
+        put?: never;
+        /** A lead records a qualification as verified now. Needs qualifications.verify (org-wide: in any extent). 400 self, range, one_of (no_expiry with expires_on); 409 archived. */
+        post: operations["volunteersRecordQualification"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/volunteers/positions/{position}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Change a position. 409 taken, archived. */
+        put: operations["volunteersUpdatePosition"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/volunteers/positions/{position}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive a position. 409 in_use (future shifts), archived. */
+        post: operations["volunteersArchivePosition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/volunteers/positions/{position}/requirements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Replace the position's required qualifications. 400 too_many, duplicate, unknown, scope; 409 archived. */
+        put: operations["volunteersSetRequirements"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/volunteers/qualification-records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Pending records the caller may verify (qualifications.verify extent). */
+        get: operations["volunteersPendingRecords"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/volunteers/qualification-records/{record}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a record: one's own pending one, or any with qualifications.verify. */
+        delete: operations["volunteersRemoveRecord"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/volunteers/qualification-records/{record}/certificate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The certificate bytes for the person or a lead who may read the record (audited). */
+        get: operations["volunteersOpenCertificate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/volunteers/qualification-records/{record}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject (delete) a pending record and its certificate. 409 status. */
+        post: operations["volunteersRejectRecord"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/volunteers/qualification-records/{record}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify a pending record, optionally correcting the dates or clearing the expiry (no_expiry). The body may be empty. 400 self, one_of; 409 status. */
+        post: operations["volunteersVerifyRecord"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/volunteers/qualifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The catalogue: active entries to everyone; archived=true needs qualifications.manage. */
+        get: operations["volunteersListQualifications"];
+        put?: never;
+        /** Add a catalogue entry. Org-wide needs qualifications.manage site-wide; a department's, at the department. 409 name taken, department archived. */
+        post: operations["volunteersCreateQualification"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/volunteers/qualifications/{qualification}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Change an entry. 400 scope when department differs; 409 archived, taken. */
+        put: operations["volunteersUpdateQualification"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/volunteers/qualifications/{qualification}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive an entry. 409 archived. */
+        post: operations["volunteersArchiveQualification"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/volunteers/shifts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Shifts the caller may see, with booked, mine and eligibility, a page at a time (order starts; follow next). from or to alone is allowed. canceled=true or a past window needs shifts.manage/rosters.read. 400 malformed after. */
+        get: operations["volunteersListShifts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/volunteers/shifts/{shift}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One shift (404 when the caller may not see it); mates (playa names of the others booked) only when the regional's policy shows it. */
+        get: operations["volunteersGetShift"];
+        /** Change a shift. 404 when the caller may not see it, 403 when visible without shifts.manage. 400 scope on event (a shift's event never changes); 409 canceled, full, overlap, closed. */
+        put: operations["volunteersUpdateShift"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/volunteers/shifts/{shift}/assign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Book another person (or oneself); waive records a missing requirement. Needs shifts.manage. 404 when the shift is not visible. 409 as sign-up (unnamed included, whatever waive says), ended. */
+        post: operations["volunteersAssign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/volunteers/shifts/{shift}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel the shift and its bookings. 404 when the caller may not see it, 403 when visible without shifts.manage. 409 canceled. */
+        post: operations["volunteersCancelShift"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/volunteers/shifts/{shift}/roster": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The roster with person IDs, playa names, waivers and eligibility; legal_name per the regional's policy. Needs rosters.read; 404 when the shift is not visible. */
+        get: operations["volunteersRoster"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/volunteers/shifts/{shift}/signups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Book the caller. 404 when the shift is not visible. 409 unnamed (set a playa name first), canceled, started, archived, closed, not_member, unqualified (missing), full, overlap (shift), duplicate. */
+        post: operations["volunteersSignUp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/volunteers/signups/{signup}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Cancel a booking: one's own (before the start and the cutoff) or any with shifts.manage. 409 status, started, cutoff. */
+        delete: operations["volunteersCancelSignup"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2224,6 +2723,353 @@ export interface components {
             end: string;
             /** Format: date-time */
             start: string;
+        };
+        VolunteersAssignInput: {
+            person: components["schemas"]["ID"];
+            waive?: boolean;
+        };
+        /** @description multipart/form-data; the text fields come before the file. */
+        VolunteersCertificateUpload: {
+            /**
+             * Format: date
+             * @description YYYY-MM-DD; absent when none
+             */
+            acquired_on: string;
+            /**
+             * Format: date
+             * @description YYYY-MM-DD; absent when none
+             */
+            expires_on?: string;
+            /** Format: binary */
+            file: string;
+            qualification: components["schemas"]["ID"];
+        };
+        VolunteersCopyInput: {
+            from: components["schemas"]["ID"];
+            to: components["schemas"]["ID"];
+        };
+        VolunteersCopyResult: {
+            created?: number;
+        };
+        VolunteersEligibility: {
+            eligible?: boolean;
+            missing?: components["schemas"]["ID"][];
+            /** @enum {string} */
+            reason?: "not_member" | "full" | "started" | "canceled" | "closed" | "archived" | "overlap";
+        };
+        /** @description Absent = false. */
+        VolunteersListing: {
+            listed?: boolean;
+        };
+        VolunteersListingInput: {
+            listed: boolean;
+        };
+        VolunteersMember: {
+            /** Format: date-time */
+            created_at?: string;
+            department?: components["schemas"]["ID"];
+            id?: components["schemas"]["ID"];
+            person?: components["schemas"]["ID"];
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        VolunteersMemberInput: {
+            person: components["schemas"]["ID"];
+        };
+        /** @description The list; items is always present. */
+        VolunteersMemberList: {
+            /** @description Always present; an empty list is []. */
+            items: components["schemas"]["VolunteersMember"][];
+        };
+        /** @description eligible lists the active positions the person is eligible for today. */
+        VolunteersMemberView: {
+            /** Format: date-time */
+            created_at?: string;
+            department?: components["schemas"]["ID"];
+            eligible?: components["schemas"]["ID"][];
+            id?: components["schemas"]["ID"];
+            person?: components["schemas"]["ID"];
+            playa_name?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        /** @description One page of the list; follow next until it is absent. */
+        VolunteersMemberViewList: {
+            /** @description Always present; an empty list is []. */
+            items: components["schemas"]["VolunteersMemberView"][];
+            /** @description Pass as after for the next page; absent on the last page. */
+            next?: string;
+        };
+        VolunteersPosition: {
+            /** @enum {string} */
+            access?: "open" | "members";
+            /** Format: date-time */
+            archived_at?: string;
+            /** Format: date-time */
+            created_at?: string;
+            department?: components["schemas"]["ID"];
+            description?: string;
+            hide_shift_mates?: boolean;
+            id?: components["schemas"]["ID"];
+            name?: string;
+            requirements?: components["schemas"]["ID"][];
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        VolunteersPositionInput: {
+            /** @enum {string} */
+            access: "open" | "members";
+            description?: string;
+            hide_shift_mates?: boolean;
+            name: string;
+        };
+        /** @description The list; items is always present. */
+        VolunteersPositionList: {
+            /** @description Always present; an empty list is []. */
+            items: components["schemas"]["VolunteersPosition"][];
+        };
+        /** @description A catalogue entry. department is absent for an org-wide entry; absent scalar fields read as their zero. */
+        VolunteersQualification: {
+            /** Format: date-time */
+            archived_at?: string;
+            /** Format: date-time */
+            created_at?: string;
+            department?: components["schemas"]["ID"];
+            description?: string;
+            id?: components["schemas"]["ID"];
+            name?: string;
+            /** Format: date-time */
+            updated_at?: string;
+            validity_days?: number;
+        };
+        /** @description department is absent for an org-wide entry and must equal the current one on update. */
+        VolunteersQualificationInput: {
+            department?: components["schemas"]["ID"];
+            description?: string;
+            name: string;
+            validity_days?: number;
+        };
+        /** @description The list; items is always present. */
+        VolunteersQualificationList: {
+            /** @description Always present; an empty list is []. */
+            items: components["schemas"]["VolunteersQualification"][];
+        };
+        /** @description A person holds a qualification. verified_at absent = pending (does not count). */
+        VolunteersRecord: {
+            /**
+             * Format: date
+             * @description YYYY-MM-DD; absent when none
+             */
+            acquired_on?: string;
+            certificate?: components["schemas"]["ID"];
+            /** Format: date-time */
+            created_at?: string;
+            /**
+             * Format: date
+             * @description YYYY-MM-DD; absent when none
+             */
+            expires_on?: string;
+            id?: components["schemas"]["ID"];
+            person?: components["schemas"]["ID"];
+            qualification?: components["schemas"]["ID"];
+            /** Format: date-time */
+            updated_at?: string;
+            /** Format: date-time */
+            verified_at?: string;
+            verified_by?: components["schemas"]["ID"];
+        };
+        /** @description The person comes from the path. */
+        VolunteersRecordInput: {
+            /**
+             * Format: date
+             * @description YYYY-MM-DD; absent when none
+             */
+            acquired_on: string;
+            /**
+             * Format: date
+             * @description YYYY-MM-DD; absent when none
+             */
+            expires_on?: string;
+            /** @description true = the record never expires, whatever the catalogue's default validity; with expires_on it is 400 one_of. */
+            no_expiry?: boolean;
+            qualification: components["schemas"]["ID"];
+        };
+        /** @description A person's records. self_upload is present only on the actor's own list. */
+        VolunteersRecordList: {
+            /** @description Always present; an empty list is []. */
+            items: components["schemas"]["VolunteersRecord"][];
+            /** @description Present only on the person's own list: whether uploading a certificate is turned on. */
+            self_upload?: boolean;
+        };
+        VolunteersRequirementsInput: {
+            qualifications: components["schemas"]["ID"][];
+        };
+        VolunteersRoster: {
+            entries?: components["schemas"]["VolunteersRosterEntry"][];
+            shift?: components["schemas"]["VolunteersShift"];
+        };
+        /** @description waived flags a requirement waiver; it outlives waived_by. */
+        VolunteersRosterEntry: {
+            /** @enum {string} */
+            cancel_reason?: "self" | "lead" | "shift_canceled" | "department_archived" | "event_closed";
+            /** Format: date-time */
+            canceled_at?: string;
+            /** Format: date-time */
+            created_at?: string;
+            eligible?: boolean;
+            id?: components["schemas"]["ID"];
+            /** @description Present only when the regional's legal_name policy shows it to the viewer and people knows one. */
+            legal_name?: string;
+            person?: components["schemas"]["ID"];
+            playa_name?: string;
+            shift?: components["schemas"]["ID"];
+            /** @enum {string} */
+            status?: "booked" | "canceled";
+            /** Format: date-time */
+            updated_at?: string;
+            waived?: boolean;
+            waived_by?: components["schemas"]["ID"];
+        };
+        /** @description id is the sign-up's; shift is the nested shift object. */
+        VolunteersScheduleEntry: {
+            /** @enum {string} */
+            cancel_reason?: "self" | "lead" | "shift_canceled" | "department_archived" | "event_closed";
+            /** Format: date-time */
+            canceled_at?: string;
+            /** Format: date-time */
+            created_at?: string;
+            department_name?: string;
+            id?: components["schemas"]["ID"];
+            person?: components["schemas"]["ID"];
+            position_name?: string;
+            shift?: components["schemas"]["VolunteersShift"];
+            /** @enum {string} */
+            status?: "booked" | "canceled";
+            /** Format: date-time */
+            updated_at?: string;
+            waived?: boolean;
+            waived_by?: components["schemas"]["ID"];
+        };
+        /** @description One page of the list; follow next until it is absent. */
+        VolunteersScheduleList: {
+            /** @description Always present; an empty list is []. */
+            items: components["schemas"]["VolunteersScheduleEntry"][];
+            /** @description Pass as after for the next page; absent on the last page. */
+            next?: string;
+        };
+        VolunteersShift: {
+            /** @enum {string} */
+            cancel_reason?: "self" | "lead" | "shift_canceled" | "department_archived" | "event_closed";
+            /** Format: date-time */
+            canceled_at?: string;
+            /** Format: date-time */
+            created_at?: string;
+            department?: components["schemas"]["ID"];
+            /** Format: date-time */
+            ends?: string;
+            event?: components["schemas"]["ID"];
+            id?: components["schemas"]["ID"];
+            label?: string;
+            location?: string;
+            notes?: string;
+            position?: components["schemas"]["ID"];
+            slots?: number;
+            /** Format: date-time */
+            starts?: string;
+            /** Format: date-time */
+            updated_at?: string;
+            /** @description IANA zone name. */
+            zone?: string;
+        };
+        VolunteersShiftInput: {
+            /** Format: date-time */
+            ends: string;
+            event?: components["schemas"]["ID"];
+            label: string;
+            location?: string;
+            notes?: string;
+            position: components["schemas"]["ID"];
+            slots: number;
+            /** Format: date-time */
+            starts: string;
+            /** @description Required for standing work (no event); ignored when event is set. */
+            zone?: string;
+        };
+        /** @description One page of the list; follow next until it is absent. */
+        VolunteersShiftList: {
+            /** @description Always present; an empty list is []. */
+            items: components["schemas"]["VolunteersShiftSummary"][];
+            /** @description Pass as after for the next page; absent on the last page. */
+            next?: string;
+        };
+        /** @description Playa names only. Present only on GET /shifts/{shift} and only when the regional's policy shows it to the viewer. */
+        VolunteersShiftMates: {
+            names?: string[];
+            unlisted?: number;
+        };
+        /** @description A shift with the viewer's figures; mates is absent on lists. */
+        VolunteersShiftSummary: {
+            booked?: number;
+            /** @enum {string} */
+            cancel_reason?: "self" | "lead" | "shift_canceled" | "department_archived" | "event_closed";
+            /** Format: date-time */
+            canceled_at?: string;
+            /** Format: date-time */
+            created_at?: string;
+            department?: components["schemas"]["ID"];
+            /** @description The department's name; absent when the directory does not know it. */
+            department_name?: string;
+            eligibility?: components["schemas"]["VolunteersEligibility"];
+            /** Format: date-time */
+            ends?: string;
+            event?: components["schemas"]["ID"];
+            id?: components["schemas"]["ID"];
+            label?: string;
+            location?: string;
+            mates?: components["schemas"]["VolunteersShiftMates"];
+            mine?: components["schemas"]["ID"];
+            notes?: string;
+            position?: components["schemas"]["ID"];
+            position_name?: string;
+            slots?: number;
+            /** Format: date-time */
+            starts?: string;
+            /** Format: date-time */
+            updated_at?: string;
+            /** @description IANA zone name. */
+            zone?: string;
+        };
+        VolunteersSignup: {
+            /** @enum {string} */
+            cancel_reason?: "self" | "lead" | "shift_canceled" | "department_archived" | "event_closed";
+            /** Format: date-time */
+            canceled_at?: string;
+            /** Format: date-time */
+            created_at?: string;
+            id?: components["schemas"]["ID"];
+            person?: components["schemas"]["ID"];
+            shift?: components["schemas"]["ID"];
+            /** @enum {string} */
+            status?: "booked" | "canceled";
+            /** Format: date-time */
+            updated_at?: string;
+            waived?: boolean;
+            waived_by?: components["schemas"]["ID"];
+        };
+        /** @description Absent dates keep what the person entered; no_expiry clears the expiry. */
+        VolunteersVerifyInput: {
+            /**
+             * Format: date
+             * @description YYYY-MM-DD; absent when none
+             */
+            acquired_on?: string;
+            /**
+             * Format: date
+             * @description YYYY-MM-DD; absent when none
+             */
+            expires_on?: string;
+            /** @description true = clear the expiry (the certificate never expires); with expires_on it is 400 one_of. */
+            no_expiry?: boolean;
         };
     };
     responses: never;
@@ -5512,6 +6358,1146 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SettingsRevision"];
                 };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    volunteersListMembers: {
+        parameters: {
+            query?: {
+                /** @description Rows per page, 1 to 500; default 100. */
+                limit?: number;
+                /** @description The next value of the previous page (opaque). Absent for the first page. 400 malformed when it is not one this list gave. */
+                after?: string;
+            };
+            header?: never;
+            path: {
+                department: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VolunteersMemberViewList"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    volunteersAddMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                department: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VolunteersMemberInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VolunteersMember"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    volunteersRemoveMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                department: components["schemas"]["ID"];
+                person: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    volunteersListPositions: {
+        parameters: {
+            query?: {
+                archived?: boolean;
+            };
+            header?: never;
+            path: {
+                department: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VolunteersPositionList"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    volunteersCreatePosition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                department: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VolunteersPositionInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VolunteersPosition"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    volunteersCreateShift: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                department: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VolunteersShiftInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VolunteersShift"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    volunteersCopyShifts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                department: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VolunteersCopyInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VolunteersCopyResult"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    volunteersMyDepartments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VolunteersMemberList"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    volunteersLeave: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                department: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Left. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    volunteersListed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VolunteersListing"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    volunteersSetListed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VolunteersListingInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VolunteersListing"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    volunteersUploadCertificate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["VolunteersCertificateUpload"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VolunteersRecord"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    volunteersMySchedule: {
+        parameters: {
+            query?: {
+                from?: string;
+                to?: string;
+                /** @description false (default): bookings whose shift has not ended, soonest first, with the ones someone else canceled until the shift ends. true: booked sign-ups whose shift has ended, newest first. */
+                past?: boolean;
+                /** @description Rows per page, 1 to 500; default 100. */
+                limit?: number;
+                /** @description The next value of the previous page (opaque). Absent for the first page. 400 malformed when it is not one this list gave. */
+                after?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VolunteersScheduleList"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    volunteersRecordsOf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                person: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VolunteersRecordList"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    volunteersRecordQualification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                person: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VolunteersRecordInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VolunteersRecord"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    volunteersUpdatePosition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                position: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VolunteersPositionInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VolunteersPosition"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    volunteersArchivePosition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                position: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Archived. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    volunteersSetRequirements: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                position: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VolunteersRequirementsInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VolunteersPosition"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    volunteersPendingRecords: {
+        parameters: {
+            query?: {
+                department?: components["schemas"]["ID"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VolunteersRecordList"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    volunteersRemoveRecord: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                record: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    volunteersOpenCertificate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                record: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The certificate file. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    volunteersRejectRecord: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                record: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Rejected. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    volunteersVerifyRecord: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                record: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VolunteersVerifyInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VolunteersRecord"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    volunteersListQualifications: {
+        parameters: {
+            query?: {
+                department?: components["schemas"]["ID"];
+                archived?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VolunteersQualificationList"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    volunteersCreateQualification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VolunteersQualificationInput"];
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VolunteersQualification"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    volunteersUpdateQualification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                qualification: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VolunteersQualificationInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VolunteersQualification"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    volunteersArchiveQualification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                qualification: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Archived. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    volunteersListShifts: {
+        parameters: {
+            query?: {
+                department?: components["schemas"]["ID"];
+                event?: components["schemas"]["ID"];
+                position?: components["schemas"]["ID"];
+                from?: string;
+                to?: string;
+                canceled?: boolean;
+                /** @description Rows per page, 1 to 500; default 100. */
+                limit?: number;
+                /** @description The next value of the previous page (opaque). Absent for the first page. 400 malformed when it is not one this list gave. */
+                after?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VolunteersShiftList"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    volunteersGetShift: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shift: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VolunteersShiftSummary"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    volunteersUpdateShift: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shift: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VolunteersShiftInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VolunteersShift"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    volunteersAssign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shift: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VolunteersAssignInput"];
+            };
+        };
+        responses: {
+            /** @description Booked. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VolunteersSignup"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    volunteersCancelShift: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shift: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Canceled. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    volunteersRoster: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shift: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VolunteersRoster"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    volunteersSignUp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shift: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Booked. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VolunteersSignup"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    volunteersCancelSignup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                signup: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Canceled. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description An error. The body is a Problem. */
             default: {

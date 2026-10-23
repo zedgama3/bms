@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/lib/validate"
@@ -439,7 +440,14 @@ func (m *Migrator) apply(ctx context.Context, conn rowTx, set string, f migFile)
 		}
 	}()
 	if _, err := tx.Exec(ctx, string(f.sql)); err != nil { // no args: simple protocol, several statements
-		return fail(err)
+		out, ferr := fail(err)
+		ferr = withRaised(ferr, err)
+		if raised(err) { // the author's text is for the operator: it goes to the log too (F58)
+			m.logger.ErrorContext(ctx, "a migration raised an error and was rolled back",
+				slog.String("set", set), slog.Int("version", f.number), slog.String("name", f.name),
+				slog.Any("error", ferr))
+		}
+		return out, ferr
 	}
 	took := p.clock.Since(start)
 	insert := sqlInsertApplied
@@ -457,6 +465,32 @@ func (m *Migrator) apply(ctx context.Context, conn rowTx, set string, f migFile)
 		slog.String("set", set), slog.Int("version", f.number), slog.String("name", f.name),
 		slog.Duration("duration", took))
 	return Applied{Set: set, Version: f.number, Name: f.name, Duration: took}, nil
+}
+
+// sqlstateRaise is the SQLSTATE of a RAISE EXCEPTION with no explicit ERRCODE.
+const sqlstateRaise = "P0001"
+
+// withRaised appends the message (and DETAIL, when the file sets one) of a RAISE EXCEPTION
+// raised by a migration file to failed, which is the already-classified error for driver. It is
+// the one place a server error's text leaves the database layer (decision 4, D51): the author
+// of the file wrote it to tell the operator what to fix, and a migration never puts personal
+// data in it. Any other error, and a failed that is nil, comes back unchanged.
+func withRaised(failed, driver error) error {
+	var pg *pgconn.PgError
+	if failed == nil || !errors.As(driver, &pg) || pg.Code != sqlstateRaise {
+		return failed
+	}
+	text := pg.Message
+	if pg.Detail != "" {
+		text += " (" + pg.Detail + ")"
+	}
+	return fmt.Errorf("%w: raised: %s", failed, text)
+}
+
+// raised reports whether err is the server's RAISE EXCEPTION (SQLSTATE P0001).
+func raised(err error) bool {
+	var pg *pgconn.PgError
+	return errors.As(err, &pg) && pg.Code == sqlstateRaise
 }
 
 // rowTx is the part of a pooled connection apply needs.

@@ -1,8 +1,8 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { useReadOnly } from "@/api";
+import { useReadOnly, useSession } from "@/api";
 import { isMessageKey, useLanguage, useT } from "@/i18n";
-import { Button, controlClass, ErrorSummary, Field, useFieldErrors, useToast } from "@/ui";
+import { Button, controlClass, Dialog, ErrorSummary, Field, useFieldErrors, useToast } from "@/ui";
 import { ReadOnlyNote } from "./ReadOnlyNote";
 import { profileApi } from "./profileApi";
 import type { Target } from "./profileApi";
@@ -19,12 +19,16 @@ export function ProfileForm({
   target,
   onSaved,
   focusPlayaName = false,
+  canRename = false,
 }: {
   profile: Profile;
   target: Target;
   onSaved: (saved: Profile) => void;
   /** The first-sign-in prompt: put the cursor in the playa name. */
   focusPlayaName?: boolean;
+  /** A `people.profiles.manage` holder may change a set playa name, behind a confirm dialog.
+   *  On the person page this is the server's `can.edit`; on My profile the session's list. */
+  canRename?: boolean;
 }) {
   const t = useT();
   const toast = useToast();
@@ -35,6 +39,16 @@ export function ProfileForm({
   const fieldErrors = useFieldErrors(act.error);
   const own = target === "me";
   const { person, policy } = profile;
+  const session = useSession();
+  const [confirming, setConfirming] = useState(false);
+  const confirmed = useRef(false);
+  const named = person.playa_name !== "";
+  // On My profile the permission comes from the session (a hint to show the control; the
+  // server decides). A manager's own rename goes through the manager route, not /me.
+  const manager =
+    canRename ||
+    (own && session.signedIn && session.permissions.includes("people.profiles.manage"));
+  const locked = named && !manager;
   const has = (group: string) => profile.fields.includes(group);
 
   useEffect(() => {
@@ -60,8 +74,15 @@ export function ProfileForm({
     const data = new FormData(e.currentTarget);
     const v = (name: string) => text(data.get(name)).trim();
     const language = v("language");
+    const renaming = named && manager && v("playa_name") !== person.playa_name;
+    if (renaming && !confirmed.current) {
+      setConfirming(true);
+      return;
+    }
+    confirmed.current = false;
+    const route: Target = renaming && own ? { person: person.id } : target;
     void act.run(async () => {
-      const saved = await profileApi.update(target, {
+      const saved = await profileApi.update(route, {
         playa_name: v("playa_name"),
         pronouns: v("pronouns"),
         ...(showLanguage ? { language } : {}),
@@ -82,8 +103,14 @@ export function ProfileForm({
         <Field
           label={t("core.people.profile.playa_name")}
           name="playa_name"
-          hint={t("core.people.profile.playa_name_hint")}
-          required={own}
+          hint={
+            locked
+              ? t("core.people.profile.playa_name_locked")
+              : named
+                ? t("core.people.profile.playa_name_manager_hint")
+                : t("core.people.profile.playa_name_hint")
+          }
+          required={own && !locked}
           error={fieldErrors["playa_name"]}
         >
           {(control) => (
@@ -93,7 +120,8 @@ export function ProfileForm({
               maxLength={100}
               autoComplete="off"
               defaultValue={person.playa_name}
-              className={controlClass}
+              {...(locked ? { readOnly: true } : {})}
+              className={locked ? `${controlClass} bg-surface` : controlClass}
               {...(focusPlayaName
                 ? {
                     "aria-describedby": [control["aria-describedby"], "first-prompt"]
@@ -193,6 +221,30 @@ export function ProfileForm({
           {t("core.people.profile.save")}
         </Button>
       </div>
+      <Dialog
+        open={confirming}
+        title={t("core.people.profile.rename_title")}
+        onClose={() => setConfirming(false)}
+      >
+        <div className="flex flex-col gap-4">
+          <p>{t("core.people.profile.rename_body")}</p>
+          <div className="flex flex-wrap gap-3">
+            <Button
+              variant="danger"
+              onClick={() => {
+                confirmed.current = true;
+                setConfirming(false);
+                formRef.current?.requestSubmit();
+              }}
+            >
+              {t("core.people.profile.rename_confirm")}
+            </Button>
+            <Button variant="secondary" onClick={() => setConfirming(false)}>
+              {t("core.people.cancel")}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
     </form>
   );
 }

@@ -147,3 +147,11 @@ a decision; nothing logged in 03-decisions.md).
       example an alias and a ranger radio handle); only the radio handle must be unique. The
       multiple-names nuance may be deferred. → Later (approval pipelines, multiple names);
       D48 (people amendment P1, approved 2026-10-23)
+
+Answered 2026-10-23: the jobs question raised by Amendment J1 (design/jobs.md) and the
+volunteers Amendment V2. Q-JOBS14 was not listed here before; it is recorded now.
+
+- [x] **Q-JOBS14:** Does the latest request for a `(name, key)` win in every state? Yes: a
+      queued row is moved, a final row is reopened as queued, and a running row holds the
+      request and applies it when the run ends (including after a failed run).
+      → D50 (design/jobs.md, Amendment J1; design/module-volunteers.md, Amendment V2)

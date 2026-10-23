@@ -26,6 +26,7 @@ export interface FieldProps {
   inputMode?: InputHTMLAttributes<HTMLInputElement>["inputMode"];
   autoComplete?: HTMLInputAutoCompleteAttribute;
   maxLength?: number;
+  disabled?: boolean;
   value?: string;
   defaultValue?: string;
   onChange?: InputHTMLAttributes<HTMLInputElement>["onChange"];
@@ -35,7 +36,7 @@ export interface FieldProps {
 
 /** The class every text-like control carries (input, select, textarea): 44 px tall, bordered. */
 export const controlClass =
-  "block min-h-11 w-full rounded-md border border-border bg-bg px-3 py-2 text-base text-fg aria-[invalid=true]:border-danger";
+  "block min-h-11 w-full rounded-md border border-border bg-bg px-3 py-2 text-base text-fg aria-[invalid=true]:border-danger disabled:cursor-not-allowed disabled:opacity-60";
 
 /** A label, an optional hint, the control and its error, tied together (WCAG 1.3.1, 3.3.1,
  *  3.3.2). Required is said in text, not colour. */
@@ -77,6 +78,7 @@ export function Field(props: FieldProps) {
           {...(props.inputMode ? { inputMode: props.inputMode } : {})}
           {...(props.autoComplete ? { autoComplete: props.autoComplete } : {})}
           {...(props.maxLength ? { maxLength: props.maxLength } : {})}
+          {...(props.disabled ? { disabled: true } : {})}
           {...(props.value !== undefined ? { value: props.value } : {})}
           {...(props.defaultValue !== undefined ? { defaultValue: props.defaultValue } : {})}
           {...(props.onChange ? { onChange: props.onChange } : {})}

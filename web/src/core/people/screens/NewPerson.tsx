@@ -57,6 +57,7 @@ export function NewPerson() {
         <Field
           label={t("core.people.profile.playa_name")}
           name="playa_name"
+          hint={t("core.people.new.playa_name_hint")}
           required
           maxLength={100}
           autoComplete="off"

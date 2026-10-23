@@ -1,6 +1,6 @@
 # db: database access
 
-- **Status:** Implemented (2026-10-17); Approved (2026-10-16)
+- **Status:** Implemented (2026-10-17; D51 pass-through implemented 2026-10-23); Approved (2026-10-16)
 - Amended 2026-10-17 (owner): `Write` begins with plain `BEGIN` so the session's `default_transaction_read_only` applies (server answers 25006); a NULL uuid scans into `*model.ID[E]`; accepted implementation deviations recorded in Behavior, "Accepted implementation deviations".
 - **Amended 2026-10-18 (owner approval of audit/identity):** Proposed change 10 applied for `audit` and `identity` (`postgres.Migrations`, `audit.Set`, `identity.Set`, schema `core`); audit's guard deviates from "insert and select only": `UPDATE` and `TRUNCATE` are revoked from the application role and a trigger refuses `UPDATE`, `DELETE` and `TRUNCATE`, with `DELETE` allowed only inside `core.audit_purge` through a transaction-local flag, because the installation has one role and a plain grant cannot tell the retention job from the app (audit decision 9).
 - **Amended 2026-10-18 (D37):** Proposed change 10 applied for `departments` and `events` (`postgres.Migrations`, `departments.Set`, `events.Set`, schema `core`, set names already in the fixed order); `events` `0001` inserts the three seeded kinds.
@@ -8,6 +8,7 @@
 - **Amended 2026-10-18 (D36 (e); approved by the owner 2026-10-18, D37):** `TxMode(ctx) (Mode, bool)` added: reports whether ctx carries a transaction begun by any `DB` (`*Pool` or `dbtest.Fake`) and its mode, so `audit` never spools an entry while a transaction is in flight (audit.md, same amendment). A package function beside `AfterCommit`, reading the internal `txctx`; cannot fail; `db.None()` never puts a transaction in a ctx, so it reports none there. Decision 21; Summary, Interface, "Who needs each member", Test plan and Proposed changes 14 and 15 updated. Nothing else in the transaction seam changes.
 - **Amended 2026-10-20 (D44, owner approval of files):** Proposed change 10 applied for `files` (`files.Set{Name: "files", Schema: "core"}` with `postgres.Migrations`: two tables, no bytes; set name already last in the fixed order, after `notify`).
 - **Amended 2026-10-23 (people Amendment P1, D48):** a UTF-8 server encoding is required (`normalize()` needs it); people migration `0003` checks it itself, so nothing breaks until `Open` adds the check. Lock-in check and Summary updated; no interface change.
+- **Amended 2026-10-23 (D51, owner):** decision 4 gains one exception: the `Migrator` lets through the message text (and `DETAIL` if used) of a `RAISE EXCEPTION` with SQLSTATE `P0001` raised by a migration file, in the error it returns and logs, because migration authors write that text; every other database error stays scrubbed to SQLSTATE and names. Rule: a migration must never put personal data in a `RAISE` message. New F58 and test.
 - **Amended 2026-10-19 (D39, owner approval of settings and notify):** the fixed migration-set order gains `notify` after `jobs` (`identity`, `people`, `authz`, `departments`, `events`, `audit`, `settings`, `jobs`, `notify`, `files`); Proposed change 10 applied for `settings` and `notify`, and Proposed change 13 applied for `notify` (jobs pending).
 - **Package:** `internal/core/db` (Go module `github.com/zedgama3/bms`), plus the test
   helper package `internal/core/db/dbtest`. **UI:** none of its own; the "this copy is
@@ -69,7 +70,7 @@ Exported names (package `db`):
 Key decisions: 1 db speaks pgx, the storage seam is each service's interface (D8); 2
 `Deps.DB` is an interface (`*Pool`, `dbtest.Fake`); 3 every error leaving db is classified,
 `Wrap` is the one mapping; 4 server errors scrubbed to SQLSTATE and names, never
-message/detail/hint; 5 the transaction travels in the ctx (fn's ctx must not cross
+message/detail/hint, except a migration file's own `RAISE EXCEPTION` (`P0001`) text, passed through by the `Migrator` (D51); 5 the transaction travels in the ctx (fn's ctx must not cross
 goroutines); 6 nested `Transact` joins the outer, no savepoints; 7 read-only = in recovery or
 `default_transaction_read_only` (owner, 2026-10-16); 8 state cached, refreshed by a 15 s
 watcher, `Ping`, and every `25006`; 9 refused write is `Unavailable` wrapping `ErrReadOnly`;
@@ -592,7 +593,7 @@ read-only state; never the password or the URL. The watcher logs at warn each ti
 read-only state changes and each time a probe fails (once per transition, not per tick).
 `Migrate` logs one line per applied file. Statement text and arguments are never logged
 (go-conventions): a store that wants to log a failure logs the `*errs.Error`, whose text
-holds names, not values (decision 4).
+holds names, not values (decision 4; the one exception is a migration's own `P0001` message, D51).
 
 ## Permissions
 
@@ -660,7 +661,7 @@ read-only copy becomes a clear "this copy is read-only" response rather than an 
    the op name alone; a store that uses a pgx helper which returns `pgx.ErrNoRows` itself
    (`pgx.CollectOneRow`) gets it mapped by the same `Wrap`. One function, one table of
    kinds, idempotent, so there is no second mapping to drift.
-4. **Server errors are scrubbed to names: SQLSTATE, schema, table, column, constraint;
+4. **Server errors are scrubbed to names: SQLSTATE, schema, table, column, constraint (exception, D51, below);
    never message, detail, hint or context.** PostgreSQL's detail says `Key
    (email)=(someone@example.org) already exists`, its message for `22P02` echoes the
    input, and its context can hold PL/pgSQL variables. Those strings are personal data in
@@ -668,7 +669,13 @@ read-only copy becomes a clear "this copy is read-only" response rather than an 
    error messages). `*Error` keeps what a maintainer needs to find the statement (the code
    and the names) and drops the rest; the driver's error is not kept in the chain, so no
    later `%w` can print it. Lost debugging detail is recovered with `EXPLAIN` on invented
-   data, not with production values.
+   data, not with production values. **Exception (D51, owner, 2026-10-23):** the `Migrator`
+   keeps the message text (and `DETAIL`, if the file sets one) of a `RAISE EXCEPTION` with
+   SQLSTATE `P0001` raised by a migration file, in the error it returns and logs, because
+   the migration's author wrote that text to tell the operator what to fix (people `0003`
+   names the clashing person IDs this way). Every other server error stays scrubbed. **Rule:
+   a migration never puts personal data in a `RAISE` message** (ids, counts and setting
+   names only); review checks it.
 5. **The transaction travels in the context.** A use case that writes several rows calls
    `Transact` and then ordinary store methods with the ctx it was given; each store method
    calls `deps.DB.Exec(ctx, ...)` and runs on the transaction without knowing it. The
@@ -922,7 +929,7 @@ the transitions without a database.
 5. For each set in order: `CREATE SCHEMA IF NOT EXISTS "<schema>"`; for each file above
    the applied version, in order: `BEGIN`; `Exec(file)`; `INSERT INTO
    core.schema_migration`; `COMMIT`; log and append to the result. A failure rolls back the
-   file and returns `Wrap` wrapped with `"<set> <NNNN_name>"` (F40). ctx done → F42.
+   file and returns `Wrap` wrapped with `"<set> <NNNN_name>"` (F40); when the server error is SQLSTATE `P0001` (a `RAISE EXCEPTION` in the file) the message text, and `DETAIL` if the file sets one, is kept in the returned error and the log line (F58, D51). ctx done → F42.
 6. Release the lock and the connection (also on every error path).
 
 ### Concurrency and lifecycle
@@ -1031,6 +1038,7 @@ under `**/internal/core/db/**`.
 | F55 | `dbtest.TempDB` | the role cannot create a database | `t.Fatal` with the reason | grant `CREATEDB` | covered by running the suite with a restricted role once, by hand |
 | F56 | `Open` | `Options.Meter` set and a gauge registration fails (telemetry F20–F22: a duplicate name in the `db` scope) | the meter's kind (Invalid / Conflict); the pgx pool closed before returning | fix app (one `Open` per meter scope) | `TestOpen_GaugeRegistrationFails_ReturnsKindAndClosesPool` (unit, a fake `telemetry.Meter` that refuses) |
 | F57 | the `QueryTracer` adapter | a statement fails | none to the caller beyond the statement's own error: the span is marked failed with `error.kind` and the SQLSTATE; statement text and arguments are never on it | — | `TestQueryTracer_FailedStatement_SpanHasKindAndSQLSTATENoText` |
+| F58 | `Migrate` | a migration file's `RAISE EXCEPTION` (SQLSTATE `P0001`) | `Wrap`'s kind, wrapped with `<set> <NNNN_name>`; the raised message (and `DETAIL`) is in the error text and the log; that file rolled back; any other SQLSTATE stays scrubbed (F40) | read the message, fix the data or database, rerun | `TestMigrate_RaiseException_PassesMessageThrough` (integration; also asserts a non-`P0001` failure still carries no message text) |
 
 Members that cannot fail, and why: `ReadOnly` (an atomic read); `Stats` (a copy of
 pgxpool's counters; zeros after `Close`); `Mode.String`, `Error.Error` (formatting of
@@ -1128,7 +1136,7 @@ every error path):
   `TestStatus_ReportsBuiltAppliedAndProblem` (empty database: `Applied 0`, `Err` Conflict;
   after migrate: equal and nil); `TestCheckSchema_CurrentSet_ReturnsNil`;
   `TestCheckSchema_OnEmptyDatabase_ReturnsConflictNotInternal` (module-contract Proposed
-  change 4); F36–F40, F42, F43, F45–F47, F49.
+  change 4); F36–F40, F42, F43, F45–F47, F49, F58 (D51).
 - Conformance with the contract: `TestMigratorSatisfiesSchemaChecker` is a compile-time
   assertion in `app` (`var _ module.SchemaChecker = (*db.Migrator)(nil)`), since `db`
   may not import `module`.

@@ -1,0 +1,8 @@
+Subject: Your {{.Vars.qualification}} was not accepted
+Vars: qualification
+
+{{if .Recipient.PlayaName}}Hi {{.Recipient.PlayaName}},{{else}}Hi,{{end}}
+
+a lead could not accept the {{.Vars.qualification}} you sent, so it does not count yet. Ask the lead of the department what is missing, or upload a clearer copy.
+
+{{.Link}}

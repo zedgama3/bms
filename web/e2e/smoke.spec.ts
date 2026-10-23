@@ -703,6 +703,9 @@ test.describe("a real account (no mocks)", () => {
     await expect(page.getByText("Saved")).toBeVisible();
     await expect(page).toHaveURL(/\/people\/me$/);
     await expect(page.getByLabel(/^Playa name/)).toHaveValue(playa);
+    // playa names are permanent (people P1): once set the field is read-only, with the reason
+    await expect(page.getByLabel(/^Playa name/)).toHaveAttribute("readonly", "");
+    await expect(page.getByText(/Playa names are permanent/)).toBeVisible();
     await expect(page.locator("header span.font-semibold", { hasText: playa })).toBeAttached();
 
     // a reload does not ask again, and the profile still shows the name
@@ -755,6 +758,23 @@ test.describe("a real account (no mocks)", () => {
     await expect(page.getByRole("alert")).toContainText("already has an account");
     await expect(page.getByRole("alert")).not.toContainText(/[0-9A-F]{4}-[0-9A-F]{4}/);
     await expect(page.getByLabel(/E-mail address/)).toHaveAttribute("aria-invalid", "true");
+    await axe(page);
+
+    // a second person tries the same playa name with the case and spacing changed (people P1)
+    await page.getByLabel(/E-mail address/).fill(`e2e-b-${suffix}@example.test`);
+    await page.getByLabel(/^Password/).fill(`fourth ${suffix} heron cobalt`);
+    await press(page.getByRole("button", { name: "Create account" }), isPhone);
+    await expect(page).toHaveURL(/\/people\/me\?first=1$/);
+    await page.getByLabel(/^Playa name/).fill(`  DUSTY   ${suffix.toUpperCase()} `);
+    await press(page.getByRole("button", { name: "Save", exact: true }), isPhone);
+    await expect(
+      page.locator("p.text-danger", {
+        hasText: "Someone here already uses this playa name. Choose another.",
+      }),
+    ).toBeVisible();
+    await expect(page.getByLabel(/^Playa name/)).toHaveAttribute("aria-invalid", "true");
+    // the owner's name is never shown to the person who collided with it
+    await expect(page.locator("body")).not.toContainText(playa);
     await axe(page);
   });
 });
@@ -1045,6 +1065,9 @@ test.describe("people: the signed-in person's screens", () => {
     await page.goto("/");
     await expect(page).toHaveURL(/\/people\/me\?first=1$/);
     await expect(page.getByText(/Tell us your playa name/)).toBeVisible();
+    await expect(
+      page.getByText(/It is permanent, and it must be one no one else here/),
+    ).toBeVisible();
     await expect(page.getByLabel(/^Playa name/)).toBeFocused();
     if (isPhone) {
       await page.setViewportSize({ width: 320, height: 568 });
@@ -1056,6 +1079,7 @@ test.describe("people: the signed-in person's screens", () => {
     await press(page.getByRole("button", { name: "Save", exact: true }), isPhone);
     await expect(page.getByText("Saved")).toBeVisible();
     expect(saved).toBe("Dusty D");
+    await expect(page.getByLabel(/^Playa name/)).toHaveAttribute("readonly", "");
     await openMenu(page, isPhone);
     await expect(page.locator("header span.font-semibold", { hasText: "Dusty D" })).toBeVisible();
   });
@@ -1225,6 +1249,48 @@ test.describe("people: directory, person page and deletion requests", () => {
     await expect(dialog).toContainText("You are about to delete Pat Dust.");
     if (isPhone) await touchTargets(page);
     await axe(page);
+  });
+
+  test("a manager renames a set playa name behind a confirm; a taken name shows inline", async ({
+    page,
+  }, info) => {
+    only("default");
+    const isPhone = info.project.name === "phone";
+    await page.route("**/api/accounts/session", (r) => r.fulfill({ json: holder }));
+    await mockMe(page);
+    await page.route(`**/api/people/${PAT}`, (r) => {
+      if (r.request().method() === "PUT") {
+        return r.fulfill({
+          status: 409,
+          contentType: "application/problem+json",
+          body: JSON.stringify({
+            status: 409,
+            code: "conflict",
+            fields: [{ field: "playa_name", code: "taken", reason: "x" }],
+          }),
+        });
+      }
+      return r.fulfill({
+        json: profileOf("Pat Dust", { can: { ...NOBODY, edit: true, read_contacts: true } }),
+      });
+    });
+    if (isPhone) await page.setViewportSize({ width: 320, height: 568 });
+    await page.goto(`/people/${PAT}`);
+    const name = page.getByLabel(/^Playa name/);
+    await expect(name).toBeEditable();
+    await name.fill("Pat Sand");
+    await press(page.getByRole("button", { name: "Save", exact: true }), isPhone);
+    const dialog = page.getByRole("dialog", { name: "Change this playa name?" });
+    await expect(dialog).toContainText(
+      "This changes a permanent playa name. The change is recorded.",
+    );
+    if (isPhone) await touchTargets(page);
+    await axe(page);
+    await press(dialog.getByRole("button", { name: "Change the name" }), isPhone);
+    await expect(
+      page.getByText("Someone here already uses this playa name. Choose another.").first(),
+    ).toBeVisible();
+    await expect(name).toHaveAttribute("aria-invalid", "true");
   });
 
   test("deletion requests: fulfil with a confirmation and read the report", async ({

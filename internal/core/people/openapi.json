@@ -31,7 +31,7 @@
           "people"
         ],
         "operationId": "peopleUpdateMe",
-        "summary": "Change your own profile; absent or null fields are unchanged and an empty string clears one. 400 playa_name required, legal_name or phone required when the regional requires them, hidden for a field the regional turned off, has_account for contact_email, malformed, too_long, control_chars.",
+        "summary": "Change your own profile; absent or null fields are unchanged and an empty string clears one. 400 playa_name required, legal_name or phone required when the regional requires them, hidden for a field the regional turned off, has_account for contact_email, malformed, too_long, control_chars; 400 playa_name permanent when a name is already set and the new one has another key (the same name, or a respelling with the same key, is accepted); 409 (field playa_name, code taken) when another person already uses the name.",
         "requestBody": {
           "required": true,
           "content": {
@@ -372,7 +372,7 @@
           "people"
         ],
         "operationId": "peopleCreate",
-        "summary": "Create a person without an account. Needs people.profiles.manage. 400 playa_name required.",
+        "summary": "Create a person without an account. Needs people.profiles.manage. 400 playa_name required; 409 (field playa_name, code taken) when another person already uses the name.",
         "requestBody": {
           "required": true,
           "content": {
@@ -548,7 +548,7 @@
           "people"
         ],
         "operationId": "peopleUpdate",
-        "summary": "Change another person's profile. Needs people.profiles.manage; the regional's required modes are not enforced. Your own ID behaves as PUT /me. 404 for an unknown person.",
+        "summary": "Change another person's profile. Needs people.profiles.manage; the regional's required modes are not enforced. Your own ID behaves as PUT /me, except that a holder of people.profiles.manage may rename their own set playa name. A set playa name may be changed (audited with the reason rename) but not cleared (400 playa_name required); 409 (field playa_name, code taken) when another person already uses the name. 404 for an unknown person.",
         "parameters": [
           {
             "name": "person",

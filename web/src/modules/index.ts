@@ -2,5 +2,6 @@
 // and no module folder directly.
 import type { ScreenSet } from "@/registry/types";
 import { ui as hello } from "./hello";
+import { ui as volunteers } from "./volunteers";
 
-export const moduleSets: readonly ScreenSet[] = [hello];
+export const moduleSets: readonly ScreenSet[] = [hello, volunteers];

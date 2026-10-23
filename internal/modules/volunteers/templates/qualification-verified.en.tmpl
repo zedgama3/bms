@@ -1,0 +1,8 @@
+Subject: Your {{.Vars.qualification}} was verified
+Vars: qualification, expires_on
+
+{{if .Recipient.PlayaName}}Hi {{.Recipient.PlayaName}},{{else}}Hi,{{end}}
+
+a lead verified your {{.Vars.qualification}}. It now counts for the shifts that need it.{{if .Vars.expires_on}} It is valid until {{.Vars.expires_on}}.{{end}}
+
+{{.Link}}

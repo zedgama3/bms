@@ -4,28 +4,52 @@
 -- dedupe key), $4 args jsonb (the JSON form of jobs.Args; '{}' when empty; pass a string or
 -- []byte), $5 run_at timestamptz (the caller has already turned a zero or past RunAt into
 -- now), $6 trace_id text (NULL when the ctx has no trace; 32 lower-case hex), $7 now
--- timestamptz (the service clock: created_at and updated_at).
+-- timestamptz (the service clock: created_at and updated_at). Unchanged by Amendment J1.
 -- Columns, in order: id uuid.
---   * ONE row, the id just inserted: a new row, or (with a key) the Queued row of that
---     (name, key), which was moved to $5 with the new args and trace (a reschedule; id is the
---     EXISTING row's id, not $1).
---   * ZERO rows: a row with that (name, key) exists and is not Queued (Running, Done, Failed
---     or Canceled): the request is a no-op. Run get_job_by_key.sql in the same transaction
---     for the existing ID. Only possible when $3 is not NULL.
+--   * ALWAYS ONE row (J1: the "zero rows" case and the follow-up get_job_by_key.sql are gone).
+--     The id is $1 for a new row; with a key that already exists it is the EXISTING row's id.
+--   * The latest request for a (name, key) wins (jobs.md decision 3 and 23), by the status of
+--     the existing row:
+--       queued                      moved: run_at and args replaced (as before);
+--       done, failed, canceled      reopened as a fresh queued row: run_at and args replaced,
+--                                   attempts 0, started_at, finished_at, last_error and
+--                                   instance cleared (created_at keeps the row's birth);
+--       running                     held: only next_run_at and next_args are set, so status,
+--                                   run_at, args, attempts and leased_until are untouched and
+--                                   the heartbeat's and the outcome's fence still match. The
+--                                   statement that takes the row out of running applies the
+--                                   request (complete_job.sql and the others).
+--     In every branch trace_id = coalesce(new, old) and updated_at = $7. A second request
+--     while running overwrites the first held one.
 -- Constraint errors (*db.Error.Constraint, all Invalid; Request.Validate runs first, so each
 -- is a caller bug): job_nil_uuid_chk, job_name_chk, job_key_chk, job_args_chk,
 -- job_trace_id_chk. A duplicate id is job_pkey (Conflict).
--- Served by job_name_key_uidx (the conflict target). Fails 25006 (db.ErrReadOnly) on a
--- read-only copy; inside a Read transaction db refuses it (Invalid).
+-- Served by job_name_key_uidx (the conflict target). The upsert row-locks an existing row for
+-- the caller's transaction. Fails 25006 (db.ErrReadOnly) on a read-only copy; inside a Read
+-- transaction db refuses it (Invalid).
 INSERT INTO core.job
     (id, name, key, args, status, attempts, run_at, trace_id, created_at, updated_at)
 VALUES
     ($1::uuid, $2::text, $3::text, $4::jsonb, 'queued', 0, $5::timestamptz, $6::text,
      $7::timestamptz, $7::timestamptz)
 ON CONFLICT (name, key) WHERE key IS NOT NULL DO UPDATE
-SET run_at = EXCLUDED.run_at,
-    args = EXCLUDED.args,
+SET status = CASE WHEN core.job.status = 'running' THEN 'running' ELSE 'queued' END,
+    run_at = CASE WHEN core.job.status = 'running' THEN core.job.run_at ELSE EXCLUDED.run_at END,
+    args = CASE WHEN core.job.status = 'running' THEN core.job.args ELSE EXCLUDED.args END,
+    attempts = CASE WHEN core.job.status IN ('done', 'failed', 'canceled')
+                    THEN 0 ELSE core.job.attempts END,
+    started_at = CASE WHEN core.job.status IN ('done', 'failed', 'canceled')
+                      THEN NULL ELSE core.job.started_at END,
+    finished_at = CASE WHEN core.job.status IN ('done', 'failed', 'canceled')
+                       THEN NULL ELSE core.job.finished_at END,
+    last_error = CASE WHEN core.job.status IN ('done', 'failed', 'canceled')
+                      THEN NULL ELSE core.job.last_error END,
+    instance = CASE WHEN core.job.status IN ('done', 'failed', 'canceled')
+                    THEN NULL ELSE core.job.instance END,
+    next_run_at = CASE WHEN core.job.status = 'running'
+                       THEN EXCLUDED.run_at ELSE core.job.next_run_at END,
+    next_args = CASE WHEN core.job.status = 'running'
+                     THEN EXCLUDED.args ELSE core.job.next_args END,
     trace_id = coalesce(EXCLUDED.trace_id, core.job.trace_id),
     updated_at = EXCLUDED.updated_at
-WHERE core.job.status = 'queued'
 RETURNING id

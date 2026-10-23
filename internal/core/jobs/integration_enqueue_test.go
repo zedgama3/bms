@@ -228,55 +228,6 @@ func TestEnqueue_SameKeyDifferentNames_AreSeparateJobs(t *testing.T) {
 	}
 }
 
-func TestEnqueue_KeyFinal_IsNoopReturnsExistingID(t *testing.T) {
-	for _, status := range []string{"running", "done", "failed", "canceled"} {
-		t.Run(status, func(t *testing.T) {
-			r, s, _ := remindRig(t)
-			orig := epoch.Add(-time.Hour)
-			var id jobs.JobID
-			if status == "running" {
-				id = r.forceRunning("volunteers.remind", "k", epoch.Add(time.Hour))
-			} else {
-				id = r.forceFinal("volunteers.remind", "k", status, orig)
-			}
-			before := r.byID(id)
-			got, err := s.Enqueue(ctxT(t), jobs.Request{Name: "volunteers.remind", Key: "k",
-				RunAt: epoch.Add(9 * time.Hour), Args: jobs.Args{"person": signals.RecordID(newPerson())}})
-			wantNoErr(t, err)
-			if got != id {
-				t.Errorf("returned %v, want the existing %v", got, id)
-			}
-			if n := r.count(""); n != 1 {
-				t.Errorf("%d rows, want 1", n)
-			}
-			after := r.byID(id)
-			if after.Status != before.Status || !after.RunAt.Equal(before.RunAt) || after.Args != before.Args ||
-				after.Attempts != before.Attempts {
-				t.Errorf("row changed: before %+v after %+v", before, after)
-			}
-		})
-	}
-}
-
-func TestEnqueue_KeyDoneAfterRealRun_IsNoop(t *testing.T) {
-	r, s, c := remindRig(t)
-	id, err := s.Enqueue(ctxT(t), jobs.Request{Name: "volunteers.remind", Key: "once"})
-	wantNoErr(t, err)
-	r.runOnce()
-	if c.n() != 1 || r.byID(id).Status != "done" {
-		t.Fatalf("job did not run to done: %+v", r.byID(id))
-	}
-	again, err := s.Enqueue(ctxT(t), jobs.Request{Name: "volunteers.remind", Key: "once"})
-	wantNoErr(t, err)
-	if again != id {
-		t.Fatalf("returned %v, want %v", again, id)
-	}
-	r.runOnce()
-	if c.n() != 1 {
-		t.Errorf("a finished key ran again (%d runs)", c.n())
-	}
-}
-
 func TestEnqueue_ConcurrentSameKey_OneRowOneID(t *testing.T) {
 	r, s, _ := remindRig(t)
 	const n = 8

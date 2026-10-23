@@ -83,6 +83,8 @@ interface CallInfo {
   timeoutMs: number;
   /** An upload: a 413 is `payload_too_large` whatever body came with it. */
   upload?: boolean;
+  /** A download: a success body is bytes, kept as a Blob (never read as text). */
+  binary?: boolean;
 }
 
 function parseRetryAfter(h: string | null): number | undefined {
@@ -149,7 +151,10 @@ async function perform(req: Request, info: CallInfo): Promise<Response> {
   };
   const headers = new Headers(req.headers);
   headers.set("traceparent", info.traceparent);
-  headers.set("Accept", "application/json, application/problem+json");
+  headers.set(
+    "Accept",
+    info.binary ? "*/*, application/problem+json" : "application/json, application/problem+json",
+  );
 
   const controller = new AbortController();
   let timedOut = false;
@@ -179,6 +184,24 @@ async function perform(req: Request, info: CallInfo): Promise<Response> {
       );
     }
     safely(() => hooks.onReadOnly(res.headers.get("X-Read-Only") === "true"));
+
+    if (info.binary && res.ok) {
+      try {
+        const bytes = await res.arrayBuffer();
+        return new Response(bytes, {
+          status: res.status,
+          statusText: res.statusText,
+          headers: res.headers,
+        });
+      } catch (e) {
+        if (!timedOut && isAbort(e)) throw e;
+        return fail(
+          info,
+          { ...base, status: 0, code: "network", detail: timedOut ? "timeout" : "body" },
+          false,
+        );
+      }
+    }
 
     let text: string;
     try {
@@ -370,4 +393,26 @@ export async function upload<T = unknown>(
   const res = await perform(new Request(url, init), info);
   const text = await res.text();
   return (text.trim() === "" ? undefined : JSON.parse(text)) as T;
+}
+
+/** Fetches a file's bytes with a GET (a certificate, an attachment): same trace, cookie and
+ *  ApiError handling as `api`, but the success body is a Blob, not JSON. A failure is an
+ *  ApiError from the problem body (a 404 `not_found`, a 503 with `retryAfter`). */
+export async function download(route: string, opts: CallOptions = {}): Promise<Blob> {
+  const trace = newTraceparent();
+  const info: CallInfo = {
+    method: "GET",
+    route,
+    module: moduleOf(route),
+    traceId: trace.traceId,
+    traceparent: trace.header,
+    timeoutMs: UPLOAD_TIMEOUT_MS,
+    binary: true,
+  };
+  const url = new URL(route, location.origin);
+  for (const [k, v] of Object.entries(opts.params?.query ?? {})) url.searchParams.set(k, String(v));
+  const init: RequestInit = { method: "GET" };
+  if (opts.signal) init.signal = opts.signal;
+  const res = await perform(new Request(url, init), info);
+  return res.blob();
 }

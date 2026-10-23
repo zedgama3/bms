@@ -28,9 +28,9 @@ import (
 // leased_until the lease or the last heartbeat returned) as the fence and report false when the
 // row is gone or was re-leased.
 type store interface {
-	// Enqueue inserts a queued row or, with a key, moves the queued row of that (name, key);
-	// it returns the ID of the row now holding the request (an existing running or final row
-	// makes the request a no-op).
+	// Enqueue inserts a queued row or, with a key, makes the request the key's row: a queued
+	// row is moved, a final one reopened, a running one holds it until the run ends (decision
+	// 23). It returns the ID of the row now holding the request.
 	Enqueue(ctx context.Context, n rows.New, now time.Time) (rows.ID, error)
 	// Defer inserts a queued row; false means the (name, key) exists in any state.
 	Defer(ctx context.Context, n rows.New, now time.Time) (bool, error)
@@ -48,11 +48,14 @@ type store interface {
 	ReclaimExpired(ctx context.Context, now time.Time, maxAttempts, limit int) ([]rows.Reclaimed, error)
 	// Heartbeat renews a lease; false means the lease is lost.
 	Heartbeat(ctx context.Context, id rows.ID, lease, next, now time.Time) (time.Time, bool, error)
-	Complete(ctx context.Context, id rows.ID, lease, now time.Time) (bool, error)
-	Fail(ctx context.Context, id rows.ID, lease time.Time, token string, now time.Time) (bool, error)
-	Requeue(ctx context.Context, id rows.ID, lease time.Time, token string, runAt, now time.Time) (bool, error)
+	// Complete, Fail, Requeue and Release take a leased row out of running. Each returns ok
+	// false when the lease was lost, and next true when the row held a request made during the
+	// run and the statement queued that instead (decision 23).
+	Complete(ctx context.Context, id rows.ID, lease, now time.Time) (ok, next bool, err error)
+	Fail(ctx context.Context, id rows.ID, lease time.Time, token string, now time.Time) (ok, next bool, err error)
+	Requeue(ctx context.Context, id rows.ID, lease time.Time, token string, runAt, now time.Time) (ok, next bool, err error)
 	// Release gives a row back without counting the attempt; an empty token keeps last_error.
-	Release(ctx context.Context, id rows.ID, lease time.Time, token string, now time.Time) (bool, error)
+	Release(ctx context.Context, id rows.ID, lease time.Time, token string, now time.Time) (ok, next bool, err error)
 	// Retry and Cancel return the row's name and false when nothing matched; StatusOf says why.
 	// Retry with exclusive (a scheduled name) also needs that no row of the name is open, and
 	// the caller holds LockName for the name on the same transaction.

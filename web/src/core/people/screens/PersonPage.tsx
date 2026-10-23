@@ -50,6 +50,13 @@ function Person({ id }: { id: string }) {
   });
   const error = q.error instanceof ApiError ? q.error : null;
   const profile = q.data;
+  // On another person's page `can.edit` already implies the manager permission; on one's own
+  // ID it is also true for a non-manager, so ask the session.
+  const session = useSession();
+  const mayRename =
+    !session.signedIn ||
+    session.personId !== id ||
+    session.permissions.includes("people.profiles.manage");
 
   if (report) {
     return (
@@ -99,6 +106,7 @@ function Person({ id }: { id: string }) {
             key={person.updated_at ?? "new"}
             profile={profile}
             target={target}
+            canRename={mayRename}
             onSaved={(saved) => client.setQueryData(["people", "person", id], saved)}
           />
         ) : (

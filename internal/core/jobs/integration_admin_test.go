@@ -403,14 +403,15 @@ func TestCancel_NotQueued_ReturnsConflict(t *testing.T) {
 	}
 }
 
-func TestCancel_ThenEnqueueSameKey_IsNoop(t *testing.T) {
+func TestCancel_ThenEnqueueSameKey_Reopens(t *testing.T) {
 	r, _, _ := adminIRig(t)
 	s := r.scoped("volunteers")
 	id := enqueue(t, s, jobs.Request{Name: "volunteers.remind", Key: "k", RunAt: epoch.Add(time.Hour)})
 	wantNoErr(t, r.run.Cancel(r.holder(permManage), id))
 	again := enqueue(t, s, jobs.Request{Name: "volunteers.remind", Key: "k", RunAt: epoch.Add(2 * time.Hour)})
-	if again != id || r.byID(id).Status != "canceled" {
-		t.Errorf("Enqueue after Cancel returned %v (status %q), want the canceled row untouched", again, r.byID(id).Status)
+	x := r.byID(id)
+	if again != id || x.Status != "queued" || !x.RunAt.Equal(epoch.Add(2*time.Hour)) || x.Attempts != 0 {
+		t.Errorf("Enqueue after Cancel returned %v, row %+v; want the canceled row reopened queued at the new time (J1, F43)", again, x)
 	}
 }
 

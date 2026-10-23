@@ -102,6 +102,13 @@ copy and can fork it. Features are modules.
     change a set name, their own included); capitalization and spacing respelling allowed
     (P1.5); deleted people's names free immediately (P1.7); one name per person for now.
     Closes Q-VOL10 and Q-VOL11. The people spec text is not yet folded in (spec-editor).
+- **Owner's answers 2026-10-23 (D50, D51):** jobs Amendment J1 and volunteers Amendment V2
+    approved; Q-JOBS14 answered yes (the latest request for a `(name, key)` wins in every
+    state); closes Q-JOBS14. D51 records five follow-ups from the people P1 and volunteers V1
+    build and review: (a) migrator passes a `RAISE` message for people `0003`; (b) `0003`
+    non-ASCII guard extended to ICU databases; (c) waiver flag kept in export; (d) peopletest
+    `SetName` and `RenameByManager` accepted deviation; (e) web spec wording. Spec text is not
+    yet folded in (spec-editor).
 - **Next steps:**
   1. Done 2026-10-16: the owner agreed [09-core-features.md](09-core-features.md)
      (milestones M0–M4, done criteria, spec order). `architect` drafted `model`, now Approved.

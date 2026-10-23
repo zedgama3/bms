@@ -154,6 +154,9 @@ func newIRig(t *testing.T, realIdentity bool, mods ...func(*people.Options)) *ir
 
 var ipCounter atomic.Uint32
 
+// adminCounter gives each admin() person a distinct playa name (P1: names are unique).
+var adminCounter atomic.Uint32
+
 func fromIP(ctx context.Context) context.Context {
 	n := ipCounter.Add(1)
 	ctx = httpx.WithClientAddr(ctx, netip.MustParseAddr(fmt.Sprintf("10.%d.%d.%d", (n>>16)&255, (n>>8)&255, n&255)))
@@ -238,9 +241,9 @@ func (r *irig) insertPersonAs(id model.PersonID, s seed) {
 		ce = &s.ContactEmail
 	}
 	_, err := r.pool.Exec(ctxT(r.t),
-		`INSERT INTO core.person (id, playa_name, pronouns, legal_name, phone, contact_email, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $7)`,
-		[16]byte(id), s.Playa, s.Pronouns, s.Legal, s.Phone, ce, r.clk.Now())
+		`INSERT INTO core.person (id, playa_name, playa_name_key, pronouns, legal_name, phone, contact_email, created_at, updated_at)
+		 VALUES ($1, $2, $8, $3, $4, $5, $6, $7, $7)`,
+		[16]byte(id), s.Playa, s.Pronouns, s.Legal, s.Phone, ce, r.clk.Now(), people.NameKey(s.Playa))
 	if err != nil {
 		r.t.Fatalf("seeding a person: %v", err)
 	}
@@ -308,7 +311,7 @@ func (r *irig) grant(p model.PersonID, perms ...authz.Permission) {
 // ctx for them.
 func (r *irig) admin(perms ...authz.Permission) (model.PersonID, context.Context) {
 	r.t.Helper()
-	p := r.insertPerson(seed{Playa: "Qx Steward"})
+	p := r.insertPerson(seed{Playa: fmt.Sprintf("Qx Steward %d", adminCounter.Add(1))})
 	r.grant(p, perms...)
 	return p, asPerson(ctxT(r.t), p)
 }

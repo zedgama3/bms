@@ -1,4 +1,10 @@
 {
+  "shell.attachments.open": "Open",
+  "shell.attachments.ready": "The file is ready.",
+  "shell.attachments.open_link": "Open {label}",
+  "shell.attachments.remove": "Remove",
+  "shell.attachments.gone": "This file is no longer available.",
+  "shell.attachments.not_ready": "This file is not available on this copy yet. Try again later.",
   "shell.file.chosen": "Chosen file: {name} ({size})",
   "shell.skip": "Skip to content",
   "shell.menu": "Menu",

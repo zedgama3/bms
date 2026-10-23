@@ -167,6 +167,27 @@ describe("the frame and the profile (useMe)", () => {
     expect(called(fetchMock, "GET", "/api/people/me")).toBe(0);
   });
 
+  it("marks the playa name required only while it can be typed", async () => {
+    mountApp({ path: "/people/me", session: ident(), routes: mine(profile()) });
+    const locked = await screen.findByLabelText(/^Playa name/);
+    expect(locked).toHaveAttribute("readonly");
+    expect(screen.getByText("Playa name", { selector: "label" })).not.toHaveTextContent(
+      "(required)",
+    );
+  });
+
+  it("a person with no playa name yet sees it required", async () => {
+    mountApp({
+      path: "/people/me",
+      session: ident({ playa_name: "" }),
+      routes: mine(profile({}, { playa_name: "" })),
+    });
+    const input = await screen.findByLabelText(/^Playa name/);
+    expect(input).not.toHaveAttribute("readonly");
+    expect(input).toBeRequired();
+    expect(screen.getByText(/^Playa name/, { selector: "label" })).toHaveTextContent("(required)");
+  });
+
   it("a failed profile read does not block the page", async () => {
     mountApp({
       session: ident(),
@@ -262,25 +283,110 @@ describe("/people/me", () => {
     expect(email).toHaveAttribute("inputmode", "email");
   });
 
-  it("saves the profile with the fields' names, and the header shows the new playa name", async () => {
-    const saved = profile({}, { playa_name: "Dusty D", updated_at: "2026-10-03T10:00:00Z" });
+  it("saves the profile with the fields' names; the set playa name is sent unchanged", async () => {
+    const saved = profile({}, { pronouns: "she/her", updated_at: "2026-10-03T10:00:00Z" });
     const { fetchMock } = mountApp({
       path: "/people/me",
       session: ident(),
       routes: mine(profile(), { "PUT /api/people/me": () => json(saved) }),
     });
-    const name = await screen.findByLabelText(/^Playa name/);
-    await userEvent.clear(name);
-    await userEvent.type(name, "Dusty D");
+    const pronouns = await screen.findByLabelText(/^Pronouns/);
+    await userEvent.clear(pronouns);
+    await userEvent.type(pronouns, "she/her");
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
     await screen.findByText("Saved");
     expect(await bodyOf(fetchMock, "PUT", "/api/people/me")).toEqual({
-      playa_name: "Dusty D",
-      pronouns: "they/them",
+      playa_name: "Dusty",
+      pronouns: "she/her",
       legal_name: "Private Name",
       phone: "555-0100",
     });
-    expect(screen.getByText("Dusty D", { selector: "header span" })).toBeInTheDocument();
+  });
+
+  it("a set playa name is read-only with the explanation; an unset one is editable with the permanence hint", async () => {
+    const a = mountApp({ path: "/people/me", session: ident(), routes: mine(profile()) });
+    const set = await screen.findByLabelText(/^Playa name/);
+    expect(set).toHaveAttribute("readonly");
+    expect(screen.getByText(/Playa names are permanent\. Ask an administrator/)).toBeVisible();
+    a.unmount();
+    mountApp({
+      path: "/people/me?first=1",
+      session: ident({ playa_name: "" }),
+      routes: mine(profile({}, { playa_name: "" })),
+    });
+    const unset = await screen.findByLabelText(/^Playa name/);
+    expect(unset).not.toHaveAttribute("readonly");
+    expect(screen.getByText(/it can't be changed later/)).toBeVisible();
+    const banner = await screen.findByText(/Tell us your playa name/);
+    expect(banner).toHaveTextContent("permanent");
+    expect(banner).not.toHaveTextContent("any time");
+  });
+
+  it("a taken playa name lands under the field without naming the holder; so does a stale permanent", async () => {
+    mountApp({
+      path: "/people/me?first=1",
+      session: ident({ playa_name: "" }),
+      routes: mine(profile({}, { playa_name: "" }), {
+        "PUT /api/people/me": () =>
+          problem(409, {
+            code: "conflict",
+            fields: [{ field: "playa_name", code: "taken", reason: "x" }],
+          }),
+      }),
+    });
+    await userEvent.type(await screen.findByLabelText(/^Playa name/), "Taken");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    const field = screen.getByLabelText(/^Playa name/);
+    await waitFor(() => expect(field).toHaveAttribute("aria-invalid", "true"));
+    expect(
+      screen.getAllByText("Someone here already uses this playa name. Choose another.").length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("a stale permanent answer is worded under the field", async () => {
+    mountApp({
+      path: "/people/me",
+      session: ident(),
+      routes: mine(profile(), {
+        "PUT /api/people/me": () =>
+          problem(400, {
+            code: "invalid",
+            fields: [{ field: "playa_name", code: "permanent", reason: "x" }],
+          }),
+      }),
+    });
+    await userEvent.click(await screen.findByRole("button", { name: "Save" }));
+    expect(
+      (await screen.findAllByText("Playa names can't be changed once set.")).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("a non-manager on their own person page sees the set name read-only", async () => {
+    mountApp({ path: `/people/${ME}`, session: ident(), routes: mine(profile()) });
+    expect(await screen.findByLabelText(/^Playa name/)).toHaveAttribute("readonly");
+  });
+
+  it("a profile manager changes their own set name behind a confirm, through the manager route", async () => {
+    const { fetchMock } = mountApp({
+      path: "/people/me",
+      session: ident({ permissions: ["people.profiles.manage"] }),
+      routes: mine(profile(), {
+        [`PUT /api/people/${ME}`]: () => json(profile({}, { playa_name: "Dusty Two" })),
+      }),
+    });
+    const name = await screen.findByLabelText(/^Playa name/);
+    expect(name).not.toHaveAttribute("readonly");
+    await userEvent.clear(name);
+    await userEvent.type(name, "Dusty Two");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    const dialog = await screen.findByRole("dialog", { name: "Change this playa name?" });
+    expect(dialog).toHaveTextContent(
+      "This changes a permanent playa name. The change is recorded.",
+    );
+    expect(called(fetchMock, "PUT", `/api/people/${ME}`)).toBe(0);
+    await userEvent.click(within(dialog).getByRole("button", { name: "Change the name" }));
+    await waitFor(() => expect(called(fetchMock, "PUT", `/api/people/${ME}`)).toBe(1));
+    expect(called(fetchMock, "PUT", "/api/people/me")).toBe(0);
   });
 
   it("first sign-in: the playa name takes focus, a save leaves the prompt", async () => {
@@ -727,6 +833,31 @@ describe("/people/new", () => {
     });
   });
 
+  it("says the name is permanent and unique, and shows a taken name inline", async () => {
+    mountApp({
+      path: "/people/new",
+      session: ident({ permissions: ["people.profiles.manage"] }),
+      routes: mine(profile(), {
+        "POST /api/people/": () =>
+          problem(409, {
+            code: "conflict",
+            fields: [{ field: "playa_name", code: "taken", reason: "x" }],
+          }),
+      }),
+    });
+    expect(
+      await screen.findByText(/It is permanent and must be one no one else here/),
+    ).toBeVisible();
+    await userEvent.type(screen.getByLabelText(/^Playa name/), "Walk On");
+    await userEvent.click(screen.getByRole("button", { name: "Create person" }));
+    await waitFor(() =>
+      expect(screen.getByLabelText(/^Playa name/)).toHaveAttribute("aria-invalid", "true"),
+    );
+    expect(
+      screen.getAllByText("Someone here already uses this playa name. Choose another.").length,
+    ).toBeGreaterThan(0);
+  });
+
   it("a missing playa name lands on its input; read-only disables the button", async () => {
     const a = mountApp({
       path: "/people/new",
@@ -824,18 +955,56 @@ describe("/people/:person", () => {
           json(
             profile(
               { can: can({ edit: true, read_contacts: true }) },
-              { id: PAT, playa_name: "Pat D" },
+              { id: PAT, pronouns: "he/him" },
             ),
           ),
       },
     );
-    const name = await screen.findByLabelText(/^Playa name/);
+    const pronouns = await screen.findByLabelText(/^Pronouns/);
     expect(screen.getByLabelText(/^Legal name/).hasAttribute("required")).toBe(false);
+    await userEvent.clear(pronouns);
+    await userEvent.type(pronouns, "he/him");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(called(fetchMock, "PUT", `/api/people/${PAT}`)).toBe(1));
+    expect(screen.queryByRole("dialog", { name: "Change this playa name?" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Add a contact" })).toBeEnabled();
+  });
+
+  it("an editor renames a set playa name only after confirming; cancel sends nothing; a taken name shows inline", async () => {
+    let taken = true;
+    const { fetchMock } = other(
+      { edit: true, read_contacts: true },
+      {},
+      {
+        [`PUT /api/people/${PAT}`]: () =>
+          taken
+            ? problem(409, {
+                code: "conflict",
+                fields: [{ field: "playa_name", code: "taken", reason: "x" }],
+              })
+            : json(profile({ can: can({ edit: true }) }, { id: PAT, playa_name: "Pat D" })),
+      },
+    );
+    const name = await screen.findByLabelText(/^Playa name/);
+    expect(name).not.toHaveAttribute("readonly");
     await userEvent.clear(name);
     await userEvent.type(name, "Pat D");
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(called(fetchMock, "PUT", `/api/people/${PAT}`)).toBe(1));
-    expect(screen.getByRole("button", { name: "Add a contact" })).toBeEnabled();
+    const dialog = await screen.findByRole("dialog", { name: "Change this playa name?" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(called(fetchMock, "PUT", `/api/people/${PAT}`)).toBe(0);
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await userEvent.click(
+      within(await screen.findByRole("dialog", { name: "Change this playa name?" })).getByRole(
+        "button",
+        { name: "Change the name" },
+      ),
+    );
+    await waitFor(() => expect(name).toHaveAttribute("aria-invalid", "true"));
+    expect(
+      screen.getAllByText("Someone here already uses this playa name. Choose another.").length,
+    ).toBeGreaterThan(0);
+    taken = false;
   });
 
   it("links an account by e-mail and says whether the empty profile was removed", async () => {

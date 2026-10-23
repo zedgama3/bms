@@ -12,6 +12,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/people/rows"
 	"github.com/zedgama3/bms/internal/lib/errs"
+	"github.com/zedgama3/bms/internal/lib/validate"
 	"github.com/zedgama3/bms/internal/model"
 )
 
@@ -75,6 +76,10 @@ var (
 	sqlExportRequests    = mustSQL("export_requests_by_person.sql")
 	consentPersonFKeyKey = "person_consent_person_id_fkey"
 )
+
+// playaNameKeyIdx is the unique index that decides whether a playa name is taken
+// (decision 29).
+const playaNameKeyIdx = "person_playa_name_key_idx"
 
 func mustSQL(name string) string {
 	b, err := sqlFiles.ReadFile("sql/" + name)
@@ -155,6 +160,21 @@ func uuids[T ~[16]byte](ids []T) [][16]byte {
 	return out
 }
 
+// takenOr re-kinds a unique violation on person_playa_name_key_idx as errs.Conflict with
+// field playa_name code taken (decision 29). The error names nobody. Any other error,
+// including another unique violation, is returned as it is.
+func takenOr(op string, err error) error {
+	var pg *db.Error
+	if !errors.As(err, &pg) || pg.Code != "23505" || pg.Constraint != playaNameKeyIdx {
+		return err
+	}
+	return errs.E(op, errs.Conflict, &validate.FieldError{
+		Field:  "playa_name",
+		Code:   "taken",
+		Reason: "another person already uses this playa name",
+	})
+}
+
 func notFound(op, what string) error {
 	return errs.E(op, errs.NotFound, errors.New("no such "+what))
 }
@@ -204,6 +224,25 @@ func scanPerson(sc scanner) (rows.Person, error) {
 	)
 	if err := sc.Scan(&id, &p.PlayaName, &p.Pronouns, &p.Language, &p.LegalName, &p.Phone, &email,
 		&p.CreatedAt, &p.UpdatedAt); err != nil {
+		return rows.Person{}, err //nolint:wrapcheck // queryAll wraps with db.Wrap
+	}
+	p.ID = model.PersonID(id)
+	if email != nil {
+		p.ContactEmail = *email
+	}
+	p.CreatedAt, p.UpdatedAt = p.CreatedAt.UTC(), p.UpdatedAt.UTC()
+	return p, nil
+}
+
+// scanPersonKeyed reads P and the trailing playa_name_key of get_person_for_update.sql.
+func scanPersonKeyed(sc scanner) (rows.Person, error) {
+	var (
+		p     rows.Person
+		id    [16]byte
+		email *string
+	)
+	if err := sc.Scan(&id, &p.PlayaName, &p.Pronouns, &p.Language, &p.LegalName, &p.Phone, &email,
+		&p.CreatedAt, &p.UpdatedAt, &p.PlayaNameKey); err != nil {
 		return rows.Person{}, err //nolint:wrapcheck // queryAll wraps with db.Wrap
 	}
 	p.ID = model.PersonID(id)
@@ -294,10 +333,19 @@ func (s *Store) GetPerson(ctx context.Context, id model.PersonID) (rows.Person, 
 	return s.person(ctx, "people.postgres.GetPerson", sqlGetPerson, [16]byte(id))
 }
 
-// GetForUpdate is GetPerson with a row lock, for a Write transaction. Fails errs.NotFound
+// GetForUpdate is GetPerson with a row lock, for a Write transaction. The row also carries
+// PlayaNameKey as stored (the permanence check compares against it). Fails errs.NotFound
 // when there is none.
 func (s *Store) GetForUpdate(ctx context.Context, id model.PersonID) (rows.Person, error) {
-	return s.person(ctx, "people.postgres.GetForUpdate", sqlGetForUpdate, [16]byte(id))
+	const op = "people.postgres.GetForUpdate"
+	p, ok, err := queryOne(ctx, s.db, op, sqlGetForUpdate, scanPersonKeyed, [16]byte(id))
+	if err != nil {
+		return rows.Person{}, err
+	}
+	if !ok {
+		return rows.Person{}, notFound(op, "person")
+	}
+	return p, nil
 }
 
 // ExportPerson returns the profile row for the export document. Fails errs.NotFound when
@@ -317,29 +365,32 @@ func (s *Store) person(ctx context.Context, op, query string, args ...any) (rows
 	return p, nil
 }
 
-// InsertPerson inserts the row (the text fields and ContactEmail as given, "" for none).
-// inserted is false, and nothing was written, when the ID already has a row. Fails
-// errs.Unavailable wrapping db.ErrReadOnly on a read-only copy, and with db's kinds.
+// InsertPerson inserts the row (the text fields and ContactEmail as given, "" for none;
+// PlayaNameKey is written with the name). inserted is false, and nothing was written, when
+// the ID already has a row. Fails errs.Conflict with field playa_name code taken when
+// another person holds the key, errs.Unavailable wrapping db.ErrReadOnly on a read-only
+// copy, and with db's kinds.
 func (s *Store) InsertPerson(ctx context.Context, p rows.Person, now time.Time) (rows.Person, bool, error) {
 	const op = "people.postgres.InsertPerson"
 	row, ok, err := queryOne(ctx, s.db, op, sqlInsertPerson, scanPerson,
 		[16]byte(p.ID), p.PlayaName, p.Pronouns, p.Language, p.LegalName, p.Phone, p.ContactEmail,
-		uuidOrNil(p.CreatedBy), now.UTC())
+		uuidOrNil(p.CreatedBy), now.UTC(), p.PlayaNameKey)
 	if err != nil {
-		return rows.Person{}, false, err
+		return rows.Person{}, false, takenOr(op, err)
 	}
 	return row, ok, nil
 }
 
 // Upsert applies the patch to the person's row, or creates the row from it; inserted
-// reports which. Fails as InsertPerson does.
+// reports which. A patch that sets PlayaName sets PlayaNameKey with it. Fails as
+// InsertPerson does.
 func (s *Store) Upsert(ctx context.Context, p rows.PersonPatch, now time.Time) (rows.Person, bool, error) {
 	const op = "people.postgres.Upsert"
 	r, ok, err := queryOne(ctx, s.db, op, sqlUpsertPerson, scanPersonInserted,
 		[16]byte(p.ID), ptrArg(p.PlayaName), ptrArg(p.Pronouns), ptrArg(p.Language), ptrArg(p.LegalName),
-		ptrArg(p.Phone), ptrArg(p.ContactEmail), now.UTC())
+		ptrArg(p.Phone), ptrArg(p.ContactEmail), now.UTC(), ptrArg(p.PlayaNameKey))
 	if err != nil {
-		return rows.Person{}, false, err
+		return rows.Person{}, false, takenOr(op, err)
 	}
 	if !ok {
 		return rows.Person{}, false, errs.E(op, errs.Internal, errors.New("upsert returned no row"))
@@ -347,15 +398,15 @@ func (s *Store) Upsert(ctx context.Context, p rows.PersonPatch, now time.Time) (
 	return r.row, r.inserted, nil
 }
 
-// UpdatePerson applies the patch to an existing row. Fails errs.NotFound when there is
-// none, and as InsertPerson does.
+// UpdatePerson applies the patch to an existing row (PlayaNameKey travels with PlayaName).
+// Fails errs.NotFound when there is none, and as InsertPerson does.
 func (s *Store) UpdatePerson(ctx context.Context, p rows.PersonPatch, now time.Time) (rows.Person, error) {
 	const op = "people.postgres.UpdatePerson"
 	row, ok, err := queryOne(ctx, s.db, op, sqlUpdatePerson, scanPerson,
 		[16]byte(p.ID), ptrArg(p.PlayaName), ptrArg(p.Pronouns), ptrArg(p.Language), ptrArg(p.LegalName),
-		ptrArg(p.Phone), ptrArg(p.ContactEmail), now.UTC())
+		ptrArg(p.Phone), ptrArg(p.ContactEmail), now.UTC(), ptrArg(p.PlayaNameKey))
 	if err != nil {
-		return rows.Person{}, err
+		return rows.Person{}, takenOr(op, err)
 	}
 	if !ok {
 		return rows.Person{}, notFound(op, "person")

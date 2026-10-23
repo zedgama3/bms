@@ -1,10 +1,11 @@
-import { act, fireEvent, screen } from "@testing-library/react";
+import { act, fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useRef, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { expectNoAxeViolations } from "@/test/axe";
 import { renderUi } from "@/test/render";
 import {
+  Attachments,
   Banner,
   Button,
   Dialog,
@@ -236,6 +237,25 @@ describe("Toast", () => {
     await expectNoAxeViolations(container);
     await userEvent.click(screen.getByRole("button", { name: "Dismiss" }));
     expect(screen.queryByText("Saved")).not.toBeInTheDocument();
+  });
+});
+
+describe("Attachments", () => {
+  it("an unexpected rejection says something went wrong and offers a retry", async () => {
+    URL.createObjectURL = () => "blob:test";
+    URL.revokeObjectURL = () => {};
+    let calls = 0;
+    const fetchRow = vi.fn(() => {
+      calls += 1;
+      return calls === 1 ? Promise.reject(new TypeError("boom")) : Promise.resolve(new Blob(["x"]));
+    });
+    renderUi(<Attachments rows={[{ id: "a", label: "Doc", fetch: fetchRow }]} />);
+    await userEvent.click(screen.getByRole("button", { name: /^Open\s*Doc/ }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Something went wrong.");
+    await userEvent.click(within(alert).getByRole("button", { name: "Try again" }));
+    expect(await screen.findByRole("link", { name: /Doc/ })).toHaveAttribute("href", "blob:test");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
 
