@@ -7,6 +7,7 @@
 - **Amended 2026-10-18 (owner approval of authz/people):** Proposed change 10 applied for `authz` and `people` (`postgres.Migrations`, `authz.Set`, `people.Set`, schema `core`, set names `authz` and `people` already in the fixed order); people's migration `0001` reads `core.account` once to backfill a person row per existing account, the one read across sets (authz.md Proposed change 16, people.md Proposed change 10). The transaction seam is not changed here.
 - **Amended 2026-10-18 (D36 (e); approved by the owner 2026-10-18, D37):** `TxMode(ctx) (Mode, bool)` added: reports whether ctx carries a transaction begun by any `DB` (`*Pool` or `dbtest.Fake`) and its mode, so `audit` never spools an entry while a transaction is in flight (audit.md, same amendment). A package function beside `AfterCommit`, reading the internal `txctx`; cannot fail; `db.None()` never puts a transaction in a ctx, so it reports none there. Decision 21; Summary, Interface, "Who needs each member", Test plan and Proposed changes 14 and 15 updated. Nothing else in the transaction seam changes.
 - **Amended 2026-10-20 (D44, owner approval of files):** Proposed change 10 applied for `files` (`files.Set{Name: "files", Schema: "core"}` with `postgres.Migrations`: two tables, no bytes; set name already last in the fixed order, after `notify`).
+- **Amended 2026-10-23 (people Amendment P1, D48):** a UTF-8 server encoding is required (`normalize()` needs it); people migration `0003` checks it itself, so nothing breaks until `Open` adds the check. Lock-in check and Summary updated; no interface change.
 - **Amended 2026-10-19 (D39, owner approval of settings and notify):** the fixed migration-set order gains `notify` after `jobs` (`identity`, `people`, `authz`, `departments`, `events`, `audit`, `settings`, `jobs`, `notify`, `files`); Proposed change 10 applied for `settings` and `notify`, and Proposed change 13 applied for `notify` (jobs pending).
 - **Package:** `internal/core/db` (Go module `github.com/zedgama3/bms`), plus the test
   helper package `internal/core/db/dbtest`. **UI:** none of its own; the "this copy is
@@ -80,7 +81,7 @@ QueryTimeout)`, `Migrate` excepted; 17 `Migrate` takes a session advisory lock, 
 18 missing `core.schema_migration` means nothing applied; 19 `TempDB` is a database not a
 schema; 20 PostgreSQL 16 minimum (owner, 2026-10-16); 21 `TxMode` is a package function
 that reports the ctx's transaction whoever began it, ended or not, so `audit` can refuse to
-spool inside one (D36 (e); approved D37).
+spool inside one (D36 (e); approved D37). The server encoding must be UTF-8 (people Amendment P1, 2026-10-23; people `0003` checks it itself, `Open` does not yet).
 
 Errs kinds and sentinels callers handle: `Invalid` (bad options/URL/credentials/old server,
 FK/not-null/check/data errors, malformed migrations), `Conflict` (unique violation with
@@ -1049,7 +1050,7 @@ External technology wrapped: PostgreSQL (PostgreSQL License, OSI-approved) throu
 substitute to stay free. The interface relies on three PostgreSQL features beyond SQL:
 `pg_is_in_recovery()`, `transaction_read_only`, and advisory locks; every PostgreSQL
 release since 9.x has them, and the PostgreSQL-protocol forks that are OSI-licensed
-(YugabyteDB, Apache 2.0) implement them. Nothing depends on a hosted service. Replacing
+(YugabyteDB, Apache 2.0) implement them. Nothing depends on a hosted service. The server encoding must be UTF-8 (SQL `normalize()`, used by people migration `0003`, needs it); people's migration checks it itself and `Open` does not yet. Replacing
 PostgreSQL with another database is D8's storage seam, not this package.
 
 ## Test plan

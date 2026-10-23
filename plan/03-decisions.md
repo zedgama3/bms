@@ -768,3 +768,24 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
 - **Privacy-audience labels ([design/privacy-tags.md](design/privacy-tags.md)):** the wording
   suggestions are accepted. Descriptions use one phrase, "the person this information is
   about", throughout. The `holders` title becomes "People whose role allows it".
+
+## D48. People amendment P1: unique, permanent playa names, self-set; admins may change any set name
+
+- **Status:** Accepted (2026-10-23), decided by the owner. The owner's answers were "1. Yes.
+  For now this is the way." on P1, and "Yes" to each of the points below. Amends people
+  decisions 3 and 9 as stated in the owner's answers; the people spec itself is not edited
+  here (spec-editor folds P1 in).
+- **Playa (burn) names:** unique across the installation, and permanent once self-set.
+- **Q-PEOPLE-8 (admin changes):** an admin may always make changes. A `people.profiles.manage`
+  holder may change any set playa name, their own included. This is broader than the draft's
+  recommendation, which kept the change away from the holder's own name ("never for oneself");
+  that limit is dropped. Each such change is audited, the same taken rule applies, and the old
+  name is free at once.
+- **Capitalization and spacing:** a person may respell their own name when only capitalization
+  and spacing change (P1.5, same-key respelling allowed).
+- **Deleted people:** a deleted person's playa name becomes available immediately (P1.7). A
+  retirement process comes later.
+- **Names per person:** one name per person for now. Handles and multiple names are Later;
+  whether only handles must be unique is decided then.
+- **Reverses people decision 3** (playa names not unique).
+- **Closes** volunteers Q-VOL10 and Q-VOL11 as carried by P1.

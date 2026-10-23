@@ -110,6 +110,9 @@ here, copy it into the document it affects, and tick the box.
 
 - None open. Q-WEBMOD and Q-FORMS are resolved above. The shape of qualifications is for the
   architect in the `volunteers` spec (Q-QUAL, D40).
+- [x] **Q-PEOPLE-8:** May an admin change a set playa name? Yes. An admin may always make
+      changes; admins exist for when workflows are broken and exceptions need to be made.
+      → D48 (broader than the draft's recommendation: the holder's own name is included).
 
 Resolved 2026-10-21 (D47): the four logo questions raised by the settings logo amendment.
 
@@ -120,7 +123,7 @@ Resolved 2026-10-21 (D47): the four logo questions raised by the settings logo a
 - [x] **Q-LOGO4:** Cap the logo's pixel dimensions? No. → D47
 
 Answered 2026-10-22: the three questions raised by the volunteers amendment V1. V1 is not yet
-approved, so no decision is logged; D48 waits for that approval.
+approved, so no decision is logged; the V1 decision will take the next number after D48.
 
 - [x] **Q-VOL7:** May a lead waive a requirement for themself? Yes, allowed (against the
       recommendation). → design/module-volunteers.md (Q-VOL7; V1 pending approval)
@@ -139,10 +142,10 @@ a decision; nothing logged in 03-decisions.md).
 - [x] **Q-VOL10:** Are duplicate burn names allowed, and how are names retired? No duplicates
       installation-wide. A retirement process comes later: a name may be retired if unused for
       about 5 years, and a separate process (later) for names that are vulgar or otherwise
-      inappropriate. → Later (retirement process); people amendment P1 (pending)
+      inappropriate. → Later (retirement process); D48 (people amendment P1, approved 2026-10-23)
 - [x] **Q-VOL11:** May someone rename themselves to a conflicting name, and do people have more
       than one burn name? No conflicting names. For initial deployment, burn names are permanent
       and self-appointed; approval pipelines come later. A person may hold several names (for
       example an alias and a ranger radio handle); only the radio handle must be unique. The
       multiple-names nuance may be deferred. → Later (approval pipelines, multiple names);
-      people amendment P1 (pending)
+      D48 (people amendment P1, approved 2026-10-23)

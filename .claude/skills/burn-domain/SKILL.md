@@ -151,7 +151,12 @@ mark should be checked too.
   to a name already taken. A name becomes eligible for retirement if it has not been used for
   about five years. Names that are vulgar or inappropriate for other reasons also need a way
   to be retired or refused; the process for both is still to be devised. Some regionals may
-  later want new names to go through an optional approval step.
+  later want new names to go through an optional approval step. A person may change the
+  capitalisation or spacing of their name; a deleted person's name is free again at once
+  (owner, 2026-10-23).
+- **Admins can always make the change** (owner, 2026-10-23): an admin exists for when a
+  workflow breaks and an exception is needed, so an admin may correct anyone's record (a
+  burn name included), recorded in the audit log, even where the person themself may not.
 - **A person can have more than one burn name** (owner, 2026-10-22), for example the alias
   they are known by plus a radio handle (Rangers and similar). Only the handle used on the
   radio must be unique, so radio traffic is unambiguous.

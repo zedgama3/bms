@@ -25,7 +25,7 @@ copy and can fork it. Features are modules.
 ## Status
 
 - **Phase:** 0, foundations
-- **Last updated:** 2026-10-22
+- **Last updated:** 2026-10-23
 - **Done 2026-10-16:**
   - Repo scaffolded: plan, agents, skills, lint rules, dev compose. Methodology carried over
     from Sojourn (D7).
@@ -90,14 +90,18 @@ copy and can fork it. Features are modules.
     (a lead may waive for themself: yes), Q-VOL8 (no; burn names are seen by everyone, and must
     be unique among volunteers for the same event) and Q-VOL9 (lead- or system-canceled bookings
     stay on the schedule until the shift ends: yes). Recorded in 06-open-questions.md. V1 is
-    awaiting owner approval; D48 waits for that.
+    awaiting owner approval; its decision will take the next number after D48.
 - **Owner's answers 2026-10-22 (no decision yet):** Q-VOL10 (burn names are unique
     installation-wide; retiring names after about 5 years unused, and a process for
     inappropriate names, come later) and Q-VOL11 (no conflicting names; burn names are
     permanent and self-appointed for initial deployment; approval pipelines, and several names
     per person such as an alias plus a unique radio handle, come later). Recorded in
-    06-open-questions.md. Both are to be carried by people amendment P1, being drafted by
-    the architect; no decision is logged yet.
+    06-open-questions.md. Both are carried by people amendment P1, approved 2026-10-23 (D48).
+- **Owner's answers 2026-10-23 (D48):** people amendment P1 approved: playa names unique
+    across the installation and permanent once self-set; Q-PEOPLE-8 yes (an admin may always
+    change a set name, their own included); capitalization and spacing respelling allowed
+    (P1.5); deleted people's names free immediately (P1.7); one name per person for now.
+    Closes Q-VOL10 and Q-VOL11. The people spec text is not yet folded in (spec-editor).
 - **Next steps:**
   1. Done 2026-10-16: the owner agreed [09-core-features.md](09-core-features.md)
      (milestones M0–M4, done criteria, spec order). `architect` drafted `model`, now Approved.
