@@ -896,3 +896,48 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
   redundant. No change decided.
 - **Owner's wish:** the owner wants to run and review a working version before packaging work:
   first locally, then on the dev instance `bms.zg3.net` with demo accounts.
+
+## D53. Demo spec approved with the main session's recommendations; the demo is fully public
+
+- **Status:** Accepted (2026-10-28), decided by the owner. [design/demo.md](design/demo.md) is
+  Approved, with the main session's recommendations.
+- **Intent:** a fully public demo at the project's public demo instance, so the community can
+  try the app. Owner's words: "We cannot build in a vacuum for long"; "Not perfect, but
+  something."
+- **Automatic resets:** built, but shipped disabled.
+- **Q-DEMO1, yes:** one demo account per starter role, plus a "newcomer" participant with an
+  empty profile, all with a shared password.
+- **Q-DEMO2, changed from the draft:** captured mail is shown only to the account it was
+  addressed to, not to everyone signed in. The sign-up form tells people to use a made-up
+  address, because visitors will type real addresses at sign-up.
+- **Q-DEMO3, yes:** the reset runs as an operator systemd timer, shipped disabled.
+- **Q-DEMO4, yes:** only lock-out cases are guarded. Otherwise reset by hand until the timer is
+  enabled, after the owner reviews.
+
+## D54. telemetry Amendment T1 approved, with its open questions answered
+
+- **Status:** Accepted (2026-10-28), decided by the owner. [design/telemetry.md](design/telemetry.md),
+  "Amendment T1" (client telemetry for the public demo), is Approved.
+- **Context:** the owner: "It is important that we get telemetry that can help us identify
+  issues that clients are having, even if they don't report them."
+- **Q-TEL-1, yes:** the usage off switch is the config `BMS_TELEMETRY_USAGE`, default `true`.
+- **Q-TEL-2, yes:** keep the `from` attribute on screen views.
+- **Q-TEL-3, yes:** the browser sends browser class and form factor on performance histograms.
+
+## D55. Minor follow-ups from the D52 review approved
+
+- **Status:** Accepted (2026-10-28), decided by the owner. The owner approved these with the
+  recommendations.
+- **Settings:** the PUT `/logo` handler passes `"logo"` (logoName) instead of the multipart
+  filename.
+- **Tests:** `fake_d52_test.go` must not call `t.Fatalf` from a goroutine.
+- **Comments:** the stale comments are fixed: the `reclaim_expired_leases.sql` header on
+  attempts, and the audit store comment on the `plan_cache_mode` scope.
+- **Access and audit screens:** an unnamed person shows "No playa name yet" after being picked,
+  never a raw ID (as volunteers does).
+- **Dead code:** the unused `Match` type in `web/src/core/access/types.ts` is removed.
+- **Migrator:** the RAISE pass-through check becomes locale-independent, matching
+  `inline_code_block` in the `Where` text in a way that holds under any `lc_messages`. Options
+  named: set `lc_messages='C'` on the migrator's connection, or match the untranslated function
+  name.
+- **jobstest.Fake.Run:** ignores `j.Attempt` once the row is tracked, so attempts aren't reset.

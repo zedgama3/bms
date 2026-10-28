@@ -100,7 +100,11 @@ export function GrantList() {
   });
 
   const grants = q.data?.pages.flatMap((p) => p.grants) ?? [];
-  const nameOf = useNames([person, ...grants.flatMap((g) => [g.person_id, g.granted_by ?? ""])]);
+  const nameOf = useNames(
+    [person, ...grants.flatMap((g) => [g.person_id, g.granted_by ?? ""])],
+    undefined,
+    t("shell.person_search.unnamed"),
+  );
   // The server names each grant's role: its name, or the starter role's key (never the ID).
   const roleTitle = (g: Grant) => titles.role({ name: g.role_name, key: g.role_key });
   const departments = departmentsQ.data?.departments ?? [];

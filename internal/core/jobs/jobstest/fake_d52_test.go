@@ -3,6 +3,7 @@ package jobstest_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -167,22 +168,59 @@ func TestFake_OutsideRequest_DuringFailingRun_ResetsAttempts(t *testing.T) {
 	})
 	enq(t, f, jobs.Request{Name: remind, Key: "k", RunAt: epoch})
 	drain(t, f, epoch) // attempt 1 fails, requeued
-	done := make(chan struct{})
-	go func() { defer close(done); drain(t, f, epoch) }() // attempt 2, blocked
-	<-started
+	done := make(chan error, 1)
+	go func() { done <- runDue(t, f, epoch) }() // attempt 2, blocked
+	select {
+	case <-started:
+	case err := <-done:
+		t.Fatalf("the second run ended before the handler started: %v", err)
+	}
 	enq(t, f, jobs.Request{Name: remind, Key: "k", RunAt: epoch}) // from outside the run
 	close(release)
-	<-done
+	if err := <-done; err != nil { // failed here, on the test goroutine
+		t.Fatalf("%v", err)
+	}
 	drain(t, f, epoch)
 	if len(seen) != 3 || seen[0] != 1 || seen[1] != 2 || seen[2] != 1 {
 		t.Fatalf("attempts seen = %v, want [1 2 1] (outside request resets to a fresh row)", seen)
 	}
 }
 
+// D55: once a row is tracked, Run counts its attempts itself and ignores the caller's j.Attempt.
+func TestFakeRun_TrackedRow_IgnoresCallerAttempt(t *testing.T) {
+	var seen []int
+	f, _ := newFake(t, func(_ context.Context, j jobs.Job) error {
+		seen = append(seen, j.Attempt)
+		return errs.E("t", errs.Unavailable, errors.New("down"))
+	})
+	for i := 0; i < 2; i++ {
+		// The first call creates the row (attempts seeded to 1); the second finds it tracked.
+		if err := f.Run(ctxT(t), remind, jobs.Job{Key: "k", Attempt: 1}); !errs.Is(err, errs.Unavailable) {
+			t.Fatalf("Run %d = %v, want Unavailable", i, err)
+		}
+	}
+	if q := f.Queued(); len(q) != 1 {
+		t.Fatalf("Queued = %+v, want the one requeued row", q)
+	}
+	drain(t, f, epoch)
+	if len(seen) != 3 || seen[0] != 1 || seen[1] != 1 || seen[2] != 3 {
+		t.Fatalf("attempts seen = %v, want [1 1 3] (the tracked row counts on, not reset to 2)", seen)
+	}
+}
+
 // drain runs what is due; the handlers here fail on purpose, so only an unexpected kind fails the test.
 func drain(t testing.TB, f *jobstest.Fake, now time.Time) {
 	t.Helper()
-	if _, err := f.RunDue(ctxT(t), now); err != nil && !errs.Is(err, errs.Unavailable) {
-		t.Fatalf("RunDue: %v", err)
+	if err := runDue(t, f, now); err != nil {
+		t.Fatalf("%v", err)
 	}
+}
+
+// runDue is drain without the failure, so a goroutine can hand the error to the test goroutine.
+func runDue(t testing.TB, f *jobstest.Fake, now time.Time) error {
+	t.Helper()
+	if _, err := f.RunDue(ctxT(t), now); err != nil && !errs.Is(err, errs.Unavailable) {
+		return fmt.Errorf("RunDue: %w", err)
+	}
+	return nil
 }

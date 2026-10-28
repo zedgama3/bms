@@ -493,6 +493,29 @@ describe("/access/grants", () => {
     await expectNoAxeViolations(container);
   });
 
+  it("a grant holder without a playa name shows 'No playa name yet', never an ID", async () => {
+    mountApp({
+      path: "/access/grants",
+      session: ident(ALL),
+      routes: withGrants({ "GET /api/people/names": () => json({ names: { [PAT]: "" } }) }),
+    });
+    expect((await screen.findAllByText("No playa name yet")).length).toBeGreaterThan(0);
+    expect(screen.queryByText(PAT)).not.toBeInTheDocument();
+  });
+
+  it("an ID the names answer omits, or a failed names call, shows the ID, not 'unnamed'", async () => {
+    for (const names of [() => json({ names: {} }), () => problem(500, { code: "internal" })]) {
+      const { unmount } = mountApp({
+        path: "/access/grants",
+        session: ident(ALL),
+        routes: withGrants({ "GET /api/people/names": names }),
+      });
+      expect((await screen.findAllByRole("heading", { name: PAT })).length).toBeGreaterThan(0);
+      expect(screen.queryByText("No playa name yet")).not.toBeInTheDocument();
+      unmount();
+    }
+  });
+
   it("filters by person, role, permission and ended; IDs only in the address", async () => {
     const { fetchMock, router } = mountApp({
       path: `/access/grants?person=${PAT}`,

@@ -50,7 +50,7 @@ export function GrantNew() {
     queryKey: ["departments", "list", { archived: false }],
     queryFn: ({ signal }) => api.GET("/api/departments/", { signal }),
   });
-  const nameOf = useNames([person]);
+  const nameOf = useNames([person], undefined, t("shell.person_search.unnamed"));
   const loadError =
     (rolesQ.error instanceof ApiError ? rolesQ.error : null) ??
     (departmentsQ.error instanceof ApiError ? departmentsQ.error : null);
@@ -120,7 +120,7 @@ export function GrantNew() {
             hasValue={person !== ""}
             onPick={(m) => {
               setPerson(m.id);
-              setPicked(m.playa_name);
+              setPicked(m.playa_name || t("shell.person_search.unnamed"));
             }}
             onClear={() => setPerson("")}
             error={fieldErrors["person"]}

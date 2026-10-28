@@ -470,18 +470,21 @@ func (m *Migrator) apply(ctx context.Context, conn rowTx, set string, f migFile)
 // sqlstateRaise is the SQLSTATE of a RAISE EXCEPTION with no explicit ERRCODE.
 const sqlstateRaise = "P0001"
 
-// whereOwnBlock is how the server's Where starts (CONTEXT) for a RAISE in the migration's own
-// DO block, which PostgreSQL runs as an anonymous function. A RAISE from a trigger or function
-// the file fires has its own function name there, and is scrubbed like any server error (D52).
-const whereOwnBlock = "PL/pgSQL function inline_code_block"
+// ownBlockName is the name PostgreSQL gives the anonymous function it runs a DO block as. It
+// is the one word of the server's Where (CONTEXT) that lc_messages does not translate; the
+// words around it ("PL/pgSQL function", "line N at RAISE") are translated, and lc_messages
+// cannot be set by the migrator's role (it is superuser-only). A RAISE from a trigger or
+// function the file fires has its own, schema-qualified name with an argument list there, and
+// is scrubbed like any server error (D52).
+const ownBlockName = "inline_code_block"
 
 // withRaised appends the message (and DETAIL, when the file sets one) of a RAISE EXCEPTION
 // raised by a migration file to failed, which is the already-classified error for driver. It is
 // the one place a server error's text leaves the database layer (decision 4, D51): the author
 // of the file wrote it to tell the operator what to fix, and a migration never puts personal
-// data in it. It applies only to a RAISE in the file's own DO block (the error's Where starts
-// with "PL/pgSQL function inline_code_block", D52): a RAISE from a trigger the file fires, and
-// any other error, and a failed that is nil, come back unchanged.
+// data in it. It applies only to a RAISE in the file's own DO block (the error's one-line Where
+// names the anonymous function inline_code_block, D52): a RAISE from a trigger the file fires,
+// and any other error, and a failed that is nil, come back unchanged.
 func withRaised(failed, driver error) error {
 	var pg *pgconn.PgError
 	if failed == nil || !errors.As(driver, &pg) || !ownRaise(pg) {
@@ -501,9 +504,20 @@ func raised(err error) bool {
 	return errors.As(err, &pg) && ownRaise(pg)
 }
 
-// ownRaise reports whether pg is a P0001 raised in the migration's own DO block.
+// ownRaise reports whether pg is a P0001 raised in the migration's own DO block. A top-level
+// DO run by the migrator has exactly one context line, so Where must be a single line. That
+// line is translated by lc_messages (the words around the name, and the spacing, differ by
+// language), so it is matched by the anonymous function's name as a substring. A named function
+// or trigger always renders through format_procedure with an argument list, so a line with a
+// "(" is never the DO block.
 func ownRaise(pg *pgconn.PgError) bool {
-	return pg.Code == sqlstateRaise && strings.HasPrefix(pg.Where, whereOwnBlock)
+	if pg.Code != sqlstateRaise {
+		return false
+	}
+	if strings.Contains(pg.Where, "\n") {
+		return false
+	}
+	return strings.Contains(pg.Where, ownBlockName) && !strings.Contains(pg.Where, "(")
 }
 
 // rowTx is the part of a pooled connection apply needs.

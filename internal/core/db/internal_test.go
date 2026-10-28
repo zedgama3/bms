@@ -291,6 +291,15 @@ func TestWithRaised_OnlyTheMigrationsOwnBlock_PassesTextThrough(t *testing.T) {
 		wants bool
 	}{
 		{"own DO block", &pgconn.PgError{Code: "P0001", Message: "fix the data", Where: "PL/pgSQL function inline_code_block line 1 at RAISE"}, true},
+		{"own DO block, German", &pgconn.PgError{Code: "P0001", Message: "fix the data", Where: "PL/pgSQL-Funktion inline_code_block Zeile 1 bei RAISE"}, true},
+		{"own DO block, French", &pgconn.PgError{Code: "P0001", Message: "fix the data", Where: "fonction PL/pgSQL inline_code_block, ligne 1 à RAISE"}, true},
+		{"own DO block, Japanese", &pgconn.PgError{Code: "P0001", Message: "fix the data", Where: "PL/pgSQL関数inline_code_blockの1行目 - RAISE"}, true},
+		{"own DO block, Korean", &pgconn.PgError{Code: "P0001", Message: "fix the data", Where: "PL/pgSQL 함수 \"inline_code_block\" 의 1번째 RAISE"}, true},
+		{"own DO block, Chinese", &pgconn.PgError{Code: "P0001", Message: "fix the data", Where: "在RAISE的第1行的PL/pgSQL函数inline_code_block"}, true},
+		{"named function with the block's name", &pgconn.PgError{Code: "P0001", Message: "row 7 of someone", Where: "PL/pgSQL function inline_code_block() line 3 at RAISE"}, false},
+		{"named function with arguments and the block's name", &pgconn.PgError{Code: "P0001", Message: "row 7 of someone", Where: "PL/pgSQL function core.inline_code_block(integer) line 3 at RAISE"}, false},
+		{"trigger, two lines", &pgconn.PgError{Code: "P0001", Message: "row 7 of someone", Where: "PL/pgSQL function core.guard() line 3 at RAISE\nSQL statement \"x\""}, false},
+		{"own block is only the outer frame", &pgconn.PgError{Code: "P0001", Message: "row 7 of someone", Where: "PL/pgSQL function core.guard() line 3 at RAISE\nSQL statement \"x\"\nPL/pgSQL function inline_code_block line 2 at SQL statement"}, false},
 		{"trigger the file fires", &pgconn.PgError{Code: "P0001", Message: "row 7 of someone", Where: "PL/pgSQL function core.guard() line 3 at RAISE"}, false},
 		{"no where", &pgconn.PgError{Code: "P0001", Message: "fix the data"}, false},
 		{"other code in own block", &pgconn.PgError{Code: "22012", Message: "division by zero", Where: "PL/pgSQL function inline_code_block line 1 at SQL statement"}, false},

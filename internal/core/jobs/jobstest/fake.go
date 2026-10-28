@@ -274,7 +274,9 @@ func sortRows(ws []*row) {
 // delay, so the row is due at once), and any other error, a panic, or a retryable error at the
 // limit ends it failed. A held request the run made itself (it enqueued its own key) follows
 // D52(a): a failed run keeps its attempts, and at DefaultRetry.MaxAttempts the request is
-// dropped and the row ends failed.
+// dropped and the row ends failed. j.Attempt only seeds the attempts of a row Run creates (a
+// Key with no row yet); once a row is tracked Run counts its attempts itself and ignores
+// j.Attempt, as the real runner does.
 func (f *Fake) Run(ctx context.Context, name jobs.Name, j jobs.Job) error {
 	const op = "jobstest.Fake.Run"
 	f.mu.Lock()
@@ -291,12 +293,12 @@ func (f *Fake) Run(ctx context.Context, name jobs.Name, j jobs.Job) error {
 	if j.Name == "" {
 		j.Name = name
 	}
-	w := f.rowFor(name, j)
+	w, created := f.rowFor(name, j)
 	var runID jobs.JobID
 	if w != nil {
 		w.status = statusRunning
 		runID = w.id
-		if j.Attempt > 0 {
+		if created && j.Attempt > 0 {
 			w.attempts = j.Attempt
 		} else {
 			w.attempts++
@@ -315,12 +317,12 @@ func (f *Fake) Run(ctx context.Context, name jobs.Name, j jobs.Job) error {
 	return err
 }
 
-// rowFor returns the row a Run drives, creating one for a Key that has none. The caller holds
-// f.mu. A keyless job with no known ID has no row.
-func (f *Fake) rowFor(name jobs.Name, j jobs.Job) *row {
+// rowFor returns the row a Run drives, creating one for a Key that has none (created is true
+// then). The caller holds f.mu. A keyless job with no known ID has no row.
+func (f *Fake) rowFor(name jobs.Name, j jobs.Job) (*row, bool) {
 	if j.Key != "" {
 		if w := f.byKey(name, j.Key); w != nil {
-			return w
+			return w, false
 		}
 		w := &row{id: j.ID, name: name, key: j.Key, status: statusQueued, runAt: j.RunAt, args: j.Args}
 		if w.id.IsZero() {
@@ -328,16 +330,16 @@ func (f *Fake) rowFor(name jobs.Name, j jobs.Job) *row {
 		}
 		f.ids[string(name)+"\x00"+j.Key] = w.id // like a row Enqueue made: its ID is the key's
 		f.rows = append(f.rows, w)
-		return w
+		return w, true
 	}
 	if !j.ID.IsZero() {
 		for _, w := range f.rows {
 			if w.id == j.ID {
-				return w
+				return w, false
 			}
 		}
 	}
-	return nil
+	return nil, false
 }
 
 // leave takes w out of running as the statements of the real queue do. A held request

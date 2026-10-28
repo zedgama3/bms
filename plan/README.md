@@ -117,14 +117,25 @@ copy and can fork it. Features are modules.
     review a working version before packaging.
 - **M4 closed 2026-10-23:** M4 is done on feat/m1 (last commit af8dcfc). Volunteers is built
     (Implemented 2026-10-23, with V1, V2 and D51).
-- **Next steps (current, 2026-10-28):**
-  1. Build the D52 follow-ups.
-  2. Run the app locally, then on bms.zg3.net with demo accounts, for the owner's review.
-  3. Then packaging, CI and the pilot (roadmap Phase 1).
+- **Owner's answers 2026-10-28 (D53, D54, D55):**
+    D53: demo spec (design/demo.md) Approved with the main session's recommendations; the demo
+    is fully public at the public demo instance; automatic resets built but shipped disabled.
+    D54: telemetry Amendment T1 Approved (client telemetry for the public demo).
+    D55: minor follow-ups from the D52 review approved with the recommendations.
+- **Next steps (current, 2026-10-28, D53–D55):**
+  1. Build the demo spec (design/demo.md) and telemetry Amendment T1.
+  2. Run the app locally for the owner.
+  3. Deploy to the public demo instance.
+  - Still open, the owner's command: the local dev database is half-reset (the `authz` and `hello` version-2 rows in `core.schema_migration`); `make migrate` again, or `make down && make up`.
+  - Still open: CI runs once the owner pushes the branch (not pushed).
   - Still open, the owner's command: the local dev database is half-reset (the `authz` and
     `hello` version-2 rows in `core.schema_migration`); `make migrate` again, or `make down && make up`.
   - Still open: CI runs once the owner pushes the branch (not pushed).
 
+- **Next steps before D53–D55 (history, kept as written, 2026-10-28):**
+  1. Build the D52 follow-ups.
+  2. Run the app locally, then on bms.zg3.net with demo accounts, for the owner's review.
+  3. Then packaging, CI and the pilot (roadmap Phase 1).
 - **Earlier next steps (history, kept as written):**
   1. Done 2026-10-16: the owner agreed [09-core-features.md](09-core-features.md)
      (milestones M0–M4, done criteria, spec order). `architect` drafted `model`, now Approved.

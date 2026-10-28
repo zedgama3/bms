@@ -62,6 +62,53 @@ describe("/audit", () => {
     await expectNoAxeViolations(container);
   });
 
+  it("a person without a playa name shows 'No playa name yet', never an ID", async () => {
+    mountApp({
+      path: "/audit",
+      session: ident(["audit.search"]),
+      routes: base({ "GET /api/people/names": () => json({ names: { [PAT]: "", [ME]: "" } }) }),
+    });
+    expect(await screen.findByText("About No playa name yet")).toBeInTheDocument();
+    expect(screen.getByText("By No playa name yet (Access administrator)")).toBeInTheDocument();
+    expect(screen.queryByText(/^About 7d2c/)).not.toBeInTheDocument();
+  });
+
+  it("an ID the names answer omits, or a failed names call, shows the ID, not 'unnamed'", async () => {
+    for (const names of [() => json({ names: {} }), () => problem(500, { code: "internal" })]) {
+      const { unmount } = mountApp({
+        path: "/audit",
+        session: ident(["audit.search"]),
+        routes: base({ "GET /api/people/names": names }),
+      });
+      expect(await screen.findByText(`About ${PAT}`)).toBeInTheDocument();
+      expect(screen.getByText(`By ${ME} (Access administrator)`)).toBeInTheDocument();
+      expect(screen.queryByText(/No playa name yet/)).not.toBeInTheDocument();
+      unmount();
+    }
+  });
+
+  it("does not call a named person unnamed while the names are still loading", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    mountApp({
+      path: "/audit",
+      session: ident(["audit.search"]),
+      routes: base({
+        "GET /api/people/names": async () => {
+          await gate;
+          return json({ names: { [PAT]: "Pat Dust", [ME]: "Dusty" } });
+        },
+      }),
+    });
+    expect(await screen.findByText("people.person.read")).toBeInTheDocument();
+    expect(screen.queryByText(/No playa name yet/)).not.toBeInTheDocument();
+    release();
+    expect(await screen.findByText("About Pat Dust")).toBeInTheDocument();
+    expect(screen.queryByText(/No playa name yet/)).not.toBeInTheDocument();
+  });
+
   it("?subject= from the person page filters, shows the name and offers the export", async () => {
     const { fetchMock } = mountApp({
       path: `/audit?subject=${PAT}`,

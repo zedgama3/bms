@@ -88,11 +88,11 @@ export function AuditLog() {
     getNextPageParam: (last) => last.next || undefined,
   });
   const records = q.data?.pages.flatMap((p) => p.records) ?? [];
-  const nameOf = useNames([
-    subject,
-    actor,
-    ...records.flatMap((r) => [r.subject ?? "", r.actor.person ?? ""]),
-  ]);
+  const nameOf = useNames(
+    [subject, actor, ...records.flatMap((r) => [r.subject ?? "", r.actor.person ?? ""])],
+    undefined,
+    t("shell.person_search.unnamed"),
+  );
   const error = q.error instanceof ApiError ? q.error : null;
   const fieldErrors = useFieldErrors(error?.code === "invalid" ? error : null);
 

@@ -25,9 +25,10 @@
 -- Args: $1 now timestamptz, $2 max_attempts integer (Retry.MaxAttempts), $3 limit integer
 -- (MaxBatch).
 -- Columns, in order, sorted by id: id uuid, name text, status text ('queued' or 'failed'),
--- attempts integer (0 when a held request was applied), next boolean (true when a held
--- request was applied: a 'queued' row counted lost_lease and logged next=true). Zero rows is
--- the normal case.
+-- attempts integer (0 when a held request from outside the run was applied; a request the run
+-- made itself, next_by_run, keeps the attempts), next boolean (true when a held request was
+-- applied: a 'queued' row counted lost_lease and logged next=true). Zero rows is the normal
+-- case.
 -- Served by job_lease_idx.
 -- Fails 25006 (db.ErrReadOnly) on a read-only copy.
 -- Constraint errors: none reachable.

@@ -204,7 +204,7 @@ func (s *Service) putLogoHandler() http.Handler {
 			httpx.Fail(w, r, err)
 			return
 		}
-		res, err := s.SetLogo(r.Context(), mp.Name, mp.Body)
+		res, err := s.SetLogo(r.Context(), logoName, mp.Body)
 		if err != nil {
 			httpx.Fail(w, r, err)
 			return

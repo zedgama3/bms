@@ -73,8 +73,13 @@ export function useSetMe(): (profile: Me) => void {
 /** Playa names for person IDs, in one call (`GET /api/people/names`, any signed-in person).
  *  Names live in the query cache (memory) only. Until the answer arrives, or if it fails, a
  *  person shows as `fallback` (their ID by default): a name is a convenience, not a reason to
- *  fail the screen. */
-export function useNames(ids: readonly string[], fallback?: string): (id: string) => string {
+ *  fail the screen. `unnamed`, when given, is for a person the answer lists with an empty name; an ID
+ *  the answer omits (unknown or deleted), loading and failure all show `fallback` or the ID. */
+export function useNames(
+  ids: readonly string[],
+  fallback?: string,
+  unnamed?: string,
+): (id: string) => string {
   const unique = [...new Set(ids.filter((i) => i !== ""))].sort().slice(0, 200);
   const q = useQuery({
     queryKey: ["names", unique.join(",")],
@@ -83,7 +88,8 @@ export function useNames(ids: readonly string[], fallback?: string): (id: string
       api.GET("/api/people/names", { signal, params: { query: { ids: unique.join(",") } } }),
   });
   const names = q.data?.names ?? {};
-  return (id) => names[id] || (fallback ?? id);
+  // The server sends "" only for a real person without a name; it omits unknown or deleted IDs.
+  return (id) => (id in names ? names[id] || (unnamed ?? fallback ?? id) : (fallback ?? id));
 }
 
 /** `GET /api/people/search` for `ui/PersonSearch`'s `search` prop. */

@@ -264,9 +264,10 @@ func (s *Store) Search(ctx context.Context, f Filter, limit int) ([]Row, error) 
 	var out []Row
 	// The statement runs with a custom plan: its optional filters are "$n IS NULL" tests the
 	// planner can only fold when it sees the values, and a generic plan reads far more rows
-	// (search_entries.sql). SET LOCAL lasts for this transaction only, so it affects this
-	// query and nothing else on the connection. Transact joins the caller's transaction (the
-	// log's Read transaction) and starts a Read one when there is none.
+	// (search_entries.sql). SET LOCAL lasts for the rest of this transaction, which is the
+	// caller's when Transact joins one (the log's Read transaction) and a Read one of its own
+	// when there is none; it never outlives the transaction. Today the only caller runs just
+	// this query in it, so the setting reaches nothing else.
 	err := s.db.Transact(ctx, db.Read, func(ctx context.Context) error {
 		if err := s.customPlan(ctx, op); err != nil {
 			return err
