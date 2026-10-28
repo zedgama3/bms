@@ -29,12 +29,13 @@ The order follows dependencies: foundation first, then the core, then modules.
 | 13 | `files.md` | attachments and storage | Implemented (2026-10-20) |
 | 14 | `jobs.md` | scheduled and deferred work | Implemented (2026-10-20; D44 amendments implemented; J1 (D50) implemented 2026-10-23) |
 | 15 | `settings.md` | runtime settings and terminology | Implemented (2026-10-19); logo amendment approved 2026-10-21 (D47), implemented 2026-10-21 |
-| 15b | `telemetry.md` | logs, traces, metrics, client error intake (D20) | Implemented (2026-10-17) |
+| 15b | `telemetry.md` | logs, traces, metrics, client error intake (D20) | Implemented (2026-10-17); Amendment T1 (client telemetry for the public demo) Draft 2026-10-28, awaiting the owner |
 | 15c | `privacy-tags.md` | field-level privacy tags and the visibility filter (D43) | Implemented (2026-10-21; Approved 2026-10-20, D44; Amendments A1 and A2 approved 2026-10-21, D45, D46) |
 | 16 | `api.md` | router, middleware, error mapper, OpenAPI assembly | Implemented (2026-10-17) |
 | 17 | `web-shell.md` | UI frame, API client, module screen registry | Implemented (2026-10-17) |
 | 18 | `app.md` | composition root and lifecycle | Implemented (2026-10-17) |
 | 19 | `module-volunteers.md` | volunteers module | Implemented (2026-10-23; V1 (D49), V2 (D50) and D51 included) |
+| 19b | `demo.md` | public demo mode: the switch, the banner, seed, reset, protected accounts, mail capture (owner's direction 2026-10-28, D53 once approved) | Draft (awaiting the owner, 2026-10-28) |
 | 20 | `module-registrations.md` | registrations module | Not started |
 | 21 | `module-incidents.md` | incidents module | Not started |
 | 22 | `module-after-reports.md` | after-burn reports module | Not started |
