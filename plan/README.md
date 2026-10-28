@@ -24,8 +24,8 @@ copy and can fork it. Features are modules.
 
 ## Status
 
-- **Phase:** 0, foundations
-- **Last updated:** 2026-10-23
+- **Phase:** 1, first module (core M0–M4 done 2026-10-23)
+- **Last updated:** 2026-10-28
 - **Done 2026-10-16:**
   - Repo scaffolded: plan, agents, skills, lint rules, dev compose. Methodology carried over
     from Sojourn (D7).
@@ -85,7 +85,7 @@ copy and can fork it. Features are modules.
     14–19) approved; Q-LOGO1–4 answered no (no SVG logos now, no dark-scheme logo now, no
     favicon from the logo, no pixel cap); privacy-audience label wording accepted ("the person
     this information is about"; the `holders` title becomes "People whose role allows it").
-    The spec text and its Proposed changes are not yet applied.
+    Folded in and Implemented (commit af8dcfc, 2026-10-23).
 - **Owner's answers 2026-10-22 (no decision yet):** volunteers amendment V1 questions Q-VOL7
     (a lead may waive for themself: yes), Q-VOL8 (no; burn names are seen by everyone, and must
     be unique among volunteers for the same event) and Q-VOL9 (lead- or system-canceled bookings
@@ -101,15 +101,31 @@ copy and can fork it. Features are modules.
     across the installation and permanent once self-set; Q-PEOPLE-8 yes (an admin may always
     change a set name, their own included); capitalization and spacing respelling allowed
     (P1.5); deleted people's names free immediately (P1.7); one name per person for now.
-    Closes Q-VOL10 and Q-VOL11. The people spec text is not yet folded in (spec-editor).
+    Closes Q-VOL10 and Q-VOL11. Folded in and Implemented (commit af8dcfc, 2026-10-23).
 - **Owner's answers 2026-10-23 (D50, D51):** jobs Amendment J1 and volunteers Amendment V2
     approved; Q-JOBS14 answered yes (the latest request for a `(name, key)` wins in every
     state); closes Q-JOBS14. D51 records five follow-ups from the people P1 and volunteers V1
     build and review: (a) migrator passes a `RAISE` message for people `0003`; (b) `0003`
     non-ASCII guard extended to ICU databases; (c) waiver flag kept in export; (d) peopletest
-    `SetName` and `RenameByManager` accepted deviation; (e) web spec wording. Spec text is not
-    yet folded in (spec-editor).
-- **Next steps:**
+    `SetName` and `RenameByManager` accepted deviation; (e) web spec wording. Folded in and
+    Implemented (commit af8dcfc, 2026-10-23).
+- **Owner's answers 2026-10-28 (D52):** the review follow-ups left after commit af8dcfc accepted
+    with the main session's recommendations: jobs attempts kept on a self-rescheduling failing
+    run; the db RAISE pass-through narrowed to the migration's own DO block; jobstest.Fake
+    fidelity; web accessibility and tests; the logo, jobs screen, files, web helper and
+    operator leftovers; vitest limits; the key-rule table unchanged. The owner wants to run and
+    review a working version before packaging.
+- **M4 closed 2026-10-23:** M4 is done on feat/m1 (last commit af8dcfc). Volunteers is built
+    (Implemented 2026-10-23, with V1, V2 and D51).
+- **Next steps (current, 2026-10-28):**
+  1. Build the D52 follow-ups.
+  2. Run the app locally, then on bms.zg3.net with demo accounts, for the owner's review.
+  3. Then packaging, CI and the pilot (roadmap Phase 1).
+  - Still open, the owner's command: the local dev database is half-reset (the `authz` and
+    `hello` version-2 rows in `core.schema_migration`); `make migrate` again, or `make down && make up`.
+  - Still open: CI runs once the owner pushes the branch (not pushed).
+
+- **Earlier next steps (history, kept as written):**
   1. Done 2026-10-16: the owner agreed [09-core-features.md](09-core-features.md)
      (milestones M0–M4, done criteria, spec order). `architect` drafted `model`, now Approved.
   2. Done 2026-10-16: `config` is Approved (design/README.md row 3).

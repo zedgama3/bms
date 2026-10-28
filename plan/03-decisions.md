@@ -856,3 +856,43 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
   - no "(required)" on a locked name;
   - Attachments shows a message on an unexpected error;
   - a paged list shows an error when its refresh fails.
+
+## D52. Review follow-ups after commit af8dcfc accepted; the owner wants a working version to review
+
+- **Status:** Accepted (2026-10-28), decided by the owner. The owner accepted the main session's
+  recommendations on the review follow-ups left after commit af8dcfc (volunteers V1/V2, people
+  P1, jobs J1).
+- **(a) jobs, attempts on a self-rescheduling run:** when a running job's own run made the held
+  "latest request" (it re-enqueued its own key) and the run then fails, the attempts count is
+  kept rather than reset to 0, so a self-rescheduling failing job cannot retry forever. A
+  request from outside the run still resets attempts (D50).
+- **(b) db Migrator RAISE pass-through (refines D51(a)):** the pass-through applies only when
+  the error's `Where` starts with `PL/pgSQL function inline_code_block` (the migration's own DO
+  block), not to a RAISE from a trigger the migration fires.
+- **(c) jobstest.Fake fidelity:**
+  - `RunDue` uses the current Args of the row;
+  - rows created by Run are tracked like enqueued ones;
+  - a retryable error requeues instead of ending the row `failed`;
+  - the doc says the Fake skips retry delays.
+- **(d) web accessibility and tests:**
+  - keep an empty `role=status` live region mounted so "file is ready" is announced;
+  - the Open button and the file link get distinct accessible names;
+  - test that object URLs are revoked;
+  - the My volunteering announcement stops repeating after a cancel.
+- **(e) earlier leftovers, as recommended:**
+  - logo: store the upload name as "logo", check permission before `ReadUpload`, "2 MB"
+    wording, tighter tests;
+  - jobs screen wording;
+  - files lifecycle tests also run against the real store, not only `Mem`;
+  - deduplicate the web helpers;
+  - the db `plan_cache_mode` suggestion is adopted as recommended;
+  - `docs/operating` item 24: what an operator does when `migrate` stops at people `0003`
+    because of duplicate playa names.
+  - Volunteers Proposed change 4 (settings terms) still needs an architect design choice before
+    it's built.
+- **(f) vitest:** cap `maxWorkers` and raise `testTimeout`, so the web tests don't time out
+  under load.
+- **(g) key-rule table:** the table keeps its consumers unless the architect finds one
+  redundant. No change decided.
+- **Owner's wish:** the owner wants to run and review a working version before packaging work:
+  first locally, then on the dev instance `bms.zg3.net` with demo accounts.
