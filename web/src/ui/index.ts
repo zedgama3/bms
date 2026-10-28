@@ -14,6 +14,8 @@ export { controlClass, Field } from "./Field";
 export type { ControlProps, FieldProps } from "./Field";
 export { FileField } from "./FileField";
 export type { FileFieldProps } from "./FileField";
+export { PersonSearch } from "./PersonSearch";
+export type { PersonMatch } from "./PersonSearch";
 export { LOADING_DELAY_MS, Loading } from "./Loading";
 export { Table } from "./Table";
 export type { Column } from "./Table";

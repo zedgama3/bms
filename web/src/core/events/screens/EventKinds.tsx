@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
-import { api, ApiError, useReadOnly, useSession } from "@/api";
+import { api, ApiError, useAction, useReadOnly, useSession } from "@/api";
 import { useT } from "@/i18n";
 import {
   Button,
@@ -22,7 +22,6 @@ import { ReadOnlyNote } from "../ReadOnlyNote";
 import { ScreenError } from "../ScreenError";
 import { text } from "../text";
 import type { EventKind } from "../types";
-import { useAction } from "../useAction";
 import { useKindTitle } from "../useKindLabel";
 
 /** `/events/kinds` (`events.manage`): the kinds as cards, a new kind, and rename in place. A kind

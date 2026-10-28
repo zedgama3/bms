@@ -1,12 +1,11 @@
 import { useState } from "react";
-import { useReadOnly } from "@/api";
+import { useAction, useReadOnly } from "@/api";
 import { isMessageKey, useFormat, useT } from "@/i18n";
 import { Check, EmptyState, ErrorState, useToast } from "@/ui";
 import { ReadOnlyNote } from "./ReadOnlyNote";
 import { profileApi } from "./profileApi";
 import type { Target } from "./profileApi";
 import type { Consent } from "./types";
-import { useAction } from "./useAction";
 
 /** Each consent given, with a switch to withdraw (or give) it. A consent's title comes from the
  *  module that asks for it (`module.<owner>.consent.<ident>.title`); a purpose no catalogue

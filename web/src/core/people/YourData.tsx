@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError, useReadOnly } from "@/api";
+import { api, ApiError, useAction, useReadOnly } from "@/api";
 import { useFormat, useT } from "@/i18n";
 import {
   Button,
@@ -17,7 +17,6 @@ import {
 import { saveJson } from "./download";
 import { ReadOnlyNote } from "./ReadOnlyNote";
 import { text } from "./text";
-import { useAction } from "./useAction";
 
 const KEY = ["people", "my-requests"] as const;
 

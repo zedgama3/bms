@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { api, ApiError, upload, useReadOnly, usePublic } from "@/api";
+import { api, ApiError, upload, useAction, usePublic, useReadOnly } from "@/api";
 import type { components } from "@/api";
 import { useT } from "@/i18n";
 import {
@@ -16,7 +16,6 @@ import {
 import { byName, focusSoon } from "./focus";
 import { useRefreshPublic } from "./queries";
 import { ReadOnlyNote } from "./ReadOnlyNote";
-import { useAction } from "./useAction";
 
 /** The route's cap and the logo's formats (settings.md "The logo field"): the server enforces
  *  both; the field checks the size first so a phone does not send 2 MB for nothing. */
@@ -98,7 +97,7 @@ export function LogoControls({ canManage }: { canManage: boolean }) {
   const send = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (file === null) return;
-    delAct.reset();
+    delAct.clear();
     void putAct
       .run(async () => {
         await upload<LogoResult>(LOGO_ROUTE, { file }, { method: "PUT" });
@@ -112,13 +111,13 @@ export function LogoControls({ canManage }: { canManage: boolean }) {
   };
 
   const pickFile = (f: File | null) => {
-    putAct.reset();
+    putAct.clear();
     setFile(f);
   };
 
   const remove = (e?: FormEvent<HTMLFormElement>) => {
     e?.preventDefault();
-    putAct.reset();
+    putAct.clear();
     void delAct
       .run(async () => {
         await api.DELETE(LOGO_ROUTE);
@@ -137,7 +136,7 @@ export function LogoControls({ canManage }: { canManage: boolean }) {
   // Cancel or Esc: back to the button that opened the dialog (the browser does this too; this
   // keeps it true where the dialog's own focus restore is missing).
   const cancel = () => {
-    delAct.reset();
+    delAct.clear();
     setConfirming(false);
     setTimeout(() => removeBtn.current?.focus(), 0);
   };
@@ -195,7 +194,7 @@ export function LogoControls({ canManage }: { canManage: boolean }) {
                 ref={removeBtn}
                 variant="danger"
                 onClick={() => {
-                  delAct.reset();
+                  delAct.clear();
                   setConfirming(true);
                 }}
               >

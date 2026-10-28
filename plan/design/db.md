@@ -1,6 +1,7 @@
 # db: database access
 
 - **Status:** Implemented (2026-10-17; D51 pass-through implemented 2026-10-23); Approved (2026-10-16)
+- **Amended 2026-10-28 (D52(b), owner; refines D51):** the `Migrator`'s `P0001` message pass-through applies only when the server error's `Where` starts with `PL/pgSQL function inline_code_block` (the migration file's own `DO` block); a `RAISE` from a trigger or function the migration fires is scrubbed like any other server error. F58 and its test also assert this case.
 - Amended 2026-10-17 (owner): `Write` begins with plain `BEGIN` so the session's `default_transaction_read_only` applies (server answers 25006); a NULL uuid scans into `*model.ID[E]`; accepted implementation deviations recorded in Behavior, "Accepted implementation deviations".
 - **Amended 2026-10-18 (owner approval of audit/identity):** Proposed change 10 applied for `audit` and `identity` (`postgres.Migrations`, `audit.Set`, `identity.Set`, schema `core`); audit's guard deviates from "insert and select only": `UPDATE` and `TRUNCATE` are revoked from the application role and a trigger refuses `UPDATE`, `DELETE` and `TRUNCATE`, with `DELETE` allowed only inside `core.audit_purge` through a transaction-local flag, because the installation has one role and a plain grant cannot tell the retention job from the app (audit decision 9).
 - **Amended 2026-10-18 (D37):** Proposed change 10 applied for `departments` and `events` (`postgres.Migrations`, `departments.Set`, `events.Set`, schema `core`, set names already in the fixed order); `events` `0001` inserts the three seeded kinds.
@@ -70,7 +71,7 @@ Exported names (package `db`):
 Key decisions: 1 db speaks pgx, the storage seam is each service's interface (D8); 2
 `Deps.DB` is an interface (`*Pool`, `dbtest.Fake`); 3 every error leaving db is classified,
 `Wrap` is the one mapping; 4 server errors scrubbed to SQLSTATE and names, never
-message/detail/hint, except a migration file's own `RAISE EXCEPTION` (`P0001`) text, passed through by the `Migrator` (D51); 5 the transaction travels in the ctx (fn's ctx must not cross
+message/detail/hint, except a migration file's own `DO`-block `RAISE EXCEPTION` (`P0001`) text, passed through by the `Migrator` (D51, D52(b)); 5 the transaction travels in the ctx (fn's ctx must not cross
 goroutines); 6 nested `Transact` joins the outer, no savepoints; 7 read-only = in recovery or
 `default_transaction_read_only` (owner, 2026-10-16); 8 state cached, refreshed by a 15 s
 watcher, `Ping`, and every `25006`; 9 refused write is `Unavailable` wrapping `ErrReadOnly`;
@@ -671,7 +672,9 @@ read-only copy becomes a clear "this copy is read-only" response rather than an 
    later `%w` can print it. Lost debugging detail is recovered with `EXPLAIN` on invented
    data, not with production values. **Exception (D51, owner, 2026-10-23):** the `Migrator`
    keeps the message text (and `DETAIL`, if the file sets one) of a `RAISE EXCEPTION` with
-   SQLSTATE `P0001` raised by a migration file, in the error it returns and logs, because
+   SQLSTATE `P0001` raised by a migration file's own `DO` block (the error's `Where` starts with
+   `PL/pgSQL function inline_code_block`, D52(b); a `RAISE` from a trigger the migration
+   fires stays scrubbed), in the error it returns and logs, because
    the migration's author wrote that text to tell the operator what to fix (people `0003`
    names the clashing person IDs this way). Every other server error stays scrubbed. **Rule:
    a migration never puts personal data in a `RAISE` message** (ids, counts and setting
@@ -929,7 +932,7 @@ the transitions without a database.
 5. For each set in order: `CREATE SCHEMA IF NOT EXISTS "<schema>"`; for each file above
    the applied version, in order: `BEGIN`; `Exec(file)`; `INSERT INTO
    core.schema_migration`; `COMMIT`; log and append to the result. A failure rolls back the
-   file and returns `Wrap` wrapped with `"<set> <NNNN_name>"` (F40); when the server error is SQLSTATE `P0001` (a `RAISE EXCEPTION` in the file) the message text, and `DETAIL` if the file sets one, is kept in the returned error and the log line (F58, D51). ctx done → F42.
+   file and returns `Wrap` wrapped with `"<set> <NNNN_name>"` (F40); when the server error is SQLSTATE `P0001` and its `Where` starts with `PL/pgSQL function inline_code_block` (a `RAISE EXCEPTION` in the file's own `DO` block, not in a trigger it fires; D52(b)) the message text, and `DETAIL` if the file sets one, is kept in the returned error and the log line (F58, D51). ctx done → F42.
 6. Release the lock and the connection (also on every error path).
 
 ### Concurrency and lifecycle
@@ -1038,7 +1041,7 @@ under `**/internal/core/db/**`.
 | F55 | `dbtest.TempDB` | the role cannot create a database | `t.Fatal` with the reason | grant `CREATEDB` | covered by running the suite with a restricted role once, by hand |
 | F56 | `Open` | `Options.Meter` set and a gauge registration fails (telemetry F20–F22: a duplicate name in the `db` scope) | the meter's kind (Invalid / Conflict); the pgx pool closed before returning | fix app (one `Open` per meter scope) | `TestOpen_GaugeRegistrationFails_ReturnsKindAndClosesPool` (unit, a fake `telemetry.Meter` that refuses) |
 | F57 | the `QueryTracer` adapter | a statement fails | none to the caller beyond the statement's own error: the span is marked failed with `error.kind` and the SQLSTATE; statement text and arguments are never on it | — | `TestQueryTracer_FailedStatement_SpanHasKindAndSQLSTATENoText` |
-| F58 | `Migrate` | a migration file's `RAISE EXCEPTION` (SQLSTATE `P0001`) | `Wrap`'s kind, wrapped with `<set> <NNNN_name>`; the raised message (and `DETAIL`) is in the error text and the log; that file rolled back; any other SQLSTATE stays scrubbed (F40) | read the message, fix the data or database, rerun | `TestMigrate_RaiseException_PassesMessageThrough` (integration; also asserts a non-`P0001` failure still carries no message text) |
+| F58 | `Migrate` | a migration file's own `RAISE EXCEPTION` (SQLSTATE `P0001`, `Where` starting `PL/pgSQL function inline_code_block`; D52(b)) | `Wrap`'s kind, wrapped with `<set> <NNNN_name>`; the raised message (and `DETAIL`) is in the error text and the log; that file rolled back; any other SQLSTATE stays scrubbed (F40) | read the message, fix the data or database, rerun | `TestMigrate_RaiseException_PassesMessageThrough`, `TestMigrate_TriggerRaise_IsScrubbed` (integration; also asserts a non-`P0001` failure, and a `P0001` raised by a trigger the migration fires, still carry no message text) |
 
 Members that cannot fail, and why: `ReadOnly` (an atomic read); `Stats` (a copy of
 pgxpool's counters; zeros after `Close`); `Mode.String`, `Error.Error` (formatting of

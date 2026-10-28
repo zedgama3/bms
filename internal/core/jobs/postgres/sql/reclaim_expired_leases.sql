@@ -13,6 +13,10 @@
 --     started_at and finished_at NULL, next_* cleared, last_error = 'lost_lease' (whatever its
 --     attempts: the newer request supersedes the lapsed run, so a poison row is not given up
 --     on while a request waits; the request's own runs then count from 0).
+--   * D52 (a): a held request made by the run itself (next_by_run) keeps the row's attempts
+--     (the lapsed run failed) and, once attempts >= $2, is dropped: the row takes the failed
+--     arm above, so a self-rescheduling poison row is given up on. A request from outside the
+--     run behaves as the previous bullet says.
 -- lease_jobs.sql (with its $5 = the same max_attempts) leaves a lapsed row with
 -- attempts >= max alone, so the sweep is the only way such a row ends: call this at the start of
 -- every writer pass, before lease_jobs.sql, in the same Write transaction or an earlier one. A
@@ -28,7 +32,10 @@
 -- Fails 25006 (db.ErrReadOnly) on a read-only copy.
 -- Constraint errors: none reachable.
 WITH lapsed AS (
-    SELECT id, next_run_at IS NOT NULL AS has_next
+    SELECT id,
+           next_run_at IS NOT NULL
+               AND NOT (next_by_run AND attempts >= $2::integer) AS has_next,
+           next_by_run AS by_run
     FROM core.job
     WHERE run_at <= $1::timestamptz
       AND status = 'running'
@@ -40,9 +47,9 @@ WITH lapsed AS (
 UPDATE core.job AS j
 SET status = CASE WHEN NOT lapsed.has_next AND j.attempts >= $2::integer
                   THEN 'failed' ELSE 'queued' END,
-    run_at = coalesce(j.next_run_at, j.run_at),
-    args = coalesce(j.next_args, j.args),
-    attempts = CASE WHEN lapsed.has_next THEN 0 ELSE j.attempts END,
+    run_at = CASE WHEN lapsed.has_next THEN coalesce(j.next_run_at, j.run_at) ELSE j.run_at END,
+    args = CASE WHEN lapsed.has_next THEN coalesce(j.next_args, j.args) ELSE j.args END,
+    attempts = CASE WHEN lapsed.has_next AND NOT lapsed.by_run THEN 0 ELSE j.attempts END,
     started_at = CASE WHEN lapsed.has_next THEN NULL ELSE j.started_at END,
     finished_at = CASE WHEN NOT lapsed.has_next AND j.attempts >= $2::integer
                        THEN $1::timestamptz END,
@@ -50,6 +57,7 @@ SET status = CASE WHEN NOT lapsed.has_next AND j.attempts >= $2::integer
                       THEN 'gave_up' ELSE 'lost_lease' END,
     next_run_at = NULL,
     next_args = NULL,
+    next_by_run = false,
     leased_until = NULL,
     updated_at = $1::timestamptz
 FROM lapsed

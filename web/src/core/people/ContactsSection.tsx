@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { useReadOnly } from "@/api";
+import { useAction, useReadOnly } from "@/api";
 import { useT } from "@/i18n";
 import { Button, Dialog, EmptyState, ErrorSummary, Field, useFieldErrors, useToast } from "@/ui";
 import { focusSoon } from "./focus";
@@ -9,7 +9,6 @@ import { profileApi } from "./profileApi";
 import type { Target } from "./profileApi";
 import { text } from "./text";
 import type { Contact } from "./types";
-import { useAction } from "./useAction";
 
 /** Most emergency contacts a person may have (people.md `MaxEmergencyContacts`). */
 const MAX = 10;

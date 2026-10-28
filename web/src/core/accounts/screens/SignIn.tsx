@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router";
-import { api, refreshSession, safeReturnTo, setSessionEnded, useSession } from "@/api";
+import { api, refreshSession, safeReturnTo, setSessionEnded, useAction, useSession } from "@/api";
 import { useT } from "@/i18n";
 import { Banner, Button, ErrorSummary, linkButtonClass, useFieldErrors, useToast } from "@/ui";
 import { Field } from "@/ui";
 import { PasswordField } from "../PasswordField";
 import { text } from "../text";
-import { useAction } from "../useAction";
 
 /** `/accounts/sign-in`: e-mail address and password. `returnTo` is a same-origin path or
  *  ignored (F34). A wrong pair is always "isn't right", never which half. */

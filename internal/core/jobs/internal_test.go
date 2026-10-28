@@ -13,6 +13,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/authz/authztest"
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/db/dbtest"
+	"github.com/zedgama3/bms/internal/core/jobs/internal/rules"
 	"github.com/zedgama3/bms/internal/core/jobs/rows"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/telemetry/telemetrytest"
@@ -376,6 +377,44 @@ func TestBeat_FailedRenewalNearFence_CancelsBeforeANextBeatCouldPassIt(t *testin
 			if cont == tc.wantCancel || canceled != tc.wantCancel || f.isLost() != tc.wantCancel {
 				t.Fatalf("beat continued = %v, canceled = %v, lost = %v; want canceled = %v",
 					cont, canceled, f.isLost(), tc.wantCancel)
+			}
+		})
+	}
+}
+
+// enqueueStore records the rows the runner hands the store.
+type enqueueStore struct {
+	store
+	got []rows.New
+}
+
+func (s *enqueueStore) Enqueue(_ context.Context, n rows.New, _ time.Time) (rows.ID, error) {
+	s.got = append(s.got, n)
+	return n.ID, nil
+}
+
+func TestRunnerEnqueue_RunID_ComesFromTheRunsContext(t *testing.T) {
+	st := &enqueueStore{}
+	r, clk := internalRunner(t, st)
+	req := Request{Name: "volunteers.remind", Key: "k", RunAt: clk.Now()}
+	run := model.NewID[JobID]()
+	tests := []struct {
+		name string
+		ctx  context.Context
+		want JobID
+	}{
+		{"outside a run", context.Background(), JobID{}},
+		{"inside a run", rules.WithJob(context.Background(), run), run},
+		{"a run with no row", rules.WithJob(context.Background(), JobID{}), JobID{}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			st.got = nil
+			if _, err := r.enqueue(tc.ctx, "test", req, clk.Now()); err != nil {
+				t.Fatalf("enqueue: %v", err)
+			}
+			if len(st.got) != 1 || st.got[0].RunID != tc.want {
+				t.Errorf("RunID = %v, want %v", st.got, tc.want)
 			}
 		})
 	}

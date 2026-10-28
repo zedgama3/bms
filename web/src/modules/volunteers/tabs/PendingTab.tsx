@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
-import { ApiError, useReadOnly } from "@/api";
+import { ApiError, useNames, useReadOnly } from "@/api";
 import { useT } from "@/i18n";
 import { Button, EmptyState, Loading, useToast } from "@/ui";
 import { vol } from "../calls";
@@ -11,7 +11,6 @@ import { ReadOnlyNote } from "../ReadOnlyNote";
 import { RecordCard } from "../RecordCard";
 import { ScreenError } from "../ScreenError";
 import type { QualRecord } from "../types";
-import { useNames } from "../useNames";
 import { VerifyDialog } from "../VerifyDialog";
 
 /** Certificates waiting for a lead: open the file, correct the dates, verify or reject. */

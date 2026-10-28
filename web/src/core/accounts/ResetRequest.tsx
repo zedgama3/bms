@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router";
-import { api, useReadOnly } from "@/api";
+import { api, useAction, useReadOnly } from "@/api";
 import { useT } from "@/i18n";
 import { Button, ErrorSummary, Field, linkButtonClass, useFieldErrors } from "@/ui";
 import { ReadOnlyNote } from "./ReadOnlyNote";
 import { text } from "./text";
-import { useAction } from "./useAction";
 
 /** The "send me a link" form. Every 202 shows the same sentence whatever the address, and a 501
  *  the same sentence for every address (identity.md "Uniform answers"): nothing here depends on

@@ -176,12 +176,14 @@ type storeMaker struct {
 	make func(t *testing.T) objects.Store
 }
 
-// stores lists the object stores the lifecycle tests run over. Only the in-memory store:
-// the objects-impl-seam depguard rule keeps disk and s3 out of this package, and both are
-// held to the same contract by internal/core/objects.
+// stores lists the object stores the lifecycle tests run over: the in-memory store and the
+// real disk store on a t.TempDir() (D52(e)). The disk store is built in
+// integration_disk_store_test.go, which carries the one depguard exception for it; s3 needs
+// a server and is held to the same contract by internal/core/objects.
 func stores() []storeMaker {
 	return []storeMaker{
 		{"mem", func(*testing.T) objects.Store { return objectstest.NewMem() }},
+		{"disk", newDiskStore},
 	}
 }
 

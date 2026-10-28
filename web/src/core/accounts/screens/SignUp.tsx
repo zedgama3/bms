@@ -6,6 +6,7 @@ import {
   ApiError,
   refreshSession,
   safeReturnTo,
+  useAction,
   useReadOnly,
   useSession,
   useSessionCheckFailed,
@@ -24,7 +25,6 @@ import { DEFAULT_MIN_PASSWORD } from "../constants";
 import { PasswordField } from "../PasswordField";
 import { ReadOnlyNote } from "../ReadOnlyNote";
 import { text } from "../text";
-import { useAction } from "../useAction";
 
 /** `/accounts/sign-up`: e-mail address and password only (profile comes with `people`).
  *  Field errors land on the inputs by code; 409 taken, 501 invitation mode, 503 read-only and

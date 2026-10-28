@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router";
-import { api, ApiError, useReadOnly, useSession } from "@/api";
+import { api, ApiError, useAction, useReadOnly, useSession } from "@/api";
 import { useFormat, useT } from "@/i18n";
 import {
   Banner,
@@ -21,7 +21,6 @@ import { Leadership } from "../Leadership";
 import { ReadOnlyNote } from "../ReadOnlyNote";
 import { ScreenError } from "../ScreenError";
 import { text } from "../text";
-import { useAction } from "../useAction";
 
 type Dialogs = "details" | "rename" | "archive" | "restore" | null;
 

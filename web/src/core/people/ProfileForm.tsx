@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { useReadOnly, useSession } from "@/api";
+import { useAction, useReadOnly, useSession } from "@/api";
 import { isMessageKey, useLanguage, useT } from "@/i18n";
 import { Button, controlClass, Dialog, ErrorSummary, Field, useFieldErrors, useToast } from "@/ui";
 import { ReadOnlyNote } from "./ReadOnlyNote";
@@ -8,7 +8,6 @@ import { profileApi } from "./profileApi";
 import type { Target } from "./profileApi";
 import { text } from "./text";
 import type { Profile } from "./types";
-import { useAction } from "./useAction";
 
 /** The "About you" fields: playa name, pronouns, language (own profile only), legal name and
  *  phone unless the regional hides them, a contact e-mail for a person with no account. The

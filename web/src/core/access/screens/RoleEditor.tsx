@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router";
-import { api, ApiError, useReadOnly } from "@/api";
+import { api, ApiError, useAction, useReadOnly } from "@/api";
 import { useT } from "@/i18n";
 import {
   Button,
@@ -20,7 +20,6 @@ import { ReadOnlyNote } from "../ReadOnlyNote";
 import { ScreenError } from "../ScreenError";
 import { text } from "../text";
 import type { PermissionInfo, Role } from "../types";
-import { useAction } from "../useAction";
 
 /** `/access/roles/new` and `/access/roles/:role`. */
 export function RoleEditor() {

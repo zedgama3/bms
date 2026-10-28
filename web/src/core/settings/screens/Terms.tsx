@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router";
-import { api, ApiError, useReadOnly } from "@/api";
+import { api, ApiError, useAction, useReadOnly } from "@/api";
 import { isMessageKey, useLanguage, useT } from "@/i18n";
 import {
   Banner,
@@ -21,7 +21,6 @@ import { ScreenError } from "../ScreenError";
 import { TERMS_KEY, useAfterSave, useTermsDocument } from "../queries";
 import { FORMS } from "../types";
 import type { Form, FormChanges, TermsDocument } from "../types";
-import { useAction } from "../useAction";
 import { useGate } from "../useGate";
 
 type TermDocs = TermsDocument["terms"][string];

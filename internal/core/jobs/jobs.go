@@ -288,11 +288,13 @@ type Registrar interface {
 
 	// Enqueue stores one deferred job to run at r.RunAt. Inside a transaction (the ctx
 	// Transact handed out) the row commits or rolls back with the caller's change; outside
-	// one it is a standalone insert. With a Key: a Queued row with the same (name, key) is
-	// moved to r.RunAt with r.Args and its ID returned (a reschedule); a Running, Done,
-	// Failed or Canceled row with that key leaves the request a no-op and its ID is
-	// returned (the caller keys a distinct run distinctly, for example by the shift's
-	// start time). Fails errs.Invalid for an invalid Request, a name outside the scope or
+	// one it is a standalone insert. With a Key the latest request wins: a Queued row with
+	// the same (name, key) is moved to r.RunAt with r.Args, a Done, Failed or Canceled one is
+	// reopened as Queued, and a Running one holds the request and is queued for it when the
+	// run leaves running; the row's ID is returned. A handler may enqueue its own key to run
+	// again; if that run then fails, its attempts count carries over (a request from any
+	// other caller resets it), so a self-rescheduling failing job ends failed at the retry
+	// limit (D52). Fails errs.Invalid for an invalid Request, a name outside the scope or
 	// a name no handler was registered for in this process (code "unknown");
 	// errs.Unavailable wrapping db.ErrReadOnly on a read-only copy; store kinds. It checks
 	// no permission: the caller's use case is the authority.

@@ -1,15 +1,14 @@
 import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useReadOnly, useSession } from "@/api";
+import { useReadOnly, useSession, searchPeople } from "@/api";
 import { useT } from "@/i18n";
-import { Button, EmptyState, ErrorSummary, Loading, useToast } from "@/ui";
+import { Button, EmptyState, ErrorSummary, Loading, useToast, PersonSearch } from "@/ui";
 import { vol } from "../calls";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { focusSoon, holdsAt } from "../helpers";
 import { P } from "../permissions";
 import { ShowMore, usePaged } from "../paging";
-import { PersonPicker } from "../PersonPicker";
 import { nameIn, usePositions } from "../queries";
 import { ReadOnlyNote } from "../ReadOnlyNote";
 import { ScreenError, useConflictMessage } from "../ScreenError";
@@ -76,7 +75,8 @@ export function MembersTab({ department }: { department: string }) {
             formRef={formRef}
             {...(conflict ? { message: conflict } : {})}
           />
-          <PersonPicker
+          <PersonSearch
+            search={searchPeople}
             name="person"
             label={t("module.volunteers.assign.person")}
             chosenName={person?.name ?? ""}

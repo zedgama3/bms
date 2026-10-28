@@ -4,7 +4,8 @@
 -- dedupe key), $4 args jsonb (the JSON form of jobs.Args; '{}' when empty; pass a string or
 -- []byte), $5 run_at timestamptz (the caller has already turned a zero or past RunAt into
 -- now), $6 trace_id text (NULL when the ctx has no trace; 32 lower-case hex), $7 now
--- timestamptz (the service clock: created_at and updated_at). Unchanged by Amendment J1.
+-- timestamptz (the service clock: created_at and updated_at), $8 run_id uuid (D52 a: the ID of
+-- the row whose run is making this request, from the handler's ctx; NULL outside a run).
 -- Columns, in order: id uuid.
 --   * ALWAYS ONE row (J1: the "zero rows" case and the follow-up get_job_by_key.sql are gone).
 --     The id is $1 for a new row; with a key that already exists it is the EXISTING row's id.
@@ -18,7 +19,9 @@
 --                                   run_at, args, attempts and leased_until are untouched and
 --                                   the heartbeat's and the outcome's fence still match. The
 --                                   statement that takes the row out of running applies the
---                                   request (complete_job.sql and the others).
+--                                   request (complete_job.sql and the others). next_by_run
+--                                   records whether $8 is the row's own id (the run asked for
+--                                   its own re-run): the latest request decides it.
 --     In every branch trace_id = coalesce(new, old) and updated_at = $7. A second request
 --     while running overwrites the first held one.
 -- Constraint errors (*db.Error.Constraint, all Invalid; Request.Validate runs first, so each
@@ -50,6 +53,8 @@ SET status = CASE WHEN core.job.status = 'running' THEN 'running' ELSE 'queued' 
                        THEN EXCLUDED.run_at ELSE core.job.next_run_at END,
     next_args = CASE WHEN core.job.status = 'running'
                      THEN EXCLUDED.args ELSE core.job.next_args END,
+    next_by_run = CASE WHEN core.job.status = 'running'
+                       THEN coalesce($8::uuid = core.job.id, false) ELSE core.job.next_by_run END,
     trace_id = coalesce(EXCLUDED.trace_id, core.job.trace_id),
     updated_at = EXCLUDED.updated_at
 RETURNING id

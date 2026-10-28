@@ -119,6 +119,8 @@ describe("/jobs", () => {
     });
     await userEvent.click(await screen.findByRole("button", { name: "Run now: weird.thing" }));
     await waitFor(() => expect(posted).toBe(1));
+    // The pressed button is disabled now: focus moves to the card.
+    await waitFor(() => expect(document.getElementById("job-weird.thing")).toHaveFocus());
     expect(screen.queryByRole("button", { name: /signals.redeliver/ })).not.toBeInTheDocument();
   });
 
@@ -149,6 +151,9 @@ describe("/jobs", () => {
     await userEvent.click(b);
     await waitFor(() => expect(posted).toBe(1));
     expect(await screen.findByText("Queued again")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Failed and waiting" })).toHaveFocus(),
+    );
   });
 
   it("keeps a retry refusal on screen after the row is gone", async () => {
@@ -185,6 +190,9 @@ describe("/jobs", () => {
     await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(posted).toBe(1));
     expect(await screen.findByText("Job canceled")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Failed and waiting" })).toHaveFocus(),
+    );
   });
 
   it("keeps a cancel refusal in the dialog", async () => {

@@ -498,7 +498,7 @@ func (r *Runner) execute(ctx, sctx context.Context, lj rows.Lease) result {
 	if timeout == 0 {
 		timeout = r.to
 	}
-	runCtx, cancelRun := context.WithCancel(rules.WithJob(sctx))
+	runCtx, cancelRun := context.WithCancel(rules.WithJob(sctx, lj.ID))
 	defer cancelRun()
 	hctx, cancelTimeout := context.WithTimeout(runCtx, timeout)
 	defer cancelTimeout()
@@ -610,6 +610,7 @@ func (r *Runner) settle(sctx context.Context, lj rows.Lease, fence *leaseFence, 
 	lease := fence.get()
 	var (
 		ok, next bool
+		gaveUp   bool
 		err      error
 	)
 	switch v.kind {
@@ -620,7 +621,10 @@ func (r *Runner) settle(sctx context.Context, lj rows.Lease, fence *leaseFence, 
 	case vRequeue:
 		ok, next, err = r.store.Requeue(wctx, lj.ID, lease, v.token, v.runAt, now)
 	default:
-		ok, next, err = r.store.Fail(wctx, lj.ID, lease, v.token, now)
+		ok, next, gaveUp, err = r.store.Fail(wctx, lj.ID, lease, v.token, now, r.retry.MaxAttempts)
+	}
+	if gaveUp { // a held by-run request was dropped at the limit: the row says gave_up (F55a)
+		v.token = tokenGaveUp
 	}
 	outcome := v.outcome
 	if outcome == outcomeDropped {
@@ -659,7 +663,7 @@ func (r *Runner) logOutcome(ctx context.Context, lj rows.Lease, outcome string, 
 	if herr != nil && outcome != outcomeDropped {
 		attrs = append(attrs, slog.String("error.kind", errs.KindOf(herr).String()), slog.String("error.op", opOf(herr)))
 	}
-	if v.token != "" && outcome == outcomeFailed {
+	if v.token != "" && (outcome == outcomeFailed || (v.token == tokenGaveUp && outcome != outcomeLostLease)) {
 		attrs = append(attrs, slog.String("reason", v.token))
 	}
 	if next { // a request made during the run was queued in place of the run's own end state

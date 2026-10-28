@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError, useReadOnly, useSession } from "@/api";
+import { api, ApiError, useAction, useReadOnly, useSession } from "@/api";
 import { useT } from "@/i18n";
 import {
   Button,
@@ -22,7 +22,6 @@ import { ScreenError } from "../ScreenError";
 import { Tabs } from "../Tabs";
 import { text } from "../text";
 import type { Rule } from "../types";
-import { useAction } from "../useAction";
 
 const LEVELS = ["internal", "personal", "sensitive"] as const;
 

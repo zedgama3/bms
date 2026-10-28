@@ -1,10 +1,4 @@
-import type { Session } from "@/api";
-
-/** Whether the session shows a site-wide permission (a convenience for hiding buttons; the
- *  server decides every call). */
-export function holdsSite(session: Session, permission: string): boolean {
-  return session.signedIn && session.permissions.includes(permission);
-}
+export { holdsSite } from "@/api";
 
 /** The browser's own zone, the default of a new event. */
 export function browserZone(): string {

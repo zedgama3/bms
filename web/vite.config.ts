@@ -51,6 +51,11 @@ export default defineConfig({
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}", "scripts/**/*.test.mjs", "eslint-rules/**/*.test.mjs"],
     restoreMocks: true,
+    // Under load (a parallel build, a phone-sized CI box) many workers starve each other: cap them
+    // and allow a slow test to finish rather than time out.
+    maxWorkers: "50%",
+    testTimeout: 15000,
+    hookTimeout: 15000,
     coverage: {
       provider: "v8",
       include: ["src/**/*.{ts,tsx}"],

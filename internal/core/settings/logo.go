@@ -45,6 +45,7 @@ const (
 	fieldFile   = "file"
 	codeTooBig  = "too_large"
 	logoField   = "logo"
+	logoName    = "logo"           // the stored name of the logo, whatever the upload was called
 	discardWait = 10 * time.Second // a Discard after the request's own context ended
 )
 
@@ -111,27 +112,37 @@ func (s *Service) refuseReadOnly(op string) error {
 	return nil
 }
 
-// SetLogo replaces the regional's logo with body. Needs settings.manage. It fails
+// preflightSetLogo runs the checks that come before a byte of the upload is read, in order:
+// settings.manage, a file store, a writable copy. The PUT handler runs it before it parses
+// the multipart body, so a person without the permission is refused at once; SetLogo runs it
+// again, because it is also called without the handler.
+func (s *Service) preflightSetLogo(ctx context.Context, op string) error {
+	if err := s.require(ctx, op, PermissionManage); err != nil {
+		return err
+	}
+	if err := s.needFiles(op); err != nil {
+		return err
+	}
+	return s.refuseReadOnly(op)
+}
+
+// SetLogo replaces the regional's logo with body. Needs settings.manage. The file is stored
+// under the name "logo" whatever name the upload carried (the argument is kept for the
+// route's signature and ignored, so a person's file name is never stored). It fails
 // errs.Unsupported without Options.Files and errs.Unavailable wrapping db.ErrReadOnly on a
 // read-only copy, both before a byte of body is read. Then, outside any transaction, it stages
-// body (named name; at most MaxLogoBytes; a files.Brand kind by its bytes); then, in one Write
+// body (at most MaxLogoBytes; a files.Brand kind by its bytes); then, in one Write
 // transaction under the revision lock, it attaches the object to LogoRef replacing any earlier
 // logo, records settings.logo.changed and bumps the revision. After commit the snapshot
 // carries the new file ID. A staged object that was not attached is discarded. It also fails
 // errs.Unauthenticated, errs.Permission, errs.Invalid (field "file": too_large {max}, type,
 // malformed, required), errs.Conflict (quota), errs.Unavailable, errs.Timeout, errs.Canceled
 // and the recorder's kind.
-func (s *Service) SetLogo(ctx context.Context, name string, body io.Reader) (_ LogoResult, err error) {
+func (s *Service) SetLogo(ctx context.Context, _ string, body io.Reader) (_ LogoResult, err error) {
 	const op = "settings.Service.SetLogo"
 	ctx, span := s.start(ctx, "logo.set")
 	defer endSpan(span, &err)
-	if err := s.require(ctx, op, PermissionManage); err != nil {
-		return LogoResult{}, err
-	}
-	if err := s.needFiles(op); err != nil {
-		return LogoResult{}, err
-	}
-	if err := s.refuseReadOnly(op); err != nil {
+	if err := s.preflightSetLogo(ctx, op); err != nil {
 		return LogoResult{}, err
 	}
 	if body == nil {
@@ -140,7 +151,7 @@ func (s *Service) SetLogo(ctx context.Context, name string, body io.Reader) (_ L
 		})
 	}
 	staged, err := s.files.Stage(ctx, files.Upload{
-		Name: name, Accept: files.Brand, Body: &capReader{op: op, r: body, max: MaxLogoBytes},
+		Name: logoName, Accept: files.Brand, Body: &capReader{op: op, r: body, max: MaxLogoBytes},
 	})
 	if err != nil {
 		return LogoResult{}, wrap(op, err)

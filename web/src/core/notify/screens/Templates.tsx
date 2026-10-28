@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router";
-import { api, ApiError, useReadOnly, useSession } from "@/api";
+import { api, ApiError, useAction, useReadOnly, useSession } from "@/api";
 import type { components } from "@/api";
 import { useT } from "@/i18n";
 import { Button, EmptyState, Loading, useToast } from "@/ui";
@@ -13,7 +13,6 @@ import { ReadOnlyNote } from "../ReadOnlyNote";
 import { SendTest } from "../SendTest";
 import { ScreenError } from "../ScreenError";
 import { TEMPLATES_KEY, useTemplates } from "../queries";
-import { useAction } from "../useAction";
 import { useTemplateText } from "../useTemplateText";
 
 type Info = components["schemas"]["NotifyTemplateInfo"];

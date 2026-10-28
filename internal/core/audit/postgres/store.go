@@ -54,6 +54,11 @@ var (
 	sqlPurge           = mustSQL("purge_entries.sql")
 )
 
+// sqlCustomPlan makes the rest of the transaction plan its statements with their parameter
+// values (see Search): the transaction-local form of SET plan_cache_mode, which a read-only
+// transaction allows. It is a SELECT so it runs as a query, not as a write statement.
+const sqlCustomPlan = "SELECT set_config('plan_cache_mode', 'force_custom_plan', true)"
+
 func mustSQL(name string) string {
 	b, err := sqlFiles.ReadFile("sql/" + name)
 	if err != nil {
@@ -256,18 +261,44 @@ func (s *Store) Search(ctx context.Context, f Filter, limit int) ([]Row, error) 
 	case f.Actor != ([16]byte{}):
 		query = sqlSearchByActor
 	}
-	rows, err := s.db.Query(ctx, query,
-		nilIfZero(f.Actor), nilIfZero(f.Subject),
-		nilIfEmpty(f.RecordKind), nilIfZero(f.RecordID),
-		nilIfEmpty(f.Area), nilIfEmpty(f.Action),
-		nilIfTimeZero(f.From), nilIfTimeZero(f.To),
-		f.SuperuserOnly,
-		nilIfTimeZero(f.AfterAt), nilIfZero(f.AfterID),
-		int32(limit)) //nolint:gosec // limit is at most audit.MaxPageSize + 1
+	var out []Row
+	// The statement runs with a custom plan: its optional filters are "$n IS NULL" tests the
+	// planner can only fold when it sees the values, and a generic plan reads far more rows
+	// (search_entries.sql). SET LOCAL lasts for this transaction only, so it affects this
+	// query and nothing else on the connection. Transact joins the caller's transaction (the
+	// log's Read transaction) and starts a Read one when there is none.
+	err := s.db.Transact(ctx, db.Read, func(ctx context.Context) error {
+		if err := s.customPlan(ctx, op); err != nil {
+			return err
+		}
+		rows, err := s.db.Query(ctx, query,
+			nilIfZero(f.Actor), nilIfZero(f.Subject),
+			nilIfEmpty(f.RecordKind), nilIfZero(f.RecordID),
+			nilIfEmpty(f.Area), nilIfEmpty(f.Action),
+			nilIfTimeZero(f.From), nilIfTimeZero(f.To),
+			f.SuperuserOnly,
+			nilIfTimeZero(f.AfterAt), nilIfZero(f.AfterID),
+			int32(limit)) //nolint:gosec // limit is at most audit.MaxPageSize + 1
+		if err != nil {
+			return db.Wrap(op, err)
+		}
+		out, err = collect(op, rows)
+		return err
+	})
 	if err != nil {
 		return nil, db.Wrap(op, err)
 	}
-	return collect(op, rows)
+	return out, nil
+}
+
+// customPlan runs sqlCustomPlan on the transaction ctx carries.
+func (s *Store) customPlan(ctx context.Context, op string) error {
+	rows, err := s.db.Query(ctx, sqlCustomPlan)
+	if err != nil {
+		return db.Wrap(op, err)
+	}
+	rows.Close()
+	return db.Wrap(op, rows.Err())
 }
 
 // Export returns up to limit rows whose subject is person, oldest first, strictly after

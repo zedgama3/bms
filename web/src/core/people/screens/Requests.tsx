@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
-import { api, ApiError, useReadOnly } from "@/api";
+import { api, ApiError, useAction, useNames, useReadOnly } from "@/api";
 import { useFormat, useT } from "@/i18n";
 import type { MessageKey } from "@/i18n";
 import {
@@ -21,8 +21,6 @@ import { ReadOnlyNote } from "../ReadOnlyNote";
 import { ScreenError } from "../ScreenError";
 import { text } from "../text";
 import type { DataRequest, DeletionReport } from "../types";
-import { useAction } from "../useAction";
-import { useNames } from "../useNames";
 
 type Status = "open" | "declined" | "withdrawn";
 const STATUSES: readonly Status[] = ["open", "declined", "withdrawn"];

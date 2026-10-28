@@ -8,7 +8,9 @@ import { publicStore } from "./public";
 import type { components, paths } from "./schema";
 import { useSession } from "./session";
 
+export { useAction } from "./action";
 export { download, upload } from "./client";
+export { holdsAny, holdsAt, holdsSite } from "./permissions";
 export type { CallOptions, UploadBody } from "./client";
 export { ApiError, PROBLEM_CODES, isAbort } from "./errors";
 export type {
@@ -66,4 +68,25 @@ export function useSetMe(): (profile: Me) => void {
     (profile: Me) => client.setQueryData(["core", "me", personId], profile),
     [client, personId],
   );
+}
+
+/** Playa names for person IDs, in one call (`GET /api/people/names`, any signed-in person).
+ *  Names live in the query cache (memory) only. Until the answer arrives, or if it fails, a
+ *  person shows as `fallback` (their ID by default): a name is a convenience, not a reason to
+ *  fail the screen. */
+export function useNames(ids: readonly string[], fallback?: string): (id: string) => string {
+  const unique = [...new Set(ids.filter((i) => i !== ""))].sort().slice(0, 200);
+  const q = useQuery({
+    queryKey: ["names", unique.join(",")],
+    enabled: unique.length > 0,
+    queryFn: ({ signal }) =>
+      api.GET("/api/people/names", { signal, params: { query: { ids: unique.join(",") } } }),
+  });
+  const names = q.data?.names ?? {};
+  return (id) => names[id] || (fallback ?? id);
+}
+
+/** `GET /api/people/search` for `ui/PersonSearch`'s `search` prop. */
+export function searchPeople(q: string, signal: AbortSignal) {
+  return api.GET("/api/people/search", { signal, params: { query: { q } } });
 }

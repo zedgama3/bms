@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useParams } from "react-router";
-import { api, ApiError, useReadOnly, useSession } from "@/api";
+import { api, ApiError, useAction, useReadOnly, useSession } from "@/api";
 import { useFormat, useT } from "@/i18n";
 import { Banner, Button, Dialog, ErrorSummary, Loading, useFieldErrors, useToast } from "@/ui";
 import { EventFields, readEvent } from "../EventFields";
@@ -12,7 +12,6 @@ import { ReadOnlyNote } from "../ReadOnlyNote";
 import { ScheduleSection } from "../ScheduleSection";
 import { ScreenError } from "../ScreenError";
 import { parseSetup, SetupSection } from "../SetupSection";
-import { useAction } from "../useAction";
 import { useKindLabel } from "../useKindLabel";
 
 type Dialogs = "edit" | "close" | "reopen" | null;

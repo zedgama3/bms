@@ -1,6 +1,7 @@
 # Settings
 
 - **Status:** Implemented (2026-10-19; approved D39; logo deferred to files)
+- **Amended 2026-10-28 (D52(e)):** the logo. (1) The upload name stored is always `"logo"`: the `PUT /logo` handler passes that constant, not the client's file name, so a file name never reaches `files.Stage`, the audit entry or the export. (2) The handler checks `settings.manage` before `files.ReadUpload` reads the multipart body, so a person without it costs no body read (`SetLogo` still checks it, decision 18 order unchanged). (3) The too-large message reads "The file is larger than {max}.", `max` formatted as bytes by the UI, so a 2 MiB cap shows "2 MB"; the `Params` stay `{max: 2097152}`. Tests tightened: `TestPutLogo_NonAdmin_Returns403WithoutReadingTheBody`, `TestPutLogo_StoredName_IsLogoNotTheMultipartFilename`, and the too-large tests assert the message text.
 - **Amendment 2026-10-19 (approved, owner, 2026-10-20, D40):** three gaps found while applying D39: `Options.Authz` at part 3 is `app`'s `lazyAuthorizer` (no part reorder); `GET /public` and `/theme.css` keep the `/api/` `no-store` rule with their `ETag`; `api.Options.PublicOrigin` waits, with its shape fixed over `regional.public_url`. See "Amendment 2026-10-19 (approved, owner, 2026-10-20, D40): authz before authz, caching, the public origin" before Open questions.
 - **Amendment 2026-10-20 (approved, owner, D44; files Proposed change 6):** the logo, deferred by D39, lands with `files`: `Options.Files files.Store`, three routes under `/api/settings/logo`, `Public.Logo`, audit actions `settings.logo.changed|removed`, a logo field on `/settings`; decision 8 is superseded. See "Amendment 2026-10-20 (D44): the logo" before Open questions.
 - **Accepted 2026-10-20 (owner, D40):** the implementation deviations marked "(implementation, 2026-10-19/20)" in this spec are accepted as written; no text changed.
@@ -47,7 +48,7 @@ process, or differs per process) is not here, and nothing here is read from the 
   (map[string]Forms, error)`; `Public(ctx)`; `ThemeCSS(ctx) (string, error)`;
   `Document(ctx)`; `Set(ctx, Changes) (Revision, error)`; `Terms(ctx) (TermsDocument, error)`;
   `SetTerms(ctx, lang, TermChanges) (Revision, error)`;
-  `Run(ctx) error` (the refresher, an `app` runnable); `Routes() []Route`; `OpenAPI() []byte`. The logo (D44, D47): `SetLogo(ctx, name string, body io.Reader) (LogoResult, error)`, `RemoveLogo(ctx) (LogoResult, error)`, `OpenLogo(ctx) (files.File, files.Content, error)`; routes `GET /logo` (public; `files.Serve`), `PUT /logo` (multipart field `file`, `settings.manage`), `DELETE /logo` (`settings.manage`); `Route` gains `MaxBodyBytes`, `Timeout` (`app` copies them); audit `settings.logo.changed|removed`.
+  `Run(ctx) error` (the refresher, an `app` runnable); `Routes() []Route`; `OpenAPI() []byte`. The logo (D44, D47; D52(e): the stored upload name is always "logo"): `SetLogo(ctx, name string, body io.Reader) (LogoResult, error)`, `RemoveLogo(ctx) (LogoResult, error)`, `OpenLogo(ctx) (files.File, files.Content, error)`; routes `GET /logo` (public; `files.Serve`), `PUT /logo` (multipart field `file`, `settings.manage`), `DELETE /logo` (`settings.manage`); `Route` gains `MaxBodyBytes`, `Timeout` (`app` copies them); audit `settings.logo.changed|removed`.
 - Constants: `Languages = []string{"en", "es"}`; `CoreTerms = []string{"event", "department", "participant", "theme_camp"}`;
   `MaxBatch = 200`, `MaxTextBytes = 4096`, `MaxNameBytes = 80`, `MaxURLBytes = 256`, `MaxTermBytes = 60`,
   `MinContrast = 4.5`, `MaxLogoBytes = 2 << 20`, `LogoRef = audit.Ref{Kind: files.LogoRecordKind, ID: sha256("settings.logo")[:16]}` (a `var`),
@@ -63,6 +64,8 @@ process, or differs per process) is not here, and nothing here is read from the 
 **Expects of dependencies.** `app`: part 3 (`declare`: `Set`, `Permissions`; `build`: `New` over the areas (`regional` from this package, `identity.Settings`, `people.Settings`, `auditsettings.Settings`, `Plan.Settings()` as module areas), the actor closure, `audit.Scoped("settings")`, `cfg.Settings.SealingKey`; `a.deps.Settings` scoped per module in `provision`; `PolicySource` adapters for identity and people; `Run` as a runnable; route set `settings`). `module-contract`: the aliases, `Deps.Settings settings.Reader`, `moduletest.Conformance` supplying `settingstest.NewFake`, `regional` reserved. `identity`, `people`, `audit`: export `Settings []settings.Decl` (identity also `CheckSettings`). `authz`: `Allow`, starter-role seeding. `audit`: `Recorder` inside a `Write` transaction. `db`: `Transact`, `AfterCommit`, `Wrap`, `ErrReadOnly`, `Set`. `web-shell`: reads `GET /api/settings/public` at boot, merges `terms` over its catalogue, links `/api/settings/theme.css`, adds the three term forms to its catalogue and the `field.contrast` key; owns `upload()` in `@/api`, `ui/FileField` and the header `<img src="/api/settings/logo?v=<Public.logo>" alt="<regional name>">` with its text fallback (Proposed change 15). `notify`: declares `notify.*` (named under Settings) and reads `Regional`, `TermsFor` and its own `Reader`. `files`: a `Store` scoped `settings` (`Stage` outside the transaction, `Attach{Record: LogoRef, Level: public, Replace: true}` inside it with no store I/O, `ByRecord` usable inside a `Read` transaction, `Open` and `Serve` with no `Cache-Control`, decision 25), `files.Brand`, `LogoRecordKind`, a classified error from `Upload.Body` returned unchanged by `Stage` (Proposed change 16). `app`: `Options.Files` as a lazy adapter resolved on first use, like `lazyAuthorizer`; `settingsRoutes` copies `MaxBodyBytes` and `Timeout` (Proposed change 14).
 
 **Open questions:** the six of 2026-10-19 were answered (D39) and are folded into decisions 3, 7, 8, 9, 11 and 14; the four logo questions were answered (owner, 2026-10-21, D47) and are folded into decision 17: no SVG now (a sanitised kind later in `files`), no dark-scheme logo, no favicon from the logo, no pixel-dimension cap. **Settled 2026-10-20 (D40):** the amendment of 2026-10-19 is approved (`lazyAuthorizer`; `no-store` with `ETag`; `PublicOrigin` waits); decision 15 below; the implementation deviations marked 2026-10-19 are accepted as written. **Proposed changes elsewhere:** 13, all applied 2026-10-19 (D39), listed at the end; 14 to 19 applied 2026-10-21 (D47).
+
+**Amended 2026-10-28 (D52(e)).** The logo's stored upload name is always "logo"; the handler checks `settings.manage` before reading the body; the too-large message reads "The file is larger than {max}." with `max` as bytes ("2 MB").
 
 ## Purpose
 
@@ -755,9 +758,9 @@ its poll interval (decision 16). On a copy whose bytes have not been synced `Ope
 `Unavailable` wrapping `objects.ErrMissing` and the api answers `503` with `Retry-After`;
 the header falls back to the name as text (web-shell).
 
-*Handlers.* `PUT /logo`: `files.ReadUpload(r, "file")` (`415` when not multipart; `400
-file required` with no file part; text parts are ignored), then `SetLogo(ctx, mp.Name,
-mp.Body)`; `200` with `LogoResult`. `Route.MaxBodyBytes = 2*MaxLogoBytes` (the field error
+*Handlers.* `PUT /logo`: check `settings.manage` first (D52(e)), then `files.ReadUpload(r, "file")` (`415` when not multipart; `400
+file required` with no file part; text parts are ignored), then `SetLogo(ctx, "logo",
+mp.Body)` (the stored name is always "logo", D52(e); `settings.manage` is checked before `ReadUpload` reads the body); `200` with `LogoResult`. `Route.MaxBodyBytes = 2*MaxLogoBytes` (the field error
 from step 3 wins for anything up to twice the cap; a client that ignores it gets the shell's
 `413` beyond; files' 1 GiB ceiling, which D44 named, has no use on a 2 MiB route) and
 `Route.Timeout = files.UploadTimeout` (a phone on a venue link). `DELETE /logo`: `RemoveLogo`;
@@ -1134,7 +1137,7 @@ Proposed 2026-10-21 by the logo amendment; all six applied 2026-10-21 (D47):
     `""` or on `onError` (a `503` on a copy without the bytes); no `loading="lazy"`. (d)
     `applyPublic` keeps `logo` in the public store (`usePublic().logo`) and the frame
     re-renders on a refetch. (e) The catalogue keys `field.too_large` ("The file is larger
-    than {max} bytes"; the UI formats `max` with `useFormat` bytes), `field.type` ("This
+    than {max}." (D52(e)); the UI formats `max` with `useFormat` bytes, so "2 MB"), `field.type` ("This
     kind of file isn't accepted."), `field.quota` ("The site has no room left for files."),
     `field.too_many`, `field.order` are still absent from `web/src/shell/messages/en.json`
     (only `field.malformed` exists): add them. (f) `Attachments` stays as described; the

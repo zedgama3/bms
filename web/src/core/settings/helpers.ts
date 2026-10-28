@@ -1,11 +1,5 @@
-import type { Session } from "@/api";
 import type { SettingDoc } from "./types";
-
-/** Whether the session shows a permission site-wide (a convenience for hiding what the person
- *  can't do; the server decides every call). */
-export function holdsSite(session: Session, permission: string): boolean {
-  return session.signedIn && session.permissions.includes(permission);
-}
+export { holdsSite } from "@/api";
 
 /** `accounts.session_lifetime` becomes `session_lifetime`. */
 export function bareKey(full: string): string {

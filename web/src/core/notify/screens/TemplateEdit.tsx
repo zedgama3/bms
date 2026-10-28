@@ -2,7 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useParams } from "react-router";
-import { api, ApiError, useReadOnly, useSession } from "@/api";
+import { api, ApiError, useAction, useReadOnly, useSession } from "@/api";
 import type { components } from "@/api";
 import { useT } from "@/i18n";
 import { Button, controlClass, ErrorSummary, Field, Loading, useFieldErrors, useToast } from "@/ui";
@@ -14,7 +14,6 @@ import { ReadOnlyNote } from "../ReadOnlyNote";
 import { SendTest } from "../SendTest";
 import { ScreenError } from "../ScreenError";
 import { TEMPLATES_KEY, templateKey, useTemplate } from "../queries";
-import { useAction } from "../useAction";
 import { useTemplateText } from "../useTemplateText";
 
 type View = components["schemas"]["NotifyTemplateView"];

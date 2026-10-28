@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { useState } from "react";
-import { api, ApiError, useReadOnly, useSession } from "@/api";
+import { api, ApiError, useAction, useReadOnly, useSession } from "@/api";
 import type { components } from "@/api";
 import { isMessageKey, useFormat, useT } from "@/i18n";
 import { Banner, Button, EmptyState, ErrorState, Loading, Table, useToast } from "@/ui";
@@ -12,7 +12,6 @@ import { Forbidden } from "../Forbidden";
 import { byId, holdsSite, secondsBetween, spanOf, splitName } from "../helpers";
 import { JOBS_KEY, useJobsStatus } from "../queries";
 import { ScreenError } from "../ScreenError";
-import { useAction } from "../useAction";
 
 type Record = components["schemas"]["JobsRecord"];
 type Registered = components["schemas"]["JobsRegistered"];
@@ -76,7 +75,7 @@ export function Jobs() {
       })
       .then((ok) => {
         void refresh();
-        if (ok) focusSoon("#jobs-title"); // the row changes and the pressed button is gone
+        if (ok) focusSoon("#jobs-recent"); // the row changes and the pressed button is gone
       });
   };
 
@@ -92,7 +91,7 @@ export function Jobs() {
         void refresh();
         if (ok) {
           setCanceling(null);
-          focusSoon("#jobs-title"); // the row is gone with the dialog
+          focusSoon("#jobs-recent"); // the row is gone with the dialog
         }
       });
   };
@@ -297,7 +296,7 @@ export function Jobs() {
             )}
           </section>
           <section aria-labelledby="jobs-recent" className="flex flex-col gap-3">
-            <h2 id="jobs-recent" className="text-xl font-bold">
+            <h2 id="jobs-recent" tabIndex={-1} className="text-xl font-bold focus:outline-none">
               {t("core.jobs.recent.title")}
             </h2>
             {row.error ? (

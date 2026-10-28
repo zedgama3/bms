@@ -1,14 +1,13 @@
 import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { api, refreshSession, safeReturnTo, useReadOnly, useSession } from "@/api";
+import { api, refreshSession, safeReturnTo, useAction, useReadOnly, useSession } from "@/api";
 import { useT } from "@/i18n";
 import { Banner, Button, Dialog, ErrorSummary, useFieldErrors, useToast } from "@/ui";
 import { DEFAULT_MIN_PASSWORD } from "../constants";
 import { PasswordField } from "../PasswordField";
 import { ReadOnlyNote } from "../ReadOnlyNote";
 import { text } from "../text";
-import { useAction } from "../useAction";
 
 /** `/accounts/password`: change the password, and sign out everywhere else. Works for a
  *  restricted session (a temporary password), where it is the only screen that does. */

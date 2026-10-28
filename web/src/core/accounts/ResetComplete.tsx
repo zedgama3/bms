@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useNavigate } from "react-router";
-import { api, ApiError, refreshSession, useReadOnly } from "@/api";
+import { api, ApiError, refreshSession, useAction, useReadOnly } from "@/api";
 import { useT } from "@/i18n";
 import { Button, ErrorState, ErrorSummary, Field, linkButtonClass, useFieldErrors } from "@/ui";
 import type { FieldMessage } from "@/ui";
@@ -9,7 +9,6 @@ import { DEFAULT_MIN_PASSWORD } from "./constants";
 import { PasswordField } from "./PasswordField";
 import { ReadOnlyNote } from "./ReadOnlyNote";
 import { text } from "./text";
-import { useAction } from "./useAction";
 
 /** A link that is no use: the same state whether the token is missing, unknown, used or
  *  replaced (`invalid`), or too old (`expired`). It has no inputs to fix, only a way to ask again. */

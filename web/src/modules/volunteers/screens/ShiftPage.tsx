@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router";
-import { ApiError, useReadOnly, useSession } from "@/api";
+import { ApiError, useReadOnly, useSession, searchPeople } from "@/api";
 import { isMessageKey, useT } from "@/i18n";
 import {
   Banner,
@@ -14,6 +14,7 @@ import {
   Loading,
   Table,
   useToast,
+  PersonSearch,
 } from "@/ui";
 import type { Column } from "@/ui";
 import { vol } from "../calls";
@@ -21,7 +22,6 @@ import { ConfirmDialog } from "../ConfirmDialog";
 import { holdsAt } from "../helpers";
 import { Mates } from "../Mates";
 import { P } from "../permissions";
-import { PersonPicker } from "../PersonPicker";
 import { nameIn, useDepartments, useQualifications } from "../queries";
 import { ReadOnlyNote } from "../ReadOnlyNote";
 import { ScreenError, useConflictMessage } from "../ScreenError";
@@ -332,7 +332,8 @@ function AssignForm({ shiftId, onDone }: { shiftId: string; onDone: () => Promis
         formRef={formRef}
         {...(conflict ? { message: conflict } : {})}
       />
-      <PersonPicker
+      <PersonSearch
+        search={searchPeople}
         name="person"
         label={t("module.volunteers.assign.person")}
         chosenName={person?.name ?? ""}

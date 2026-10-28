@@ -19,7 +19,10 @@ export function MySchedule() {
   const client = useQueryClient();
   const { readOnly } = useReadOnly();
   const [past, setPast] = useState(false);
-  const [toggled, setToggled] = useState(false);
+  // One announcement per toggle: set once the swapped list has loaded, never again by a later
+  // refetch (a cancel refreshes the list; that must not read the message out a second time).
+  const [awaiting, setAwaiting] = useState(false);
+  const [said, setSaid] = useState("");
   const [target, setTarget] = useState<ScheduleEntry | null>(null);
   const { q, rows, error } = usePaged<ScheduleEntry>(
     ["volunteers", "schedule", past],
@@ -27,6 +30,13 @@ export function MySchedule() {
   );
   // Upcoming also lists bookings someone else canceled (struck through, with the reason) until
   // the shift passes; the person's own cancellations never come back. Past lists booked rows.
+  const loaded = q.data !== undefined && !q.isFetching;
+  if (awaiting && loaded) {
+    setAwaiting(false);
+    setSaid(
+      t(past ? "module.volunteers.me.showing_past" : "module.volunteers.me.showing_upcoming"),
+    );
+  }
   const entries = past ? rows.filter((e) => e.status !== "canceled") : rows;
   const [now] = useState(() => Date.now());
 
@@ -47,7 +57,8 @@ export function MySchedule() {
             aria-pressed={past === isPast}
             onClick={() => {
               setPast(isPast);
-              setToggled(true);
+              setAwaiting(true);
+              setSaid("");
             }}
           >
             {t(isPast ? "module.volunteers.me.tab_past" : "module.volunteers.me.tab_upcoming")}
@@ -55,9 +66,7 @@ export function MySchedule() {
         ))}
       </div>
       <p role="status" className="sr-only">
-        {toggled && q.data && !q.isFetching
-          ? t(past ? "module.volunteers.me.showing_past" : "module.volunteers.me.showing_upcoming")
-          : ""}
+        {said}
       </p>
       {q.isPending ? <Loading /> : null}
       {error ? <ScreenError error={error} onRetry={() => void q.refetch()} /> : null}

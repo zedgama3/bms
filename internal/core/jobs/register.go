@@ -98,13 +98,14 @@ func (r *Runner) enqueue(ctx context.Context, op string, req Request, now time.T
 		runAt = now
 	}
 	trace, _ := telemetry.TraceIDFrom(ctx)
+	runID, _ := rules.RunID(ctx) // the row whose run is asking, when a handler is
 	// A Write transaction joins the caller's, starts one when there is none (the insert and
 	// the lookup of an existing key are then one unit) and refuses a Read transaction.
 	var id JobID
 	err = r.db.Transact(ctx, db.Write, func(ctx context.Context) error {
 		var err error
 		id, err = r.store.Enqueue(ctx, rows.New{
-			ID: newJobID(), Name: string(req.Name), Key: req.Key, Args: args, RunAt: runAt, TraceID: trace,
+			ID: newJobID(), Name: string(req.Name), Key: req.Key, Args: args, RunAt: runAt, TraceID: trace, RunID: runID,
 		}, now)
 		return err //nolint:wrapcheck // wrapped below
 	})

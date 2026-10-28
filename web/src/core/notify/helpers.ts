@@ -1,10 +1,4 @@
-import type { Session } from "@/api";
-
-/** Whether the session shows a permission site-wide (a convenience for hiding what the person
- *  can't do; the server decides every call). */
-export function holdsSite(session: Session, permission: string): boolean {
-  return session.signedIn && session.permissions.includes(permission);
-}
+export { holdsSite } from "@/api";
 
 /** `identity.password-reset` is owner `identity`, ident `password-reset`. */
 export function splitName(name: string): { owner: string; ident: string } {

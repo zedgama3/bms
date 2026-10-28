@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError } from "@/api";
+import { api, ApiError, useAction } from "@/api";
 import { isMessageKey, useT } from "@/i18n";
 import {
   Button,
@@ -18,7 +18,6 @@ import { ReadOnlyNote } from "./ReadOnlyNote";
 import { ScreenError } from "./ScreenError";
 import { text } from "./text";
 import type { SetupResult } from "./types";
-import { useAction } from "./useAction";
 
 /** What the new-event screen passed in the navigation state: the set-up outcome, if it has the
  *  shape of one. Anything else is ignored. */

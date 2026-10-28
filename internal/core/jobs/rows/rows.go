@@ -33,6 +33,10 @@ type New struct {
 	Args    []byte // the JSON object
 	RunAt   time.Time
 	TraceID string
+	// RunID is the row whose run is making this request (a handler enqueueing a key); zero
+	// outside a run. Only the keyed upsert uses it: a request met by a running row is held, and
+	// the row records whether the run itself made it (D52 a).
+	RunID ID
 }
 
 // Lease is a row a worker has just leased. LeasedUntil is the fence: pass it back unchanged

@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
-import { api, useReadOnly } from "@/api";
+import { api, useAction, useReadOnly } from "@/api";
 import { useT } from "@/i18n";
 import { Button, ErrorState, linkButtonClass } from "@/ui";
 import { ReadOnlyNote } from "./ReadOnlyNote";
-import { useAction } from "./useAction";
 
 /** "Send me a test": queues the `notify.test` message to the signed-in person and shows its ID
  *  (never an address). Only that template can be sent from here (notify decision 18). */

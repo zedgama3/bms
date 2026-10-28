@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router";
-import { ApiError, useReadOnly, useSession } from "@/api";
+import { ApiError, useNames, useReadOnly, useSession } from "@/api";
 import { useT } from "@/i18n";
 import {
   Button,
@@ -28,7 +28,6 @@ import { ScreenError } from "../ScreenError";
 import type { QualRecord } from "../types";
 import { useAction } from "../useAction";
 import { useExpiry } from "../useExpiry";
-import { useNames } from "../useNames";
 import { VerifyDialog } from "../VerifyDialog";
 
 /** `/volunteers/people/:person`: a person's qualification records within the viewer's extent,

@@ -1,6 +1,7 @@
 // Package jobstest gives tests of jobs' callers a Registrar without a database or a runner.
 // Fake validates like the real one; it runs a registered handler on demand, with the same
-// context marker the runner sets.
+// context marker the runner sets. It skips the retry delays: a retryable error requeues the
+// row at the time it already had, so the next RunDue at or after that time runs it again.
 package jobstest
 
 import (
@@ -17,6 +18,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/jobs/internal/rules"
 	"github.com/zedgama3/bms/internal/lib/clock"
 	"github.com/zedgama3/bms/internal/lib/errs"
+	"github.com/zedgama3/bms/internal/lib/retry"
 	"github.com/zedgama3/bms/internal/lib/validate"
 	"github.com/zedgama3/bms/internal/model"
 )
@@ -28,8 +30,10 @@ import (
 // states, and moves it as the real queue does (decision 3, decision 23; J1): Enqueue moves a
 // queued row, reopens a final one, and holds the request on a running one; Run marks the row
 // running for the handler's duration and then applies the held request (queued at its RunAt)
-// or, with none, ends the row done (nil) or failed (any error; the Fake does not model
-// backoff). Safe for concurrent use.
+// or, with none, ends the row done (nil), requeues it (an Unavailable or Timeout error, with
+// attempts left, counting the attempt and with no delay) or fails it (any other error, a panic,
+// or a retryable one at jobs.DefaultRetry.MaxAttempts). A request the run made for its own key
+// keeps the attempts of a failed run, as the real queue does (D52 a). Safe for concurrent use.
 type Fake struct {
 	owner string
 	now   func() time.Time // the clock Enqueue bounds run_at against; the wall clock by default
@@ -51,9 +55,12 @@ type row struct {
 	status   string
 	runAt    time.Time
 	args     jobs.Args
+	attempts int // runs begun so far, as core.job.attempts counts leases
 	hasNext  bool
 	nextRun  time.Time
 	nextArgs jobs.Args
+	// nextByRun: the held request was made by the row's own run (core.job.next_by_run).
+	nextByRun bool
 }
 
 var _ jobs.Registrar = (*Fake)(nil)
@@ -151,6 +158,7 @@ func (f *Fake) Enqueue(ctx context.Context, r jobs.Request) (jobs.JobID, error) 
 		return jobs.JobID{}, v.Err() //nolint:wrapcheck // Err already carries Op and errs.Invalid
 	}
 	rec := copyRequest(r)
+	runID, _ := rules.RunID(ctx) // the row whose run is asking, when a handler is
 	at := rec.RunAt
 	if now := f.now(); at.IsZero() || at.Before(now) {
 		at = now // the real queue treats zero and the past as "now"
@@ -159,7 +167,7 @@ func (f *Fake) Enqueue(ctx context.Context, r jobs.Request) (jobs.JobID, error) 
 		f.mu.Lock()
 		defer f.mu.Unlock()
 		f.enqueued = append(f.enqueued, rec)
-		f.apply(id, rec, at.UTC())
+		f.apply(id, rec, at.UTC(), runID)
 	}); err != nil {
 		return jobs.JobID{}, errs.E(op, errs.KindOf(err), errors.New("could not register the record hook"))
 	}
@@ -185,8 +193,8 @@ func (f *Fake) Enqueued() []jobs.Request {
 }
 
 // apply makes the request the key's row, as the upsert of enqueue_job.sql does. The caller
-// holds f.mu.
-func (f *Fake) apply(id jobs.JobID, r jobs.Request, at time.Time) {
+// holds f.mu. runID is the row whose run made the request, zero outside a run.
+func (f *Fake) apply(id jobs.JobID, r jobs.Request, at time.Time, runID jobs.JobID) {
 	if r.Key != "" {
 		if w := f.byKey(r.Name, r.Key); w != nil {
 			switch w.status {
@@ -194,8 +202,9 @@ func (f *Fake) apply(id jobs.JobID, r jobs.Request, at time.Time) {
 				w.runAt, w.args = at, r.Args
 			case statusRunning:
 				w.hasNext, w.nextRun, w.nextArgs = true, at, r.Args
+				w.nextByRun = !runID.IsZero() && runID == w.id
 			default: // done, failed or canceled: reopened
-				w.status, w.runAt, w.args = statusQueued, at, r.Args
+				w.status, w.runAt, w.args, w.attempts = statusQueued, at, r.Args, 0
 			}
 			return
 		}
@@ -255,11 +264,17 @@ func sortRows(ws []*row) {
 
 // Run calls the handler registered for name with j (jobs.InJob true, no transaction) and
 // returns its error unchanged. It fills j.Name when empty. Fails errs.NotFound when no
-// handler is registered for name. When j.Key is set the key's row is running during the call
-// and leaves running by the key rule: a request held on it becomes the waiting row (Queued
-// shows it), otherwise the row ends done (nil) or failed (any error or a panic). A Key with no
-// row (a test drove the handler directly) gets one. A keyless j finds its row by j.ID when it
-// has one.
+// handler is registered for name. A row Run drives is tracked like an enqueued one: when
+// j.Key is set the key's row is running during the call (a Key with no row, because a test
+// drove the handler directly, gets one, which Queued then shows while it waits); a keyless j
+// finds its row by j.ID when it has one, else has none. The row leaves running as the queue
+// does it: a request held on it (decision 23) becomes the waiting row, and Queued shows it;
+// otherwise nil ends the row done, a retryable error (Unavailable, Timeout) requeues it with
+// the attempt counted until DefaultRetry.MaxAttempts is reached (the Fake skips the retry
+// delay, so the row is due at once), and any other error, a panic, or a retryable error at the
+// limit ends it failed. A held request the run made itself (it enqueued its own key) follows
+// D52(a): a failed run keeps its attempts, and at DefaultRetry.MaxAttempts the request is
+// dropped and the row ends failed.
 func (f *Fake) Run(ctx context.Context, name jobs.Name, j jobs.Job) error {
 	const op = "jobstest.Fake.Run"
 	f.mu.Lock()
@@ -277,23 +292,28 @@ func (f *Fake) Run(ctx context.Context, name jobs.Name, j jobs.Job) error {
 		j.Name = name
 	}
 	w := f.rowFor(name, j)
+	var runID jobs.JobID
 	if w != nil {
 		w.status = statusRunning
+		runID = w.id
+		if j.Attempt > 0 {
+			w.attempts = j.Attempt
+		} else {
+			w.attempts++
+		}
 	}
 	f.mu.Unlock()
 	finished := false
 	defer func() {
 		if !finished { // a panic: the real runner fails the row
-			f.leave(w, errPanicked)
+			f.leave(w, nil, true)
 		}
 	}()
-	err := h(rules.WithJob(ctx), j)
+	err := h(rules.WithJob(ctx, runID), j)
 	finished = true
-	f.leave(w, err)
+	f.leave(w, err, false)
 	return err
 }
-
-var errPanicked = errors.New("handler panicked")
 
 // rowFor returns the row a Run drives, creating one for a Key that has none. The caller holds
 // f.mu. A keyless job with no known ID has no row.
@@ -306,6 +326,7 @@ func (f *Fake) rowFor(name jobs.Name, j jobs.Job) *row {
 		if w.id.IsZero() {
 			w.id = model.NewID[jobs.JobID]()
 		}
+		f.ids[string(name)+"\x00"+j.Key] = w.id // like a row Enqueue made: its ID is the key's
 		f.rows = append(f.rows, w)
 		return w
 	}
@@ -319,31 +340,58 @@ func (f *Fake) rowFor(name jobs.Name, j jobs.Job) *row {
 	return nil
 }
 
-// leave takes w out of running by the key rule: a held request becomes the waiting row,
-// otherwise it ends done or failed.
-func (f *Fake) leave(w *row, err error) {
+// leave takes w out of running as the statements of the real queue do. A held request
+// supersedes the run's own end: the row is queued for it, with attempts 0, unless the run made
+// the request itself, which keeps the attempts of a failed run (D52 a) and, for a final
+// failure at the retry limit, is dropped. Without a held request the row ends done (nil), is
+// requeued (a retryable error with attempts left, no delay) or ends failed.
+func (f *Fake) leave(w *row, err error, panicked bool) {
 	if w == nil {
 		return
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	const (
+		vDone = iota
+		vRequeue
+		vFail
+	)
+	verdict := vDone
 	switch {
-	case w.hasNext:
+	case panicked:
+		verdict = vFail
+	case err == nil:
+	case retry.Retryable(err) && w.attempts < jobs.DefaultRetry.MaxAttempts:
+		verdict = vRequeue
+	default:
+		verdict = vFail
+	}
+	exhausted := verdict == vFail && w.nextByRun && w.attempts >= jobs.DefaultRetry.MaxAttempts
+	apply := w.hasNext && !exhausted
+	switch {
+	case apply:
 		w.status, w.runAt, w.args = statusQueued, w.nextRun, w.nextArgs
-		w.hasNext, w.nextRun, w.nextArgs = false, time.Time{}, nil
-	case err != nil:
+		if !w.nextByRun || verdict == vDone {
+			w.attempts = 0
+		}
+	case verdict == vRequeue:
+		w.status = statusQueued
+	case verdict == vFail:
 		w.status = statusFailed
 	default:
 		w.status = statusDone
 	}
+	w.hasNext, w.nextRun, w.nextArgs, w.nextByRun = false, time.Time{}, nil, false
 }
 
 // RunDue runs, in (RunAt, Key) order, every waiting row with RunAt <= now, once each (rows
 // requeued by their own run at or before now are left for the next call, so a handler that
-// always re-enqueues itself cannot loop a test), each as Run does with a Job built from the row
-// (Attempt 1, the row's ID, Key, Args and RunAt). It returns how many ran and the handlers'
-// errors joined (a failing row ends failed and the others still run). It is how a test drives
-// a schedule across a fake clock. Fails only with the handlers' errors.
+// always re-enqueues itself cannot loop a test), each as Run does with a Job built from the
+// row as it is when its turn comes (Attempt counting this run, the row's ID, Key, Args and
+// RunAt): a row an earlier handler moved runs with its new Args, and one it canceled or moved
+// past now does not run. It returns how many ran and the handlers' errors joined (a failing
+// row ends failed, a retryable one is requeued, and the others still run). It is how a test
+// drives a schedule across a fake clock. Fails only with the handlers' errors.
 func (f *Fake) RunDue(ctx context.Context, now time.Time) (int, error) {
 	f.mu.Lock()
 	var due []*row
@@ -353,21 +401,13 @@ func (f *Fake) RunDue(ctx context.Context, now time.Time) (int, error) {
 		}
 	}
 	sortRows(due)
-	batch := make([]jobs.Job, len(due))
-	for i, w := range due {
-		batch[i] = jobs.Job{ID: w.id, Name: w.name, Key: w.key, Args: copyArgs(w.args), Attempt: 1, RunAt: w.runAt}
-	}
 	f.mu.Unlock()
 	ran := 0
 	var errAll error
-	for _, j := range batch {
+	for _, w := range due {
 		f.mu.Lock()
-		stale := false
-		for _, w := range f.rows { // a row an earlier handler cancelled or moved is not run
-			if w.id == j.ID && (w.status != statusQueued || w.runAt.After(now)) {
-				stale = true
-			}
-		}
+		stale := w.status != statusQueued || w.runAt.After(now)
+		j := jobs.Job{ID: w.id, Name: w.name, Key: w.key, Args: copyArgs(w.args), Attempt: w.attempts + 1, RunAt: w.runAt}
 		f.mu.Unlock()
 		if stale {
 			continue

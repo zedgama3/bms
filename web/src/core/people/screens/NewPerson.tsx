@@ -2,12 +2,11 @@ import { useRef } from "react";
 import type { FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router";
-import { api, useMe, useReadOnly } from "@/api";
+import { api, useAction, useMe, useReadOnly } from "@/api";
 import { useT } from "@/i18n";
 import { Button, ErrorSummary, Field, useFieldErrors, useToast } from "@/ui";
 import { ReadOnlyNote } from "../ReadOnlyNote";
 import { text } from "../text";
-import { useAction } from "../useAction";
 
 /** `/people/new`: a profile for someone with no account (a walk-on, a paper form). Only the
  *  playa name is required; a lead may not know the rest. */

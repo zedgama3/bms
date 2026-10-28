@@ -470,14 +470,21 @@ func (m *Migrator) apply(ctx context.Context, conn rowTx, set string, f migFile)
 // sqlstateRaise is the SQLSTATE of a RAISE EXCEPTION with no explicit ERRCODE.
 const sqlstateRaise = "P0001"
 
+// whereOwnBlock is how the server's Where starts (CONTEXT) for a RAISE in the migration's own
+// DO block, which PostgreSQL runs as an anonymous function. A RAISE from a trigger or function
+// the file fires has its own function name there, and is scrubbed like any server error (D52).
+const whereOwnBlock = "PL/pgSQL function inline_code_block"
+
 // withRaised appends the message (and DETAIL, when the file sets one) of a RAISE EXCEPTION
 // raised by a migration file to failed, which is the already-classified error for driver. It is
 // the one place a server error's text leaves the database layer (decision 4, D51): the author
 // of the file wrote it to tell the operator what to fix, and a migration never puts personal
-// data in it. Any other error, and a failed that is nil, comes back unchanged.
+// data in it. It applies only to a RAISE in the file's own DO block (the error's Where starts
+// with "PL/pgSQL function inline_code_block", D52): a RAISE from a trigger the file fires, and
+// any other error, and a failed that is nil, come back unchanged.
 func withRaised(failed, driver error) error {
 	var pg *pgconn.PgError
-	if failed == nil || !errors.As(driver, &pg) || pg.Code != sqlstateRaise {
+	if failed == nil || !errors.As(driver, &pg) || !ownRaise(pg) {
 		return failed
 	}
 	text := pg.Message
@@ -487,10 +494,16 @@ func withRaised(failed, driver error) error {
 	return fmt.Errorf("%w: raised: %s", failed, text)
 }
 
-// raised reports whether err is the server's RAISE EXCEPTION (SQLSTATE P0001).
+// raised reports whether err is a RAISE EXCEPTION (SQLSTATE P0001) from the migration's own
+// DO block (D52).
 func raised(err error) bool {
 	var pg *pgconn.PgError
-	return errors.As(err, &pg) && pg.Code == sqlstateRaise
+	return errors.As(err, &pg) && ownRaise(pg)
+}
+
+// ownRaise reports whether pg is a P0001 raised in the migration's own DO block.
+func ownRaise(pg *pgconn.PgError) bool {
+	return pg.Code == sqlstateRaise && strings.HasPrefix(pg.Where, whereOwnBlock)
 }
 
 // rowTx is the part of a pooled connection apply needs.

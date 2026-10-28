@@ -40,7 +40,7 @@ export function FileField(props: FileFieldProps) {
     const file = e.target.files?.[0] ?? null;
     if (file !== null && props.maxBytes !== undefined && file.size > props.maxBytes) {
       e.target.value = "";
-      setTooBig(t("field.too_large", { max: props.maxBytes }));
+      setTooBig(t("field.too_large", { max: format.bytes(props.maxBytes) }));
       props.onChange(null);
       return;
     }

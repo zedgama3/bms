@@ -1,24 +1,32 @@
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api, ApiError } from "@/api";
-import type { components } from "@/api";
+import type { ApiError, components } from "@/api";
 import { useT } from "@/i18n";
-import { Button, ErrorState, Field, Loading } from "@/ui";
-import type { FieldMessage } from "@/ui";
+import { Button } from "./Button";
+import { ErrorState } from "./errors";
+import type { FieldMessage } from "./errors";
+import { Field } from "./Field";
+import { Loading } from "./Loading";
 
-type Match = components["schemas"]["PeopleMatchList"]["matches"][number];
+export type PersonMatch = components["schemas"]["PeopleMatchList"]["matches"][number];
 
 const MIN = 2;
 
-/** Pick a person by searching their playa name (`GET /api/people/search`). The typed term
+// ui imports only types from @/api, so the class is recognised by its name (as Attachments does).
+const isApiError = (e: unknown): e is ApiError =>
+  typeof e === "object" && e !== null && (e as { name?: unknown }).name === "ApiError";
+
+/** Pick a person by searching their playa name. `search` is the screen's call through `@/api`
+ *  (normally `GET /api/people/search`; the kit makes no request of its own). The typed term
  *  stays in this component: never in the URL or storage (it is personal). A chosen person is
  *  shown by name with a "Change" button; the parent holds only their ID. */
-export function PersonPicker({
+export function PersonSearch({
   name,
   label,
   chosenName,
   hasValue,
+  search: runSearch,
   onPick,
   onClear,
   error,
@@ -30,7 +38,8 @@ export function PersonPicker({
   /** The chosen person's display name (or ID until names arrive). */
   chosenName: string;
   hasValue: boolean;
-  onPick: (match: Match) => void;
+  search: (q: string, signal: AbortSignal) => Promise<{ matches: readonly PersonMatch[] }>;
+  onPick: (match: PersonMatch) => void;
   onClear: () => void;
   error?: FieldMessage | undefined;
   disabled?: boolean;
@@ -51,10 +60,9 @@ export function PersonPicker({
   }, [hasValue]);
 
   const q = useQuery({
-    queryKey: ["volunteers", "people-search", submitted],
+    queryKey: ["people-search", submitted],
     enabled: submitted.length >= MIN,
-    queryFn: ({ signal }) =>
-      api.GET("/api/people/search", { signal, params: { query: { q: submitted } } }),
+    queryFn: ({ signal }) => runSearch(submitted, signal),
   });
 
   if (hasValue) {
@@ -64,24 +72,24 @@ export function PersonPicker({
         <div className="flex flex-wrap items-center gap-3">
           <span className="min-w-0 break-all text-lg">{chosenName}</span>
           <Button ref={changeRef} variant="secondary" disabled={disabled} onClick={onClear}>
-            {t("module.volunteers.picker.change")}
+            {t("shell.person_search.change")}
           </Button>
         </div>
       </div>
     );
   }
 
-  const search = () => {
+  const submit = () => {
     const v = term.trim();
     if (v.length >= MIN) setSubmitted(v);
   };
   const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      search();
+      submit();
     }
   };
-  const error_ = q.error instanceof ApiError ? q.error : null;
+  const error_ = isApiError(q.error) ? q.error : null;
   const matches = q.data?.matches ?? [];
 
   return (
@@ -89,7 +97,7 @@ export function PersonPicker({
       <Field
         label={label}
         name={name}
-        hint={t("module.volunteers.picker.hint", { min: MIN })}
+        hint={t("shell.person_search.hint", { min: MIN })}
         error={error}
       >
         {(control) => (
@@ -112,9 +120,9 @@ export function PersonPicker({
         <Button
           variant="secondary"
           disabled={disabled || term.trim().length < MIN}
-          onClick={search}
+          onClick={submit}
         >
-          {t("module.volunteers.picker.search")}
+          {t("shell.person_search.search")}
         </Button>
       </div>
       {q.isFetching ? <Loading /> : null}
@@ -122,15 +130,15 @@ export function PersonPicker({
         <ErrorState
           error={error_}
           {...(error_.code === "permission"
-            ? { message: t("module.volunteers.picker.forbidden") }
+            ? { message: t("shell.person_search.forbidden") }
             : { onRetry: () => void q.refetch() })}
         />
       ) : null}
       <p role="status" className="text-sm text-muted">
-        {q.data ? t("module.volunteers.picker.found", { count: matches.length }) : ""}
+        {q.data ? t("shell.person_search.found", { count: matches.length }) : ""}
       </p>
       {matches.length > 0 ? (
-        <ul className="flex flex-col gap-2" aria-label={t("module.volunteers.picker.results")}>
+        <ul className="flex flex-col gap-2" aria-label={t("shell.person_search.results")}>
           {matches.map((m) => (
             <li key={m.id}>
               <button
@@ -139,7 +147,7 @@ export function PersonPicker({
                 className="flex min-h-11 w-full flex-wrap items-center gap-x-2 rounded-md border border-border bg-surface px-3 py-2 text-start"
               >
                 <span className="font-semibold">
-                  {m.playa_name || t("module.volunteers.roster.unnamed")}
+                  {m.playa_name || t("shell.person_search.unnamed")}
                 </span>
                 {m.pronouns ? <span className="text-muted">({m.pronouns})</span> : null}
               </button>

@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from "react";
 import type { ReactNode } from "react";
 import type { ApiError } from "@/api";
-import { isMessageKey, useRichT, useT } from "@/i18n";
+import { isMessageKey, useFormat, useRichT, useT } from "@/i18n";
 import type { FieldMessage } from "./fieldMessage";
 import { notifyUntranslated } from "./untranslated";
 
@@ -20,6 +20,7 @@ function toText(n: ReactNode): string {
 export function useFieldErrors(error: ApiError | null): Readonly<Record<string, FieldMessage>> {
   const t = useT();
   const rich = useRichT();
+  const format = useFormat();
   const { messages, unknown } = useMemo(() => {
     const out: Record<string, FieldMessage> = {};
     const unknownCodes: string[] = [];
@@ -28,7 +29,13 @@ export function useFieldErrors(error: ApiError | null): Readonly<Record<string, 
       const own = `module.${error?.module ?? ""}.field.${f.code}`;
       const shared = `field.${f.code}`;
       // a `url` message selects on `reason`; a server that sends none gets the general wording
-      const params = f.code === "url" ? { reason: "", ...f.params } : (f.params ?? {});
+      let params: Record<string, string> =
+        f.code === "url" ? { reason: "", ...f.params } : (f.params ?? {});
+      // a size limit arrives as a number of bytes: say it as "2 MB"
+      const max = Number(params["max"]);
+      if (f.code === "too_large" && params["max"] !== undefined && Number.isFinite(max)) {
+        params = { ...params, max: format.bytes(max) };
+      }
       if (f.code !== "" && isMessageKey(own)) {
         out[f.field] = { text: t(own, params) };
       } else if (f.code !== "" && isMessageKey(shared)) {
@@ -40,7 +47,7 @@ export function useFieldErrors(error: ApiError | null): Readonly<Record<string, 
       }
     }
     return { messages: out, unknown: unknownCodes };
-  }, [error, t, rich]);
+  }, [error, t, rich, format]);
 
   useEffect(() => {
     if (!error) return;

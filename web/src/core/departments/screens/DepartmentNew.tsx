@@ -2,7 +2,7 @@ import { useRef } from "react";
 import type { FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router";
-import { api, useReadOnly, useSession } from "@/api";
+import { api, useAction, useReadOnly, useSession } from "@/api";
 import { useT } from "@/i18n";
 import { Button, ErrorSummary, Field, useFieldErrors, useToast } from "@/ui";
 import { DetailsFields } from "../DetailsFields";
@@ -10,7 +10,6 @@ import { Forbidden } from "../Forbidden";
 import { holdsSite } from "../helpers";
 import { ReadOnlyNote } from "../ReadOnlyNote";
 import { text } from "../text";
-import { useAction } from "../useAction";
 
 /** `/departments/new` (`departments.manage`): name, description and the shared mailbox. */
 export function DepartmentNew() {

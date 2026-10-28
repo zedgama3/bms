@@ -257,6 +257,32 @@ describe("Attachments", () => {
     expect(await screen.findByRole("link", { name: /Doc/ })).toHaveAttribute("href", "blob:test");
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
+
+  it("keeps a status region mounted, the button and the link have distinct names, and URLs are revoked", async () => {
+    let n = 0;
+    URL.createObjectURL = () => `blob:test-${(n += 1)}`;
+    const revoke = vi.fn();
+    URL.revokeObjectURL = revoke;
+    const fetchRow = vi.fn(() => Promise.resolve(new Blob(["x"])));
+    const { unmount } = renderUi(
+      <Attachments rows={[{ id: "a", label: "Doc", fetch: fetchRow }]} />,
+    );
+    const row = screen.getByRole("listitem");
+    const status = within(row).getByRole("status");
+    expect(status).toBeEmptyDOMElement();
+    await userEvent.click(screen.getByRole("button", { name: /^Open\s*Doc/ }));
+    const link = await screen.findByRole("link", { name: "Doc: open in a new tab" });
+    expect(within(row).getByRole("status")).toBe(status);
+    expect(status).toHaveTextContent("The file is ready.");
+    expect(link).toHaveAttribute("href", "blob:test-1");
+    expect(revoke).not.toHaveBeenCalled();
+    // Opening again replaces the URL: the first is revoked.
+    await userEvent.click(screen.getByRole("button", { name: /^Open\s*Doc/ }));
+    await screen.findByRole("link", { name: "Doc: open in a new tab" });
+    expect(revoke).toHaveBeenCalledWith("blob:test-1");
+    unmount();
+    expect(revoke).toHaveBeenCalledWith("blob:test-2");
+  });
 });
 
 describe("FileField", () => {
@@ -292,13 +318,13 @@ describe("FileField", () => {
   });
 
   it("refuses a file over maxBytes at once with field.too_large and passes null", async () => {
-    renderUi(<Harness maxBytes={100} />);
+    renderUi(<Harness maxBytes={2 * 1024 * 1024} />);
     const input = screen.getByLabelText("Logo", { selector: "input" });
-    await userEvent.upload(input, png(500));
-    expect(screen.getByText("The file is larger than 100 bytes.")).toBeInTheDocument();
+    await userEvent.upload(input, png(3 * 1024 * 1024));
+    expect(screen.getByText("The file is larger than 2 MB.")).toBeInTheDocument();
     expect(input).toHaveAttribute("aria-invalid", "true");
     // announced when it appears
-    expect(screen.getByRole("alert")).toHaveTextContent("The file is larger than 100 bytes.");
+    expect(screen.getByRole("alert")).toHaveTextContent("The file is larger than 2 MB.");
     expect(screen.queryByText(/Chosen file/)).not.toBeInTheDocument();
     await userEvent.upload(input, png(50));
     expect(screen.queryByText(/larger than/)).not.toBeInTheDocument();

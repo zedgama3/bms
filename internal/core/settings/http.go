@@ -193,6 +193,12 @@ func (s *Service) getLogoHandler() http.Handler {
 // the logo with it.
 func (s *Service) putLogoHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Permission first: a person who may not change the logo gets Permission before
+		// the request body is parsed or a byte of the file is read.
+		if err := s.preflightSetLogo(r.Context(), "settings.putLogo"); err != nil {
+			httpx.Fail(w, r, err)
+			return
+		}
 		mp, err := files.ReadUpload(r, fieldFile)
 		if err != nil {
 			httpx.Fail(w, r, err)

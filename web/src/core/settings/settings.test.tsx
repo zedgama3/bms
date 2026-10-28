@@ -872,13 +872,13 @@ describe("the logo section", () => {
     mountApp({ path: "/settings", session: ident(ADMIN), routes });
     await screen.findByRole("heading", { level: 2, name: "Logo" });
     await pick(png(2_097_153));
-    expect(screen.getByText("The file is larger than 2,097,152 bytes.")).toBeInTheDocument();
+    expect(screen.getByText("The file is larger than 2 MB.")).toBeInTheDocument();
     expect(within(section()).getByRole("button", { name: "Upload" })).toBeDisabled();
     expect(state.puts).toBe(0);
   });
 
   const fieldCases: [string, number, string, Record<string, unknown>][] = [
-    ["too_large", 400, "The file is larger than 2,097,152 bytes.", { params: { max: "2097152" } }],
+    ["too_large", 400, "The file is larger than 2 MB.", { params: { max: "2097152" } }],
     ["type", 400, "This kind of file isn't accepted.", {}],
     ["malformed", 400, "This isn't in the expected form.", {}],
     ["required", 400, "Required.", {}],
@@ -947,9 +947,9 @@ describe("the logo section", () => {
     await screen.findByRole("heading", { level: 2, name: "Logo" });
     await pick();
     await userEvent.click(within(section()).getByRole("button", { name: "Upload" }));
-    expect(
-      (await screen.findAllByText(/The file is larger than 2,097,152 bytes\./)).length,
-    ).toBeGreaterThan(0);
+    expect((await screen.findAllByText(/The file is larger than 2 MB\./)).length).toBeGreaterThan(
+      0,
+    );
   });
 
   it("says the copy is read-only on a read_only answer and keeps the file", async () => {

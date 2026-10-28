@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { TriangleAlert } from "lucide-react";
-import { api } from "@/api";
+import { api, useAction } from "@/api";
 import { useFormat, useT } from "@/i18n";
 import {
   Button,
@@ -19,7 +19,6 @@ import { instantToLocal, localToInstant } from "./helpers";
 import { ReadOnlyNote } from "./ReadOnlyNote";
 import { text } from "./text";
 import type { EventDetail, ScheduleItem } from "./types";
-import { useAction } from "./useAction";
 
 const ZERO_INSTANT = "0001-01-01T00:00:00Z";
 

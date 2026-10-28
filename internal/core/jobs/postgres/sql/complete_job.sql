@@ -6,6 +6,7 @@
 -- J1 (jobs.md decision 23): when a request was held on the row (next_run_at set by
 -- enqueue_job.sql while it ran), the row does not end done: it becomes queued at next_run_at
 -- with next_args, attempts 0, started_at, finished_at and last_error NULL, next_* cleared.
+-- A success resets attempts to 0 whoever made the held request (D52 a).
 -- Columns, in order: id uuid, status text ('done', or 'queued' when a held request was
 -- applied), next boolean (true when a held request was applied: the runner logs next=true).
 -- ZERO rows: the lease was lost (re-leased by another process or reclaimed): the row is not
@@ -29,6 +30,7 @@ SET status = CASE WHEN cur.has_next THEN 'queued' ELSE 'done' END,
     finished_at = CASE WHEN cur.has_next THEN NULL ELSE $3::timestamptz END,
     next_run_at = NULL,
     next_args = NULL,
+    next_by_run = false,
     leased_until = NULL,
     last_error = NULL,
     updated_at = $3::timestamptz

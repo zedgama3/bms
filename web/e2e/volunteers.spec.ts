@@ -388,7 +388,7 @@ test.describe("volunteers: a lead verifies a qualification", () => {
     });
     await page.goto(`/volunteers/departments/${DEPT}?tab=pending`);
     await press(page.getByRole("button", { name: /^Open\s*Certificate/ }), isPhone);
-    const link = page.getByRole("link", { name: /^Open Certificate/ });
+    const link = page.getByRole("link", { name: /^Certificate: .*open in a new tab$/ });
     await expect(link).toBeVisible();
     await expect(link).toHaveAttribute("href", /^blob:/);
     await expect(link).toHaveAttribute("target", "_blank");

@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearchParams } from "react-router";
-import { api, ApiError, useReadOnly } from "@/api";
+import { api, ApiError, searchPeople, useAction, useNames, useReadOnly } from "@/api";
 import { useT } from "@/i18n";
 import {
   Button,
@@ -15,14 +15,12 @@ import {
   todayDate,
   useFieldErrors,
   useToast,
+  PersonSearch,
 } from "@/ui";
 import { useTitles } from "../helpers";
-import { PersonPicker } from "../PersonPicker";
 import { ReadOnlyNote } from "../ReadOnlyNote";
 import { ScreenError } from "../ScreenError";
 import { text } from "../text";
-import { useAction } from "../useAction";
-import { useNames } from "../useNames";
 
 /** `/access/grants/new`: give a person a role, with an optional end date. The person may come
  *  prefilled from a person page (`?person=<id>`). Every role that can be granted is offered; a
@@ -114,7 +112,8 @@ export function GrantNew() {
               ? { message: t("core.access.new_grant.no_profile") }
               : {})}
           />
-          <PersonPicker
+          <PersonSearch
+            search={searchPeople}
             name="person"
             label={t("core.access.new_grant.person")}
             chosenName={picked || nameOf(person)}

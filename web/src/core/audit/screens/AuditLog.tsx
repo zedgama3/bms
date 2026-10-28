@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router";
-import { api, ApiError, useSession } from "@/api";
+import { api, ApiError, searchPeople, useAction, useNames, useSession } from "@/api";
 import type { components } from "@/api";
 import { isMessageKey, useFormat, useT } from "@/i18n";
 import {
@@ -16,14 +16,12 @@ import {
   Loading,
   useFieldErrors,
   useToast,
+  PersonSearch,
 } from "@/ui";
 import { saveText } from "../download";
 import { focusSoon } from "../focus";
 import { holds } from "../helpers";
-import { PersonPicker } from "../PersonPicker";
 import { ScreenError } from "../ScreenError";
-import { useAction } from "../useAction";
-import { useNames } from "../useNames";
 
 type Record_ = components["schemas"]["AuditRecord"];
 
@@ -181,7 +179,8 @@ export function AuditLog() {
       <form ref={formRef} onSubmit={apply} className="flex flex-col gap-4" noValidate>
         <h2 className="text-lg font-bold">{t("core.audit.filters")}</h2>
         <ErrorSummary error={error?.code === "invalid" ? error : null} formRef={formRef} />
-        <PersonPicker
+        <PersonSearch
+          search={searchPeople}
           name="query.subject"
           label={t("core.audit.subject")}
           chosenName={nameOf(subject)}
@@ -190,7 +189,8 @@ export function AuditLog() {
           onClear={() => setParam("subject", "")}
           error={fieldErrors["query.subject"]}
         />
-        <PersonPicker
+        <PersonSearch
+          search={searchPeople}
           name="query.actor"
           label={t("core.audit.actor_filter")}
           chosenName={nameOf(actor)}

@@ -134,6 +134,39 @@ describe("volunteers: My volunteering", () => {
     await waitFor(() => expect(screen.getByText("Showing past bookings.")).toBeInTheDocument());
   });
 
+  it("announces once per toggle: a cancel's refetch does not read it out again", async () => {
+    let booked = true;
+    mount({
+      path: "/volunteers/me",
+      routes: meRoutes({
+        [`GET ${V}/me/schedule`]: () => json({ items: booked ? [entry()] : [] }),
+        [`DELETE ${V}/signups/${SIGNUP}`]: () => {
+          booked = false;
+          return new Response(null, { status: 204 });
+        },
+      }),
+    });
+    await screen.findByRole("button", { name: /^Cancel booking/ });
+    await userEvent.click(screen.getByRole("button", { name: "Past" }));
+    await screen.findByText("Showing past bookings.");
+    await userEvent.click(screen.getByRole("button", { name: "Upcoming" }));
+    const said = await screen.findByText("Showing upcoming bookings.");
+    await screen.findByRole("button", { name: /^Cancel booking/ });
+    let changes = 0;
+    const watch = new MutationObserver(() => {
+      changes += 1;
+    });
+    watch.observe(said, { childList: true, characterData: true, subtree: true });
+    await userEvent.click(screen.getByRole("button", { name: /^Cancel booking/ }));
+    const dialog = await screen.findByRole("dialog", { name: "Cancel your booking?" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel my booking" }));
+    await screen.findByText("You have no shifts booked.");
+    await new Promise((r) => setTimeout(r, 50));
+    watch.disconnect();
+    expect(changes).toBe(0);
+    expect(said).toHaveTextContent("Showing upcoming bookings.");
+  });
+
   it("an empty past tab says so without offering Find shifts", async () => {
     mount({
       path: "/volunteers/me",
@@ -234,7 +267,7 @@ describe("volunteers: My volunteering", () => {
     );
     expect(screen.queryByText(/no longer available/)).not.toBeInTheDocument();
     // the new tab comes from a fresh tap on a real link, not from a script after the await
-    const link = await screen.findByRole("link", { name: /^Open Certificate/ });
+    const link = await screen.findByRole("link", { name: /^Certificate.*open in a new tab/ });
     expect(link).toHaveAttribute("href", "blob:test");
     expect(link).toHaveAttribute("target", "_blank");
     expect(link).toHaveAttribute("rel", "noopener");

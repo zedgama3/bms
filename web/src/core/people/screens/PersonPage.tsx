@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Navigate, useParams } from "react-router";
-import { api, ApiError, useReadOnly, useSession } from "@/api";
+import { api, ApiError, useAction, useReadOnly, useSession } from "@/api";
 import { useT } from "@/i18n";
 import {
   Banner,
@@ -27,7 +27,6 @@ import { ScreenError } from "../ScreenError";
 import { SectionsView } from "../SectionsView";
 import { text } from "../text";
 import type { DeletionReport, Profile } from "../types";
-import { useAction } from "../useAction";
 
 /** `/people/:person`: another person as the viewer may see them. What each part shows and which
  *  buttons exist come from the server's `can` and `fields`; the server decides every call. */

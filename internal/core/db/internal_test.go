@@ -282,3 +282,34 @@ func TestClassifyPg_ReadOnlyKeepsBothSentinelAndNames(t *testing.T) {
 }
 
 var pgconnErrorForTest = pgconn.PgError{Code: "25006", TableName: "shift", Message: "ZQ9MARKER7"}
+
+func TestWithRaised_OnlyTheMigrationsOwnBlock_PassesTextThrough(t *testing.T) {
+	failed := errors.New("migration failed")
+	cases := []struct {
+		name  string
+		pg    *pgconn.PgError
+		wants bool
+	}{
+		{"own DO block", &pgconn.PgError{Code: "P0001", Message: "fix the data", Where: "PL/pgSQL function inline_code_block line 1 at RAISE"}, true},
+		{"trigger the file fires", &pgconn.PgError{Code: "P0001", Message: "row 7 of someone", Where: "PL/pgSQL function core.guard() line 3 at RAISE"}, false},
+		{"no where", &pgconn.PgError{Code: "P0001", Message: "fix the data"}, false},
+		{"other code in own block", &pgconn.PgError{Code: "22012", Message: "division by zero", Where: "PL/pgSQL function inline_code_block line 1 at SQL statement"}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := withRaised(failed, tc.pg)
+			if raised(tc.pg) != tc.wants {
+				t.Errorf("raised = %v, want %v", !tc.wants, tc.wants)
+			}
+			if tc.wants {
+				if !errors.Is(got, failed) || got.Error() == failed.Error() {
+					t.Errorf("got %v, want the message appended", got)
+				}
+				return
+			}
+			if got != failed { //nolint:errorlint // identity: the error must come back unchanged
+				t.Errorf("got %v, want the error unchanged", got)
+			}
+		})
+	}
+}

@@ -160,14 +160,19 @@ func deref(s *string) string {
 // Without a key it inserts a queued row. With a key the latest request wins (decision 3,
 // decision 23): a Queued row is moved to n.RunAt and n.Args, a Done, Failed or Canceled one is
 // reopened as Queued with its attempts reset, and a Running one keeps its state and holds the
-// request (next_run_at, next_args) for the statement that ends the run to apply. The statement
-// always returns the key's row. Runs on the caller's transaction.
+// request (next_run_at, next_args) for the statement that ends the run to apply, noting when
+// n.RunID is that row's own run (next_by_run, D52 a). The statement always returns the key's
+// row. Runs on the caller's transaction.
 // Fails errs.Invalid for a constraint violation (a caller bug), errs.Unavailable wrapping
 // db.ErrReadOnly on a read-only copy.
 func (s *Store) Enqueue(ctx context.Context, n rows.New, now time.Time) (rows.ID, error) {
 	const op = "jobs.postgres.Enqueue"
+	var runID any // NULL outside a run
+	if !n.RunID.IsZero() {
+		runID = [16]byte(n.RunID)
+	}
 	ids, err := queryAll(ctx, s.db, op, sqlEnqueue, scanID,
-		[16]byte(n.ID), n.Name, textArg(n.Key), n.Args, utc(n.RunAt), textArg(n.TraceID), utc(now))
+		[16]byte(n.ID), n.Name, textArg(n.Key), n.Args, utc(n.RunAt), textArg(n.TraceID), utc(now), runID)
 	if err != nil {
 		return rows.ID{}, err
 	}
@@ -306,7 +311,8 @@ func (s *Store) Heartbeat(ctx context.Context, id rows.ID, lease, next, now time
 // The four methods below take a leased row out of running. Each reports ok false when the
 // lease was lost (the row is not ours: write nothing more) and next true when the row held a
 // request made during the run, which the statement applied instead of the state the method
-// names: the row is Queued at the held time with attempts 0 (decision 23).
+// names: the row is Queued at the held time with attempts 0 (decision 23), except that a
+// request the run made itself keeps the attempts of a failed run (D52 a).
 
 // Complete ends a leased row as done (or applies the held request).
 func (s *Store) Complete(ctx context.Context, id rows.ID, lease, now time.Time) (ok, next bool, err error) {
@@ -314,9 +320,24 @@ func (s *Store) Complete(ctx context.Context, id rows.ID, lease, now time.Time) 
 }
 
 // Fail ends a leased row as failed with a token (or applies the held request, keeping the
-// token in last_error).
-func (s *Store) Fail(ctx context.Context, id rows.ID, lease time.Time, token string, now time.Time) (ok, next bool, err error) {
-	return s.settled(ctx, "jobs.postgres.Fail", sqlFail, [16]byte(id), utc(lease), token, utc(now))
+// token in last_error). A request the run made itself keeps the row's attempts and is applied
+// only while they are below maxAttempts; at the limit the request is dropped, the row ends
+// failed with last_error gave_up whatever the token, and gaveUp is true (D52 a, F55a).
+func (s *Store) Fail(ctx context.Context, id rows.ID, lease time.Time, token string, now time.Time, maxAttempts int) (ok, next, gaveUp bool, err error) {
+	type settledRow struct{ next, gaveUp bool }
+	got, err := queryAll(ctx, s.db, "jobs.postgres.Fail", sqlFail, func(sc scanner) (settledRow, error) {
+		var (
+			r      settledRow
+			rid    [16]byte
+			status string
+		)
+		err := sc.Scan(&rid, &status, &r.next, &r.gaveUp)
+		return r, err //nolint:wrapcheck // queryAll wraps with db.Wrap
+	}, [16]byte(id), utc(lease), token, utc(now), maxAttempts)
+	if err != nil || len(got) == 0 {
+		return false, false, false, err
+	}
+	return true, got[0].next, got[0].gaveUp, nil
 }
 
 // Requeue puts a leased row back to queued, due at runAt, keeping the attempt counted (or

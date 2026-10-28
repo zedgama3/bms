@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router";
-import { api, ApiError, useReadOnly, useSession } from "@/api";
+import { api, ApiError, searchPeople, useAction, useNames, useReadOnly, useSession } from "@/api";
 import { useFormat, useT } from "@/i18n";
 import {
   Button,
@@ -16,15 +16,13 @@ import {
   linkButtonClass,
   Loading,
   useToast,
+  PersonSearch,
 } from "@/ui";
 import { focusSoon } from "../focus";
 import { holds, useTitles } from "../helpers";
-import { PersonPicker } from "../PersonPicker";
 import { ReadOnlyNote } from "../ReadOnlyNote";
 import { ScreenError } from "../ScreenError";
 import type { Grant } from "../types";
-import { useAction } from "../useAction";
-import { useNames } from "../useNames";
 
 /** `/access/grants`: who holds which role. Filters live in the query string as IDs only
  *  (`person`, `role`, `department`, `permission`, `include_ended`); the name typed to find a person stays in
@@ -165,7 +163,8 @@ export function GrantList() {
           <h2 id="grants-filters" className="text-lg font-bold">
             {t("core.access.grants.filters")}
           </h2>
-          <PersonPicker
+          <PersonSearch
+            search={searchPeople}
             name="person"
             label={t("core.access.grants.person")}
             chosenName={nameOf(person)}

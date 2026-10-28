@@ -52,7 +52,10 @@ type store interface {
 	// false when the lease was lost, and next true when the row held a request made during the
 	// run and the statement queued that instead (decision 23).
 	Complete(ctx context.Context, id rows.ID, lease, now time.Time) (ok, next bool, err error)
-	Fail(ctx context.Context, id rows.ID, lease time.Time, token string, now time.Time) (ok, next bool, err error)
+	// Fail takes the retry limit: a held request the run made itself keeps the attempts and is
+	// dropped once they reach it, the row ending failed with last_error gave_up and gaveUp
+	// true whatever the token (D52 a, F55a).
+	Fail(ctx context.Context, id rows.ID, lease time.Time, token string, now time.Time, maxAttempts int) (ok, next, gaveUp bool, err error)
 	Requeue(ctx context.Context, id rows.ID, lease time.Time, token string, runAt, now time.Time) (ok, next bool, err error)
 	// Release gives a row back without counting the attempt; an empty token keeps last_error.
 	Release(ctx context.Context, id rows.ID, lease time.Time, token string, now time.Time) (ok, next bool, err error)

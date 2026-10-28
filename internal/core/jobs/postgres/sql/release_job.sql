@@ -8,13 +8,16 @@
 -- J1 (jobs.md decision 23, F56): when a request was held on the row, it replaces the old
 -- schedule: run_at = next_run_at, args = next_args, attempts 0 (not attempts - 1),
 -- started_at NULL, next_* cleared; last_error is still coalesce($3, last_error).
+-- D52 (a): when that request was made by the run itself (next_by_run), the attempts the earlier
+-- failed runs counted are kept (attempts - 1, as for a release without a request) instead of
+-- reset to 0.
 -- Columns, in order: id uuid, status text (always 'queued'), next boolean (true when a held
 -- request was applied: the runner logs next=true). ZERO rows: the lease was lost, as
 -- complete_job.sql (the lease then expires on its own).
 -- Constraint errors (Invalid, a caller bug): job_last_error_chk.
 -- Fails 25006 (db.ErrReadOnly) on a read-only copy.
 WITH cur AS (
-    SELECT id, next_run_at IS NOT NULL AS has_next
+    SELECT id, next_run_at IS NOT NULL AS has_next, next_by_run AS by_run
     FROM core.job
     WHERE id = $1::uuid
       AND status = 'running'
@@ -25,10 +28,11 @@ UPDATE core.job AS j
 SET status = 'queued',
     run_at = coalesce(j.next_run_at, j.run_at),
     args = coalesce(j.next_args, j.args),
-    attempts = CASE WHEN cur.has_next THEN 0 ELSE greatest(j.attempts - 1, 0) END,
+    attempts = CASE WHEN cur.has_next AND NOT cur.by_run THEN 0 ELSE greatest(j.attempts - 1, 0) END,
     started_at = CASE WHEN cur.has_next THEN NULL ELSE j.started_at END,
     next_run_at = NULL,
     next_args = NULL,
+    next_by_run = false,
     leased_until = NULL,
     last_error = coalesce($3::text, j.last_error),
     updated_at = $4::timestamptz

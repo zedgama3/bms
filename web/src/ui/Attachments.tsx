@@ -104,20 +104,24 @@ function Row({ row, goneMessage }: { row: AttachmentRow; goneMessage?: string })
           ) : null}
         </span>
       </div>
-      {href !== null ? (
-        <p role="status" className="flex flex-col gap-1">
-          <span>{t("shell.attachments.ready")}</span>
-          <a
-            ref={link}
-            href={href}
-            target="_blank"
-            rel="noopener"
-            className="inline-flex min-h-11 items-center font-semibold underline"
-          >
-            {t("shell.attachments.open_link", { label: row.label })}
-          </a>
-        </p>
-      ) : null}
+      {/* Mounted at all times and empty until the file is ready, so the message is announced
+          when it fills. */}
+      <div role="status" className="flex flex-col gap-1">
+        {href !== null ? (
+          <>
+            <span>{t("shell.attachments.ready")}</span>
+            <a
+              ref={link}
+              href={href}
+              target="_blank"
+              rel="noopener"
+              className="inline-flex min-h-11 items-center font-semibold underline"
+            >
+              {t("shell.attachments.open_link", { label: row.label })}
+            </a>
+          </>
+        ) : null}
+      </div>
       {failure?.kind === "gone" ? (
         <p role="alert" className="font-semibold text-danger">
           {goneMessage ?? t("shell.attachments.gone")}
