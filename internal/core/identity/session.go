@@ -49,8 +49,9 @@ func (s Session) Validate() error {
 
 type sessionKey struct{}
 
-// WithSession puts s in ctx. Consumers: tests of any service that reads PersonFrom, and
-// app's end-to-end test. Production code never calls it: Authenticate is the only writer.
+// WithSession puts s in ctx. Consumers: tests of any service that reads PersonFrom,
+// app's end-to-end test, and core/demo's seed (demo.md decision 3, through Actors.As).
+// Other production code never calls it: Authenticate is the only other writer.
 // Cannot fail (an invalid s is a test bug; PersonFrom still returns it).
 func WithSession(ctx context.Context, s Session) context.Context {
 	return context.WithValue(ctx, sessionKey{}, s)

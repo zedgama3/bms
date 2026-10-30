@@ -5,6 +5,7 @@ package jobs_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -27,7 +28,7 @@ func TestSelfReenqueue_FailingRun_KeepsAttemptsAndGivesUp(t *testing.T) {
 	s = r.register(jobs.Decl{Name: remind, Handler: func(ctx context.Context, j jobs.Job) error {
 		seen = append(seen, j.Attempt)
 		if _, err := s.Enqueue(ctx, jobs.Request{Name: remind, Key: "k", RunAt: epoch}); err != nil {
-			return err
+			return fmt.Errorf("enqueue: %w", err)
 		}
 		return errs.E("test", errs.Unavailable, errors.New("down"))
 	}})
@@ -64,7 +65,7 @@ func TestOutsideRequest_DuringFailingRun_ResetsAttempts(t *testing.T) {
 	r := newIRig(t)
 	b := newBlocker()
 	calls := 0
-	s := r.register(jobs.Decl{Name: remind, Handler: func(ctx context.Context, j jobs.Job) error {
+	s := r.register(jobs.Decl{Name: remind, Handler: func(_ context.Context, j jobs.Job) error {
 		calls++
 		if calls == 2 {
 			b.started <- j
@@ -96,7 +97,7 @@ func TestOutsideRequest_DuringFailingRun_ResetsAttempts(t *testing.T) {
 func selfReenqueueHandler(s *jobs.Registrar, at time.Time, kind string) jobs.Handler {
 	return func(ctx context.Context, _ jobs.Job) error {
 		if _, err := (*s).Enqueue(ctx, jobs.Request{Name: remind, Key: "k", RunAt: at}); err != nil {
-			return err
+			return fmt.Errorf("enqueue: %w", err)
 		}
 		if kind == "panic" {
 			panic("handler bug")
@@ -170,12 +171,12 @@ func TestSelfReenqueue_Release_UsesAttemptsMinusOne(t *testing.T) {
 	var s jobs.Registrar
 	var calls atomic.Int32
 	at := epoch.Add(6 * time.Hour)
-	s = r.register(jobs.Decl{Name: remind, Handler: func(ctx context.Context, j jobs.Job) error {
+	s = r.register(jobs.Decl{Name: remind, Handler: func(ctx context.Context, _ jobs.Job) error {
 		if calls.Add(1) == 1 {
 			return errs.E("test", errs.Unavailable, errors.New("down"))
 		}
 		if _, err := s.Enqueue(ctx, jobs.Request{Name: remind, Key: "k", RunAt: at}); err != nil {
-			return err
+			return fmt.Errorf("enqueue: %w", err)
 		}
 		<-ctx.Done()
 		return ctx.Err()

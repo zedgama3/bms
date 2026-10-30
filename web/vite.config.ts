@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
+import { createServer } from "vite";
 import type { Plugin } from "vite";
 import { defineConfig } from "vitest/config";
 
@@ -26,8 +27,46 @@ function versionFile(): Plugin {
   };
 }
 
+/** Writes dist/client-manifest.json: the screen patterns and declared action names, from the
+ *  routes the registry really builds (telemetry.md T1.5). The server reads it to know which
+ *  usage events to accept. The registry is loaded through a throwaway Vite server, so the
+ *  file is made from the same code the bundle is. */
+function clientManifest(): Plugin {
+  let json = "";
+  return {
+    name: "bms-client-manifest",
+    apply: "build",
+    async buildStart() {
+      const server = await createServer({
+        configFile: false,
+        root: fileURLToPath(new URL(".", import.meta.url)),
+        logLevel: "silent",
+        appType: "custom",
+        server: { middlewareMode: true, hmr: false, watch: null },
+        optimizeDeps: { noDiscovery: true },
+        resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
+        define: { __BMS_VERSION__: JSON.stringify(version) },
+      });
+      // The API client reads `location.origin` when it is created; Node has none.
+      const g = globalThis as { location?: unknown };
+      const had = "location" in g;
+      if (!had) g.location = new URL("http://localhost/");
+      try {
+        const mod = await server.ssrLoadModule("/src/shell/manifestEntry.ts");
+        json = JSON.stringify(mod["manifest"], null, 2) + "\n";
+      } finally {
+        if (!had) delete g.location;
+        await server.close();
+      }
+    },
+    generateBundle() {
+      this.emitFile({ type: "asset", fileName: "client-manifest.json", source: json });
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), tailwindcss(), versionFile()],
+  plugins: [react(), tailwindcss(), versionFile(), clientManifest()],
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   define: { __BMS_VERSION__: JSON.stringify(version) },
   build: {

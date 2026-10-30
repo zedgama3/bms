@@ -18,7 +18,12 @@ const (
 	KindRejection Kind = "rejection" // an unhandled promise rejection
 	KindScreen    Kind = "screen"    // a React error boundary caught a crashed screen
 	KindAPI       Kind = "api"       // an API call failed (network error or an error body)
+	KindChunk     Kind = "chunk"     // a lazy chunk failed to load (a deploy replaced the bundle, or the network dropped)
 )
+
+// MaxDurationMs is the longest APICall.DurationMs: the shell's longest timeout
+// (UPLOAD_TIMEOUT_MS).
+const MaxDurationMs = 600_000
 
 // Report is one error the web shell caught. JSON field names are the wire form; unknown
 // fields are ignored, so an older server accepts a newer shell.
@@ -41,7 +46,11 @@ type APICall struct {
 	Method string `json:"method"` // GET, POST, PUT, PATCH, DELETE
 	Route  string `json:"route"`  // the route pattern the shell called; a Token
 	Status int    `json:"status"` // 0 for a network failure, else 100..599
-	Code   string `json:"code"`   // the error body's code (an errs.Kind name) or ""
+	Code   string `json:"code"`   // the error body's code: any token (IsToken), or ""
+
+	// DurationMs is the call's wall time as the shell measured it: 0 unknown, else
+	// 1..MaxDurationMs (F69).
+	DurationMs int `json:"duration_ms,omitempty"`
 }
 
 // Batch is the request body of POST /api/client-errors.
@@ -82,9 +91,9 @@ func (b Batch) Validate() error {
 // check reports every shape problem of r through add.
 func (r Report) check(add func(field, code, reason string)) {
 	switch r.Kind {
-	case KindCrash, KindRejection, KindScreen, KindAPI:
+	case KindCrash, KindRejection, KindScreen, KindAPI, KindChunk:
 	default:
-		add("kind", validate.CodeOneOf, "must be one of: crash, rejection, screen, api")
+		add("kind", validate.CodeOneOf, "must be one of: crash, rejection, screen, api, chunk")
 	}
 	if strings.TrimSpace(r.Message) == "" {
 		add("message", validate.CodeRequired, "must not be empty")
@@ -131,6 +140,9 @@ func (c APICall) check(add func(field, code, reason string)) {
 	}
 	if c.Code != "" && !telemetry.IsToken(c.Code) {
 		add("api.code", codeMalformed, "must be a token or empty")
+	}
+	if c.DurationMs < 0 || c.DurationMs > MaxDurationMs {
+		add("api.duration_ms", validate.CodeRange, fmt.Sprintf("must be between 0 and %d", MaxDurationMs))
 	}
 }
 

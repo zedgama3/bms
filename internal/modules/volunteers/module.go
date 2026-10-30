@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/zedgama3/bms/internal/contracts/demoseed"
 	"github.com/zedgama3/bms/internal/contracts/eventsetup"
 	"github.com/zedgama3/bms/internal/contracts/membership"
 	"github.com/zedgama3/bms/internal/contracts/personpage"
@@ -135,7 +136,7 @@ var Manifest = module.Manifest{
 	Settings:      manifestSettings(),
 	Publishes:     []signals.Name{SignalSignupBooked, SignalSignupCanceled, SignalQualificationVerified},
 	Subscribes:    []signals.Name{departments.SignalArchived, events.SignalClosed},
-	ContributesTo: []module.ExtensionPoint{personpage.Point, eventsetup.Point, membership.Point},
+	ContributesTo: []module.ExtensionPoint{personpage.Point, eventsetup.Point, membership.Point, demoseed.Point},
 	Views:         vol.Views(),
 	Groups:        vol.Groups,
 }
@@ -240,8 +241,8 @@ type actorFunc func(ctx context.Context) (model.PersonID, bool)
 
 // Service is the volunteers module. It implements module.Module, module.RouteProvider,
 // module.APIDescriber, module.Contributor (personpage.Provider as Sections, eventsetup.Provider
-// as SetUp, membership.Provider as DepartmentsOf) and module.PersonData, and the six use-case
-// groups of the spec (Qualifications, Records, Positions, Members, Shifts, Signups). It is
+// as SetUp, membership.Provider as DepartmentsOf, demoseed.Provider through demoSeeder) and
+// module.PersonData, and the six use-case groups of the spec (Qualifications, Records, Positions, Members, Shifts, Signups). It is
 // safe for concurrent use; Stop is a no-op.
 type Service struct {
 	store    store
@@ -370,13 +371,14 @@ func (s *Service) Stop(ctx context.Context) error {
 // OpenAPI returns the embedded openapi.json (api.md decision 11).
 func (s *Service) OpenAPI() []byte { return append([]byte(nil), openAPIFragment...) }
 
-// Contributions contributes the person-page section, the event set-up provider and the
-// membership provider.
+// Contributions contributes the person-page section, the event set-up provider, the
+// membership provider and the demo seed provider (demo.go).
 func (s *Service) Contributions() map[module.ExtensionPoint]any {
 	return map[module.ExtensionPoint]any{
 		personpage.Point: personpage.Provider(s),
 		eventsetup.Point: eventsetup.Provider(s),
 		membership.Point: membership.Provider(s),
+		demoseed.Point:   demoseed.Provider(demoSeeder{s: s}),
 	}
 }
 

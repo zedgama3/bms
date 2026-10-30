@@ -44,7 +44,7 @@ func (s *Server) mountAll() ([]setDoc, error) {
 	docs := []setDoc{{name: shellSetName, abs: true, fragment: baseFragment}}
 	shell := &docs[0]
 	for _, sr := range s.shellRoutes() {
-		if err := s.mount(shellSetName, sr.method, sr.path, sr.access, sr.handler, routeLimits{}); err != nil {
+		if err := s.mount(shellSetName, sr.method, sr.path, sr.access, sr.handler, routeLimits{}, sr.sessionless); err != nil {
 			return nil, err
 		}
 		shell.routes = append(shell.routes, opKey{strings.ToLower(sr.method), openAPIPath(sr.path)})
@@ -60,7 +60,7 @@ func (s *Server) mountAll() ([]setDoc, error) {
 			if err := checkEscapes(set.Module, rt, full); err != nil {
 				return nil, err
 			}
-			if err := s.mount(set.Module, rt.Method, full, rt.Access, rt.Handler, routeLimits{maxBody: rt.MaxBodyBytes, timeout: rt.Timeout}); err != nil {
+			if err := s.mount(set.Module, rt.Method, full, rt.Access, rt.Handler, routeLimits{maxBody: rt.MaxBodyBytes, timeout: rt.Timeout}, false); err != nil {
 				return nil, err
 			}
 			doc.routes = append(doc.routes, opKey{strings.ToLower(rt.Method), openAPIPath(rt.Pattern)})
@@ -68,6 +68,38 @@ func (s *Server) mountAll() ([]setDoc, error) {
 		docs = append(docs, doc)
 	}
 	return docs, nil
+}
+
+// RouteTokens returns the route tokens the tracing middleware names spans with, in mount
+// order and without repeats: the shell's own routes, then every set's
+// (/api/<set><pattern>), a trailing {$} rendered as /, and the "/{unmatched}" token of a
+// request no route matched. app hands them to intake.Options.Routes so a client report's
+// api.route outside the list is folded (telemetry T1.5). Pure; it cannot fail, and a route
+// api.New would refuse yields the token it would have had.
+func RouteTokens(routes []module.ModuleRoutes) []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(full string) {
+		if strings.HasSuffix(full, "/") {
+			full += "{$}"
+		}
+		if t := routeToken(full); !seen[t] {
+			seen[t] = true
+			out = append(out, t)
+		}
+	}
+	for _, sr := range (&Server{}).shellRoutes() {
+		add(sr.path)
+	}
+	for _, set := range routes {
+		for _, rt := range set.Routes {
+			add(apiPrefix + set.Module + rt.Pattern)
+		}
+	}
+	if !seen[unmatchedRoute] {
+		out = append(out, unmatchedRoute)
+	}
+	return out
 }
 
 // checkEscapes refuses a route that would mount outside /api/<name>/ (F13): "." or ".."
@@ -101,7 +133,7 @@ func openAPIPath(p string) string {
 
 // mount registers one route with the per-route layers around it. path is the full mux
 // path (full); a trailing "/" is made exact by appending {$}.
-func (s *Server) mount(set, method, full string, access module.Access, h http.Handler, lim routeLimits) error {
+func (s *Server) mount(set, method, full string, access module.Access, h http.Handler, lim routeLimits, sessionless bool) error {
 	const op = "api.New"
 	if strings.HasSuffix(full, "/") {
 		full += "{$}"
@@ -112,7 +144,7 @@ func (s *Server) mount(set, method, full string, access module.Access, h http.Ha
 		return newInvalid(op, "api.routes", "malformed",
 			"set %q route %s %q does not fit the span name grammar or exceeds %d bytes", set, method, token, maxSpanName)
 	}
-	rt := &route{set: set, pattern: method + " " + full, token: token, access: access, handler: h}
+	rt := &route{set: set, pattern: method + " " + full, token: token, access: access, handler: h, sessionless: sessionless}
 	if err := s.register(rt); err != nil {
 		return err
 	}

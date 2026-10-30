@@ -178,6 +178,8 @@ func (r *reader) query(ctx context.Context) (out []Row, err error) {
   scrubs and caps). Metrics take tokens, numbers and kinds only, never an ID or free text.
   `defer span.End()` right after `Start`; `span.RecordError(err)` where the error is
   handled.
+- A module's business action (a sign-up, a report filed) is counted server-side in its
+  service with its own `bms.<module>.*` instrument, never by the browser (telemetry T1-c).
 - Never import `go.opentelemetry.io` outside `internal/core/telemetry` (depguard
   `otel-seam`), and never use `otel.Tracer`, `otel.Meter` or `otel.GetTracerProvider`
   (forbidigo).

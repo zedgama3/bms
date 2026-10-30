@@ -101,3 +101,65 @@ func ExampleErrRateLimited() {
 	// Output:
 	// true true
 }
+
+// Usage turns a batch of events into counts by screen template. An ID-shaped segment is
+// replaced before anything is counted, and a screen outside the manifest folds to _other.
+func ExampleUsage_Accept() {
+	var buf bytes.Buffer
+	clk := clock.NewFake(time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC))
+	tel, err := telemetry.New(context.Background(), telemetry.Options{
+		Level: slog.LevelInfo, Format: telemetry.FormatJSON, Instance: "north-camp", Version: "dev",
+		Stdout: &buf, Clock: clk, Environ: func(string) (string, bool) { return "", false },
+	})
+	if err != nil {
+		fmt.Println("telemetry:", err)
+		return
+	}
+	defer func() {
+		if err := tel.Close(context.Background()); err != nil {
+			fmt.Println("close:", err)
+		}
+	}()
+	meter, err := tel.Meter("usage")
+	if err != nil {
+		fmt.Println("meter:", err)
+		return
+	}
+	u, err := intake.NewUsage(intake.UsageOptions{
+		Logger: tel.Logger(), Meter: meter, Clock: clk, Enabled: true,
+		Screens: []string{"/", "/volunteers/shifts/{id}"},
+		Modules: map[string]string{"/": "shell", "/volunteers/shifts/{id}": "volunteers"},
+	})
+	if err != nil {
+		fmt.Println("usage:", err)
+		return
+	}
+
+	err = u.Accept(context.Background(), intake.EventSubmission{
+		From:      netip.MustParseAddr("192.0.2.7"),
+		UserAgent: "ExampleBrowser/1.0",
+		Batch: intake.EventBatch{Events: []intake.Event{{
+			Kind:       intake.EventScreenView,
+			Screen:     "/volunteers/shifts/123e4567-e89b-12d3-a456-426614174000",
+			From:       intake.EntryToken,
+			OccurredAt: clk.Now(),
+		}}},
+	})
+	fmt.Println("accept:", err)
+	fmt.Println("log lines:", strings.Count(buf.String(), "\n"))
+
+	u2, err := intake.NewUsage(intake.UsageOptions{Logger: tel.Logger(), Meter: meter, Clock: clk})
+	if err != nil {
+		fmt.Println("usage:", err)
+		return
+	}
+	err = u2.Accept(context.Background(), intake.EventSubmission{
+		From:  netip.MustParseAddr("192.0.2.7"),
+		Batch: intake.EventBatch{Events: []intake.Event{{Kind: intake.EventScreenView, Screen: "/", OccurredAt: clk.Now()}}},
+	})
+	fmt.Println("off:", errs.Is(err, errs.Unsupported))
+	// Output:
+	// accept: <nil>
+	// log lines: 0
+	// off: true
+}

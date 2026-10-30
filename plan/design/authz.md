@@ -6,6 +6,7 @@
 - **Amendment 2026-10-20 (approved, owner, D44; privacy-tags Proposed change 2, volunteers Proposed change 9):** a ninth starter role `volunteer-coordinator` (`RoleVolunteerCoordinator`, site; migration `0003`) holding `people.directory.read`, `people.contacts.read`, `volunteers.rosters.read` and `volunteers.qualifications.read` and nothing that manages shifts; `Seed` records a `(role, permission)` pair only when the role exists, so a module may list the key before the role does and the pair is applied at the first `bms migrate` after (F58 amended); `SiteAdminRoles` unchanged. Proposed change 19.
 - **Amendment 2026-10-19 (approved, owner, 2026-10-20, D40):** `HoldersOf` returns explicit grant holders only and never enumerates the base role: confirmed, with the reason; F70 and F71 added. See "Amendment 2026-10-19 (approved, owner, 2026-10-20, D40): `HoldersOf` and the base role" before Open questions.
 - **Accepted 2026-10-20 (owner, D40):** the implementation deviations marked "(implementation, 2026-10-19)" in this spec are accepted as written; no text changed.
+- **Amendment 2026-10-28 (approved, owner, D53, demo.md Proposed change 4):** `EnsureGrant` (writer-only bootstrap grant); section "Amendment 2026-10-28" before Open questions; F72 to F75.
 - **Package:** `internal/core/authz` (contract and service), `internal/core/authz/postgres`
   (the store, SQL and migrations), `internal/core/authz/authztest` (the fake modules test
   with). **UI:** `web/src/core/access/` (screen set `access`, keys `core.access.*`).
@@ -41,7 +42,7 @@
 - `RoleID`, `GrantID`, `RuleID` (= `model.ID[...]`); `Role{ID, Key, Name, Description, Scope, Base bool, Permissions []RolePermission, CreatedAt, UpdatedAt}`, `RolePermission{Name Permission, Declared bool}`, `RoleInput{Name, Description, Scope, Permissions []Permission}`; `Grant{ID, Person, Role RoleID, Department model.DepartmentID, EndsAt, GrantedBy model.PersonID, CreatedAt}`, `GrantInput{Person, Role, Department, EndsAt}`, `GrantQuery{Person, Role, RoleKey string (D38), Department, Permission, IncludeEnded bool, After Cursor, Limit int}`, `GrantPage{Grants, Next Cursor}`, `Cursor` (opaque `created_at`,`id`); `Rule{ID, Role RoleID, Permission Permission, Reaches model.Sensitivity, Note string, Affected int, CreatedAt}`, `RuleInput{Role, Permission, Reaches, Note}`; `PermissionInfo{PermissionDecl}` (the catalogue row, `Module()` derived); `SeedResult{Added int}`.
 - `DepartmentSource{Active(ctx, model.DepartmentID) (bool, error)}` (departments-events, M3; nil means department-scoped grants are `Unsupported`).
 - `Options{DB, Clock, Logger, Tracer, Meter, Audit audit.Recorder (scoped "access"), Signals signals.Bus (scoped "access"), Actor ActorFunc, Declared []PermissionDecl, Departments DepartmentSource}` (+`Validate`); `New(Options) (*Service, error)` (no I/O; works against `db.None()`).
-- `*Service` (safe for concurrent use; nothing to close): the `Authorizer` methods; `HoldersOf(ctx, Permission) ([]model.PersonID, error)` (D39; a system read: the persons who hold the permission site-wide now; a superuser appears only through an explicit grant to their person (decision 6) (implementation, 2026-10-19); only explicit grant holders are returned, the base role is never enumerated (owner, 2026-10-20, D40; F70, F71); for `app`'s superuser-alert adapter and people's deletion notice; never on a route); `PermissionsOf(ctx, model.PersonID) ([]string, error)` (= `identity.PermissionLister`; `p` for site, `p@<department-id>` for departments; every declared name for the superuser); `TitlesOf(ctx, model.PersonID) ([]string, error)` (= `audit.TitleSource`; keys or names of the non-base roles held now); `ListPermissions(ctx) ([]PermissionInfo, error)`; `ListRoles(ctx) ([]Role, error)`; `GetRole(ctx, RoleID) (Role, error)`; `CreateRole(ctx, RoleInput) (Role, error)`; `UpdateRole(ctx, RoleID, RoleInput) (Role, error)`; `DeleteRole(ctx, RoleID) error`; `ListGrants(ctx, GrantQuery) (GrantPage, error)`; `Grant(ctx, GrantInput) (Grant, error)`; `Revoke(ctx, GrantID) error`; `ListRules(ctx) ([]Rule, error)`; `CreateRule(ctx, RuleInput) (Rule, error)`; `DeleteRule(ctx, RuleID) error`; `Seed(ctx, []PermissionDecl) (SeedResult, error)` (`bms migrate`, writer only); `ExportPerson(ctx, model.PersonID) (json.RawMessage, error)`; `DeletePerson(ctx, model.PersonID) (int, error)`; `Routes() []Route`; `OpenAPI() []byte`. `Route{Method, Pattern string, Handler http.Handler}` (all signed-in; `app` converts).
+- `*Service` (safe for concurrent use; nothing to close): the `Authorizer` methods; `StarterRoleIDs(ctx, keys []string) (map[string]RoleID, error)` (build deviation 2026-10-29: actor-less, read-only lookup of starter role IDs by key for the demo seed; no permission check, no audit; `Invalid keys` for none or an empty key, `NotFound keys unknown` for a key naming no starter role); `EnsureGrant(ctx, GrantInput) (Grant, bool, error)` (D53; writer-only bootstrap, site-scoped, rules checked, operator-audited, `false` when the grant exists); `HoldersOf(ctx, Permission) ([]model.PersonID, error)` (D39; a system read: the persons who hold the permission site-wide now; a superuser appears only through an explicit grant to their person (decision 6) (implementation, 2026-10-19); only explicit grant holders are returned, the base role is never enumerated (owner, 2026-10-20, D40; F70, F71); for `app`'s superuser-alert adapter and people's deletion notice; never on a route); `PermissionsOf(ctx, model.PersonID) ([]string, error)` (= `identity.PermissionLister`; `p` for site, `p@<department-id>` for departments; every declared name for the superuser); `TitlesOf(ctx, model.PersonID) ([]string, error)` (= `audit.TitleSource`; keys or names of the non-base roles held now); `ListPermissions(ctx) ([]PermissionInfo, error)`; `ListRoles(ctx) ([]Role, error)`; `GetRole(ctx, RoleID) (Role, error)`; `CreateRole(ctx, RoleInput) (Role, error)`; `UpdateRole(ctx, RoleID, RoleInput) (Role, error)`; `DeleteRole(ctx, RoleID) error`; `ListGrants(ctx, GrantQuery) (GrantPage, error)`; `Grant(ctx, GrantInput) (Grant, error)`; `Revoke(ctx, GrantID) error`; `ListRules(ctx) ([]Rule, error)`; `CreateRule(ctx, RuleInput) (Rule, error)`; `DeleteRule(ctx, RuleID) error`; `Seed(ctx, []PermissionDecl) (SeedResult, error)` (`bms migrate`, writer only); `ExportPerson(ctx, model.PersonID) (json.RawMessage, error)`; `DeletePerson(ctx, model.PersonID) (int, error)`; `Routes() []Route`; `OpenAPI() []byte`. `Route{Method, Pattern string, Handler http.Handler}` (all signed-in; `app` converts).
 - Constants: starter role keys `RoleParticipant = "participant"` (base), `RoleAccountAdmin`, `RoleAccessAdmin`, `RoleDepartmentSteward`, `RoleEventAdmin`, `RoleSettingsAdmin`, `RoleAuditReviewer`, `RoleDepartmentAdmin`, `RoleVolunteerCoordinator` (D44); `SiteAdminRoles` (the six admin keys, for `core.modules.read`); `MaxRoleNameBytes = 64`, `MaxDescriptionBytes = 512`, `MaxNoteBytes = 256`, `MaxRolePermissions = 256`, `MaxPageSize = 200`, `DefaultPageSize = 50`.
 - Permissions: `access.roles.read`, `access.roles.manage`, `access.rules.manage` (site), `access.grants.read`, `access.grants.manage` (department-scopable), `access.department-grants.manage` (site); all reach `internal`; `Permissions []PermissionDecl`. Signals `access.grant-created`, `access.grant-revoked` (`grant`, `person`, `role`, `department` when scoped). Audit actions `access.role.created|changed|deleted`, `access.grant.created|revoked`, `access.rule.created|deleted`, `access.grants.deleted`. `Set = db.Set{Name: "authz", Schema: "core"}`.
 - `authztest.NewFake() *Fake` (an `Authorizer` that denies everything until `Fake.Grant(person, p)` / `GrantIn(person, p, dept)` / `Superuser(person)`; reads the actor through `identity`-free `authztest.WithActor(ctx, Actor)` or an `ActorFunc` the test passes).
@@ -219,6 +220,21 @@ func (s *Service) DeleteRule(ctx context.Context, id RuleID) error
 // Seed applies each declaration's StarterRoles once (core.role_seed). Consumer: app's
 // migrate command, after db.Migrate, on the writing copy. Idempotent.
 func (s *Service) Seed(ctx context.Context, declared []PermissionDecl) (SeedResult, error)
+
+// StarterRoleIDs returns the ID of each starter role named in keys. Actor-less and read-only:
+// no permission check, no audit (role keys and IDs are not personal data). Works on a
+// read-only copy. Invalid (field keys) for no keys or an empty key; NotFound (keys, unknown)
+// for a key that names no starter role. Consumer: core/demo's seed, which must name roles
+// before any account holds one (no superuser session is used).
+func (s *Service) StarterRoleIDs(ctx context.Context, keys []string) (map[string]RoleID, error)
+
+// EnsureGrant is the writer-only bootstrap grant for commands (the sibling of Seed): no
+// actor, no permission check. Site-scoped grants only (Invalid scope for a department).
+// Separation-of-duties rules are checked (Conflict). An existing equal grant is returned
+// with false. Audited access.grant-created with ActorOperator; publishes
+// access.grant-created. Unavailable wrapping db.ErrReadOnly on a read-only copy.
+// Consumer: core/demo's seed through app (the one actor-less grant, demo.md decision 3).
+func (s *Service) EnsureGrant(ctx context.Context, in GrantInput) (Grant, bool, error)
 
 // ExportPerson returns the person's grants as JSON. DeletePerson deletes them (ended ones
 // too), clears granted_by on grants they made, and returns the number deleted.
@@ -587,6 +603,25 @@ Not chosen: an `IncludeBase` flag (no consumer wants it), and reading `core.pers
 |---|---|---|---|---|---|
 | F70 | `HoldersOf` | `p` is carried by the base role only (no active grant holds a role with `p`) | `[]model.PersonID{}`, nil; signed-in people are not enumerated | treat as "nobody appointed" (people F61; the alert adapter falls back to the alert addresses) | `TestHoldersOf_BaseRoleOnly_ReturnsEmpty` |
 | F71 | `HoldersOf` | `p` in the base role and in a role granted site-wide to A | `[A]`, once | — | `TestHoldersOf_BaseAndGrant_ReturnsGrantHoldersOnce` |
+
+## Amendment 2026-10-28 (approved, owner, D53): `EnsureGrant`
+
+`EnsureGrant` (Interface above) is the one actor-less grant the demo seed makes so the demo `access-admin` can grant the rest as itself. It exists beside `Seed` because both are bootstrap done by a command, not a request.
+
+### Failure modes (added)
+
+| # | Method | Condition | errs kind | Caller is expected to | Test |
+|---|---|---|---|---|---|
+| F72 | `EnsureGrant` | the role is department-scoped or `in.Department` is set | Invalid `scope` | fix the caller | `TestEnsureGrant_DepartmentScope_ReturnsInvalid` |
+| F73 | `EnsureGrant` | a separation-of-duties rule forbids the pair | Conflict | exit 1 | `TestEnsureGrant_RuleViolation_ReturnsConflict` |
+| F74 | `EnsureGrant` | the grant already exists | — (existing grant, `false`) | proceed | `TestEnsureGrant_Existing_ReturnsFalse` |
+| F75 | `EnsureGrant` | read-only copy | Unavailable wrapping `db.ErrReadOnly` | exit 1 | `TestEnsureGrant_ReadOnly_ReturnsUnavailable` |
+
+Success path: `TestEnsureGrant_Creates_AuditsOperatorAndPublishes`.
+
+## Accepted implementation deviations (demo build, 2026-10-29)
+
+`StarterRoleIDs` (Interface above) is new: the demo seed (demo.md Behavior step 3) names starter roles before any account holds a permission, and `ListRoles` is permission-checked. It is the actor-less, read-only sibling of `EnsureGrant`: no superuser session is used. Failure modes: `StarterRoleIDs` with no key or an empty key is `Invalid` (`keys`, `required`) (`TestStarterRoleIDs_NoKeys_ReturnsInvalid`); an unknown key is `NotFound` (`keys`, `unknown`) (`TestStarterRoleIDs_UnknownKey_ReturnsNotFound`); it works on a read-only copy.
 
 ## Open questions
 

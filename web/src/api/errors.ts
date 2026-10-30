@@ -82,6 +82,8 @@ export interface ApiErrorInit {
   retryAfter?: number | undefined;
   /** For tests and logs: a short, non-personal note such as "timeout". */
   detail?: string | undefined;
+  /** Wall time of the call as the client measured it, in ms (reported as `duration_ms`). */
+  durationMs?: number | undefined;
 }
 
 /** Every failed call. `code` is the problem body's code, or one of the two client codes. */
@@ -96,6 +98,8 @@ export class ApiError extends Error {
   readonly traceId: string;
   readonly retryAfter?: number;
   readonly detail?: string;
+  /** How long the call took, in whole ms; absent when unknown. */
+  readonly durationMs?: number;
   /** Set once the reporter has queued this error, so a rethrow is not reported twice. */
   reported = false;
 
@@ -114,6 +118,7 @@ export class ApiError extends Error {
     this.traceId = init.traceId;
     if (init.retryAfter !== undefined) this.retryAfter = init.retryAfter;
     if (init.detail !== undefined) this.detail = init.detail;
+    if (init.durationMs !== undefined) this.durationMs = init.durationMs;
   }
 }
 

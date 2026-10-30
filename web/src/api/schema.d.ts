@@ -417,6 +417,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/client-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report screen views, declared actions, screen-ready times and Web Vitals the web shell measured.
+         * @description Counts only: no person, visit, record or URL is carried or recorded, and a session cookie is ignored. Becomes metrics by screen template. 501 when the deployment turned usage counting off (telemetry.usage).
+         */
+        post: operations["reportClientEvents"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/departments/": {
         parameters: {
             query?: never;
@@ -2122,6 +2142,8 @@ export interface components {
             reports: {
                 api?: {
                     code?: string;
+                    /** @description The call's wall time as the shell measured it; 0 or absent when unknown. */
+                    duration_ms?: number;
                     method?: string;
                     route?: string;
                     status?: number;
@@ -2130,7 +2152,7 @@ export interface components {
                 count?: number;
                 error_ref?: string;
                 /** @enum {string} */
-                kind: "crash" | "rejection" | "screen" | "api";
+                kind: "crash" | "rejection" | "screen" | "api" | "chunk";
                 message: string;
                 /** Format: date-time */
                 occurred_at: string;
@@ -2138,6 +2160,32 @@ export interface components {
                 stack?: string;
                 trace_id?: string;
             }[];
+        };
+        /** @description One measurement. Nothing in it identifies a person, a visit or a record: no IDs, no text, no URL. */
+        ClientEvent: {
+            /** @description action only: a name the screen declared, such as shift.filter. */
+            action?: string;
+            app_version?: string;
+            /** @description screen_view and action: repeats merged by the shell; 0 means 1. */
+            count?: number;
+            /** @description screen_view only: the previous route pattern in this page load, or _entry. */
+            from?: string;
+            /** @enum {string} */
+            kind: "screen_view" | "action" | "screen_ready" | "vital";
+            /**
+             * @description vital only.
+             * @enum {string}
+             */
+            name?: "lcp" | "inp" | "cls";
+            /** Format: date-time */
+            occurred_at: string;
+            /** @description The route pattern, such as /volunteers/shifts/{id}. */
+            screen: string;
+            /** @description screen_ready and lcp, inp: milliseconds; cls: the score. */
+            value?: number;
+        };
+        ClientEventBatch: {
+            events: components["schemas"]["ClientEvent"][];
         };
         Department: {
             archived: boolean;
@@ -4024,6 +4072,82 @@ export interface operations {
             };
             /** @description Too many reports; see Retry-After. */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    reportClientEvents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClientEventBatch"];
+            };
+        };
+        responses: {
+            /** @description Accepted; no body. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The batch is invalid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The body is over 64 KiB. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The body is not JSON. */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too many events; see Retry-After. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Usage counting is turned off in this deployment; the shell stops sending for the page load. */
+            501: {
                 headers: {
                     [name: string]: unknown;
                 };

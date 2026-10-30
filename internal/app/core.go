@@ -43,7 +43,7 @@ type coreDeps struct {
 // coreSetOrder is the order of the core's migration sets (db.md Proposed change 10),
 // whatever the order of the parts that declare them: a later set may hold a foreign key to
 // an earlier one.
-var coreSetOrder = []string{"identity", "people", "authz", "departments", "events", "audit", "settings", "jobs", "notify", "files"}
+var coreSetOrder = []string{"identity", "people", "authz", "departments", "events", "audit", "settings", "jobs", "notify", "files", "demo"}
 
 // addCoreSet inserts s into a.coreSets at its place in coreSetOrder. It fails with
 // errs.Internal for a set that is not in the order or is declared twice (F28: a programming
@@ -98,9 +98,9 @@ type runnable struct {
 }
 
 // coreParts are the core services that plug in, in dependency order (audit, identity,
-// settings, authz, people, departments, events, jobs, notify, files; app.md "How later core
+// settings, authz, people, departments, events, jobs, notify, files, demo; app.md "How later core
 // services plug in"). Each later core spec adds one file core_<name>.go and one line here.
-var coreParts = []part{auditPart, identityPart, settingsPart, authzPart, peoplePart, departmentsPart, eventsPart, jobsPart, notifyPart, filesPart}
+var coreParts = []part{auditPart, identityPart, settingsPart, authzPart, peoplePart, departmentsPart, eventsPart, jobsPart, notifyPart, filesPart, demoPart}
 
 // declare runs every part's declare, in order (F28).
 func (a *assembly) declare() error {

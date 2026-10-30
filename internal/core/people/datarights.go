@@ -15,6 +15,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/telemetry"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/lib/httpx"
+	"github.com/zedgama3/bms/internal/lib/validate"
 	"github.com/zedgama3/bms/internal/model"
 )
 
@@ -281,7 +282,8 @@ func (*Service) rawPart(ctx context.Context, op, name string, person model.Perso
 // people.person.deleted and publishes people.person-deleted. Fails errs.Permission (F32),
 // errs.Invalid (F33), errs.NotFound (F11), errs.Internal before Link (F31),
 // errs.Conflict (last_access_admin: F34; in_use: F37), identity's errs.Permission for a
-// superuser account (F35), a module's kind wrapped with its name (F36),
+// superuser account (F35), errs.Conflict (field account, code protected: F89) for a
+// shared demo account that identity's Guard protects, a module's kind wrapped with its name (F36),
 // errs.Unavailable wrapping db.ErrReadOnly (F38) and the recorder's kind (F39).
 func (s *Service) Delete(ctx context.Context, person model.PersonID) (_ DeletionReport, err error) {
 	const op = "people.Service.Delete"
@@ -365,6 +367,21 @@ type deletion struct {
 	request RequestID   // the request being fulfilled, or zero
 }
 
+// isProtected reports identity's refusal of a shared demo account: Permission carrying the
+// field "account" with the code "protected" (identity.md F105). The shape is read from the
+// error, so people does not import identity's types for it.
+func isProtected(err error) bool {
+	if !errs.Is(err, errs.Permission) {
+		return false
+	}
+	for _, fe := range validate.Fields(err) {
+		if fe.Field == "account" && fe.Code == codeProtected {
+			return true
+		}
+	}
+	return false
+}
+
 // deleteWith is the deletion of people.md, "Deletion, step by step", in one Write
 // transaction.
 func (s *Service) deleteWith(ctx context.Context, span telemetry.Span, op string, d deletion) (DeletionReport, error) {
@@ -432,6 +449,9 @@ func (s *Service) deleteInTx(ctx context.Context, op string, st *linkState, d de
 		return DeletionReport{}, fmt.Errorf("%s: access: %w", op, err)
 	}
 	if rep.Identity, err = s.accounts.DeletePerson(ctx, person); err != nil {
+		if isProtected(err) {
+			return DeletionReport{}, fieldConflict(op, "account", codeProtected, nil, "this is a shared demo account and cannot be deleted")
+		}
 		return DeletionReport{}, fmt.Errorf("%s: identity: %w", op, err)
 	}
 	if hasRow {

@@ -1,0 +1,11 @@
+-- Store.BeginSeed, second statement: the emptiness guard of Seed step 0. This is the one
+-- direct read of another core part's table in this package (demo.md, "Layering", decision 20): a
+-- guard must not depend on a permission-checked service of the thing it guards, and identity
+-- offers no system count. The integration test breaks the build if the column is renamed.
+-- Read-only; use QueryRow. Run in the same Write transaction as insert_state.sql.
+-- Args: none.
+-- Columns, in order: not_empty boolean. true: a non-superuser account exists, so the caller
+-- returns Conflict not_empty (and the transaction rolls the marker back).
+-- No index serves it (superuser is not indexed): EXISTS stops at the first non-superuser row, which
+-- is immediate on any database that is not empty; on an empty one the scan reads nothing.
+SELECT EXISTS (SELECT 1 FROM core.account WHERE NOT superuser) AS not_empty

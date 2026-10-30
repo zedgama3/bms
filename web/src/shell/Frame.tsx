@@ -3,10 +3,18 @@ import { Navigate, Outlet, useLocation, useMatches, useNavigation } from "react-
 import { useT } from "@/i18n";
 import { Loading } from "@/ui";
 import type { RouteHandle } from "@/registry/types";
-import { CatalogueBanner, ReadOnlyBanner, SessionBanner, SuperuserBanner } from "./Banners";
+import {
+  CatalogueBanner,
+  DemoReadBanner,
+  ReadOnlyBanner,
+  SessionBanner,
+  SuperuserBanner,
+} from "./Banners";
+import { DemoBanner } from "./DemoBanner";
 import { Header } from "./Nav";
 import { RouteAnnouncer } from "./RouteAnnouncer";
 import { useMeEffects } from "./me";
+import { UsageTracker } from "./UsageTracker";
 import { useRegionalName } from "./regional";
 import { getSessionEnded, useSession } from "./session";
 
@@ -50,6 +58,7 @@ export function Frame() {
       >
         {t("shell.skip")}
       </a>
+      <DemoBanner />
       <Header />
       {/* Always mounted, so a banner that appears later is announced (a live region that
           arrives with its text is often not). */}
@@ -58,6 +67,7 @@ export function Frame() {
         <SuperuserBanner />
         <SessionBanner />
         <CatalogueBanner />
+        <DemoReadBanner />
       </div>
       <main
         id="content"
@@ -89,6 +99,7 @@ export function Frame() {
         </div>
       </footer>
       <RouteAnnouncer />
+      <UsageTracker />
     </div>
   );
 }

@@ -154,6 +154,7 @@ const (
 	codeStatus     = "status"        // the request is not open
 	codeInUse      = "in_use"        // a foreign key still references the person
 	codeSuperuser  = "superuser"
+	codeProtected  = "protected" // identity's Guard refuses: a shared demo account
 	codeLastAdmin  = "last_access_admin"
 )
 

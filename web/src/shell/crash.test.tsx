@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/api";
 import { expectNoAxeViolations } from "@/test/axe";
 import { mountApp } from "@/test/app";
-import { installReporter, uninstallReporterForTest } from "./report";
+import { getReporter, installReporter, uninstallReporterForTest } from "./report";
 import type { Batch } from "./report";
 import type { ScreenSet } from "@/registry/types";
 
@@ -110,5 +110,46 @@ describe("nothing personal in browser storage", () => {
     expect(localStorage.length).toBe(0);
     expect(sessionStorage.length).toBe(0);
     expect(document.cookie).toBe("");
+  });
+});
+
+describe("a stale bundle (D54, F45)", () => {
+  it("says the site was updated and offers Reload", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const reload = vi.fn();
+    vi.stubGlobal("location", { ...window.location, reload });
+    const sent: Batch[] = [];
+    installReporter({
+      appVersion: "dev",
+      send: (b) => {
+        sent.push(b);
+        return Promise.resolve({ kind: "accepted" });
+      },
+    });
+    mountApp({
+      modules: [{ name: "boom", enabled: true }],
+      sets: [
+        throwing(
+          new TypeError(
+            "Failed to fetch dynamically imported module: https://x.example/assets/boom-1.js",
+          ),
+        ),
+      ],
+      path: "/boom/x/1",
+    });
+    expect(
+      await screen.findByRole("heading", { name: "This site was updated" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Reload" }));
+    expect(reload).toHaveBeenCalled();
+    vi.unstubAllGlobals();
+    getReporter()?.flush("manual");
+    await waitFor(() =>
+      expect(sent[0]!.reports[0]).toMatchObject({
+        kind: "chunk",
+        message: "chunk load failed assets/boom-1.js",
+      }),
+    );
   });
 });

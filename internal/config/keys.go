@@ -70,6 +70,9 @@ type parseFunc func(c *Config, text string) (code, reason string)
 type entry struct {
 	Key
 	parse parseFunc
+	// strict keeps the text exactly as the environment holds it: no trimming, so " true"
+	// is malformed. Used by the switches whose grammar is exactly "true" or "false".
+	strict bool
 }
 
 // catalogue is the single source of truth behind Keys, Load and Default's consistency test.
@@ -139,9 +142,25 @@ var catalogue = []entry{
 		func(c *Config, t string) (string, string) { c.Files.S3AccessKey = secret.New(t); return "", "" }),
 	newEntry(Key{Name: "files.s3_secret_key", Secret: true, Doc: "S3 secret key; required when files.store is s3"},
 		func(c *Config, t string) (string, string) { c.Files.S3SecretKey = secret.New(t); return "", "" }),
+	strictEntry(Key{Name: "demo.enabled", Default: "false",
+		Doc: "run as the public demo: fictional data, captured mail, protected accounts (see bms demo seed)"},
+		boolParser(func(c *Config) *bool { return &c.Demo.Enabled })),
+	newEntry(Key{Name: "demo.public_url",
+		Doc: "the demo's canonical public URL, written to the regional's public URL by the seed; requires demo.enabled"},
+		parseDemoPublicURL),
+	strictEntry(Key{Name: "telemetry.usage", Default: "true",
+		Doc: "count screen views, declared actions and Web Vitals by screen template, never by person; see docs/telemetry.md"},
+		boolParser(func(c *Config) *bool { return &c.Telemetry.Usage })),
 	newEntry(Key{Name: "modules.disabled",
 		Doc: "comma-separated names of compiled-in modules not to run"},
 		parseModulesDisabled),
+}
+
+// strictEntry is newEntry for a key whose text is not trimmed before parsing.
+func strictEntry(k Key, parse parseFunc) entry {
+	e := newEntry(k, parse)
+	e.strict = true
+	return e
 }
 
 func newEntry(k Key, parse parseFunc) entry {
@@ -258,6 +277,18 @@ func parseFilesStore(c *Config, t string) (string, string) {
 		return "", ""
 	}
 	return validate.CodeOneOf, "must be one of: " + filesStoreOptions
+}
+
+// parseDemoPublicURL stores the canonical form of the URL (canonicalDemoURL), so an operator's
+// "https://X.Example/" is read as "https://x.example". What cannot be canonicalised is a
+// problem, and its reason never contains the text.
+func parseDemoPublicURL(c *Config, t string) (string, string) {
+	canon, reason := canonicalDemoURL(t)
+	if reason != "" {
+		return codeFormat, reason
+	}
+	c.Demo.PublicURL = canon
+	return "", ""
 }
 
 // parseModulesDisabled splits the list and leaves the shape (empty, duplicate, too many) to

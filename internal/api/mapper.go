@@ -84,7 +84,27 @@ func problemFor(o outcome, err error, ref string) httpx.Problem {
 			p.Fields = append(p.Fields, httpx.Field{Field: fe.Field, Code: fe.Code, Params: fe.Params, Reason: fe.Reason})
 		}
 	}
+	if o.code == errs.Permission.String() {
+		p.Fields = append(p.Fields, protectedFields(err)...)
+	}
 	return p
+}
+
+// protectedCode is the field code of a change identity's Guard refused on a shared demo
+// account (D53). It is the only field a Permission error shows: any other would tell a
+// caller which permission or record is involved.
+const protectedCode = "protected"
+
+// protectedFields returns the field errors of err whose code is "protected", so the web can
+// say the account is shared (demo mode). Cannot fail.
+func protectedFields(err error) []httpx.Field {
+	var out []httpx.Field
+	for _, fe := range validate.Fields(err) {
+		if fe.Code == protectedCode {
+			out = append(out, httpx.Field{Field: fe.Field, Code: fe.Code, Reason: fe.Reason})
+		}
+	}
+	return out
 }
 
 // writeProblem writes p as application/problem+json with the extra headers. It returns the
@@ -168,7 +188,18 @@ func (st *reqState) respond(dst http.ResponseWriter, err error) int {
 	}
 	st.span.RecordError(spanError(err, o.status))
 	st.logError(err, o, ref)
+	st.countError(o.code)
 	return o.status
+}
+
+// countError counts one error response by method, route and problem code (D54). The code is
+// a kind name or a shell code, so the series stay bounded.
+func (st *reqState) countError(code string) {
+	st.s.apiErrors.Add(st.ctx, 1,
+		telemetry.Token("http.request.method", st.method),
+		telemetry.Token("http.route", st.rt.token),
+		telemetry.Token("code", code),
+	)
 }
 
 // spanError is what the span records for err. A 5xx keeps its (scrubbed) message; below
@@ -236,6 +267,7 @@ func (st *reqState) handlePanic(rec any) {
 		if werr := writeProblem(st.rw, problemFor(o, err, ref), nil); werr != nil {
 			st.rw.noteWriteError(werr)
 		}
+		st.countError(o.code)
 	}
 	attrs := st.logAttrs(err, http.StatusInternalServerError, true)
 	attrs = append(attrs, slog.String("stack", string(debug.Stack())))

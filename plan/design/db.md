@@ -11,6 +11,7 @@
 - **Amended 2026-10-23 (people Amendment P1, D48):** a UTF-8 server encoding is required (`normalize()` needs it); people migration `0003` checks it itself, so nothing breaks until `Open` adds the check. Lock-in check and Summary updated; no interface change.
 - **Amended 2026-10-23 (D51, owner):** decision 4 gains one exception: the `Migrator` lets through the message text (and `DETAIL` if used) of a `RAISE EXCEPTION` with SQLSTATE `P0001` raised by a migration file, in the error it returns and logs, because migration authors write that text; every other database error stays scrubbed to SQLSTATE and names. Rule: a migration must never put personal data in a `RAISE` message. New F58 and test.
 - **Amended 2026-10-19 (D39, owner approval of settings and notify):** the fixed migration-set order gains `notify` after `jobs` (`identity`, `people`, `authz`, `departments`, `events`, `audit`, `settings`, `jobs`, `notify`, `files`); Proposed change 10 applied for `settings` and `notify`, and Proposed change 13 applied for `notify` (jobs pending).
+- **Amended 2026-10-28 (D53, owner approval of demo; demo.md Proposed change 12):** the fixed core set order gains `demo` after `files` (`demo.postgres.Migrations`, `demo.Set{Name: "demo", Schema: "core"}`: three tables). Migrated on every install; the tables are empty and unread when demo mode is off.
 - **Package:** `internal/core/db` (Go module `github.com/zedgama3/bms`), plus the test
   helper package `internal/core/db/dbtest`. **UI:** none of its own; the "this copy is
   read-only" banner and `/readyz` are `web-shell.md`'s and `api.md`'s, fed by `ReadOnly()`
@@ -31,7 +32,7 @@
   `Deps.DB`), `api` (`Ping` and `ReadOnly` for `/readyz`; the `ErrReadOnly` mapping),
   `core/module` (`SchemaChecker`, structurally), every core package with tables
   (`identity`, `people`, `departments-events`, `authz`, `audit`, `settings`, `jobs`,
-  `notify`, `files`: each has a `postgres/` package over `DB` and a migration `Set`), every module's
+  `notify`, `files`, `demo`: each has a `postgres/` package over `DB` and a migration `Set`), every module's
   `postgres/` package (`DB`, `Transact`, `Wrap`, `*Error`), `signals` (`AfterCommit`),
   `audit` (`TxMode`, and `audittest.Fake` through it), `moduletest` and module tests
   (`dbtest`).
@@ -1200,7 +1201,7 @@ target to be written and are carried by this list until then. Items 14 and 15 (D
    `Set.Stop` and the HTTP server, within `http.shutdown_timeout`; build the migration
    sets as the `db` bootstrap (implicit), then each core package's exported `Set` in a
    fixed order (`identity`, `people`, `authz`, `departments`, `events`, `audit`,
-   `settings`, `jobs`, `notify`, `files`, as each spec defines them), then `Plan.Order()` as
+   `settings`, `jobs`, `notify`, `files`, `demo`, as each spec defines them), then `Plan.Order()` as
    `Set{Name: m.Name, Schema: m.Name, Files: m.Migrations}` for manifests with
    `Migrations != nil`; `bms migrate` runs under a 30 min deadline and prints each
    `Applied`; `bms check` prints `Status` per set and the names (never values) of any

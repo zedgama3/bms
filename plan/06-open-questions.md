@@ -155,3 +155,11 @@ volunteers Amendment V2. Q-JOBS14 was not listed here before; it is recorded now
       queued row is moved, a final row is reopened as queued, and a running row holds the
       request and applies it when the run ends (including after a failed run).
       → D50 (design/jobs.md, Amendment J1; design/module-volunteers.md, Amendment V2)
+
+Answered 2026-10-29: the demo question raised by demo.md "Amendment D1". It was not listed
+here before; it is recorded now.
+
+- [x] **Q-DEMO5:** Is one `lead` demo account leading five departments acceptable, or should
+      each department get its own lead account? One `lead` account may run five departments
+      (Rangers, Gate, Greeters, Medical, DPW); owner: "This may be required at a small burn
+      with few volunteers." → D56 (design/demo.md, Amendment D1)

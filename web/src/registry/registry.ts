@@ -24,7 +24,12 @@ export const RESERVED_NAMES: readonly string[] = [
   "readyz",
   "modules",
   "core",
+  "demo",
 ];
+
+/** Reserved names a core area may still use: the shell keeps `demo` from modules, and core/demo
+ *  is the demo's own screen set (D53). */
+const CORE_MAY_USE = new Set(["demo"]);
 
 const NAME = /^[a-z][a-z0-9]{1,31}$/;
 
@@ -75,13 +80,31 @@ function checkNav(set: string, nav: readonly NavEntry[]): void {
   }
 }
 
+/** A usage action name (telemetry.md T1, F51). */
+export const ACTION_NAME = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*){1,2}$/;
+const MAX_ACTION_BYTES = 64;
+
+function checkActions(set: string, actions: readonly string[] | undefined): void {
+  const seen = new Set<string>();
+  for (const a of actions ?? []) {
+    if (
+      typeof a !== "string" ||
+      !ACTION_NAME.test(a) ||
+      new TextEncoder().encode(a).length > MAX_ACTION_BYTES
+    )
+      throw new RegistryError(set, `action ${JSON.stringify(a)} is not a valid action name`);
+    if (seen.has(a)) throw new RegistryError(set, `action ${JSON.stringify(a)} is declared twice`);
+    seen.add(a);
+  }
+}
+
 /** Checks every set (F19 to F21) and returns the frozen list the frame is built from. */
 export function validateRegistry(sets: readonly ScreenSet[]): readonly ScreenSet[] {
   const seen = new Set<string>();
   for (const s of sets) {
     if (!NAME.test(s.name))
       throw new RegistryError(s.name, "the name must match [a-z][a-z0-9]{1,31}");
-    if (RESERVED_NAMES.includes(s.name))
+    if (RESERVED_NAMES.includes(s.name) && !(s.kind === "core" && CORE_MAY_USE.has(s.name)))
       throw new RegistryError(s.name, "the name is reserved by the shell");
     if (seen.has(s.name)) throw new RegistryError(s.name, "the name is used by another set");
     seen.add(s.name);
@@ -91,6 +114,7 @@ export function validateRegistry(sets: readonly ScreenSet[]): readonly ScreenSet
       throw new RegistryError(s.name, "messages.en is required");
     checkRoutes(s.name, s.routes, "");
     checkNav(s.name, s.nav);
+    checkActions(s.name, s.actions);
   }
   return Object.freeze([...sets]);
 }

@@ -350,3 +350,14 @@ describe("FileField", () => {
     expect(screen.getByText("This kind of file isn't accepted.")).toBeInTheDocument();
   });
 });
+
+describe("Loading counter (usage screen_ready)", () => {
+  it("counts the Loading indicators mounted now", async () => {
+    const { loadingCount } = await import("./Loading");
+    expect(loadingCount()).toBe(0);
+    const { unmount } = renderUi(<Loading />);
+    expect(loadingCount()).toBe(1);
+    unmount();
+    expect(loadingCount()).toBe(0);
+  });
+});

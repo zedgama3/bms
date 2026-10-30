@@ -94,6 +94,9 @@ mark should be checked too.
 - **Leadership terms differ by regional** (owner, 2026-10-16): at some, leads must re-apply
   to their positions every year and aren't reinstated automatically; at others, leads stay
   until they step down. Don't build one rule in.
+- **One person may lead several departments** (owner, 2026-10-29): at a small burn with few
+  volunteers the same person often leads more than one department at once. The system must
+  allow one lead for many departments; never assume a lead is unique to one.
 
 - **Departments contain standing teams** (manuals): for example, a Ranger department has
   specialist teams for peer crisis support, vehicles, mentoring, logistics and dispatch.

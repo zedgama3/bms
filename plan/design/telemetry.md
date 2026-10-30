@@ -1,7 +1,7 @@
 # telemetry: logs, traces, metrics and client error reports
 
 - **Status:** Implemented (2026-10-17); Approved (2026-10-16)
-- **Amendment T1 (Draft, 2026-10-28, awaiting the owner):** client telemetry for a public demo: chunk-load reports and `duration_ms` on `/api/client-errors`; a new `POST /api/client-events` usage and performance channel (`intake.Usage`, metrics only, no person or visit ID); allowlists from the web client manifest and the api route table; config `telemetry.usage`; dashboards and alert rules as deploy assets; `docs/telemetry.md`. Section "Amendment T1" before Open questions; Proposed changes 18 to 26; questions Q-TEL-1 to Q-TEL-3.
+- **Amendment T1 (Implemented 2026-10-30; Approved 2026-10-28, D54, with the recommended answers to Q-TEL-1 to Q-TEL-3):** client telemetry for a public demo: chunk-load reports and `duration_ms` on `/api/client-errors`; a new `POST /api/client-events` usage and performance channel (`intake.Usage`, metrics only, no person or visit ID); allowlists from the web client manifest and the api route table; config `telemetry.usage`; dashboards and alert rules as deploy assets; `docs/telemetry.md`. Section "Amendment T1" before Open questions; Proposed changes 18 to 26; questions Q-TEL-1 to Q-TEL-3.
 - **Amended 2026-10-17 (owner):** decisions 21 to 25 (intake `api.code` is any token, client reports carry `origin=client`, `IsToken` and `Collect` and the accepted implementation deviations, `client.stack` cap, debug logging keeps scrubbing on); the Data section now says `New` reads the OTLP certificate and key files.
 - **Amended 2026-10-18 (owner approval of audit/identity):** `intake.ErrRateLimited` is, or wraps, the shared `httpx.ErrRateLimited` (api.md, identity.md Proposed change 1); instrument rows for `bms.audit.*` and `bms.identity.*` added (audit.md Proposed change 8, identity.md Proposed change 15); `TraceIDFrom` is recorded on every audit entry (Proposed change 7 applied).
 - **Amended 2026-10-18 (D37):** instrument row `bms.events.setup{module,outcome}` added; spans `departments.<use-case>`, `events.<use-case>` and `events.setup` are token names (departments-events.md Proposed change 9).
@@ -52,6 +52,7 @@
 - `Ref` (`XXXX-XXXX`), `Ref.Validate()`, `RefFrom(ctx) (Ref, bool)`, `TraceIDFrom(ctx) (string, bool)` (32 lower-case hex).
 - `Observer`, `LogRecord`, `SpanData`, `Measurement`, `Violation{Signal, Rule, Key}` (test/observation hooks).
 - `intake`: `New(Options{Logger, Meter, Clock})`; `(*Intake).Accept(ctx, Submission{From netip.Addr, Person model.PersonID, UserAgent, Batch}) error` (service, no HTTP); `Batch{Reports}`, `Report{Kind, Message, Stack, Screen, OccurredAt, Count, AppVersion, ErrorRef, TraceID, API *APICall}`, `APICall{Method, Route, Status, Code}` (`Code` is any token), `Kind` (`crash|rejection|screen|api`); `Validate()` on Report and Batch; consts `MaxReports=20, MaxMessageBytes=512, MaxStackBytes=4096, MaxUserAgentBytes=200, MaxCount=1000, PerAddressPerMinute=30, GlobalPerMinute=600, MaxTrackedAddresses=10000, RetryAfter=1m, OccurredWithin=24h`; `ErrRateLimited`.
+- `intake` (T1, D54): `KindChunk`, `APICall.DurationMs`, `MaxDurationMs`; `Options.Screens|Routes`; `EventKind` (`screen_view|action|screen_ready|vital`), `Event`, `EventBatch`, `EventSubmission{From, UserAgent, Batch}` (no person field), `UsageOptions{Logger, Meter, Clock, Enabled, Screens, Actions}`, `NewUsage`, `(*Usage).Accept`, the limits `MaxEvents` 50, `EventsPerAddressPerMinute` 60, `EventsGlobalPerMinute` 2000, `OtherToken`, `EntryToken`.
 - `telemetrytest`: `New(t) *Capture` (fails t on any Violation at cleanup); `Telemetry/Logger/Tracer/Meter`, `Records/Spans/Measurements/Violations`, `Contains(needle)`, `Stdout()`.
 
 **Key decisions:**
@@ -80,16 +81,17 @@
 - D23 `IsToken`, `Collect`; `New` reads the OTLP certificate and key files to pre-check them; accepted deviations: violations ride on `Attr`, caps include the ellipsis, `Float`/`Duration` dropped on metrics (rule `invalid_metric_attr`), generic `slog.Any` rendered with `%v` then scrubbed, no global propagator, `otel.SetLogger(logr.Discard())`, two-phase build.
 - D24 `client.stack` may be up to `MaxStackBytes` (4096); every other log string keeps `MaxLogValueBytes`.
 - D25 scrubbing and redaction stay on at every level, including debug; the startup warning is `app`'s.
+- D26 to D33 (T1, D54): D26 usage events use a second route, `POST /api/client-events`; D27 usage becomes metrics only, no visit or tab ID, with `from` kept (owner, 2026-10-28); D28 the server's count is preferred when the server sees the action; D29 no OpenTelemetry JavaScript SDK in the browser; D30 the server derives `module` from the manifest; D31 GPC and DNT turn usage events off in the browser; D32 `telemetry.usage` is configuration, default `true` (owner, 2026-10-28); D33 the server reduces the User-Agent to `browser` and `form_factor` on the histograms (owner, 2026-10-28).
 
 **Errors callers handle:** `New`/`Validate`: `Invalid` with field names (`log.level`, `log.format`, `instance.name`, `telemetry.version`, `telemetry.stdout`, `telemetry.clock`, or the offending `OTEL_*` variable), `Canceled`/`Timeout`. `Tracer`/`Meter`: `Invalid` (bad scope), `Internal` (after Close). `Meter.*`: `Invalid` (name, unit, nil observe), `Conflict` (name reused with another kind or unit). `Close`: `Timeout`/`Canceled`. `Ref.Validate`: `Invalid`. `intake.Accept`: `Invalid` (field errors `reports[i].<field>`), `Unavailable` wrapping `ErrRateLimited` (check `errors.Is` before kind; api maps to 429, `Retry-After: 60`), `Canceled`/`Timeout`. Span/Attr/log methods never fail: bad input becomes a marker (`[denied]`, `[invalid-token]`, `invalid-span-name`) plus a Violation. `RefFrom`/`TraceIDFrom` return ok=false without a span (omit the field).
 
-**Owns (config, routes, metrics):** reads `OTEL_SDK_DISABLED`, `OTEL_EXPORTER_OTLP_ENDPOINT` (+ `_TRACES/_METRICS/_LOGS_ENDPOINT`), `OTEL_EXPORTER_OTLP_PROTOCOL` (+ variants), `OTEL_TRACES_SAMPLER(_ARG)`, `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES`; the SDK reads the rest (headers never logged). No settings, no permissions, no tables, no signals. Route `POST /api/client-errors` (`AccessPublic`) is mounted by api over `intake.Accept`. Key denylist and `Scrub` rules are package constants. Instruments: `bms.telemetry.{export_failures,dropped,policy_violations,log_write_failures}`, `bms.client_errors.{accepted,rejected}`; also defines the M0 table for `http.server.request.duration`, `db.client.connection.*`, `bms.signals.*`, `bms.jobs.runs`, and the rows for `bms.audit.*` and `bms.identity.*`. Imports only lib (errs, validate, clock) and the OTel SDK; not model (except `intake`), config, db or pgx.
+**Owns (config, routes, metrics):** reads `OTEL_SDK_DISABLED`, `OTEL_EXPORTER_OTLP_ENDPOINT` (+ `_TRACES/_METRICS/_LOGS_ENDPOINT`), `OTEL_EXPORTER_OTLP_PROTOCOL` (+ variants), `OTEL_TRACES_SAMPLER(_ARG)`, `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES`; the SDK reads the rest (headers never logged). No settings, no permissions, no tables, no signals. Route `POST /api/client-errors` (`AccessPublic`) is mounted by api over `intake.Accept`. Key denylist and `Scrub` rules are package constants. Instruments: `bms.telemetry.{export_failures,dropped,policy_violations,log_write_failures}`, `bms.client_errors.{accepted,rejected}` (accepted gains `screen`); (T1) `bms.client.{screen_views,actions,screen_ready,lcp,inp,cls}`, `bms.client_events.{accepted,rejected,folded}`, `bms.api.errors` (api records it); (D53) rows for `bms.demo.*`; route `POST /api/client-events` (`AccessPublic`, mounted by api over `Usage.Accept`); also defines the M0 table for `http.server.request.duration`, `db.client.connection.*`, `bms.signals.*`, `bms.jobs.runs`, and the rows for `bms.audit.*` and `bms.identity.*`. Imports only lib (errs, validate, clock) and the OTel SDK; not model (except `intake`), config, db or pgx.
 
-**Expects of dependencies:** lib-errs (`E`, `KindOf`, `Error.Op`, kinds); lib-core (`clock.Clock`, `validate.*`); lib-secret (`Secret` and `Email` redact via `LogValue`); model (`PersonID`, `ID.String`); config (`app` copies `config.Log`/`Instance.Name` into `Options`; client address derived per config decision 16, by api); module-contract (`Deps.Logger`, `Deps.Tracer`, `Route.Access`); db (`Options.Tracer/Meter`, pgx `QueryTracer`, pool gauges).
+**Expects of dependencies:** lib-errs (`E`, `KindOf`, `Error.Op`, kinds); lib-core (`clock.Clock`, `validate.*`); lib-secret (`Secret` and `Email` redact via `LogValue`); model (`PersonID`, `ID.String`); config (`app` copies `config.Log`/`Instance.Name` into `Options`; client address derived per config decision 16, by api); module-contract (`Deps.Logger`, `Deps.Tracer`, `Route.Access`); db (`Options.Tracer/Meter`, pgx `QueryTracer`, pool gauges); (T1) `web.ClientManifest()` (screen and action allowlists), `api.RouteTokens` (route allowlist), config `telemetry.usage` (`Telemetry{Usage bool}`), api mounting `POST /api/client-events` and recording `bms.api.errors`.
 
-**Pending proposed changes:** item 6 applied for `jobs.md` 2026-10-20 (D43); item 9 pending for Loki retention, alert rules and `docs/operating.md`; all others applied.
+**Pending proposed changes:** items 23 and 24 (Amendment T1: dashboards, alert rules, `docs/telemetry.md`) wait for their targets; item 6 applied for `jobs.md` 2026-10-20 (D43); item 9 pending for Loki retention, alert rules and `docs/operating.md`; all others applied.
 
-**Amendment T1 (Draft, 2026-10-28, awaiting the owner).** Adds, without changing a decision above: `intake.KindChunk` and `APICall.DurationMs` on the error route; `POST /api/client-events` over `intake.NewUsage(UsageOptions{Logger, Meter, Clock, Enabled, Screens, Actions})` and `(*Usage).Accept(ctx, EventSubmission{From, UserAgent, Batch})` with `Event{Kind (screen_view|action|screen_ready|vital), Screen, From, Action, Name, Value, OccurredAt, Count, AppVersion}`, metrics only (`bms.client.screen_views{screen,module,from}`, `bms.client.actions`, `bms.client.screen_ready|lcp|inp|cls` histograms with `browser`, `form_factor`; `bms.client_events.accepted|rejected|folded`), never a person, visit or record ID; `Intake.Options.Screens|Routes` and `bms.client_errors.accepted{kind,screen}`; allowlists from `web.ClientManifest()` (build-emitted `dist/client-manifest.json`) and `api.RouteTokens`, with `_other` and `/{unmatched}` folding; config `BMS_TELEMETRY_USAGE` (default `true`; off answers 501); GPC and DNT honoured in the browser; dashboards and alert rules under `deploy/observability/`; `docs/telemetry.md`. Errors added: `Usage.Accept`: `Unsupported` (off), `Invalid` (`events[i].<field>`), `Unavailable` wrapping `ErrRateLimited`; `web.ClientManifest`: `NotFound`, `Invalid`. F51 to F75. Details in the "Amendment T1" section; folding into the sections above is Proposed change 20.
+**Amendment T1 (Approved 2026-10-28, D54; folded into the sections above by Proposed change 20).** Adds, without changing a decision above: `intake.KindChunk` and `APICall.DurationMs` on the error route; `POST /api/client-events` over `intake.NewUsage(UsageOptions{Logger, Meter, Clock, Enabled, Screens, Actions})` and `(*Usage).Accept(ctx, EventSubmission{From, UserAgent, Batch})` with `Event{Kind (screen_view|action|screen_ready|vital), Screen, From, Action, Name, Value, OccurredAt, Count, AppVersion}`, metrics only (`bms.client.screen_views{screen,module,from}`, `bms.client.actions`, `bms.client.screen_ready|lcp|inp|cls` histograms with `browser`, `form_factor`; `bms.client_events.accepted|rejected|folded`), never a person, visit or record ID; `Intake.Options.Screens|Routes` and `bms.client_errors.accepted{kind,screen}`; allowlists from `web.ClientManifest()` (build-emitted `dist/client-manifest.json`) and `api.RouteTokens`, with `_other` and `/{unmatched}` folding; config `BMS_TELEMETRY_USAGE` (default `true`; off answers 501); GPC and DNT honoured in the browser; dashboards and alert rules under `deploy/observability/`; `docs/telemetry.md`. Errors added: `Usage.Accept`: `Unsupported` (off), `Invalid` (`events[i].<field>`), `Unavailable` wrapping `ErrRateLimited`; `web.ClientManifest`: `NotFound`, `Invalid`. F51 to F75. Details in the "Amendment T1" section, whose decisions are 26 to 33 below; Q-TEL-1 to Q-TEL-3 are answered (owner, 2026-10-28) as recommended: config `BMS_TELEMETRY_USAGE` default `true` (decision 32), `from` kept (decision 27), `browser` and `form_factor` on the four histograms (decision 33).
 
 ## Purpose
 
@@ -129,7 +131,7 @@ Let a maintainer find what happened in any one request from the reference the pe
 | Which copy an audit entry came from, and the trace ID on it | `audit` (`audit.md`) calls `TraceIDFrom`. |
 | Dashboards, alert rules, retention of logs, traces and metrics, who may open Grafana | the deployment: `deploy/compose/observability` for development, the example production setup and `docs/operating.md` (Proposed change 9). D20 proposes 30 days for logs. bms emits; it keeps nothing. |
 | The audit log (who did what, who saw what) | `audit`. Telemetry is for maintainers and holds IDs, kinds and durations, never what a person saw. |
-| Analytics about people, usage statistics, third-party analytics | nobody (privacy-data: "There's no third-party analytics"). Metrics here count requests, errors and durations by route and kind, never by person. |
+| Analytics about people (profiles, journeys, return visits), third-party analytics | nobody (privacy-data: "There's no third-party analytics"). Usage counts by screen template are this spec's (`intake.Usage`, T1) and hold nothing about a person or a visit. |
 | A separate request ID | nobody. The trace ID is the request ID (decision 2). |
 | Log retention on the host (journald, Docker log rotation) | the operator (`docs/operating.md`). |
 | Propagating trace context on outbound calls (OIDC, S3-compatible storage) | added as `Inject(ctx, http.Header)` when the first consumer appears (`identity` OIDC, `files` S3); no consumer in M0. |
@@ -662,6 +664,30 @@ func (c *Capture) Contains(needle string) bool
 func (c *Capture) Stdout() string
 ```
 
+### `intake` additions (Amendment T1, D54)
+
+The field-by-field wire form, the limits and the folding rules are in "Amendment T1" T1.2 and T1.3; the signatures other specs rely on are:
+
+```go
+const KindChunk Kind = "chunk"          // a lazy chunk failed to load
+const MaxDurationMs = 600_000           // APICall.DurationMs 0 unknown, else 1..MaxDurationMs
+type APICall struct{ Method, Route string; Status int; Code string; DurationMs int }
+
+// Options gains Screens (the manifest's patterns) and Routes (api.RouteTokens); an entry
+// that is not a token fails New (F71). Route and screen values outside a non-empty list fold
+// to /{unmatched} and _other (F65, F70).
+type EventKind string // screen_view | action | screen_ready | vital
+type Event struct{ Kind EventKind; Screen, From, Action, Name string; Value float64; OccurredAt time.Time; Count int; AppVersion string }
+type EventBatch struct{ Events []Event }
+func (b EventBatch) Validate() error // Invalid, fields "events" and "events[i].<field>" (F54-F62)
+type EventSubmission struct{ From netip.Addr; UserAgent string; Batch EventBatch } // no Person, on purpose
+type UsageOptions struct{ Logger *slog.Logger; Meter Meter; Clock clock.Clock; Enabled bool; Screens, Actions []string }
+func NewUsage(opts UsageOptions) (*Usage, error)                   // Invalid (F51)
+func (u *Usage) Accept(ctx context.Context, s EventSubmission) error // Unsupported when off (F52); ErrRateLimited (F63, F64); Invalid (F53-F62)
+```
+
+`Usage.Accept` writes no log record per event and records only the instruments in the metrics table. Consumer: api's handler for `POST /api/client-events`.
+
 ### Who needs each member
 
 | Member | Consumer(s) | Pre-condition | Post-condition |
@@ -708,7 +734,13 @@ it were stored by bms (privacy-data), and where retention is set:
 | `module`, `op`, `error.kind`, `http.route`, `http.request.method`, status, durations, counts | logs, spans, metrics | not about a person | where and what | same |
 | `client.message`, `client.stack` | client-report log records | internal; scrubbed (e-mail shapes, query strings) and capped | what broke in the browser | same |
 | `user_agent` | client-report log records | internal; capped at 200 bytes | browser-specific crashes are the common kind | same |
+| `screen`, `from`, `action`, `module`, `kind`, `name` on a usage event | `POST /api/client-events`, then metrics only | not about a person (closed sets from the build) | which screens are used, how, and from where | metrics: the collector (D18: 1 year) |
+| `value`, `count` on a usage event | same | not about a person | how fast, how often | same |
+| `browser`, `form_factor` | same, derived by the server from the User-Agent, never the text | not about a person (four and two values) | whether slowness is a phone problem | same |
+| `duration_ms` on an `api` report | `POST /api/client-errors`, log record | not about a person | a timeout from a reset | logs: 30 days |
 | client address | intake's in-memory buckets only | personal (a network identifier) | the rate limit | held at most one idle minute; **never logged, never exported** |
+
+Never on the events route, enforced by the type (no field exists for it) and by the metric policy (F19): a person ID, a session or visit ID, a name, an e-mail address, a URL, a query string, free text, a record ID (ID-shaped path segments become `{id}` before anything is counted), a trace ID.
 
 Never emitted, enforced by the policy and by review: names (legal or playa), e-mail
 addresses, phone numbers, addresses, emergency contacts, incident or medical text, form
@@ -727,6 +759,7 @@ of D20 and of the deploy examples (Proposed change 9); decision 18 sets the defa
 | Operation | Permission | Scoped by | Default roles | Notes |
 |---|---|---|---|---|
 | `POST /api/client-errors` (`intake.Accept`) | none: `module.AccessPublic` | — | anyone, signed in or not | the sign-in page must be able to report its own crash (decision 9). Protection is the limits (`PerAddressPerMinute`, `GlobalPerMinute`, `MaxReports`, the api's 64 KiB body cap) and the fact that nothing is readable back. |
+| `POST /api/client-events` (`Usage.Accept`) | none: `module.AccessPublic` | — | anyone, signed in or not | the handler never reads the session (T1, decision 26); 501 when `telemetry.usage` is off |
 | Reading logs, traces and metrics | none in bms | — | the regional's maintainers | access control is the collector's and Grafana's (D20: "Grafana access is limited to the regional's maintainers"); the operator docs say how. |
 
 Nothing else here is an operation on data: `New`, `Logger`, `Tracer`, `Meter` and `Close`
@@ -937,6 +970,15 @@ None of its own. What this spec provides for screens elsewhere:
     `log.level=debug`) and the `bms check` line are `app`'s, not this package's. Any future
     relaxation at debug level needs its own spec change.
 
+26. **Usage events use a second route, `POST /api/client-events`** (D54, T1-a). Error reports are log records that may name a person and carry free text; usage events are metric samples that must carry neither. Two routes make the statement depend on the type (`EventSubmission` has no `Person` field) and give two limits and two off switches. Reasoning in "Amendment T1", T1.1.
+27. **Usage events become metrics, never log records; there is no visit or tab ID; `from` is kept** (D54, T1-b; Q-TEL-2 answered by the owner, 2026-10-28). Each `screen_view` carries `from`, the previous screen template in the same page load or `_entry`, so the flow between screens is counts, not one person's journey. Navigation sequences of one visit, time on screen and return visits are not collected.
+28. **Prefer the server's count when the server sees the action** (D54, T1-c). `bms.api.errors` adds the problem code on the server; a module's business action is counted in its service; the browser's `action` events are for what the server cannot see, and each name is declared in the `ScreenSet`.
+29. **No OpenTelemetry JavaScript SDK in the browser** (D54, T1-d). The shell mints `traceparent` per call; error reports carry the failed call's `trace_id` and `error_ref`; the one addition is `duration_ms` on an `api` report.
+30. **The first path segment is not sent; the server derives `module` from the manifest** (D54, T1-e), so a client cannot file a screen under another module.
+31. **Global Privacy Control and Do Not Track turn usage events off in the browser; error reports are unaffected** (D54, T1-f).
+32. **`telemetry.usage` is configuration, `BMS_TELEMETRY_USAGE`, boolean, default `true`** (D54, T1-g; Q-TEL-1 answered by the owner, 2026-10-28). A property of the deployment, not a runtime setting (`telemetry` sits below `settings`); the cost is a restart. Off: the route stays mounted and answers 501.
+33. **The server reduces the User-Agent to `browser` (four values) and `form_factor` (two) and records them only on the `screen_ready`, `lcp`, `inp` and `cls` histograms** (D54, T1.4; Q-TEL-3 answered by the owner, 2026-10-28). The text is never recorded on the events channel.
+
 ### What is read from the environment
 
 Read by this package through `Options.Environ` and validated here:
@@ -1030,7 +1072,7 @@ context with flags cleared; anything else is a root. `End` computes `SpanData` f
 observer and ends the SDK span. `RecordError`: `error.kind`, `error.op` (first
 `*errs.Error` by `errors.As`), `exception.message` (scrubbed, capped); status Error unless
 the kind is `Canceled`. Span names are tokens, or the HTTP form `<METHOD> <route pattern>`
-(decision 19); instrument names are tokens; scope names are tokens of at most 64 bytes. `notify` (D39) uses the span names `notify.send` (Internal), `notify.tick`, `notify.deliver` (Client) and `notify.<use-case>`, with `Token`/`ID`/`Int` attributes only (never an address, subject, body, variable or link). `jobs` (D43) uses the span names `jobs.tick`, `jobs.enqueue`, `jobs.defer` and `jobs.run`. `files` (D44) uses `files.stage`, `files.attach`, `files.open`, `files.delete`, `files.reap`, `files.sweep`, `files.verify` and `objects.put|get|head|delete|list|ping` (Client, with `objects.kind`).
+(decision 19); instrument names are tokens; scope names are tokens of at most 64 bytes. `demo` (D53) uses the span names `demo.seed`, `demo.seed.step`, `demo.reset` and `demo.mail.capture` (tokens; `Token`/`Int`/`ID` attributes only, never an address or a subject). `notify` (D39) uses the span names `notify.send` (Internal), `notify.tick`, `notify.deliver` (Client) and `notify.<use-case>`, with `Token`/`ID`/`Int` attributes only (never an address, subject, body, variable or link). `jobs` (D43) uses the span names `jobs.tick`, `jobs.enqueue`, `jobs.defer` and `jobs.run`. `files` (D44) uses `files.stage`, `files.attach`, `files.open`, `files.delete`, `files.reap`, `files.sweep`, `files.verify` and `objects.put|get|head|delete|list|ping` (Client, with `objects.kind`).
 
 ### `intake.Accept`, step by step
 
@@ -1070,7 +1112,7 @@ One record at `warn`, message `client error`, attributes: `origin=client`,
 | `db.client.connection.count` | gauge, `{connection}` | `state` = `idle` or `used` | `db` from `Pool.Stats` |
 | `db.client.connection.max` | gauge, `{connection}` | — | `db` |
 | `db.client.connection.pending_requests` | gauge, `{request}` | — | `db` |
-| `bms.client_errors.accepted` | counter, `{report}` | `kind` | `intake` |
+| `bms.client_errors.accepted` | counter, `{report}` | `kind`, `screen` (T1; folded through the screen allowlist, `_other` when unknown, `""` when the report had none) | `intake` |
 | `bms.client_errors.rejected` | counter, `{report}` | `reason` = `rate_limited` or `invalid` | `intake` |
 | `bms.telemetry.export_failures` | counter, `{batch}` | `signal` | this package |
 | `bms.telemetry.dropped` | counter, `{record}` | `signal` | this package |
@@ -1102,6 +1144,19 @@ One record at `warn`, message `client error`, attributes: `origin=client`,
 | `bms.files.tombstones` | gauge, `{tombstone}` | — | `files` (D44) |
 | `bms.files.verify` | counter, `{object}` | `outcome` = `ok`, `missing`, `mismatched`, `unchecked` | `files` (`bms files verify`, D44) |
 | `bms.objects.failures` | counter, `{call}` | `op` = `put`, `get`, `head`, `delete`, `list`, `ping` | `objects` (D44) |
+| `bms.demo.seeds` | counter, `{seed}` | `outcome` (a token: `ok` or the failure's kind) | `demo` (D53) |
+| `bms.demo.resets` | counter, `{reset}` | `outcome` (a token: `ok` or the failure's kind) | `demo` (D53) |
+| `bms.demo.mail_captured` | counter, `{message}` | — | `demo` (D53) |
+| `bms.client.screen_views` | counter, `{view}` | `screen`, `module`, `from` (a screen pattern, `_entry` or `_other`) | `intake.Usage` (T1, D54) |
+| `bms.client.actions` | counter, `{action}` | `action`, `screen`, `module` | `intake.Usage` |
+| `bms.client.screen_ready` | histogram, `s` (buckets 0.1 to 30) | `screen`, `module`, `browser`, `form_factor` | `intake.Usage` |
+| `bms.client.lcp` | histogram, `s` (buckets 0.5, 1, 1.5, 2, 2.5, 3, 4, 6, 8, 12) | `screen`, `module`, `browser`, `form_factor` | `intake.Usage` |
+| `bms.client.inp` | histogram, `s` (buckets 0.05, 0.1, 0.2, 0.3, 0.5, 0.75, 1, 2) | same | `intake.Usage` |
+| `bms.client.cls` | histogram, `1` (buckets 0.05, 0.1, 0.25, 0.5, 1) | same | `intake.Usage` |
+| `bms.client_events.accepted` | counter, `{event}` | `kind` | `intake.Usage` |
+| `bms.client_events.rejected` | counter, `{event}` | `reason` = `rate_limited`, `invalid`, `disabled` | `intake.Usage` |
+| `bms.client_events.folded` | counter, `{value}` | `field` = `screen`, `from`, `action` (and `api.route` on error reports) | `intake.Usage` and `Intake` |
+| `bms.api.errors` | counter, `{response}` | `http.request.method`, `http.route`, `code` (a kind name or a shell code, a bounded set) | `api` (T1) |
 
 Rates, errors and durations per route also come from Tempo's metrics generator over the
 spans (`deploy/compose/observability/tempo.yaml`), so a regional that exports traces only
@@ -1186,6 +1241,31 @@ under `internal/core/telemetry/**` (Proposed change 8).
 | F48 | `Accept` | `message` or `stack` over its cap, or carrying an e-mail or a query string | none: scrubbed and cut; accepted | — | `TestAccept_TextFields_ScrubbedAndTruncated` |
 | F49 | `Accept` | a UUID-shaped segment in `screen` or `api.route` | none: replaced by `{id}`; accepted | — | `TestAccept_IDSegments_ReplacedWithPlaceholder` |
 | F50 | `Accept` | the address table is full | none: the longest-idle bucket evicted; accepted | — | `TestAccept_AddressTableFull_EvictsIdle` |
+| F51 | `intake.NewUsage` | `Logger`, `Meter` or `Clock` nil; an allowlist entry not a token | Invalid | fix app or the manifest | `TestNewUsage_NilDependencyOrBadAllowlist_ReturnsInvalid` |
+| F52 | `Usage.Accept` | `Enabled` false | Unsupported; `rejected{reason="disabled"}`; nothing recorded | 501; the shell stops for the page load | `TestUsageAccept_Disabled_ReturnsUnsupportedRecordsNothing` |
+| F53 | `Usage.Accept` | `ctx` done at entry | Canceled / Timeout | stop | `TestUsageAccept_ContextCanceled_ReturnsCanceled` |
+| F54 | `Usage.Accept`, `EventBatch.Validate` | zero or more than `MaxEvents` events | Invalid, field `events` | 400 | `TestUsageAccept_EmptyOrTooManyEvents_ReturnsInvalid` |
+| F55 | `EventBatch.Validate` | `kind` not one of the four | Invalid, `events[i].kind` | 400 | `TestEventBatchValidate_BadKind_ReturnsInvalid` |
+| F56 | `EventBatch.Validate` | `screen` empty, not a token, or not beginning with `/` | Invalid, `events[i].screen`, "must be a route pattern" | 400 | `TestEventBatchValidate_Screen_Table` |
+| F57 | `EventBatch.Validate` | `from` set on a kind other than `screen_view`; or set and neither a route pattern nor `_entry` | Invalid, `events[i].from` | 400 | `TestEventBatchValidate_From_Table` |
+| F58 | `EventBatch.Validate` | `action` absent for `kind=action` or present for another kind; or not matching `[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*){1,2}` of at most 64 bytes | Invalid, `events[i].action` | 400 | `TestEventBatchValidate_Action_Table` |
+| F59 | `EventBatch.Validate` | `kind=vital` with `name` not `lcp`, `inp`, `cls`; `name` set on another kind; `value` negative, over `MaxVitalMs` (lcp, inp) or over `MaxCLS` (cls) | Invalid, `events[i].name` / `.value` | 400 | `TestEventBatchValidate_Vital_Table` |
+| F60 | `EventBatch.Validate` | `kind=screen_ready` with `value` ≤ 0 or over `MaxVitalMs`; `value` set on `screen_view` or `action` | Invalid, `events[i].value` | 400 | `TestEventBatchValidate_ScreenReady_Table` |
+| F61 | `Usage.Accept` (with the clock) | `occurred_at` zero or outside `OccurredWithin` | Invalid, `events[i].occurred_at` | 400 | `TestUsageAccept_OccurredAtOutOfWindow_ReturnsInvalid` |
+| F62 | `EventBatch.Validate` | `count` negative or over `MaxCount`; `count` > 1 on `vital` or `screen_ready`; `app_version` not a token of at most 64 bytes | Invalid | 400 | `TestEventBatchValidate_CountAndVersion_ReturnInvalid` |
+| F63 | `Usage.Accept` | the address's bucket short by the batch size | Unavailable wrapping `ErrRateLimited`; `rejected{rate_limited}`; one hourly line without the address | 429, `Retry-After: 60` | `TestUsageAccept_PerAddressLimit_ReturnsRateLimitedWithoutLoggingAddress` |
+| F64 | `Usage.Accept` | the global bucket short | same as F63 | same | `TestUsageAccept_GlobalLimit_ReturnsRateLimited` |
+| F65 | `Usage.Accept`, `Intake.Accept` | `screen`, `from` or `action` not in a non-empty allowlist | none: the attribute becomes `_other`; `folded{field}`; accepted | — | `TestUsageAccept_UnknownScreenOrAction_FoldedToOther`, `TestAccept_UnknownScreen_MetricFoldedLogKeepsValue` |
+| F66 | same | allowlist empty and `MaxDistinct*` distinct values already admitted | none: `_other`; `folded{field}`; accepted | — | `TestUsageAccept_EmptyAllowlistCap_FoldsBeyondCap` |
+| F67 | `Usage.Accept` | an ID-shaped segment in `screen` or `from` | none: `{id}`, then the allowlist check; accepted | — | `TestUsageAccept_IDSegments_ReplacedBeforeFolding` |
+| F68 | `Usage.Accept` | `module` cannot be derived (the screen folded to `_other`) | none: `module=_other` | — | `TestUsageAccept_OtherScreen_OtherModule` |
+| F69 | `Batch.Validate` (errors) | `kind=chunk` with `api` present; `api.duration_ms` negative or over `MaxDurationMs` | Invalid, `reports[i].api` / `.api.duration_ms` | 400 | `TestBatchValidate_ChunkAndDuration_Table` |
+| F70 | `Intake.Accept` | `api.route` not in `Options.Routes` (non-empty) | none: `/{unmatched}` on the record and the metric; `folded{field="api.route"}` | — | `TestAccept_UnknownAPIRoute_BecomesUnmatched` |
+| F71 | `Intake.New` | an entry of `Screens` or `Routes` not a token | Invalid | fix app | `TestIntakeNew_BadAllowlist_ReturnsInvalid` |
+| F72 | `web.ClientManifest` | `dist/client-manifest.json` missing / malformed or an entry not a token or not beginning with `/` | NotFound / Invalid | `app`: warn once, empty allowlists, `bms check` reports it | `TestClientManifest_MissingReturnsNotFound`, `TestClientManifest_Malformed_ReturnsInvalid` |
+| F73 | `Usage.Accept` | `UserAgent` unrecognised or empty | none: `browser=other`, `form_factor=desktop`; the text is never recorded | — | `TestUserAgentClass_Table` (chromium phone and desktop, firefox, webkit, empty, 10 KB of junk) |
+| F74 | `api` handler for `/api/client-events` | body over 64 KiB; content type not JSON; usage off | 413 / 415 / 501 by the mapper, from `*http.MaxBytesError`, `httpx.ErrUnsupportedMediaType`, `errs.Unsupported` | the shell stops or drops the batch | api's tests (Proposed change 19) |
+| F75 | `api` handler for `/api/client-events` | a session cookie is present | none: the person is never passed to `Accept` and never logged | — | `TestClientEvents_SignedIn_NoPersonAnywhere` (api; `telemetrytest.Contains(personID)` is false) |
 
 Members that cannot fail, and why: `Logger` (returns a value built by `New`); `Exporting`
 (a flag); `Span.SetAttrs`, `RecordError`, `End` (every bad input is corrected, decision 13);
@@ -1269,11 +1349,34 @@ asserts `!c.Contains(marker)`; invented people only):
 - `TestExport_HeadersNeverLogged`: `OTEL_EXPORTER_OTLP_HEADERS=authorization=ZQ9MARKER7`
   with a receiver that returns 500; the marker appears in no log line.
 
+**Amendment T1 (D54).** Unit, `intake_test`: F51–F73 as named, plus
+`TestUsageAccept_HappyPath_RecordsInstrumentsOnly` (through `telemetrytest`: one measurement
+per event with exactly the attributes in T1.4, **no log record** other than the hourly
+rate-limit line, `Contains` false for the address, a marker person ID and a marker query
+string), `TestUsageAccept_TransitionsCounted` (`from` and `screen` on `screen_views`),
+`TestUsageAccept_SharesBucketImplementationWithIntake` (the two services' buckets are
+independent: an address rate-limited for events still reports errors),
+`TestEventBatch_JSONIgnoresUnknownFields`. `web_test`: F72 and
+`TestClientManifest_RoundTrip`. `api`: F74, F75, `TestClientEvents_Accepted202NoBody`,
+`TestClientEvents_RateLimited429RetryAfter`. `app`: `bms check` prints
+`usage counts: on (62 screens, 14 actions)` or `off`, and `usage counts: on (no manifest;
+fold caps apply)` when the file is missing. Web (vitest, Proposed change 18): the collector
+never throws; GPC or DNT set means no observer is installed and no request is made; 404 and
+501 stop sending for the page; a redirect chain yields one `screen_view` with the final
+pattern; `from` is `_entry` after a full load; an undeclared action is dropped; the batch
+body contains no `?`, no `@`, no 32-hex or UUID segment (a fixture navigates to
+`/people/<uuid>?tab=x`); `sendBeacon` on `pagehide`; nothing in `localStorage` or
+`sessionStorage`; the manifest equals `buildRoutes(sets)`. e2e (Playwright smoke): one
+navigation produces one `screen_view` and one `screen_ready` at the server (the compose
+stack's Prometheus, or the `httptest` OTLP receiver). Lint: the `web-vitals` dependency passes
+`check-licenses.mjs` (Apache-2.0 is allowed); `fetch` and `sendBeacon` stay confined to
+`@/api`, the reporter and the collector (ESLint).
+
 **Conformance:** `moduletest.Conformance` uses `telemetrytest.New(t)` for `Deps.Logger`
 (and `Deps.Tracer` once adopted), so `no_personal_data_in_logs` also fails on any policy
 violation (Proposed change 1).
 
-## Amendment T1 (Draft, awaiting the owner): client telemetry for a public demo
+## Amendment T1 (Approved 2026-10-28, D54): client telemetry for a public demo
 
 **Context (owner, 2026-10-28).** The project is putting up a fully public demo so the
 community can try it. "It is also important that we get telemetry that can help us identify
@@ -1552,7 +1655,7 @@ because Loki attributes are not series.
 
 ### T1.6 The off switch: configuration, default on
 
-**Decision T1-g (recommendation; Q-TEL-1 asks the owner to confirm): `telemetry.usage` is a
+**Decision T1-g (decision 32; Q-TEL-1 answered by the owner, 2026-10-28): `telemetry.usage` is a
 configuration key, `BMS_TELEMETRY_USAGE`, boolean, default `true`.** Configuration rather
 than a setting, for three reasons. It is a property of the deployment like the collector
 itself: with no `OTEL_EXPORTER_OTLP_ENDPOINT` the counts go nowhere, and the operator who
@@ -1570,7 +1673,7 @@ variable and the shell stops sending within one flush. With `false`: the route s
 (the OpenAPI document does not depend on configuration), `Usage.Accept` fails `Unsupported`
 (501) and counts `rejected{reason="disabled"}`; the shell stops for the page load.
 
-Config catalogue row (Proposed change 22): `BMS_TELEMETRY_USAGE`, default `true`, `true` or
+Config catalogue row (Proposed change 22, applied to config.md 2026-10-28 as F39): `BMS_TELEMETRY_USAGE`, default `true`, `true` or
 `false` (config's strict boolean grammar), doc "count screen views, declared actions and Web
 Vitals by screen template; never by person".
 
@@ -1649,59 +1752,12 @@ Grafana's `json` dashboards are generated once by hand in Grafana and exported w
 
 ### T1.9 Failure modes added
 
-| # | Method | Condition | errs kind | Caller is expected to | Test |
-|---|---|---|---|---|---|
-| F51 | `intake.NewUsage` | `Logger`, `Meter` or `Clock` nil; an allowlist entry not a token | Invalid | fix app or the manifest | `TestNewUsage_NilDependencyOrBadAllowlist_ReturnsInvalid` |
-| F52 | `Usage.Accept` | `Enabled` false | Unsupported; `rejected{reason="disabled"}`; nothing recorded | 501; the shell stops for the page load | `TestUsageAccept_Disabled_ReturnsUnsupportedRecordsNothing` |
-| F53 | `Usage.Accept` | `ctx` done at entry | Canceled / Timeout | stop | `TestUsageAccept_ContextCanceled_ReturnsCanceled` |
-| F54 | `Usage.Accept`, `EventBatch.Validate` | zero or more than `MaxEvents` events | Invalid, field `events` | 400 | `TestUsageAccept_EmptyOrTooManyEvents_ReturnsInvalid` |
-| F55 | `EventBatch.Validate` | `kind` not one of the four | Invalid, `events[i].kind` | 400 | `TestEventBatchValidate_BadKind_ReturnsInvalid` |
-| F56 | `EventBatch.Validate` | `screen` empty, not a token, or not beginning with `/` | Invalid, `events[i].screen`, "must be a route pattern" | 400 | `TestEventBatchValidate_Screen_Table` |
-| F57 | `EventBatch.Validate` | `from` set on a kind other than `screen_view`; or set and neither a route pattern nor `_entry` | Invalid, `events[i].from` | 400 | `TestEventBatchValidate_From_Table` |
-| F58 | `EventBatch.Validate` | `action` absent for `kind=action` or present for another kind; or not matching `[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*){1,2}` of at most 64 bytes | Invalid, `events[i].action` | 400 | `TestEventBatchValidate_Action_Table` |
-| F59 | `EventBatch.Validate` | `kind=vital` with `name` not `lcp`, `inp`, `cls`; `name` set on another kind; `value` negative, over `MaxVitalMs` (lcp, inp) or over `MaxCLS` (cls) | Invalid, `events[i].name` / `.value` | 400 | `TestEventBatchValidate_Vital_Table` |
-| F60 | `EventBatch.Validate` | `kind=screen_ready` with `value` ≤ 0 or over `MaxVitalMs`; `value` set on `screen_view` or `action` | Invalid, `events[i].value` | 400 | `TestEventBatchValidate_ScreenReady_Table` |
-| F61 | `Usage.Accept` (with the clock) | `occurred_at` zero or outside `OccurredWithin` | Invalid, `events[i].occurred_at` | 400 | `TestUsageAccept_OccurredAtOutOfWindow_ReturnsInvalid` |
-| F62 | `EventBatch.Validate` | `count` negative or over `MaxCount`; `count` > 1 on `vital` or `screen_ready`; `app_version` not a token of at most 64 bytes | Invalid | 400 | `TestEventBatchValidate_CountAndVersion_ReturnInvalid` |
-| F63 | `Usage.Accept` | the address's bucket short by the batch size | Unavailable wrapping `ErrRateLimited`; `rejected{rate_limited}`; one hourly line without the address | 429, `Retry-After: 60` | `TestUsageAccept_PerAddressLimit_ReturnsRateLimitedWithoutLoggingAddress` |
-| F64 | `Usage.Accept` | the global bucket short | same as F63 | same | `TestUsageAccept_GlobalLimit_ReturnsRateLimited` |
-| F65 | `Usage.Accept`, `Intake.Accept` | `screen`, `from` or `action` not in a non-empty allowlist | none: the attribute becomes `_other`; `folded{field}`; accepted | — | `TestUsageAccept_UnknownScreenOrAction_FoldedToOther`, `TestAccept_UnknownScreen_MetricFoldedLogKeepsValue` |
-| F66 | same | allowlist empty and `MaxDistinct*` distinct values already admitted | none: `_other`; `folded{field}`; accepted | — | `TestUsageAccept_EmptyAllowlistCap_FoldsBeyondCap` |
-| F67 | `Usage.Accept` | an ID-shaped segment in `screen` or `from` | none: `{id}`, then the allowlist check; accepted | — | `TestUsageAccept_IDSegments_ReplacedBeforeFolding` |
-| F68 | `Usage.Accept` | `module` cannot be derived (the screen folded to `_other`) | none: `module=_other` | — | `TestUsageAccept_OtherScreen_OtherModule` |
-| F69 | `Batch.Validate` (errors) | `kind=chunk` with `api` present; `api.duration_ms` negative or over `MaxDurationMs` | Invalid, `reports[i].api` / `.api.duration_ms` | 400 | `TestBatchValidate_ChunkAndDuration_Table` |
-| F70 | `Intake.Accept` | `api.route` not in `Options.Routes` (non-empty) | none: `/{unmatched}` on the record and the metric; `folded{field="api.route"}` | — | `TestAccept_UnknownAPIRoute_BecomesUnmatched` |
-| F71 | `Intake.New` | an entry of `Screens` or `Routes` not a token | Invalid | fix app | `TestIntakeNew_BadAllowlist_ReturnsInvalid` |
-| F72 | `web.ClientManifest` | `dist/client-manifest.json` missing / malformed or an entry not a token or not beginning with `/` | NotFound / Invalid | `app`: warn once, empty allowlists, `bms check` reports it | `TestClientManifest_MissingReturnsNotFound`, `TestClientManifest_Malformed_ReturnsInvalid` |
-| F73 | `Usage.Accept` | `UserAgent` unrecognised or empty | none: `browser=other`, `form_factor=desktop`; the text is never recorded | — | `TestUserAgentClass_Table` (chromium phone and desktop, firefox, webkit, empty, 10 KB of junk) |
-| F74 | `api` handler for `/api/client-events` | body over 64 KiB; content type not JSON; usage off | 413 / 415 / 501 by the mapper, from `*http.MaxBytesError`, `httpx.ErrUnsupportedMediaType`, `errs.Unsupported` | the shell stops or drops the batch | api's tests (Proposed change 19) |
-| F75 | `api` handler for `/api/client-events` | a session cookie is present | none: the person is never passed to `Accept` and never logged | — | `TestClientEvents_SignedIn_NoPersonAnywhere` (api; `telemetrytest.Contains(personID)` is false) |
+F51 to F75 are rows of the "Failure modes" table above (folded 2026-10-28, Proposed change 20); their conditions refer to T1.2 to T1.5.
 
 Members that cannot fail, and why: the User-Agent classifier (pure; every input maps to a
 token); the fold (pure over a set); `EventKind` constants.
 
-**Test plan additions.** Unit, `intake_test`: F51–F73 as named, plus
-`TestUsageAccept_HappyPath_RecordsInstrumentsOnly` (through `telemetrytest`: one measurement
-per event with exactly the attributes in T1.4, **no log record** other than the hourly
-rate-limit line, `Contains` false for the address, a marker person ID and a marker query
-string), `TestUsageAccept_TransitionsCounted` (`from` and `screen` on `screen_views`),
-`TestUsageAccept_SharesBucketImplementationWithIntake` (the two services' buckets are
-independent: an address rate-limited for events still reports errors),
-`TestEventBatch_JSONIgnoresUnknownFields`. `web_test`: F72 and
-`TestClientManifest_RoundTrip`. `api`: F74, F75, `TestClientEvents_Accepted202NoBody`,
-`TestClientEvents_RateLimited429RetryAfter`. `app`: `bms check` prints
-`usage counts: on (62 screens, 14 actions)` or `off`, and `usage counts: on (no manifest;
-fold caps apply)` when the file is missing. Web (vitest, Proposed change 18): the collector
-never throws; GPC or DNT set means no observer is installed and no request is made; 404 and
-501 stop sending for the page; a redirect chain yields one `screen_view` with the final
-pattern; `from` is `_entry` after a full load; an undeclared action is dropped; the batch
-body contains no `?`, no `@`, no 32-hex or UUID segment (a fixture navigates to
-`/people/<uuid>?tab=x`); `sendBeacon` on `pagehide`; nothing in `localStorage` or
-`sessionStorage`; the manifest equals `buildRoutes(sets)`. e2e (Playwright smoke): one
-navigation produces one `screen_view` and one `screen_ready` at the server (the compose
-stack's Prometheus, or the `httptest` OTLP receiver). Lint: the `web-vitals` dependency passes
-`check-licenses.mjs` (Apache-2.0 is allowed); `fetch` and `sendBeacon` stay confined to
-`@/api`, the reporter and the collector (ESLint).
+**Test plan additions.** Folded into "Test plan" above (Proposed change 20).
 
 **Lock-in check (unchanged conclusion).** The browser side depends on `web-vitals`
 (Apache-2.0) and standard browser APIs; the server side on nothing new. Dashboards are Grafana
@@ -1709,38 +1765,30 @@ JSON and the rules Prometheus format, both readable by their OSI-licensed implem
 (Grafana AGPL-3.0, Prometheus and Mimir Apache-2.0); a regional on another backend
 re-creates six dashboards from the instrument table, which is the contract, not the JSON.
 
+## Accepted implementation deviations (build, 2026-10-29)
+
+- `UsageOptions` gains `Modules map[string]string` (screen pattern to owning set), filled by `app` from the client manifest. A screen it does not list, or any screen when it is nil, gets the first segment of its pattern as `module` (`shell` for `/`).
+- `POST /api/client-events` is a sessionless route: the `Authenticator` is not called, so no person can reach a span or log.
+- Separate meter scopes: `intake` for client errors, `usage` for client events.
+- `bms check` prints `client manifest: N screens, M actions` (or `missing`) then the usage line; a missing manifest is `ExitFailure` only when the build has a UI.
+- `RouteTokens` excludes `/healthz` and `/readyz`.
+- The client error log attribute for the API call's duration is `client.api.duration_ms`.
+
 ## Open questions
 
 None. The draft's five questions (error reference format, public client-error route,
 `User-Agent` in client reports, example-deployment retention, default sampler) were
 answered by the owner on 2026-10-16 and are recorded in decisions 3, 9, 17, 18 and 6.
 
-**Amendment T1 (2026-10-28), for the owner.** Each has a recommendation; the design above is
-written to it.
+**Amendment T1 (2026-10-28), answered by the owner on 2026-10-28, all as recommended** and folded into decisions 26 to 33:
 
-- **Q-TEL-1. Where does the usage off switch live, and what is its default?** Recommended:
-  configuration, `BMS_TELEMETRY_USAGE`, default `true` (T1.6, decision T1-g). Alternatives:
-  a runtime setting in a `telemetry` area (a settings admin can flip it without a restart,
-  but it needs a seam through `app` because `telemetry` sits below `settings`, and the
-  shell would need a public field to learn it), or default `false` (safest-looking, but the
-  counts hold nothing about a person by construction, and a default of off blinds every
-  regional that never reads the docs to the problems this amendment exists to find).
-- **Q-TEL-2. Is the `from` attribute on screen views (transition counts, T1-b) acceptable,
-  or should views be counted with no notion of "previous screen"?** Recommended: keep
-  `from`. It is a count of template-to-template transitions over everybody, never a sequence
-  of one visit, and it is what lets the project drop the per-tab ID entirely while still
-  seeing how people move between screens. Dropping it loses the flow picture and saves
-  nothing in privacy terms.
-- **Q-TEL-3. Should the browser send `browser` and `form_factor` classes with performance
-  samples (T1.4), or only the raw numbers?** Recommended: send the User-Agent as today and
-  let the server reduce it to four browser classes and two form factors, recorded only on the
-  three Web Vitals and `screen_ready` histograms. "Phone first" is a hard requirement
-  (web-shell decision 21) and a slow INP that is phone-only is the first thing a maintainer
-  will want to know; eight classes add no identifying power. The alternative is numbers only.
+- **Q-TEL-1** (where the usage off switch lives and its default): configuration, `BMS_TELEMETRY_USAGE`, default `true` (decision 32, T1.6).
+- **Q-TEL-2** (the `from` attribute on screen views): keep it (decision 27, T1-b).
+- **Q-TEL-3** (`browser` and `form_factor` on performance samples): send the User-Agent as today and let the server reduce it to four browser classes and two form factors, on the `screen_ready`, `lcp`, `inp` and `cls` histograms only (decision 33, T1.4).
 
 ## Proposed changes elsewhere
 
-Status as of 2026-10-18: the departments-events instrument (item 9 there) is applied. Status as of 2026-10-17: items 1, 2, 3, 5, 8, 10, 11, 13, 14 and 15 are applied; item 9 is
+Status as of 2026-10-28: Proposed changes 18 to 22, 25 and 26 (Amendment T1) are applied; 23 and 24 wait for their targets (deploy/observability, docs/telemetry.md). Status as of 2026-10-18: the departments-events instrument (item 9 there) is applied. Status as of 2026-10-17: items 1, 2, 3, 5, 8, 10, 11, 13, 14 and 15 are applied; item 9 is
 applied for `deploy/compose/.env.example` and Tempo's retention, and Prometheus's retention flag, and pending for
 Loki retention, the alert rules and `docs/operating.md`; item 12 is applied; item 6 is
 applied for `signals.md` and for `jobs.md` (2026-10-20, D43); item 4 is applied; item 7 waits for its
@@ -1880,8 +1928,7 @@ target to be written and are carried by this list until then.
     `telemetry` validates the `OTEL_*` variables it reads (this spec's table) at start.
 16. **`plan/design/notify.md` (row 11), the metric table:** (applied 2026-10-19, D39) add `bms.notify.enqueued{owner}`, `bms.notify.delivered{outcome}`, `bms.notify.outbox{status}` and `bms.notify.purged` to the instrument table, and the span names `notify.send`, `notify.tick`, `notify.deliver`, `notify.<use-case>` (Metrics table and Spans above).
 17. **`plan/design/files.md` (row 15b), the metric table** (applied 2026-10-20, D44, by files.md Proposed change 10): the six instruments above; spans `files.stage`, `files.attach`, `files.open`, `files.delete`, `files.reap`, `files.sweep`, `files.verify` and `objects.put|get|head|delete|list|ping` (Client, with `objects.kind`).
-18. **`plan/design/web-shell.md` (row 17)** (Amendment T1, Draft 2026-10-28; applies on
-    approval): (a) the reporter gains the `chunk` kind: a lazy route module that fails to
+18. (applied 2026-10-28, web-shell.md amendment) **`plan/design/web-shell.md` (row 17)** (Amendment T1, approved 2026-10-28): (a) the reporter gains the `chunk` kind: a lazy route module that fails to
     load (`TypeError` "Failed to fetch dynamically imported module", `ChunkLoadError`, or a
     rejected `import()` from the router's `lazy`) is reported once per asset path with
     `message` `chunk load failed <asset path>` (query and fragment stripped) and the screen
@@ -1913,7 +1960,7 @@ target to be written and are carried by this list until then.
     the collector's in-memory pending batch (not about a person; lives until flushed).
     (g) Decision 14's list is unchanged (T1.2). (h) The Playwright smoke run adds the one
     navigation that produces a `screen_view` and a `screen_ready`.
-19. **`plan/design/api.md` (row 16)** (Amendment T1, Draft 2026-10-28; applies on approval):
+19. (applied 2026-10-28, api.md amendment) **`plan/design/api.md` (row 16)** (Amendment T1, approved 2026-10-28):
     (a) mount `POST /api/client-events` as `AccessPublic` beside `/api/client-errors`
     (decision 20's shell-route list grows by one): decode under the 64 KiB
     `http.MaxBytesReader` into `intake.EventBatch` (unknown fields ignored), call
@@ -1933,7 +1980,7 @@ target to be written and are carried by this list until then.
     (T1.5); a test pins that `RouteTokens` and the span names agree. (d) The OpenAPI fragment
     for the shell routes documents `/api/client-events` with the `Event` schema and the
     response codes above.
-20. **`plan/design/telemetry.md` itself, on approval** (for `spec-editor`): fold T1.2–T1.4
+20. (applied 2026-10-28, folded into this spec's sections above) **`plan/design/telemetry.md` itself, on approval** (for `spec-editor`): fold T1.2–T1.4
     into "Interface" (the `intake` block gains `KindChunk`, `APICall.DurationMs`,
     `MaxDurationMs`, `Options.Screens`, `Options.Routes`, the `Event*` types, `UsageOptions`,
     `NewUsage`, `Usage.Accept`, the new constants), the instruments into the metrics table,
@@ -1944,7 +1991,7 @@ target to be written and are carried by this list until then.
     statistics" becomes "Analytics about people (profiles, journeys, return visits): nobody.
     Usage counts by screen template are this spec's (`intake.Usage`, T1) and hold nothing
     about a person or a visit."
-21. **`plan/design/app.md` (row 18)**: `app` calls `web.ClientManifest()` after `web.FS()`
+21. (applied 2026-10-28, app.md amendment) **`plan/design/app.md` (row 18)**: `app` calls `web.ClientManifest()` after `web.FS()`
     (`NotFound` or `Invalid`: one warning, empty lists; `bms check` reports "client manifest:
     missing" as a failure in a build that has a UI and as a note in one that has none), builds
     `intake.New` with `Options.Screens` (the manifest's patterns) and `Options.Routes`
@@ -1953,13 +2000,13 @@ target to be written and are carried by this list until then.
     Meter("usage"), clock}` and passes it as `api.Options.Usage`; `bms check` and the
     start-up line print `usage counts: on (<n> screens, <m> actions)` or `off`; the
     `openapi` command builds both services with `Enabled: false` and empty lists.
-22. **`plan/design/config.md` (row 3)**: a new section `Telemetry{Usage bool}` and catalogue
+22. (applied 2026-10-28, config.md F39) **`plan/design/config.md` (row 3)**: a new section `Telemetry{Usage bool}` and catalogue
     row `BMS_TELEMETRY_USAGE` (key `telemetry.usage`), default `true`, strict boolean (`true`
     or `false`; anything else is `Invalid` under `BMS_TELEMETRY_USAGE`, a new failure mode
     with its test), doc "count screen views, declared actions and Web Vitals by screen
     template, never by person; see docs/telemetry.md"; `app` copies it (item 21). "Not
     responsible for" is unchanged: `OTEL_*` stays here in telemetry.
-23. **`deploy/observability/` (new), `deploy/compose/docker-compose.yml`,
+23. (pending: target not written (deploy/observability)) **`deploy/observability/` (new), `deploy/compose/docker-compose.yml`,
     `deploy/compose/observability/*`**: add `deploy/observability/grafana/dashboards/*.json`
     (the six dashboards of T1.8), `deploy/observability/grafana/provisioning/dashboards.yaml`,
     `deploy/observability/alerts/bms.rules.yaml` (the rules of T1.8); the compose stack mounts
@@ -1969,17 +2016,17 @@ target to be written and are carried by this list until then.
     shared. Loki retention (telemetry Proposed change 9, pending) is set in the same change,
     so the stack states all three retentions. A `make observe` smoke step opens Grafana's
     dashboard list and checks the six are provisioned.
-24. **`docs/telemetry.md` (new)**: the participant-facing page of T1.7: both routes field by
+24. (pending: target not written (docs/telemetry.md)) **`docs/telemetry.md` (new)**: the participant-facing page of T1.7: both routes field by
     field in plain words, the retention of each sink, "by screen, never by person", GPC and
     DNT, how to turn usage counting off (`BMS_TELEMETRY_USAGE=false`), and that a signed-in
     person's error reports carry the account's ID. `docs/operating.md` (when written) links
     it and the dashboards. The demo's about text links the page.
-25. **`plan/07-abstractions.md`, `telemetry` entry and the `web` line**: "Owns" gains "the
+25. (applied 2026-10-28, 07-abstractions.md) **`plan/07-abstractions.md`, `telemetry` entry and the `web` line**: "Owns" gains "the
     usage intake (`intake.Usage`): screen views, declared actions, screen-ready time and Web
     Vitals as bounded metrics, never per person"; "Doesn't do" keeps "analytics about people"
     and gains "journeys, return visits, visit IDs"; `web` gains `ClientManifest()`; the api
     shell's line gains `/api/client-events` and `bms.api.errors`.
-26. **`.claude/skills/privacy-data/SKILL.md`, the "Never in the browser's storage, URLs or
+26. (applied 2026-10-28, privacy-data, go-conventions and add-module skills) **`.claude/skills/privacy-data/SKILL.md`, the "Never in the browser's storage, URLs or
     analytics" rule, and `.claude/skills/go-conventions/SKILL.md` "Logging and observability"**:
     privacy-data: add "bms's own usage counts (telemetry.md T1) are metrics by screen template
     and declared action, with no person, visit or record ID; a screen that wants an action

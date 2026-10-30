@@ -5,6 +5,8 @@
 - **Amendment V1 (raised 2026-10-21, approved 2026-10-23, D49):** what the build and the reviews found. A shift the caller cannot see is `NotFound` on every method, `Permission` only on a visible one (F77, F81, F100, F110 reworded; F143 to F146); the three long lists (`ListShifts`, `MySchedule`, `ListMembers`) page with an opaque `Cursor` and return `Next` (`Page`, `ShiftList`, `ScheduleList`, `MemberViewList`), `MySchedule` has an upcoming and a past mode (past newest first) and shows a booking someone else canceled until the shift ends (Q-VOL9, owner: yes); a lead may waive a requirement for themself, recorded and flagged like any waiver (Q-VOL7, owner: yes, 2026-10-22; the draft's `Invalid self` rule is withdrawn); legal names stay with `people.contacts.read` holders, so the `legal_name` group loses its `self` option and Proposed change 11 is dropped (Q-VOL8, owner: no); **playa names are unique across the installation and permanent once set, enforced by `people` (Amendment P1; owner 2026-10-22, Q-VOL10 and Q-VOL11 answered)**, so this module keeps no name check of its own and only requires that a person booking any shift has a playa name (decision 26, `Conflict unnamed`; the per-event rule, `name_taken`, `vol.NameKey` and F159, F159a, F159b, F160, F162, F163, F165 are withdrawn); a shift's event is immutable after creation (decision 28); `RecordList.SelfUpload` tells the person whether uploads are on; `ShiftSummary` carries `DepartmentName` and `PositionName`; `VerifyInput`/`RecordInput.NoExpiry` clears an expiry; the reminder re-enqueues itself at the jobs horizon instead of firing early or never; `CopyShifts` keeps wall-clock times in the destination event's zone; the two signal handlers enqueue the on-demand job `volunteers.cancel-shifts`, which cancels in batches; `signup.booked_as` (migration `0002`) keeps who booked after a lead's deletion; list wrappers use `omitzero` so an empty list is `{"items":[]}`; `Verified()` is `verified_at not null`; the UI places Assign in the manage section, opens certificates through `Attachments`, and has a "never expires" switch. The text below is the spec as amended; the record with the choices, the test expectations that change and the owner's questions is "Amendment V1" before Open questions.
 - **Amendment V2 (raised 2026-10-23, approved 2026-10-23, D50; rests on jobs Amendment J1):** the reminder's carry-forward past the horizon (decision 25) never happened in the real queue: the handler's `Enqueue` of its own `Key` ran while its row was `running`, which jobs decision 3 made a silent no-op, so a booking more than a year ahead was never reminded; and a shift moved within `DoneTTL` of a sent reminder was not reminded again either. Jobs J1 changes the key rule to "the latest request wins" (a request during the run is held and applied after it; a finished row is reopened), which makes decision 25 and the "reminded once more" sentence true **with no change to this module's code**. What changes here is the proof: F112a asserts the schedule (`jobstest.Fake.Queued()`), F112b drives a far booking across two horizons on a fake clock, F112c does it against the real runner, F151a moves a shift after its reminder was sent. The record is "Amendment V2" before Open questions. **D51 (2026-10-23):** `signup.waived boolean NOT NULL` (migration `0002`) keeps the waiver flag in the export and roster after the waiving lead is deleted (F154a); My volunteering's switch is two toggle buttons in a labelled group, not tabs.
 - **Amendment V3 (raised 2026-10-28, Draft, awaiting the owner; the design choice D52 asked for on Proposed change 4):** `shift`, `position` and `qualification` become regional words declared by this module (`Manifest.Terms`, `en` defaults in Go, mirrored by `module.volunteers.term.*` catalogue keys as the shell's boot fallback) and `lead` becomes a core term; one flat term namespace, a key declared by two enabled areas is a start-up `Invalid` whose fix is promoting the word to `CoreTerms`. No service, table, permission or route of this module changes; the record with the options, the mechanism (settings, module-contract, web-shell and app changes: Proposed changes 16 to 19) and Q-VOL12 is "Amendment V3" before Open questions. The text below is unchanged until the owner answers.
+- **Amendment 2026-10-28 (approved, owner, D53, demo.md Proposed change 7):** `ContributesTo` gains `demoseed.Point`; `Contributions()` returns a `demoseed.Provider` (`demo.go`) that seeds the fictional Ember Flats shifts; section "Amendment 2026-10-28" before Open questions; F171 to F174.
+- **Amendment D1 changes (raised 2026-10-28, Approved 2026-10-29, D56; demo.md "Amendment D1"):** the demo table as the build could run it: the lead is `department-admin` at five departments, has no records and holds Khaki by self-waiver; the pending upload is the participant's ICS-100; DPW gains "Inventory Crew"; an event without dates is `Invalid` (F175); the walk-on bookings are fixed. Sub-section under "Amendment 2026-10-28".
 - **Package:** `internal/modules/volunteers` (leaf `volunteers/vol`, `volunteers/postgres`)   **UI:** `web/src/modules/volunteers/`
 - **Depends on specs:** `model`, `lib-errs`, `lib-core` (`clock`, `validate`), `db`, `module-contract` (`Manifest`, `Deps`, `PersonData`, `moduletest`), `module-hello` (the shape to copy), `identity` (`PersonFrom`), `authz` (`Allow`, `AllowIn`, `ExtentOf`, starter roles), `people` (`Deps.People`, `contracts/personpage`), `departments-events` (`Deps.Departments`, `Deps.Events`, `contracts/eventsetup`, the two signals), `audit`, `signals`, `notify` (`Deps.Notify`, `Manifest.Templates`), `settings` (`Deps.Settings`), `privacy-tags` (Draft: `privacy.Group`, `Filter`, `Manifest.Views`/`Groups`), `jobs` (Draft: `Deps.Jobs`), `files` (Draft: `Deps.Files`, `ReadUpload`, `Serve`, the per-route body cap), `api` (`httpx`), `web-shell`, `app` (`modules.go` line)   **Used by:** `app` (registry), `people` (person-page section, `PersonData`), `events` (event set-up provider); later `incidents`, `afterreports` and a trust feature through the signals and the capability sketched under "Later"
 
@@ -360,7 +362,7 @@ package volunteers
 // errs.Invalid when a needed dependency is nil (F1); the service never degrades to
 // "no permission check" (hello's TestNew_NilAuthz_DeniesEverything rule).
 var Manifest = module.Manifest{ /* Name, Migrations, Templates, Permissions, Settings,
-	Publishes, Subscribes, ContributesTo: personpage.Point, eventsetup.Point */ }
+	Publishes, Subscribes, ContributesTo: personpage.Point, eventsetup.Point, demoseed.Point */ }
 func New(ctx context.Context, deps module.Deps) (module.Module, error)
 
 // Qualifications: the catalogue. Consumers: http.go (catalogue routes), SetRequirements
@@ -1076,6 +1078,76 @@ Raised by `go-reviewer`, `web-reviewer` and the main session against the Approve
 No new runtime failure mode: this module's Go code reads no term, and a term that is undeclared or unset renders as its default (shell) or as its key (notify), both of which the tests above make impossible for a built module.
 
 **V3.6 Owner question.** Q-VOL12 under Open questions: which words become regional terms now, and is `lead` a core word. V3 is built only after the owner answers and settings' part (Proposed change 16) is approved; until then this module keeps its fixed words, as the Approved text says.
+
+## Amendment 2026-10-28 (approved, owner, D53): the demo seed provider
+
+*Where the bullets below differ from "Amendment D1 changes" at the end of this amendment (the lead's five departments, the lead's records, the pending upload's owner, Inventory Crew, the bookings), the D1 changes win (Q-DEMO5, owner, 2026-10-29).*
+
+`ContributesTo` gains `demoseed.Point`; `Contributions()` returns a `demoseed.Provider` (`demo.go`, package `volunteers`). It runs only in demo mode, after the core's steps, against a database with no volunteers rows, and acts through this module's own services as the demo accounts (`req.Actors.As`), so every permission, audit and validation rule applies. It creates, in order:
+
+- **Qualifications.** As `steward` (org-wide ones need `qualifications.manage` site-wide): "ICS-100" (org-wide, no expiry) and "Over 18" (org-wide, no expiry). As `lead`: "Ranger training" (Rangers, 365-day validity). "First aid" (Medical, 730 days) is created by whichever actor holds `qualifications.manage` at Medical (the `steward`).
+- **Positions.** Dirt Ranger (Rangers, open, requires Ranger training and Over 18); Khaki (Rangers, members, requires Ranger training, ICS-100 and Over 18; the "shift lead" position); Gate Crew (Gate, open); Greeter (Greeters, open); Medic (Medical, members, requires First aid).
+- **Members.** The participant, the lead and six walk-ons in Rangers; four walk-ons in Medical.
+- **Records.** Ranger training and Over 18 verified for the participant, the lead and the Rangers walk-ons; ICS-100 verified for the lead; one **pending** self-upload (a generated 1x1 PNG certificate) for walk-on 02.
+- **Shifts** for the event, Thursday to Sunday in `Zone`: Dirt Ranger 08-14, 14-20, 20-02 with 4 slots; Khaki 07-15 and 15-23 with 1 slot; Gate Crew 10-14, 14-18, 18-22 with 3 slots; Greeter 10-14 and 14-18 with 3 slots; Medic 08-20 and 20-08 with 2 slots; plus one standing "Winter inventory" shift (no event) in DPW two weeks after the event.
+- **Sign-ups.** As `participant`: two Dirt Ranger shifts (Thursday 14-20, Saturday 08-14). As `lead`, `Assign` walk-ons so one Dirt Ranger shift is full, each Gate and Greeter shift has one booking, the lead holds Khaki on Friday, one assignment with `Waive: true` (walk-on 07 on Dirt Ranger without training); one shift canceled by the lead (Sunday 20-02 Dirt Ranger).
+
+Every booked person has a playa name (the core seed gives each one), which the `Conflict unnamed` rule requires. `Result.Items` counts the records created. Nothing here writes about a real person; the PNG and every name are generated constants.
+
+### Failure modes (added)
+
+| # | Method | Condition | errs kind | Caller is expected to | Test |
+|---|---|---|---|---|---|
+| F171 | demo `Seed` | an actor lacks a permission for its step (starter roles or table wrong) | Permission wrapped with the step | the seed fails; fix the table | `TestDemoSeed_ActorLacksPermission_ReturnsPermission` |
+| F172 | demo `Seed` | a row fails validation | Invalid wrapped | the seed fails | `TestDemoSeed_TableValidates` |
+| F173 | demo `Seed` | a booked person has no playa name | Conflict `unnamed` wrapped | the seed fails | `TestDemoSeed_EveryBookedPersonIsNamed` |
+| F174 | demo `Seed` | a normal run | — | `Result.Items` > 0, the counts above | `TestDemoSeed_CreatesTheDescribedData`; `moduletest.Conformance` with `WithDemoSeed()` |
+
+### Amendment D1 changes (raised 2026-10-28, Approved 2026-10-29, D56; demo.md "Amendment D1")
+
+The build of `demo.go` found the table above could not run as written. demo.md D1.1 to D1.7
+settle it; the table changes are these and they supersede the bullets above where they differ.
+The owner answered demo.md's Q-DEMO5 on 2026-10-29: one `lead` account may run five
+departments (a small burn has few volunteers, so one person leads several departments):
+
+- **Actors.** The `lead` holds `department-admin` at Rangers, Gate, Greeters, Medical and
+  DPW (demo.md D1.1), so every `lead` step below holds its permission. The `steward` still
+  creates the org-wide "ICS-100" and "Over 18" and Medical's "First aid" (unchanged).
+- **Positions** gain "Inventory Crew" (DPW, open, no requirements), created by the lead
+  (D1.4).
+- **Members** (D1.7): the participant, the lead and walk-ons 01 to 06 in Rangers; walk-ons
+  08 to 11 in Medical; walk-ons 07 and 12 in neither.
+- **Records** (D1.2, D1.3): Ranger training and Over 18 verified by the lead for the
+  participant and walk-ons 01 to 06; **no records for the lead** (`RecordQualification` and
+  `VerifyRecord` refuse `Invalid self`, and nobody else verifies at Rangers); the pending
+  self-upload (the generated 1x1 PNG) is the **participant's, for ICS-100**, as the last
+  record step, with `self_upload` at its default `true`.
+- **Shifts**: as above; the standing "Winter inventory" shift is on Inventory Crew, the day
+  14 days after the event's end day, 09:00 to 13:00 in the event's zone, 6 slots, location
+  "Warehouse". The event's dates come from `Deps.Events.InfoOf`; an event without dates fails
+  `Invalid` (`event`, `required`), F175, and the provider carries no default-date rule of its
+  own (D1.5; the conformance rule supplies dates, module-contract).
+- **Sign-ups** (D1.3, D1.7), all as `lead` except the participant's own: the participant
+  signs up for Dirt Ranger Thursday 14 to 20 and Saturday 08 to 14; Friday 08 to 14 Dirt
+  Ranger is full with walk-ons 01 to 04; Gate Crew, Thursday to Sunday, walk-on 09 on 10 to
+  14, 10 on 14 to 18, 11 on 18 to 22; Greeter, Thursday to Sunday, walk-on 12 on 10 to 14,
+  08 on 14 to 18; the lead holds Khaki Friday 07 to 15 by `Assign` with `Waive: true` on
+  themself (F152: a recorded, flagged self-waiver); walk-on 07 on Dirt Ranger Saturday 14 to
+  20 with `Waive: true` (no training, not a member; the position is open); Medic shifts stay
+  unbooked (nobody at Medical has First aid verified); Sunday 20 to 02 Dirt Ranger is
+  canceled by the lead with no bookings.
+- **Provider lifecycle** (D1.6): the provider may rely on `Start` having run (`Assign`
+  enqueues the reminder job `Start` registers); the conformance rule starts the module
+  first.
+
+| # | Method | Condition | errs kind | Caller is expected to | Test |
+|---|---|---|---|---|---|
+| F175 (D1) | demo `Seed` | the event has no dates | Invalid (`event`, `required`) | the seed fails; the core always gives dates, so this is a fake set up wrong | `TestDemoSeed_EventWithoutDates_ReturnsInvalid` |
+
+Tests that change: `TestDemoSeed_CreatesTheDescribedData`'s counts (five departments' worth
+of lead work, one pending record for the participant, no lead records, the Inventory Crew
+position, two waivers); `TestDemoSeed_ActorLacksPermission_ReturnsPermission` now proves
+F171 with the lead's Gate grant removed from the fake.
 
 ## Open questions
 

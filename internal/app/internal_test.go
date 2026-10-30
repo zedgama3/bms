@@ -19,12 +19,14 @@ import (
 
 	"github.com/zedgama3/bms/internal/api"
 	"github.com/zedgama3/bms/internal/config"
+	"github.com/zedgama3/bms/internal/contracts/demoseed"
 	"github.com/zedgama3/bms/internal/contracts/eventsetup"
 	"github.com/zedgama3/bms/internal/contracts/membership"
 	"github.com/zedgama3/bms/internal/contracts/personpage"
 	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/db"
+	"github.com/zedgama3/bms/internal/core/demo"
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/module"
 	"github.com/zedgama3/bms/internal/core/settings"
@@ -77,6 +79,29 @@ func TestValueOf_EveryKeyRendered_SecretsRedacted(t *testing.T) {
 		}
 		if k.Secret && got != "[redacted]" {
 			t.Errorf("valueOf(%s) = %q, want [redacted]", k.Env, got)
+		}
+	}
+	// The D53 and D54 keys render their real value, not the unknown-key marker.
+	cfg.Demo.Enabled = true
+	cfg.Demo.PublicURL = "https://demo.example.org"
+	cfg.Telemetry.Usage = false
+	want := map[string]string{
+		"BMS_DEMO_ENABLED":    "true",
+		"BMS_DEMO_PUBLIC_URL": "https://demo.example.org",
+		"BMS_TELEMETRY_USAGE": "false",
+	}
+	found := map[string]bool{}
+	for _, k := range config.Keys() {
+		if w, ok := want[k.Env]; ok {
+			found[k.Env] = true
+			if got := valueOf(cfg, k); got != w {
+				t.Errorf("valueOf(%s) = %q, want %q", k.Env, got, w)
+			}
+		}
+	}
+	for env := range want {
+		if !found[env] {
+			t.Errorf("config.Keys() lacks %s", env)
 		}
 	}
 }
@@ -220,7 +245,7 @@ func TestAssembly_CorePermsStartWithModulesRead(t *testing.T) {
 
 // coreOrder is the order in which the core's services plug in (app.md "How later core
 // services plug in"); coreParts must be a subsequence of it.
-var coreOrder = []string{"audit", "identity", "settings", "authz", "people", "departments", "events", "jobs", "notify", "files"}
+var coreOrder = []string{"audit", "identity", "settings", "authz", "people", "departments", "events", "jobs", "notify", "files", "demo"}
 
 func TestParts_OrderAndNames_Pinned(t *testing.T) {
 	pos := -1
@@ -706,8 +731,8 @@ func TestCoreParts_Declare_SetsPermissionsSignalAndCommand(t *testing.T) {
 	for _, s := range a.coreSets {
 		sets = append(sets, s.Name)
 	}
-	if got := strings.Join(sets, ","); got != "identity,people,authz,departments,events,audit,settings,jobs,notify,files" {
-		t.Errorf("core migration sets = %s, want identity,people,authz,departments,events,audit,settings,jobs,notify,files (db.md order, not part order)", got)
+	if got := strings.Join(sets, ","); got != "identity,people,authz,departments,events,audit,settings,jobs,notify,files,demo" {
+		t.Errorf("core migration sets = %s, want identity,people,authz,departments,events,audit,settings,jobs,notify,files,demo (db.md order, not part order)", got)
 	}
 	var perms []string
 	for _, d := range a.corePerms {
@@ -733,8 +758,8 @@ func TestCoreParts_Declare_SetsPermissionsSignalAndCommand(t *testing.T) {
 			t.Errorf("coreSignals = %v lacks %s", a.coreSignals, want)
 		}
 	}
-	if len(a.corePoints) != 3 || a.corePoints[0].Name != personpage.Point || a.corePoints[1].Name != membership.Point || a.corePoints[2].Name != eventsetup.Point {
-		t.Errorf("corePoints = %v, want %s, %s then %s", a.corePoints, personpage.Point, membership.Point, eventsetup.Point)
+	if len(a.corePoints) != 4 || a.corePoints[3].Name != demoseed.Point || a.corePoints[0].Name != personpage.Point || a.corePoints[1].Name != membership.Point || a.corePoints[2].Name != eventsetup.Point {
+		t.Errorf("corePoints = %v, want %s, %s, %s then %s", a.corePoints, personpage.Point, membership.Point, eventsetup.Point, demoseed.Point)
 	}
 	for _, pt := range a.corePoints {
 		if pt.Accepts(struct{}{}) {
@@ -1009,8 +1034,8 @@ func TestCheckSchemas_CoreAndModuleSets_ReportedTogether(t *testing.T) {
 	if !errs.Is(err, errs.Conflict) {
 		t.Fatalf("err = %v, want Conflict", err)
 	}
-	if got := strings.Join(checked, ","); got != "identity,people,authz,departments,events,audit,settings,jobs,notify,files,zqmod" {
-		t.Errorf("checked = %s, want identity,people,authz,departments,events,audit,settings,jobs,notify,files,zqmod (every set, none stopped the rest, no schema-less module)", got)
+	if got := strings.Join(checked, ","); got != "identity,people,authz,departments,events,audit,settings,jobs,notify,files,demo,zqmod" {
+		t.Errorf("checked = %s, want identity,people,authz,departments,events,audit,settings,jobs,notify,files,demo,zqmod (every set, none stopped the rest, no schema-less module)", got)
 	}
 	// The first problem that is not a Conflict decides the kind, not the last.
 	mixed := schemaFunc(func(_ context.Context, name string, _ fs.FS) error {
@@ -1034,7 +1059,7 @@ func TestCheckSchemas_CoreAndModuleSets_ReportedTogether(t *testing.T) {
 	if err := a.checkSchemas(context.Background(), core, []module.Manifest{{Name: "zqmod", Migrations: fstest.MapFS{}}}); err != nil {
 		t.Errorf("current core sets: %v", err)
 	}
-	if got := strings.Join(checked, ","); got != "identity,people,authz,departments,events,audit,settings,jobs,notify,files" {
+	if got := strings.Join(checked, ","); got != "identity,people,authz,departments,events,audit,settings,jobs,notify,files,demo" {
 		t.Errorf("checked = %s, want only the core sets when they are current", got)
 	}
 	unavailable := schemaFunc(func(context.Context, string, fs.FS) error {
@@ -1324,6 +1349,41 @@ func TestMigrateStatus_FailingFileIsExit1_MigratorConflictIsExit3(t *testing.T) 
 		t.Run(tc.name, func(t *testing.T) {
 			if got := migrateStatus(tc.err); got != tc.want {
 				t.Errorf("migrateStatus = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+// demoStatus: 2 for demo off and the demo's own conflicts, the migrate command's mapping for
+// the reset's migrate step (3 when the schema is behind), 1 for anything else, including a
+// provider's Conflict with or without a field.
+func TestDemoStatus_Table(t *testing.T) {
+	conflict := func(field, code string) error {
+		return errs.E("test", errs.Conflict, &validate.FieldError{Field: field, Code: code, Reason: "x"})
+	}
+	tests := []struct {
+		name string
+		err  error
+		want int
+	}{
+		{"demo off", errs.E("test", errs.Unsupported, errors.New("off")), ExitUsage},
+		{"seeded conflict", conflict(demo.ConflictField, demo.CodeSeeded), ExitUsage},
+		{"not_empty conflict", conflict(demo.ConflictField, demo.CodeNotEmpty), ExitUsage},
+		{"not_demo conflict", conflict(demo.ConflictField, demo.CodeNotDemo), ExitUsage},
+		{"the reset's migrate step found the schema behind", fmt.Errorf("reset: %w: %w", demo.ErrMigrate, errs.E("test", errs.Conflict, errors.New("schema behind"))), ExitSchema},
+		{"the reset's migrate step failed otherwise", fmt.Errorf("reset: %w: %w", demo.ErrMigrate, errs.E("test", errs.Unavailable, errors.New("down"))), ExitFailure},
+		{"a provider conflict without a field", fmt.Errorf("module:volunteers: %w", errs.E("test", errs.Conflict, errors.New("clash"))), ExitFailure},
+		{"provider conflict with a field", fmt.Errorf("module:volunteers: %w", conflict("person", "unnamed")), ExitFailure},
+		{"a wrapped demo conflict", fmt.Errorf("seed: %w", conflict(demo.ConflictField, demo.CodeSeeded)), ExitUsage},
+		{"permission", errs.E("test", errs.Permission, errors.New("no")), ExitFailure},
+		{"invalid", errs.E("test", errs.Invalid, errors.New("bad")), ExitFailure},
+		{"unavailable", errs.E("test", errs.Unavailable, errors.New("down")), ExitFailure},
+		{"internal", errors.New("unclassified"), ExitFailure},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := demoStatus(tc.err); got != tc.want {
+				t.Errorf("demoStatus = %d, want %d", got, tc.want)
 			}
 		})
 	}

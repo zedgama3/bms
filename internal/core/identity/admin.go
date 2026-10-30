@@ -139,9 +139,10 @@ func (s *Service) GetAccount(ctx context.Context, id model.AccountID) (_ Account
 
 // manage runs an account admin's change in one Write transaction: it loads the target
 // (NotFound, F41), refuses the superuser account (Permission, F39) and the actor's own
-// (Invalid, field account, code self, F40), then calls change with the target. Doing the
+// (Invalid, field account, code self, F40), refuses a protected account when guarded
+// (Permission, field account, code protected; D53), then calls change with the target. Doing the
 // load inside the transaction makes a read-only copy fail first (F42).
-func (s *Service) manage(ctx context.Context, op string, actor Session, id model.AccountID, change func(ctx context.Context, target account.Record) error) error {
+func (s *Service) manage(ctx context.Context, op string, actor Session, id model.AccountID, guarded bool, change func(ctx context.Context, target account.Record) error) error {
 	return wrap(op, s.db.Transact(ctx, db.Write, func(ctx context.Context) error {
 		target, err := s.store.ByIDNoHash(ctx, id)
 		if err != nil {
@@ -153,6 +154,11 @@ func (s *Service) manage(ctx context.Context, op string, actor Session, id model
 		if target.ID == actor.Account {
 			return fieldInvalid(op, "account", codeSelf, "cannot be your own account")
 		}
+		if guarded {
+			if err := s.checkProtected(ctx, op, target.ID); err != nil {
+				return err
+			}
+		}
 		return change(ctx, target)
 	}))
 }
@@ -161,7 +167,9 @@ func (s *Service) manage(ctx context.Context, op string, actor Session, id model
 // (Permission, F39) and the actor's own account (Invalid, field account, code self, F40).
 // In one Write transaction it sets disabled_at, ends every session of the account and
 // records identity.account.disabled. Already disabled: nil, nothing recorded (decision 11,
-// F49). Fails NotFound (F41), Unavailable wrapping db.ErrReadOnly (F42).
+// F49). Fails NotFound (F41), Permission (field account, code protected) for an account
+// the Guard protects (F104), Unavailable wrapping db.ErrReadOnly (F42), the Guard's kind when
+// it fails (F108).
 func (s *Service) DisableAccount(ctx context.Context, id model.AccountID) (err error) {
 	const op = "identity.Service.DisableAccount"
 	ctx, span := s.start(ctx, "disable-account")
@@ -171,7 +179,7 @@ func (s *Service) DisableAccount(ctx context.Context, id model.AccountID) (err e
 	if err != nil {
 		return err
 	}
-	return s.manage(ctx, op, actor, id, func(ctx context.Context, t account.Record) error {
+	return s.manage(ctx, op, actor, id, true, func(ctx context.Context, t account.Record) error {
 		changed, err := s.store.Disable(ctx, t.ID, s.now())
 		if err != nil || !changed {
 			return wrap(op, err)
@@ -193,7 +201,7 @@ func (s *Service) EnableAccount(ctx context.Context, id model.AccountID) (err er
 	if err != nil {
 		return err
 	}
-	return s.manage(ctx, op, actor, id, func(ctx context.Context, t account.Record) error {
+	return s.manage(ctx, op, actor, id, false, func(ctx context.Context, t account.Record) error {
 		changed, err := s.store.Enable(ctx, t.ID, s.now())
 		if err != nil || !changed {
 			return wrap(op, err)
@@ -208,7 +216,8 @@ func (s *Service) EnableAccount(ctx context.Context, id model.AccountID) (err er
 // actor's own account (F37-F41). It generates a GeneratedPasswordLength password, stores
 // its hash, sets password_change_required, ends every session of the account, records
 // identity.password.temporary-set and returns the password once. Not idempotent: each call
-// is a new password and a new entry. Fails Unavailable wrapping db.ErrReadOnly (F42),
+// is a new password and a new entry. Fails Permission (field account, code protected) for an
+// account the Guard protects (F103), Unavailable wrapping db.ErrReadOnly (F42),
 // Internal when the random source fails (F43).
 func (s *Service) SetTemporaryPassword(ctx context.Context, id model.AccountID) (_ secret.Secret, err error) {
 	const op = "identity.Service.SetTemporaryPassword"
@@ -231,7 +240,7 @@ func (s *Service) SetTemporaryPassword(ctx context.Context, id model.AccountID) 
 	if err != nil {
 		return secret.Secret{}, err
 	}
-	err = s.manage(ctx, op, actor, id, func(ctx context.Context, t account.Record) error {
+	err = s.manage(ctx, op, actor, id, true, func(ctx context.Context, t account.Record) error {
 		if _, err := s.store.SetTemporaryPassword(ctx, t.ID, hash, s.now()); err != nil {
 			return wrap(op, err)
 		}

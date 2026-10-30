@@ -314,6 +314,21 @@ describe("failures", () => {
   });
 });
 
+describe("duration (D54)", () => {
+  it("a failed call carries the wall time the client measured, capped at the upload timeout", async () => {
+    vi.useFakeTimers();
+    installFetch(async () => {
+      await new Promise((r) => setTimeout(r, 1500));
+      return problem(500, { code: "internal" });
+    });
+    const p = failure(api.GET("/api/modules"));
+    await vi.advanceTimersByTimeAsync(1600);
+    const e = await p;
+    expect(e.durationMs).toBeGreaterThanOrEqual(1500);
+    expect(e.durationMs).toBeLessThan(UPLOAD_TIMEOUT_MS);
+  });
+});
+
 describe("the codes table", () => {
   it("is pinned against web/openapi.json", () => {
     const desc = openapi.components.schemas.Problem.properties.code.description;

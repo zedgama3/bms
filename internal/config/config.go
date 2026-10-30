@@ -38,16 +38,18 @@ const (
 // safe to copy, share, marshal and log (every credential is a secret.Secret). The zero
 // value is not usable; start from Default() or Load.
 type Config struct {
-	Instance Instance
-	DB       DB
-	HTTP     HTTP
-	Session  Session
-	Settings Settings
-	Secrets  Secrets
-	Log      Log
-	Data     Data
-	Files    Files
-	Modules  Modules
+	Instance  Instance
+	DB        DB
+	HTTP      HTTP
+	Session   Session
+	Settings  Settings
+	Secrets   Secrets
+	Log       Log
+	Data      Data
+	Files     Files
+	Demo      Demo
+	Telemetry Telemetry
+	Modules   Modules
 }
 
 // Instance identifies this process among the copies of one installation (D27: on-site and
@@ -194,6 +196,31 @@ type Files struct {
 	S3SecretKey secret.Secret
 }
 
+// MaxDemoPublicURLBytes caps Demo.PublicURL.
+const MaxDemoPublicURLBytes = 256
+
+// Demo is the public-demo switch (D53, demo.md). With Enabled false (the default) the demo
+// part declares its empty tables and nothing else.
+type Demo struct {
+	// Enabled is BMS_DEMO_ENABLED: exactly "true" or "false". Default false.
+	Enabled bool
+	// PublicURL is BMS_DEMO_PUBLIC_URL: the demo's canonical public URL, written to
+	// regional.public_url by the seed. Empty allowed. When set: an http or https URL with a
+	// host, no query, fragment or userinfo, at most MaxDemoPublicURLBytes bytes. Load stores
+	// the canonical form (lower-case scheme and host, the default port dropped, trailing
+	// slashes removed); Validate requires that form, so a hand-built Config must give it.
+	// Setting it while Enabled is false is an error: an operator who set it meant demo mode.
+	PublicURL string
+}
+
+// Telemetry is the client-telemetry switch (D54, telemetry.md T1).
+type Telemetry struct {
+	// Usage is BMS_TELEMETRY_USAGE: count screen views, declared actions and Web Vitals by
+	// screen template, never by person. Exactly "true" or "false". Default true. False:
+	// POST /api/client-events answers 501 and the shell stops sending. A restart changes it.
+	Usage bool
+}
+
 // Modules is the opt-out list of module-contract decision 7.
 type Modules struct {
 	// Disabled names compiled-in modules not to run. Default empty: every compiled-in
@@ -227,5 +254,6 @@ func Default() Config {
 			Store: FilesDisk, Dir: filepath.Join(dataDir, "files"),
 			S3Region: "us-east-1", S3PathStyle: true,
 		},
+		Telemetry: Telemetry{Usage: true},
 	}
 }

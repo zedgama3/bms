@@ -84,6 +84,32 @@ describe("validateRegistry", () => {
     ).toThrow(/loader or action/);
   });
 
+  it("F51: bad action names are refused", () => {
+    const ok = ["shift.filter", "dialog.open_help", "a1.b2.c3"];
+    expect(validateRegistry([set({ actions: ok })])).toHaveLength(1);
+    expect(validateRegistry([set()])).toHaveLength(1);
+    for (const bad of [
+      "single",
+      "Upper.case",
+      "a.b.c.d",
+      "1a.b",
+      "a..b",
+      "a.b-c",
+      "",
+      "a.b ",
+      "a." + "x".repeat(70),
+    ]) {
+      expect(() => validateRegistry([set({ actions: [bad] })]), bad).toThrow(RegistryError);
+    }
+    expect(() => validateRegistry([set({ actions: ["a.b", "a.b"] })])).toThrow(/declared twice/);
+  });
+
+  it("D53: `demo` is reserved for modules but core/demo may use it", () => {
+    expect(() => validateRegistry([set({ name: "demo" })])).toThrow(/reserved/);
+    expect(validateRegistry([set({ name: "demo", kind: "core" })])).toHaveLength(1);
+    expect(() => validateRegistry([set({ name: "admin", kind: "core" })])).toThrow(/reserved/);
+  });
+
   it("F21: a set without en is refused", () => {
     expect(() => validateRegistry([set({ messages: { es: () => Promise.resolve({}) } })])).toThrow(
       /messages\.en/,

@@ -32,17 +32,20 @@ const (
 // Listen, while serving, and after Shutdown returns (Handler and OpenAPI keep answering;
 // Listen fails; Serve and a second Shutdown return nil).
 type Server struct {
-	opts    Options
-	log     *slog.Logger
-	hist    telemetry.Histogram
-	mux     *http.ServeMux
-	known   map[string]bool        // every pattern registered through mount, and "/api/"
-	owners  map[string]string      // pattern -> the set that owns it, for conflict messages
-	limits  map[string]routeLimits // pattern -> the route's raised body cap and deadline
-	trusted trustedSet
-	cop     *http.CrossOriginProtection
-	csp     string
-	ui      fs.FS
+	opts Options
+	log  *slog.Logger
+	hist telemetry.Histogram
+	// apiErrors counts error responses by method, route and code (D54).
+	apiErrors telemetry.Counter
+	mux       *http.ServeMux
+	known     map[string]bool        // every pattern registered through mount, and "/api/"
+	owners    map[string]string      // pattern -> the set that owns it, for conflict messages
+	limits    map[string]routeLimits // pattern -> the route's raised body cap and deadline
+	trusted   trustedSet
+	cop       *http.CrossOriginProtection
+	csp       string
+	ui        fs.FS
+	noIndex   bool
 
 	openapi    []byte
 	etag       string
@@ -92,6 +95,7 @@ func New(opts Options) (*Server, error) {
 		cop:     http.NewCrossOriginProtection(),
 		csp:     opts.ContentSecurityPolicy,
 		ui:      opts.UI,
+		noIndex: opts.NoIndex,
 		misd:    newMisdirectLog(opts.Logger),
 	}
 	if s.csp == "" {
@@ -110,6 +114,10 @@ func New(opts Options) (*Server, error) {
 		return nil, fmt.Errorf("%s: request duration histogram: %w", op, err)
 	}
 	s.hist = hist
+	if s.apiErrors, err = opts.Meter.Counter("bms.api.errors",
+		telemetry.WithUnit("{response}"), telemetry.WithDescription("Error responses by route and problem code")); err != nil {
+		return nil, fmt.Errorf("%s: error counter: %w", op, err)
+	}
 
 	sets, err := s.mountAll()
 	if err != nil {

@@ -38,7 +38,7 @@ When in doubt, pick the higher level.
   workflow asks).
 - **Never in logs, signals, notifications or error messages.** Use IDs. An e-mail
   notification says "a new incident was assigned to you" with a link, never the narrative.
-- **Never in the browser's storage, URLs or analytics.** There's no third-party analytics.
+- **Never in the browser's storage, URLs or analytics.** There's no third-party analytics. bms's own usage counts (`plan/design/telemetry.md` T1) are metrics by screen template and declared action, with no person, visit or record ID; a screen that wants an action counted declares the name in its `ScreenSet.actions` and calls `trackAction`; nothing a person typed, chose or looked at goes into one.
 - **Never real data in development.** Fixtures, seeds, screenshots and tests use invented
   people.
 - **Retention is a setting** per module and level, with a job that enforces it. The

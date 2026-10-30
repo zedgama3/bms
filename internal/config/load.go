@@ -51,7 +51,7 @@ func Load(ctx context.Context, environ []string) (Config, error) {
 		return Config{}, err
 	}
 	for _, p := range l.cfg.problems() {
-		if !l.failed[positionOf(p.field)] {
+		if !l.failed[positionOf(p.field)] && !l.demoFollowUp(p) {
 			l.probs = append(l.probs, p)
 		}
 	}
@@ -68,6 +68,20 @@ func Load(ctx context.Context, environ []string) (Config, error) {
 		return Config{}, acc.Err() //nolint:wrapcheck // Err already carries Op and errs.Invalid
 	}
 	return l.cfg, nil
+}
+
+// demoFollowUp reports whether p is the "requires BMS_DEMO_ENABLED" problem raised only
+// because BMS_DEMO_ENABLED itself failed to parse: the operator has one thing to fix.
+func (l *loader) demoFollowUp(p problem) bool {
+	if p.field != envOf("demo.public_url") || !l.failed[positionOf(envOf("demo.enabled"))] {
+		return false
+	}
+	for _, fe := range validate.Fields(p.err) {
+		if fe.Code == codeConflict {
+			return true
+		}
+	}
+	return false
 }
 
 // ctxErr returns nil while ctx is live, else Canceled or Timeout.
@@ -135,6 +149,9 @@ func (l *loader) readKeys(ctx context.Context) error {
 // key failed and reports it as unset.
 func (l *loader) value(ctx context.Context, e entry) (text string, set bool, err error) {
 	raw := l.env[e.Env]
+	if e.strict {
+		return raw, raw != "", nil
+	}
 	if !e.Secret {
 		raw = strings.TrimSpace(raw)
 		return raw, raw != "", nil

@@ -20,6 +20,10 @@ export interface ScreenSet {
   readonly nav: readonly NavEntry[];
   /** Message catalogues by language tag, loaded on demand. `en` is required (F21). */
   readonly messages: Readonly<Record<string, () => Promise<Messages>>>;
+  /** The usage actions this set's screens report with `trackAction` (D54): names like
+   *  `shift.filter`, `[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*){1,2}`, at most 64 bytes, unique within
+   *  the set. A name not declared here is dropped. */
+  readonly actions?: readonly string[];
 }
 
 export interface NavEntry {

@@ -94,3 +94,56 @@ func TestAccept_AddressTableFull_EvictsIdle(t *testing.T) {
 		}
 	}
 }
+
+func TestUsageModuleOf_Table(t *testing.T) {
+	c := telemetrytest.New(t)
+	u, err := NewUsage(UsageOptions{
+		Logger: c.Logger(), Meter: c.Meter("usage"), Clock: clock.NewFake(time.Now()), Enabled: true,
+		Modules: map[string]string{"/login": "shell", "/volunteers/shifts": "volunteers"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ screen, want string }{
+		{"/login", "shell"}, // the manifest's set wins
+		{"/volunteers/shifts", "volunteers"},
+		{"/people/{id}", "people"}, // not in the map: the first segment
+		{"/", "shell"},
+		{"/{id}", "shell"}, // a first segment that is not a name
+		{OtherToken, OtherToken},
+	} {
+		if got := u.moduleOf(tc.screen); got != tc.want {
+			t.Errorf("moduleOf(%q) = %q, want %q", tc.screen, got, tc.want)
+		}
+	}
+}
+
+func TestFolder_AllowlistAndCap(t *testing.T) {
+	var listed, capped folder
+	if err := listed.setup("screens", []string{"/a", "/b"}, 1, EntryToken); err != nil {
+		t.Fatal(err)
+	}
+	if err := capped.setup("screens", nil, 2); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		f          *folder
+		in, want   string
+		wantFolded bool
+	}{
+		{&listed, "/a", "/a", false},
+		{&listed, EntryToken, EntryToken, false},
+		{&listed, "/c", OtherToken, true},
+		{&capped, "/x", "/x", false},
+		{&capped, "/y", "/y", false},
+		{&capped, "/x", "/x", false}, // admitted values keep passing
+		{&capped, "/z", OtherToken, true},
+	} {
+		if got, folded := tc.f.fold(tc.in); got != tc.want || folded != tc.wantFolded {
+			t.Errorf("fold(%q) = %q, %v; want %q, %v", tc.in, got, folded, tc.want, tc.wantFolded)
+		}
+	}
+	if err := (&folder{}).setup("screens", []string{"has space"}, 1); err == nil {
+		t.Error("a non-token entry was accepted")
+	}
+}

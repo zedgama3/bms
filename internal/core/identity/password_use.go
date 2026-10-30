@@ -19,8 +19,10 @@ import (
 // bumps the session generation and records identity.password.changed, and issues a new
 // session with the new generation (every other session ends). A wrong Current counts in the
 // sign-in limiter's buckets (the client address and the account's address): Unavailable
-// wrapping httpx.ErrRateLimited once they are full. Fails Unavailable wrapping
-// db.ErrReadOnly (F28).
+// wrapping httpx.ErrRateLimited once they are full. Fails Permission (field account, code
+// protected) when the Guard protects the account (F103; checked before the password is
+// verified, so it costs no limiter slot), the Guard's kind when it fails (F108), and
+// Unavailable wrapping db.ErrReadOnly (F28).
 func (s *Service) ChangePassword(ctx context.Context, c PasswordChange) (_ Issued, err error) {
 	const op = "identity.Service.ChangePassword"
 	ctx, span := s.start(ctx, "change-password")
@@ -41,6 +43,9 @@ func (s *Service) ChangePassword(ctx context.Context, c PasswordChange) (_ Issue
 		return Issued{}, errs.E(op, errs.Unauthenticated, errNoSession)
 	case err != nil:
 		return Issued{}, fmt.Errorf("%s: %w", op, err)
+	}
+	if err := s.checkProtected(ctx, op, rec.ID); err != nil {
+		return Issued{}, err
 	}
 	if c.Current == "" {
 		return Issued{}, fieldInvalid(op, "current_password", codeRequired, "must be set")

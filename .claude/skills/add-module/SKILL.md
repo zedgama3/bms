@@ -116,7 +116,7 @@ The template to copy is the `hello` reference module (`plan/design/module-hello.
   - to **react** when something happens, subscribe to a **signal** (domain event, D24).
   - Declare all of it in the manifest.
   - In the browser the same rule: a module's screens call only `/api/<name>/` and the
-    core's routes, and import only `@/api`, `@/i18n`, `@/ui`, `@/registry/types` and
+    core's routes, and import only `@/api`, `@/i18n`, `@/ui`, `@/usage`, `@/registry/types` and
     themselves; another module's data comes through a contract the owning module renders.
     ESLint and `scripts/check-web-module-imports.sh` (`make imports`) enforce it.
 - **Audit what the privacy rules say to audit** (`audit.md`; `deps.Audit` is scoped to the
@@ -150,6 +150,8 @@ The template to copy is the `hello` reference module (`plan/design/module-hello.
 - **Files** (M4, D44): `deps.Files` is a `files.Store` scoped to the module. An upload is `Stage` before the module's transaction and `Attach` inside its `Write` transaction with the record, with a deferred `Discard`; `Delete` and `DeleteByRecord` run inside the module's `Write` transaction; serve content from the module's own route after its permission check with `files.Open` and `files.Serve`, never through a public route unless the file's level is `public`, and never through a store URL; the level and `Subject` declared at `Attach` come from the module's spec (later from the field's privacy tag); `DeletePerson` deletes every file whose subject is the person; tests use `filestest.NewFake(Manifest.Name)`.
 - **Privacy tags** (D44): the manifest carries `Views` (the response types) and `Groups`; every exported field of a response type has a `privacy` tag (`plan/design/privacy-tags.md`); the service calls `privacy.Filter` in every use case that returns a response type and audits what it reports; `visibility_<group>` catalogue keys go in `en.json`.
 - **Notifications** (M4, D39, D40): `deps.Notify` is a `notify.Notifier` scoped to the module. `Send` enqueues on the caller's `Write` transaction (the message commits or rolls back with the change) with a template `<name>.<ident>`, a recipient person, an idempotency `Key`, `Vars` (nothing `sensitive`, nothing personal about anyone but the recipient) and an optional `Link` path. Ship templates as `Manifest.Templates` files `<ident>.<lang>.tmpl` (every ident needs `en`; titles `module.<name>.template.<ident>.title`). Ask `deps.Notify.Configured(ctx)` before work whose outcome must not depend on the recipient (a public route that would otherwise answer differently for a known and an unknown address); otherwise call `Send` and treat `Unsupported` as "no e-mail" (log once, continue). Pass a short `TTL` for anything carrying a one-time link. Tests use `notifytest.NewFake(Manifest.Name)` and assert with `Fake.Sent()`.
+- **Client-side actions the screen counts** (D54): declare their names in the `ScreenSet`'s `actions` (`[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*){1,2}`) and call `trackAction(name)` from `@/usage`; an undeclared name is dropped. Business actions are counted server-side in the service, never by the browser.
+- **Demo data** (D53): a module that wants data on the public demo adds `demo.go` with a `demoseed.Provider`, sets `ContributesTo: demoseed.Point`, returns the provider from `Contributions()`, and acts only through its own services as the demo accounts it is given (`req.Actors.As`), with invented data only; the provider may rely on `Start` having run (the conformance rule and `bms demo seed` start the module first) and on the event having dates; its conformance test passes `WithDemoSeed()`.
 - **Terminology comes from settings.** A regional that calls them "theme villages" instead of
   "theme camps" changes a setting, not code.
 - **The module works with zero optional settings changed.** Defaults are sensible.
@@ -161,8 +163,9 @@ The template to copy is the `hello` reference module (`plan/design/module-hello.
 - [ ] Migrations apply cleanly on an empty database and on one with the previous release
 - [ ] Every permission rule and failure mode has a test; `moduletest.Conformance` passes
       (with `WithSeed`, or `WithoutPersonData` when the spec's Data section lists nothing about
-      a person, and `WithCapability` for each capability required or used)
+      a person, `WithCapability` for each capability required or used, and `WithDemoSeed()`
+      when the module contributes demo data)
 - [ ] Export and delete for one person are tested
 - [ ] `make check` passes, including `make imports`
-- [ ] UI reviewed by `web-reviewer`
+- [ ] UI reviewed by `web-reviewer`; `actions` declared on the `ScreenSet` for any client-side action the screen counts
 - [ ] A short `docs/modules/<name>.md` for regionals: what it does, its settings and roles

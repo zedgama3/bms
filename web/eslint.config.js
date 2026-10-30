@@ -5,8 +5,8 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 import bms from "./eslint-rules/logical-properties.js";
 
-// Module and core-area folders may import only @/api, @/i18n, @/ui, @/registry/types and
-// themselves (decision 4).
+// Module and core-area folders may import only @/api, @/i18n, @/ui, @/usage, @/registry/types
+// and themselves (decision 4).
 const setImportBan = {
   patterns: [
     {
@@ -26,9 +26,9 @@ const setImportBan = {
       message: "Import only @/registry/types.",
     },
     {
-      group: ["@/api/*", "@/i18n/*", "@/ui/*"],
+      group: ["@/api/*", "@/i18n/*", "@/ui/*", "@/usage/*"],
       message:
-        "Import @/api, @/i18n and @/ui only; their subpaths (internal.ts, client.ts, ...) are frame-private.",
+        "Import @/api, @/i18n, @/ui and @/usage only; their subpaths (internal.ts, client.ts, ...) are frame-private.",
     },
   ],
 };
@@ -152,6 +152,11 @@ export default tseslint.config(
         { object: "document", property: "cookie", message: "The shell never touches cookies." },
       ],
     },
+  },
+  // The usage collector's one development-only warning (an undeclared action, F49).
+  {
+    files: ["src/shell/usage.ts"],
+    rules: { "no-console": ["error", { allow: ["warn"] }] },
   },
   // The one development-only missing-translation warning (F23).
   {

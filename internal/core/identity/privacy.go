@@ -50,7 +50,9 @@ func (s *Service) ExportPerson(ctx context.Context, person model.PersonID) (_ js
 // identity.account.deleted in the caller's Write transaction (Transact joins it); its
 // sessions fail at the next request (NotFound becomes Unauthenticated). Idempotent: no
 // account, no entry, 0. Fails Invalid for a zero ID (F47), Permission for a superuser
-// account (F68), Unavailable wrapping db.ErrReadOnly (F48), store and audit kinds.
+// account (F68) or an account the Guard protects (field account, code protected, F105; people
+// maps it to Conflict protected), the Guard's kind when it fails (F108), Unavailable wrapping
+// db.ErrReadOnly (F48), store and audit kinds.
 func (s *Service) DeletePerson(ctx context.Context, person model.PersonID) (_ int, err error) {
 	const op = "identity.Service.DeletePerson"
 	ctx, span := s.start(ctx, "delete-person")
@@ -67,6 +69,10 @@ func (s *Service) DeletePerson(ctx context.Context, person model.PersonID) (_ in
 			return errs.E(op, errs.Permission, errors.New("the superuser account cannot be deleted"))
 		case err != nil && !errs.Is(err, errs.NotFound):
 			return wrap(op, err)
+		case err == nil:
+			if err := s.checkProtected(ctx, op, rec.ID); err != nil {
+				return err
+			}
 		}
 		id, deleted, err := s.store.DeleteByPerson(ctx, person)
 		if err != nil {

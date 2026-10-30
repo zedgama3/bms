@@ -76,6 +76,7 @@ func buildIdentity(_ context.Context, a *assembly) error {
 		Policy:         lazyIdentityPolicy{a: a},
 		Notify:         lazyNotifier{a: a, owner: accountsOwner},
 		Alerter:        lazyAlerter{a: a},
+		Guard:          demoGuard(a), // nil unless demo mode
 	})
 	if err != nil {
 		return err //nolint:wrapcheck // identity.New names itself

@@ -9,6 +9,7 @@
 - **Amended 2026-10-20 (owner, D40; Q-RESET-RATE, Q-RESET-LIFE, Q-WEB-REVIEW):** reset requests have their own limiter buckets (per client address, per submitted address; not sign-in's) and a per-account cooldown between reset e-mails (a request inside it answers the same `202` and sends nothing); the reset e-mail gets the lifetime as `lifetime_minutes` (a number) and each language's template words the unit; the password-reset page's document response carries `Referrer-Policy: no-referrer` (api.md step 4, F60); the reset `Message` passes `TTL: PasswordResetLifetime` (notify amendment). The numbers were marked "proposed" until the owner confirmed them as defaults of settings (D41, next bullet).
 - **Accepted 2026-10-20 (owner, D40):** the implementation deviations marked "(implementation, 2026-10-19)" in the forgotten-password amendment are accepted as written.
 - **Amended 2026-10-20 (approved, owner, 2026-10-20, D43; D41 refines Q-RESET-RATE; ranges as recommended, the cooldown may be `0` = off, no Spanish `es.json` yet):** the reset limits D40 built as constants (`ResetClientLimit`, `ResetAddressLimit`, `PasswordResetCooldown`) become regional settings with the same defaults ("Make it a setting. The defaults are good."): `accounts.password_reset_client_limit` (20), `accounts.password_reset_address_limit` (5), `accounts.password_reset_cooldown` (5m; `0` turns it off); `Policy` gains the three fields, `Settings` declares eleven keys, `CheckSettings` gains two cross-field rules; the constants are removed. Decision 22 is no longer "proposed" and its Open question is closed. See "Amendment 2026-10-20 (D41): the reset limits are settings" (before Open questions).
+- **Amendment 2026-10-28 (approved, owner, D53, demo.md Proposed change 3):** `EnsureAccount` (writer-only bootstrap), `Options.Guard` and the `Guard` seam, `WithSession` doc; section "Amendment 2026-10-28" before Open questions; F99 to F109 (D56 review: `LinkAccount` guarded).
 - **Package:** `internal/core/identity` (service, `Authenticator`, tokens, handlers), `internal/core/identity/account` (the record type), `internal/core/identity/postgres` (store, `sql/`, `migrations/`)   **UI:** `web/src/core/accounts/`
 - **Depends on specs:** `model`, `lib-errs`, `lib-core`, `lib-secret`, `config` (through `app`), `db`, `signals`, `settings` (`Decl`, D39), `notify` (`Notifier`, D39), `telemetry`, `api` (the `Authenticator` seam, `httpx`, the cookie rules), `audit` (Approved; the `Recorder`), `web-shell`, `app`   **Used by:** `api` (`Authenticator`), `app` (part 2, after audit; the `create-superuser` command, the audit actor closure), `audit` (`ActorFunc`, through `app`), every module and core service that needs the actor (`PersonFrom`), `web-shell` (the session endpoint, the sign-in flow), later `authz` (the actor and the superuser flag), `people` (`identity.account-created`, export and deletion), `settings` (`PolicySource`), `notify` (`Alerter`)
 
@@ -23,8 +24,8 @@
 - `Account{ID, Person, Email model.Email, Superuser, PasswordChangeRequired bool, DisabledAt, LastLoginAt, PasswordChangedAt, CreatedAt, UpdatedAt time.Time}` (+`Validate`, `LogValue` emitting IDs only); `AccountQuery{Email model.Email, After Cursor, Limit int}`, `Cursor`, `AccountPage{Accounts, Next}`; `Credentials{Email model.Email, Password string}`; `PasswordChange{Current, New string}`; `SessionInfo{SignedIn, PersonID, AccountID, PlayaName, Superuser, PasswordChangeRequired bool, ExpiresAt, SignupOpen bool, Permissions []string}` (the wire shape of `GET /session`); `Issued{Session, token}` (returned by the use cases that start a session; the handlers turn it into the cookie); `SuperuserResult{Account model.AccountID, Person model.PersonID, Created bool, Password secret.Secret}`.
 - `Policy{SignupMode, SessionLifetime, SuperuserSessionLifetime, PasswordMinLength, LoginFailureLimit, ClientFailureLimit, LoginFailureWindow, PasswordResetLifetime, PasswordResetClientLimit, PasswordResetAddressLimit, PasswordResetCooldown}` (+`Validate`), `DefaultPolicy()`, `SignupOpen|SignupInvitation`; `Settings []settings.Decl` (the eleven `accounts.*` keys with their ranges as `Check`s) and `CheckSettings(map[string]string) error` (the cross-field rules `client_failure_limit >= login_failure_limit`, `password_reset_client_limit >= password_reset_address_limit`, `password_reset_cooldown <= password_reset_lifetime`; D41); `PolicySource` is implemented by `app` over a scoped settings `Reader` (D39).
 - Seams (interfaces identity declares, filled later by `app`; nil means the M1 behaviour in brackets): `PolicySource{Policy(ctx) (Policy, error)}` (settings, M2 [`DefaultPolicy`]); `PermissionChecker{Allow(ctx, authz.Permission) error}` (authz, M2 [deny; the superuser is allowed before the seam is asked]); `PermissionLister{PermissionsOf(ctx, model.PersonID) ([]string, error)}` (authz, M2 [empty]); `NameSource{PlayaNameOf(ctx, model.PersonID) (string, error)}` (people, M2 [""]); `Alerter{SuperuserSignedIn(ctx, model.PersonID) error}` (notify, M4 [one warn log line]); `Notify notify.Notifier` (scoped `identity`, D39 [nil: the reset routes answer `Unsupported`]).
-- `Options{DB, Clock, Logger, Tracer, Meter, Key secret.Secret, AllowPlaintext bool, Audit audit.Recorder, Signals signals.Bus, Policy, Permissions, PermissionLister, Names, Alerter, Notify notify.Notifier}` (+`Validate`); `New(Options) (*Service, error)` (no I/O; works against `db.None()`).
-- `*Service` (safe for concurrent use, nothing to close): `Authenticate(ctx, *http.Request) (context.Context, model.PersonID, error)` (= `api.Authenticator`); `SessionInfo(ctx) (SessionInfo, error)`; `SignUp(ctx, Credentials) (Issued, error)`; `SignIn(ctx, Credentials) (Issued, error)`; `SignOut(ctx) error`; `ChangePassword(ctx, PasswordChange) (Issued, error)`; `EndOtherSessions(ctx) (Issued, error)`; `ListAccounts(ctx, AccountQuery) (AccountPage, error)`; `GetAccount(ctx, model.AccountID) (Account, error)`; `DisableAccount(ctx, model.AccountID) error`; `EnableAccount(ctx, model.AccountID) error`; `SetTemporaryPassword(ctx, model.AccountID) (secret.Secret, error)`; `RequestPasswordReset(ctx, model.Email) error`; `CompletePasswordReset(ctx, token, newPassword string) error` (D39); `EnsureSuperuser(ctx, model.Email) (SuperuserResult, error)`; `CreateSuperuser(ctx, out io.Writer, email string) error` (app's command; prints the spec's lines, never the address); `ExportPerson(ctx, model.PersonID) (json.RawMessage, error)`; `DeletePerson(ctx, model.PersonID) (int, error)` (`Permission` for a superuser account); `EmailOf(ctx, model.PersonID) (model.Email, error)`; `LinkAccount(ctx, model.Email, model.PersonID) (model.AccountID, model.PersonID, error)`; `Routes() []Route`; `OpenAPI() []byte`. `Route{Method, Pattern string, Public bool, Handler http.Handler}` (`app` converts to `module.Route`, as for audit).
+- `Options{DB, Clock, Logger, Tracer, Meter, Key secret.Secret, AllowPlaintext bool, Audit audit.Recorder, Signals signals.Bus, Policy, Permissions, PermissionLister, Names, Alerter, Notify notify.Notifier, Guard Guard}` (+`Validate`); `New(Options) (*Service, error)` (no I/O; works against `db.None()`).
+- `*Service` (safe for concurrent use, nothing to close): `Authenticate(ctx, *http.Request) (context.Context, model.PersonID, error)` (= `api.Authenticator`); `SessionInfo(ctx) (SessionInfo, error)`; `SignUp(ctx, Credentials) (Issued, error)`; `SignIn(ctx, Credentials) (Issued, error)`; `SignOut(ctx) error`; `ChangePassword(ctx, PasswordChange) (Issued, error)`; `EndOtherSessions(ctx) (Issued, error)`; `ListAccounts(ctx, AccountQuery) (AccountPage, error)`; `GetAccount(ctx, model.AccountID) (Account, error)`; `DisableAccount(ctx, model.AccountID) error`; `EnableAccount(ctx, model.AccountID) error`; `SetTemporaryPassword(ctx, model.AccountID) (secret.Secret, error)`; `RequestPasswordReset(ctx, model.Email) error`; `CompletePasswordReset(ctx, token, newPassword string) error` (D39); `EnsureSuperuser(ctx, model.Email) (SuperuserResult, error)`; `CreateSuperuser(ctx, out io.Writer, email string) error` (app's command; prints the spec's lines, never the address); `ExportPerson(ctx, model.PersonID) (json.RawMessage, error)`; `DeletePerson(ctx, model.PersonID) (int, error)` (`Permission` for a superuser account); `EmailOf(ctx, model.PersonID) (model.Email, error)`; `LinkAccount(ctx, model.Email, model.PersonID) (model.AccountID, model.PersonID, error)`; `Routes() []Route`; `OpenAPI() []byte`. `Route{Method, Pattern string, Public bool, Handler http.Handler}` (`app` converts to `module.Route`, as for audit). From 2026-10-28 (D53): `EnsureAccount(ctx, Credentials) (AccountResult{Account, Person, Created}, error)` (writer-only, no actor, for commands) and the `Guard{Protected(ctx, AccountID) (bool, error)}` seam (nil = nothing protected; a protected account's password, address, disabling and deletion refuse `Permission` field `account` code `protected`).
 - Constants: `CookieName = "__Host-bms_session"`, `DevCookieName = "bms_session_dev"`, `TokenVersion = 1`, `MaxPasswordBytes = 256`, `PasswordMinLengthFloor = 12`, `GeneratedPasswordLength = 24`, `HashConcurrency = 4`, `MaxTrackedKeys = 10000`, `MaxPageSize = 100`, `DefaultPageSize = 50`, `ClockSkew = 5 * time.Minute`, `PasswordResetTokenBytes = 32` (D39).
 - `PermissionAccountsRead = "accounts.read"`, `PermissionAccountsManage = "accounts.manage"` (both `ScopeSite`, reach `personal`); `Permissions []authz.PermissionDecl`. `SignalAccountCreated = "identity.account-created"` (payload `account`, `person`). Audit actions `identity.login`, `identity.login-failed`, `identity.logout`, `identity.account.created`, `.read`, `.disabled`, `.enabled`, `.deleted`, `identity.account.linked`, `identity.password.changed`, `identity.password.temporary-set`, `identity.password.reset-requested`, `identity.password.reset`, `identity.sessions.ended`, `identity.superuser.created`, `identity.superuser.reset`, `identity.superuser.login`. Settings `accounts.signup`, `accounts.session_lifetime`, `accounts.superuser_session_lifetime`, `accounts.password_min_length`, `accounts.login_failure_limit`, `accounts.client_failure_limit`, `accounts.login_failure_window`, `accounts.password_reset_lifetime`, `accounts.password_reset_client_limit`, `accounts.password_reset_address_limit`, `accounts.password_reset_cooldown` (D41). Templates `Templates fs.FS` (`identity.password-reset`, `identity.superuser-signed-in`; `en`, `es`). `postgres.Migrations fs.FS`; `Set = db.Set{Name: "identity", Schema: "core"}`. Command `bms create-superuser <email>`.
 
@@ -146,8 +147,9 @@ func SessionFrom(ctx context.Context) (Session, bool)
 // system, never as the person whose request published the signal. Cannot fail.
 func PersonFrom(ctx context.Context) (model.PersonID, bool)
 
-// WithSession puts s in ctx. Consumers: tests of any service that reads PersonFrom, and
-// app's end-to-end test. Production code never calls it: Authenticate is the only writer.
+// WithSession puts s in ctx. Consumers: tests of any service that reads PersonFrom,
+// app's end-to-end test, and core/demo's seed (demo.md decision 3, through Actors.As).
+// Other production code never calls it: Authenticate is the only other writer.
 // Cannot fail (an invalid s is a test bug; PersonFrom still returns it).
 func WithSession(ctx context.Context, s Session) context.Context
 
@@ -313,6 +315,7 @@ type Options struct {
 	Lister         PermissionLister
 	Names          NameSource
 	Alerter        Alerter
+	Guard          Guard // optional; nil protects nothing (D53, demo mode only)
 }
 
 // Validate fails errs.Invalid joining a validate.FieldError per problem: "identity.db",
@@ -1078,6 +1081,58 @@ The existing `core.accounts.setting.login_failure_window.description` is reworde
 - **Unit (`identity`).** `TestSettings_DeclarationsAreValidAndDefaultToDefaultPolicy` covers eleven keys (`"20"`, `"5"`, `"5m"` equal `DefaultPolicy()`'s fields); `TestSettings_Checks_AgreeWithPolicyValidate` covers the three new keys at `lo-1`, `lo`, `hi`, `hi+1`; `TestCheckSettings_ClientLimitNotBelowLoginLimit` gains the two new rules (F95, F96) and a case where two rules fail at once and both field errors are returned; F94 as a table including the dependent bounds (`client 4, address 5` fails on the client key; `cooldown 20m, lifetime 10m` fails on the cooldown key; `cooldown 0` passes); `TestRequestPasswordReset_RateLimited_Table` and `TestResetLimiter_SeparateFromSignIn_Table` take their limits from a fake `PolicySource` returning a `Policy` with small values (for example client 3, address 2), so the tests no longer depend on the defaults; F97 and F98 with the fake clock and a fake `PolicySource` whose policy the test swaps between calls. Every test still asserts `!c.Contains(address)` across logs, spans, entries and errors (`telemetrytest`).
 - **Catalogue (`internal/app`).** The existing core-area catalogue test fails until the six new `en` entries exist; it also checks the reworded `login_failure_window` description is present (any text).
 - **Integration, handlers, end to end:** no additions; nothing in the database or on the wire changes. The Mailpit end-to-end run may set `accounts.password_reset_cooldown` to `0` through `PUT /api/settings/values` before requesting two resets in a row and assert two e-mails arrive; recommended, not required.
+
+## Amendment 2026-10-28 (approved, owner, D53): `EnsureAccount` and the `Guard`
+
+Written for the public demo (`demo.md`). Production behaviour is unchanged: `Options.Guard` is nil outside demo mode.
+
+### Interface
+
+```go
+// AccountResult is what EnsureAccount reports.
+type AccountResult struct {
+	Account model.AccountID
+	Person  model.PersonID
+	Created bool // false: the address existed and its password was reset
+}
+
+// EnsureAccount is the writer-only bootstrap for commands (the sibling of CreateSuperuser):
+// no actor, no permission check, no sign-up mode check, no limiter. The password is
+// validated as SignUp validates it (length, common-password list). It creates the account
+// and publishes SignalAccountCreated, or, when the address exists and is not a superuser,
+// sets the password, enables the account and bumps session_generation. Audited
+// identity.account.created or identity.password.changed with ActorOperator. Fails Invalid
+// (password), Conflict (code superuser) for a superuser address, Unavailable wrapping
+// db.ErrReadOnly on a read-only copy, store kinds. Consumer: core/demo's seed through app.
+func (s *Service) EnsureAccount(ctx context.Context, c Credentials) (AccountResult, error)
+
+// Guard says which accounts are shared and must stay usable by everyone.
+type Guard interface {
+	Protected(ctx context.Context, a model.AccountID) (bool, error)
+}
+```
+
+### Behavior
+
+Identity consults `Options.Guard` (when non-nil) in `ChangePassword`, `SetTemporaryPassword`, `DisableAccount`, `DeletePerson`, `LinkAccount` (after the superuser check), `RequestPasswordReset` (answers nil and sends nothing, as for a superuser address), `CompletePasswordReset` (no token can exist) and any later e-mail change. The refusal is `Permission` with field `account` and code `protected`. `EnableAccount`, `SignOut` and `EndOtherSessions` stay allowed. A `Guard` error fails the use case (closed). `EnsureAccount` itself is not guarded (it is how the seed sets the demo password).
+
+### Failure modes (added)
+
+| # | Method | Condition | errs kind | Caller is expected to | Test |
+|---|---|---|---|---|---|
+| F99 | `EnsureAccount` | password fails the sign-up rules | Invalid | fix the seed table | `TestEnsureAccount_WeakPassword_ReturnsInvalid` |
+| F100 | `EnsureAccount` | the address is a superuser's | Conflict `superuser` | exit 1 | `TestEnsureAccount_SuperuserAddress_ReturnsConflict` |
+| F101 | `EnsureAccount` | read-only copy | Unavailable wrapping `db.ErrReadOnly` | exit 1 | `TestEnsureAccount_ReadOnly_ReturnsUnavailable` |
+| F102 | `EnsureAccount` | the address exists | — (`Created` false; password set, account enabled, sessions ended) | proceed | `TestEnsureAccount_Existing_ResetsPassword` |
+| F103 | `ChangePassword`, `SetTemporaryPassword` | the account is protected | Permission `account` `protected` | show the shared-account message | `TestChangePassword_Protected_ReturnsPermission` |
+| F104 | `DisableAccount` | the account is protected | Permission `account` `protected` | show the message | `TestDisableAccount_Protected_ReturnsPermission` |
+| F105 | `DeletePerson` | the person's account is protected | Permission `account` `protected` | people maps it to `Conflict protected` | `TestDeletePerson_Protected_ReturnsPermission` |
+| F106 | `RequestPasswordReset` | the account is protected | — (nil, nothing sent) | answer as for any address | `TestRequestPasswordReset_Protected_SendsNothing` |
+| F107 | `CompletePasswordReset` | the account is protected | Permission `account` `protected` | show the message | `TestCompletePasswordReset_Protected_ReturnsPermission` |
+| F108 | any guarded method | `Guard.Protected` fails | the guard's kind (Unavailable) | fail closed | `TestGuard_Error_FailsTheUseCase` |
+| F109 | `LinkAccount` | the account is protected (checked after the superuser check) | Permission `account` `protected` | people maps it to `Conflict protected` | `TestLinkAccount_Protected_ReturnsPermission` |
+
+Nil `Guard`: `TestGuard_Nil_ProtectsNothing`.
 
 ## Open questions
 

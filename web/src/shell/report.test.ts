@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/api";
 import type { ApiErrorInit } from "@/api/errors";
 import {
+  assetPathOf,
   installReporter,
+  isChunkError,
   scrub,
   setCurrentScreen,
   toPattern,
@@ -387,5 +389,70 @@ describe("untranslated codes (decision 2)", () => {
     r.reporter.untranslated("field", `${EMAIL} ${MARKER}`, err());
     r.reporter.flush("manual");
     expect(JSON.stringify(r.sent[0]!.batch)).not.toContain(MARKER);
+  });
+});
+
+describe("chunk load failures (D54, F45)", () => {
+  const chunkError = (file = "volunteers-3f9a1c.js") =>
+    new TypeError(
+      `Failed to fetch dynamically imported module: https://bms.example/assets/${file}?t=1`,
+    );
+
+  it("F45: chunk failure reported once per asset path, with the screen that needed it", async () => {
+    const r = rig();
+    r.reporter.screenCrash(chunkError(), "/volunteers/shifts/:shift");
+    r.reporter.screenCrash(chunkError(), "/volunteers/shifts/:shift");
+    r.reporter.chunkFailure(chunkError());
+    r.reporter.screenCrash(chunkError("people-aa11.js"), "/people");
+    r.reporter.flush("manual");
+    await vi.advanceTimersByTimeAsync(0);
+    const reps = r.sent[0]!.batch.reports;
+    expect(reps).toHaveLength(2);
+    expect(reps[0]).toMatchObject({
+      kind: "chunk",
+      message: "chunk load failed assets/volunteers-3f9a1c.js",
+      screen: "/volunteers/shifts/{shift}",
+    });
+    expect(reps[0]!.api).toBeUndefined();
+    expect(reps[1]!.message).toBe("chunk load failed assets/people-aa11.js");
+    expect(JSON.stringify(reps)).not.toContain("t=1");
+  });
+
+  it("recognises the other browsers' wordings and ChunkLoadError", () => {
+    expect(
+      isChunkError(new TypeError("error loading dynamically imported module: https://x/a.js")),
+    ).toBe(true);
+    expect(isChunkError(new TypeError("Importing a module script failed."))).toBe(true);
+    const e = new Error("Loading chunk 3 failed");
+    e.name = "ChunkLoadError";
+    expect(isChunkError(e)).toBe(true);
+    expect(isChunkError(new TypeError("x is not a function"))).toBe(false);
+    expect(assetPathOf(new TypeError("Importing a module script failed."))).toBe("unknown");
+  });
+
+  it("an unhandled rejection of a chunk error is a chunk report, not a rejection", async () => {
+    const r = rig();
+    setCurrentScreen("/people");
+    const ev = new Event("unhandledrejection") as Event & { reason: unknown };
+    ev.reason = chunkError();
+    window.dispatchEvent(ev);
+    r.reporter.flush("manual");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(r.sent[0]!.batch.reports.map((x) => x.kind)).toEqual(["chunk"]);
+  });
+});
+
+describe("duration (D54, F46)", () => {
+  it("F46: api report carries duration", async () => {
+    const r = rig();
+    r.reporter.apiFailure(err({ durationMs: 35_012 }));
+    r.reporter.apiFailure(err({ route: "/api/other", durationMs: 9_999_999 }));
+    r.reporter.apiFailure(err({ route: "/api/unknown", durationMs: 0 }));
+    r.reporter.flush("manual");
+    await vi.advanceTimersByTimeAsync(0);
+    const reps = r.sent[0]!.batch.reports;
+    expect(reps[0]!.api?.duration_ms).toBe(35_012);
+    expect(reps[1]!.api?.duration_ms).toBe(600_000);
+    expect(reps[2]!.api).not.toHaveProperty("duration_ms");
   });
 });

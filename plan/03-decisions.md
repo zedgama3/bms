@@ -941,3 +941,20 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
   named: set `lc_messages='C'` on the migrator's connection, or match the untranslated function
   name.
 - **jobstest.Fake.Run:** ignores `j.Attempt` once the row is tracked, so attempts aren't reset.
+
+## D56. Demo Amendment D1 approved; one lead account may run five departments
+
+- **Status:** Accepted (2026-10-29), decided by the owner. The owner approved demo Amendment D1
+  as recommended: [design/demo.md](design/demo.md) "Amendment D1" and
+  [design/module-volunteers.md](design/module-volunteers.md) "Amendment D1 changes".
+- **Q-DEMO5, answered:** one `lead` demo account may run five departments (Rangers, Gate,
+  Greeters, Medical, DPW). Owner's words: "One lead account may run five departments. This may
+  be required at a small burn with few volunteers."
+- **Rest of D1, as recommended:**
+  - The participant does the pending ICS-100 self-upload.
+  - The lead has no own records and holds Khaki by self-waiver.
+  - DPW gains "Inventory Crew".
+  - An event without dates is Invalid (F175); the module has no date fallback.
+  - moduletest's `demoseed_provider_valid` gives the fake event dates and starts the module
+    before Seed.
+  - Walk-on bookings are fixed as built.

@@ -85,7 +85,7 @@ func (s *Service) newResetToken() (string, error) {
 // its kind, also before the lookup (F91); verify the dummy hash, exactly once for every
 // request that gets this far, so no path costs less than another; a read-only copy fails
 // Unavailable wrapping db.ErrReadOnly for every address alike (F78); look the account up.
-// An unknown, a disabled and a superuser address record identity.password.reset-requested
+// An unknown, a disabled, a superuser and a protected (Guard, D53) address record identity.password.reset-requested
 // with Outcome Denied, send nothing and return nil (F73). Otherwise, in one Write
 // transaction: lock the account row and read its flags and its newest reset row; an account disabled or made the superuser's since the lookup is answered like the denied paths (Denied entry, nothing sent); one younger than
 // Policy.PasswordResetCooldown (when positive; 0 skips the comparison but not the read, D41) records the request with Outcome Denied and Reason "cooldown",
@@ -150,7 +150,18 @@ func (s *Service) RequestPasswordReset(ctx context.Context, email model.Email) (
 	if err != nil && !errs.Is(err, errs.NotFound) {
 		return fmt.Errorf("%s: %w", op, err)
 	}
-	if !matched || !rec.DisabledAt.IsZero() || rec.Superuser {
+	denied := !matched || !rec.DisabledAt.IsZero() || rec.Superuser
+	if !denied {
+		// A protected account (demo mode) is answered like a superuser address: nil, nothing
+		// sent (F106). A Guard failure fails the request (F108).
+		if err := s.checkProtected(ctx, op, rec.ID); err != nil {
+			if !errs.Is(err, errs.Permission) {
+				return err
+			}
+			denied = true
+		}
+	}
+	if denied {
 		return s.resetDenied(ctx, op, rec, matched)
 	}
 	return s.resetSend(ctx, op, pol, rec)
@@ -270,7 +281,8 @@ func resetInvalid(op, code, reason string) error {
 // copy fails Unavailable wrapping db.ErrReadOnly (F85). The token is hashed and its row
 // found without a lock: an unknown or used token, or one whose account is disabled or the
 // superuser's, is Invalid on field token with code invalid (F79, F81, F84); an expired one
-// is Invalid with code expired (F80). The new password is checked as ChangePassword checks
+// is Invalid with code expired (F80); one whose account the Guard protects is Permission
+// (field account, code protected, F107; the Guard's own kind when it fails, F108). The new password is checked as ChangePassword checks
 // it, field new_password (F82), and a refused password leaves the token valid; it is hashed
 // before any transaction opens. Then, in one Write transaction, the account row is locked
 // (the order ReplaceResetToken uses, so the two cannot deadlock) and read again: an account
@@ -321,6 +333,9 @@ func (s *Service) CompletePasswordReset(ctx context.Context, token, newPassword 
 		return fmt.Errorf("%s: %w", op, err)
 	case st.Disabled || st.Superuser: // the superuser is reset by command only (D23)
 		return resetInvalid(op, codeInvalid, "is not a valid reset token")
+	}
+	if err := s.checkProtected(ctx, op, row.Account); err != nil {
+		return err
 	}
 	v := validate.Errors{Op: op}
 	addPasswordProblems(&v, "new_password", newPassword, pol.PasswordMinLength, s.common)

@@ -28,9 +28,12 @@ const REPORTABLE = new Set([
   "unsupported_media_type",
 ]);
 
+/** The shell's longest timeout (UPLOAD_TIMEOUT_MS), the server's cap on `duration_ms`. */
+const MAX_DURATION_MS = 600_000;
+
 const TOKEN = /^[A-Za-z0-9/_][A-Za-z0-9._:/{}-]{0,127}$/;
 
-export type ReportKind = "crash" | "rejection" | "screen" | "api";
+export type ReportKind = "crash" | "rejection" | "screen" | "api" | "chunk";
 
 export interface WireReport {
   kind: ReportKind;
@@ -42,7 +45,7 @@ export interface WireReport {
   app_version?: string;
   error_ref?: string;
   trace_id?: string;
-  api?: { method: string; route: string; status: number; code: string };
+  api?: { method: string; route: string; status: number; code: string; duration_ms?: number };
 }
 
 export interface Batch {
@@ -52,7 +55,7 @@ export interface Batch {
 export type SendResult =
   | { kind: "accepted" }
   | { kind: "rate_limited"; retryAfterS: number }
-  | { kind: "rejected" }
+  | { kind: "rejected"; status?: number }
   | { kind: "network" };
 
 /** Delivers one batch. `beacon` is used while the page is being hidden. */
@@ -63,6 +66,9 @@ export interface Reporter {
   apiFailure(error: ApiError): void;
   /** From an ErrorBoundary: queues a `screen` report with the matched route pattern. */
   screenCrash(error: unknown, screen: string): void;
+  /** A lazy route module failed to load (a deploy replaced the bundle): one `chunk` report per
+   *  asset path (F45). `screen` is the pattern of the screen that needed it. */
+  chunkFailure(error: unknown, screen?: string): void;
   /** A code with no translation was shown (decision 2): one `api` report per page per code. */
   untranslated(what: "error" | "field", code: string, error: ApiError): void;
   /** Sends what is pending now (pagehide, tests). Never throws. */
@@ -96,16 +102,21 @@ export function setCurrentScreen(pattern: string | undefined): void {
   currentScreen = pattern === undefined ? undefined : toPattern(pattern);
 }
 
-/** The production sender: keepalive fetch, or sendBeacon while the page is going away. */
-export const defaultSender: Sender = async (batch, via) => {
-  const body = JSON.stringify(batch);
+/** Posts one JSON body to a telemetry route: keepalive fetch, or sendBeacon while the page is
+ *  going away. The one place the shell's reporting and usage collectors touch the network. */
+export async function deliver(
+  endpoint: string,
+  payload: unknown,
+  via: "fetch" | "beacon",
+): Promise<SendResult> {
+  const body = JSON.stringify(payload);
   if (via === "beacon" && typeof navigator.sendBeacon === "function") {
-    if (navigator.sendBeacon(ENDPOINT, new Blob([body], { type: "application/json" }))) {
+    if (navigator.sendBeacon(endpoint, new Blob([body], { type: "application/json" }))) {
       return { kind: "accepted" };
     }
   }
   try {
-    const res = await fetch(ENDPOINT, {
+    const res = await fetch(endpoint, {
       method: "POST",
       keepalive: true,
       credentials: "same-origin",
@@ -120,12 +131,41 @@ export const defaultSender: Sender = async (batch, via) => {
         retryAfterS: Number.isFinite(n) && n > 0 ? n : DEFAULT_PAUSE_S,
       };
     }
-    if (res.status >= 400 && res.status < 500) return { kind: "rejected" };
+    if (res.status >= 400 && res.status < 500) return { kind: "rejected", status: res.status };
     return { kind: "network" }; // 5xx: keep and back off
   } catch {
     return { kind: "network" };
   }
-};
+}
+
+/** The production sender for error reports. */
+export const defaultSender: Sender = (batch, via) => deliver(ENDPOINT, batch, via);
+
+/** True for a lazy route module that failed to load: Chrome and Edge ("Failed to fetch
+ *  dynamically imported module"), Firefox ("error loading dynamically imported module"),
+ *  Safari ("Importing a module script failed"), and webpack-style `ChunkLoadError`. */
+export function isChunkError(e: unknown): boolean {
+  if (!(e instanceof Error)) return false;
+  if (e.name === "ChunkLoadError") return true;
+  return (
+    e instanceof TypeError &&
+    /dynamically imported module|importing a module script failed|Unable to preload CSS/i.test(
+      e.message,
+    )
+  );
+}
+
+/** `assets/volunteers-3f9a1c.js` from the URL an import error names; `unknown` when none. */
+export function assetPathOf(e: unknown): string {
+  const m = e instanceof Error ? /https?:\/\/[^\s"')]+/.exec(e.message) : null;
+  if (!m) return "unknown";
+  try {
+    const path = new URL(m[0]).pathname.replace(/^\/+/, "");
+    return path === "" ? "unknown" : path;
+  } catch {
+    return "unknown";
+  }
+}
 
 interface Entry {
   report: WireReport;
@@ -160,6 +200,7 @@ export function installReporter(opts: {
 
   const pending = new Map<string, Entry>();
   const untranslatedSeen = new Set<string>();
+  const chunksSeen = new Set<string>();
   let timer: ReturnType<typeof setTimeout> | undefined;
   let pausedUntil = 0;
   let backoff = 0;
@@ -263,12 +304,27 @@ export function installReporter(opts: {
     route: TOKEN.test(error.route) ? error.route : "/api/unknown",
     status: error.status,
     code: TOKEN.test(error.code) ? error.code : "unknown",
+    ...(error.durationMs !== undefined && error.durationMs >= 1
+      ? { duration_ms: Math.min(MAX_DURATION_MS, error.durationMs) }
+      : {}),
   });
 
   const trace = (error: ApiError) => ({
     ...(error.ref ? { error_ref: error.ref } : {}),
     ...(/^[0-9a-f]{32}$/.test(error.traceId) ? { trace_id: error.traceId } : {}),
   });
+
+  /** One `chunk` report per asset path, whoever sees the failure first (F45). */
+  const chunk = (error: unknown, screen: string | undefined) => {
+    const path = assetPathOf(error);
+    if (chunksSeen.has(path)) return;
+    chunksSeen.add(path);
+    queue({
+      kind: "chunk",
+      message: scrub(`chunk load failed ${path}`, MAX_MESSAGE_BYTES),
+      ...(screen ? { screen } : {}),
+    });
+  };
 
   const reporter: Reporter = {
     reportable,
@@ -291,10 +347,21 @@ export function installReporter(opts: {
         // swallowed
       }
     },
+    chunkFailure(error, screen) {
+      try {
+        chunk(error, screen ? toPattern(screen) : currentScreen);
+      } catch {
+        // swallowed
+      }
+    },
     screenCrash(error, screen) {
       try {
         if (error instanceof ApiError && error.reported) return; // already counted by apiFailure
         const pattern = toPattern(screen);
+        if (isChunkError(error)) {
+          chunk(error, pattern);
+          return;
+        }
         const { message, stack } = describe(error);
         queue({
           kind: "screen",
@@ -346,6 +413,10 @@ export function installReporter(opts: {
       const reason: unknown = e.reason;
       if (reason instanceof ApiError && reason.reported) return;
       if (isAbortLike(reason)) return;
+      if (isChunkError(reason)) {
+        chunk(reason, currentScreen);
+        return;
+      }
       const { message, stack } = describe(reason);
       queue({
         kind: "rejection",

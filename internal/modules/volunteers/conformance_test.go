@@ -19,6 +19,9 @@ import (
 	"github.com/zedgama3/bms/internal/modules/volunteers/vol"
 )
 
+// The demo seed check (moduletest.WithDemoSeed) runs in the integration conformance test:
+// the provider acts through the real use cases, which need real rows (fake_internal_test.go).
+//
 // TestConformance runs the module contract checks over an in-memory store for the person
 // data paths: the seed books the subject into a department, a listing choice, a sign-up and a
 // verified record with a certificate file.

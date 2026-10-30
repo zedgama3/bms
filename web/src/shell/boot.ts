@@ -13,6 +13,9 @@ export interface BootState {
   /** A catalogue chunk failed to load: the frame offers a retry. */
   catalogueFailed: boolean;
   retryCatalogues: () => void;
+  /** GET /api/demo/ failed (other than 404): the banner is hidden, so the frame offers a retry. */
+  demoFailed: boolean;
+  retryDemo: () => void;
   /** Leaves the single-page app for a fresh load (`location.replace`), so nothing keeps old data. */
   leave: (to: string) => void;
 }
@@ -24,6 +27,8 @@ export const BootContext = createContext<BootState>({
   async refreshSession() {},
   catalogueFailed: false,
   retryCatalogues() {},
+  demoFailed: false,
+  retryDemo() {},
   leave: (to) => window.location.replace(to),
 });
 
@@ -38,20 +43,29 @@ export function patternOf(
   pathname: string,
   params: Readonly<Record<string, string | undefined>>,
 ): string {
-  const entries = Object.entries(params).filter((e): e is [string, string] => e[1] !== undefined);
+  const entries = Object.entries(params).filter(
+    (e): e is [string, string] => e[1] !== undefined && e[0] !== "*",
+  );
   const splat = params["*"];
   let path = pathname;
   if (splat) {
     const i = path.lastIndexOf(splat);
     if (i > 0) path = path.slice(0, i) + "{rest}";
   }
+  // Params appear in the path in order: take them in turn, so two params with the same value
+  // (`/notify/templates/a/a`) still get their own names.
+  let next = 0;
   return (
     path
       .split("/")
       .map((seg) => {
         if (seg === "{rest}") return seg;
-        const hit = entries.find(([k, v]) => k !== "*" && v === seg);
-        return hit ? `{${hit[0]}}` : seg;
+        const hit = entries[next];
+        if (hit && hit[0] !== "*" && hit[1] === seg) {
+          next++;
+          return `{${hit[0]}}`;
+        }
+        return seg;
       })
       .join("/") || "/"
   );

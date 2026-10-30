@@ -28,7 +28,7 @@ is tracked in [design/README.md](design/README.md).
      ┌──────────────────────────────────────────────────────────────────────────┐
      │ core contracts: module · db · identity · authz · people · departments ·  │   core
      │ events · signals · notify · audit · files · jobs · settings · privacy ·  │
-     │ telemetry                                                                │
+     │ telemetry · demo                                                         │
      └──────────────────────────────────┬───────────────────────────────────────┘
                                         │ implemented by
        local, oidc (identity) · email (notify) · disk, s3-compatible (objects) · postgres (db)
@@ -107,7 +107,9 @@ Rules (enforced by depguard and `make imports`):
 - **Doesn't do:** any implementation, storage, or HTTP.
 - **Example:** `contracts/greeter` (capability `greeter`, extension point `hello.banner`),
   the first contract, shipped with the `hello` reference module
-  ([design/module-hello.md](design/module-hello.md)); it has no consumer in M0.
+  ([design/module-hello.md](design/module-hello.md)); it has no consumer in M0. Others sit
+  beside it: `personpage`, `eventsetup`, `membership` and `demoseed` (the extension point
+  `demo.seed`, through which a module adds its own demo data; D53).
 
 ## Core
 
@@ -231,11 +233,19 @@ Rules (enforced by depguard and `make imports`):
   counted violations); the error reference (`XXXX-XXXX`, the first four bytes of the trace
   ID, which is the request ID: there is no separate one); `TraceIDFrom` for `audit`; the
   client error intake service (`intake`: validation, limits, scrubbing; `api` owns the
-  route); `telemetrytest` (in-memory capture that fails a test on any policy violation).
+  route); the usage intake (`intake.Usage`, D54): screen views, declared actions,
+  screen-ready time and Web Vitals as bounded metrics by screen template, never per
+  person; `telemetrytest` (in-memory capture that fails a test on any policy violation).
 - **Doesn't do:** the request middleware and the `/api/client-errors` route (`api`), the
   browser side (web shell), statement spans and pool gauges (`db`), dashboards, alerts and
-  retention (the deployment), audit (`audit`), analytics about people.
+  retention (the deployment), audit (`audit`), analytics about people: profiles, journeys,
+  return visits and visit IDs (nobody).
 - **Spec:** [design/telemetry.md](design/telemetry.md), Approved.
+
+### demo: a safe public copy (D53)
+- **Purpose:** let strangers use a public copy of bms safely: made-up data in, nothing real out.
+- **Owns:** the switch `demo.enabled` (`BMS_DEMO_ENABLED`, off by default) and `demo.public_url`; the seed, which builds one fictional regional through the services as ten demo accounts and asks each module for its data through the extension point `demo.seed` (`contracts/demoseed`); `bms demo seed|reset`; the `Guard` that keeps the shared accounts usable; the mail capture channel and a screen showing each signed-in account only the mail addressed to it; the upload caps; the tables `core.demo_state`, `core.demo_account`, `core.demo_mail`. Spec: `plan/design/demo.md`.
+- **Doesn't do:** change permissions, audit, the privacy filter or validation in demo mode, client telemetry (`telemetry`), scheduling the reset (the operator's timer), seeding a module's data (the module), send mail (`notify`).
 
 ### settings: what a regional configures at runtime
 - **Purpose:** typed, validated settings per module and for the core (terminology, brand colours,
@@ -257,8 +267,9 @@ Rules (enforced by depguard and `make imports`):
   authentication through `identity`'s `Authenticator`); the problem body and the error
   mapper (`errs` kind and the `db`/`intake` sentinels → status and code, `ref`, one log
   line per error response); `/healthz`, `/readyz`, `GET /api/modules`,
-  `GET /api/admin/modules`, `POST /api/client-errors`, `GET /api/openapi.json` at
-  absolute paths; OpenAPI assembly from the sets' fragments with a start-up check that
+  `GET /api/admin/modules`, `POST /api/client-errors`, `POST /api/client-events` (D54),
+  `GET /api/openapi.json` at absolute paths; the `bms.api.errors` counter (D54); the
+  `X-Robots-Tag: noindex` option for a demo (D53); OpenAPI assembly from the sets' fragments with a start-up check that
   routes and fragments agree; serving the built web shell.
 - **Doesn't do:** business logic, permission checks (the service's), sessions
   (`identity`), permissions (`authz`), TLS (the front end), configuration loading
@@ -275,9 +286,10 @@ Rules (enforced by depguard and `make imports`):
   D31), translation (FormatJS/ICU catalogues per set, keys typed, terminology as
   arguments; D28), error display (codes and field codes translated, the reference shown,
   the server's English `reason` only as the last-resort fallback inside a translated
-  wrapper), the reporter (`POST /api/client-errors`; D20), the accessibility rules and the
+  wrapper), the reporter (`POST /api/client-errors`; D20), the usage collector (`POST /api/client-events`; `trackAction`; D54), the demo banner and the captured-mail screen (D53), the accessibility rules and the
   phone-first rules (a phone is the primary device; a hard requirement), the pinned
-  OSI-only toolchain, and the Go package `web` that embeds `dist/` for `app`.
+  OSI-only toolchain, and the Go package `web` that embeds `dist/` for `app` and exposes
+  `ClientManifest()` (the screen and action allowlists; D54).
 - **Doesn't do:** any module's or core area's screens (their specs), authorization (the
   server), serving and the CSP (`api`), settings and branding values (`settings`), offline
   caching (Q-OFFLINE).
@@ -287,7 +299,7 @@ Rules (enforced by depguard and `make imports`):
 - **Purpose:** run the command the operator asked for over the core assembled from its
   configuration.
 - **Owns:** the command table (`serve`, `migrate`, `check`, `openapi`, `version`, `help`;
-  later `create-superuser`, `export`, `delete`, `rotate-secret` added by their parts) and
+  later `create-superuser`, `export`, `delete`, `rotate-secret`, `files verify`, `demo seed|reset` (D53) added by their parts) and
   the exit statuses 0/1/2/3; the assembly (config sections into each package's options;
   telemetry, registry, database, signals, core parts, modules, HTTP shell, in that order;
   `Provision`); the lifecycle (start order; SIGINT/SIGTERM; stop order HTTP → runnables →

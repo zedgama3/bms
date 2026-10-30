@@ -1,7 +1,6 @@
 # Demo
 
-- **Status:** Draft (awaiting the owner, 2026-10-28; the owner's direction of 2026-10-28 is the
-  brief, to be recorded as the context of D53 once approved)
+- **Status:** Implemented (2026-10-30; Approved 2026-10-28, D53, with the main session's recommendations; Q-DEMO2: captured mail is shown only to the account it was sent to)
 - **Package:** `internal/core/demo` (service), `internal/core/demo/postgres` (store),
   `internal/core/demo/demotest` (fakes), `internal/contracts/demoseed` (the extension point)
   **UI:** `web/src/shell/` (the banner, in the frame), `web/src/core/demo/` (the captured-mail
@@ -11,6 +10,7 @@
   api, web-shell, telemetry (names only; a parallel spec designs client telemetry)
   **Used by:** `app` (the part, the commands, the adapters), the project's public demo
   instance, every module that contributes seed data (volunteers first)
+- **Amendment D1 (raised 2026-10-28, Approved 2026-10-29, D56; Q-DEMO5: one lead for five departments): what the volunteers provider build found.** The `lead` holds `department-admin` at the five departments the demo gives volunteer data (Rangers, Gate, Greeters, Medical, DPW), not Rangers only; the pending self-upload is the participant's, not a walk-on's; the lead has no verified records and holds Khaki by a recorded self-waiver; DPW gets the "Inventory Crew" position; the conformance rule `demoseed_provider_valid` starts the module and gives the fake event dates, so a provider never invents dates; the walk-on bookings the table left open are fixed. Section "Amendment D1" before Open questions; the volunteers table changes are in `module-volunteers.md`, "Amendment D1 changes".
 
 ## Summary
 
@@ -31,14 +31,14 @@ the six `Dept*` keys, `WalkOns = 12`, `WalkOnKey(n)`.
 **Exported (`demo`).** `Info{Enabled, Regional, Accounts []AccountInfo, Password}`,
 `AccountInfo{Key, Email, Roles}`; `Report{Steps []Step}`, `Step{Name, Items}`; `MailID`,
 `Mail{ID, To, Subject, Body, CapturedAt}`, `MailQuery{Limit}`; seams `Accounts`, `Access`,
-`Profiles`, `Departments`, `Events`, `Settings`, `Schema`, `Objects` (one to three methods
+`Addresses`, `Profiles`, `Departments`, `Events`, `Settings`, `Schema`, `Objects` (one to three methods
 each, filled by `app`); `Contributor{Module, Provider}`; `Options{Enabled, PublicURL, DB, Clock,
-Logger, Tracer, Meter, Audit (scoped "demo"), Authz, Actor, Files files.PolicySource, the seams,
+Logger, Tracer, Meter, Audit (scoped "demo"), Actor, Files files.PolicySource, the seams,
 Schemas []string, DataDir, ContributorTimeout}` (+`Validate`); `New(Options) (*Service, error)`
 (no I/O); `Link([]Contributor) error`; `Enabled() bool`; `Info() Info` (no I/O); `Seed(ctx, out
 io.Writer) (Report, error)`; `Reset(ctx, out) (Report, error)`; `Protected(ctx, model.AccountID)
 (bool, error)` (identity's proposed `Guard`); `Channel() notify.Channel`; `Policy(ctx)
-(files.Policy, error)` (the capped `files.PolicySource`); `ListMail(ctx, MailQuery) ([]Mail,
+(files.Policy, error)` (the capped `files.PolicySource`; the wired policy fails closed with `Unavailable` when demo is enabled but the service is missing); `ListMail(ctx, MailQuery) ([]Mail,
 error)`; `Routes()`, `OpenAPI()`. Constants `Password = "burn-demo-password"`, `Regional =
 "Ember Flats"`, `Domain = "demo.invalid"`, `Zone`, the caps (2 MiB, 256 MiB, 5), `MaxMail` 200,
 `MaxMailList` 50, `SeedVersion` 1, `DefaultContributorTimeout` 2 min, `SessionLifetime` 1 h;
@@ -56,16 +56,18 @@ their own data through the extension point `demo.seed`; the core never touches m
 6 reset = clear objects and the audit spool, `DROP SCHEMA ... CASCADE` for every set's schema,
 `Migrate` as `bms migrate`, seed; the superuser goes with the rest (`bms create-superuser`
 recreates one). 7 the automatic reset is an operator timer shipped disabled
-(`deploy/systemd/`), run with `serve` stopped; not a job. 8 two guards: the commands refuse
+(`deploy/systemd/`), run with `serve` stopped; not a job (owner, 2026-10-28). 8 two guards: the commands refuse
 unless `demo.enabled`, and reset refuses without the marker row (`core.demo_state`) the seed
 writes first. 9 identity consults a `Guard`: a demo account cannot change or reset its password
-or address, be disabled or deleted (`Permission`, field `account`, code `protected`); anything
-else a tester breaks, the next reset repairs. 10 demo never sends mail: the capture `Channel`
-stores envelopes in `core.demo_mail` (newest `MaxMail`), shown to signed-in people on
-`/demo/mail` (`demo.mail.read`, in `participant`, audited). 11 uploads are capped by wrapping
+or address, be disabled, deleted or linked to a person (`Permission`, field `account`, code `protected`); anything
+else a tester breaks, the next reset repairs (owner, 2026-10-28). 10 demo never sends mail: the capture `Channel`
+stores envelopes in `core.demo_mail` (newest `MaxMail`), shown on `/demo/mail` only to the
+signed-in account they were addressed to (login address; no one else's, no admin override, no
+permission, not audited: it is the viewer's own mail; owner, 2026-10-28); the sign-up form in
+demo mode says to use a made-up address. 11 uploads are capped by wrapping
 files' `PolicySource`. 12 the data is a constant table (fictional "Ember Flats", `.invalid`
 addresses, 555-01xx phones, invented playa names) with dates relative to the clock; IDs differ.
-13 one shared password, printed on the sign-in page. 14 `Info` does no I/O. 15 a failed seed
+13 ten accounts, one per starter role plus the empty-profile newcomer, one shared password, printed on the sign-in page (owner, 2026-10-28). 14 `Info` does no I/O. 15 a failed seed
 step fails the command and leaves the marker in `seeding`; `reset` is the recovery.
 
 **Errs kinds callers handle.** `Seed`: `Unsupported` (off), `Conflict` (`seeded`, `not_empty`),
@@ -74,22 +76,20 @@ starter roles or the table are wrong), `Timeout` (contributor), any seam's or co
 kind wrapped with the step. `Reset`: `Unsupported`, `Conflict not_demo`, `Unavailable` wrapping
 `db.ErrReadOnly`, the migrator's and store kinds. `Protected`: store kinds (identity fails
 closed). `Channel.Send`: `Invalid` wrapping `notify.ErrRejected`, `Unavailable`. `ListMail`:
-`Unauthenticated`, `Permission`, `Unsupported`, `Invalid` (`limit` `range`), the recorder's and
-store kinds. `Policy`: the inner kind. `Info`, `Enabled`, `Channel` cannot fail. `New`/`Link`:
-`Invalid`, `Internal`. Exit statuses: off, not empty, seeded, not demo → 2; schema → 3; else 1.
+`Unauthenticated`, `Unsupported`, `Invalid` (`limit` `range`), store kinds. `Policy`: the inner kind. `Info`, `Enabled`, `Channel` cannot fail. `New`/`Link`:
+`Invalid`, `Internal`. Exit statuses: `Unsupported` (off) and Conflict `seeded`, `not_empty`, `not_demo` → 2; any other Conflict → 1; reset's migrate step uses the migrate command's own mapping (schema → 3), a failed migrate wrapped as `demo.ErrMigrate`; else 1. `bms demo` checks `BMS_DEMO_ENABLED` right after config load, before telemetry or the database (exit 2, naming the key). `Options.Validate` rejects the `public` schema in `Schemas`, and the drop excludes it.
 
 **Owns.** Tables `core.demo_state`, `core.demo_account`, `core.demo_mail`; set `db.Set{Name:
-"demo", Schema: "core"}` after `files`; config `demo.enabled`, `demo.public_url`; permission
-`demo.mail.read`; extension point `demo.seed`; route set `demo` (`GET /api/demo` public, `GET
+"demo", Schema: "core"}` after `files`; config `demo.enabled`, `demo.public_url`; extension point `demo.seed`; route set `demo` (`GET /api/demo` public, `GET
 /api/demo/mail` signed-in); commands `bms demo seed|reset`; screen `/demo/mail`, the frame's
-`DemoBanner`, keys `shell.demo.*`, `core.demo.*`; audit `demo.seed.ran`, `demo.reset.ran`,
-`demo.mail.read`; spans `demo.seed`, `demo.seed.step`, `demo.reset`, `demo.mail.capture`;
+`DemoBanner`, keys `shell.demo.*`, `core.demo.*`; audit `demo.seed.ran`, `demo.reset.ran`;
+spans `demo.seed`, `demo.seed.step`, `demo.reset`, `demo.mail.capture`;
 metrics `bms.demo.seeds{outcome}`, `bms.demo.resets{outcome}`, `bms.demo.mail_captured`. No
 settings, signals or jobs.
 
 **Expects of dependencies** (each a numbered Proposed change): identity `EnsureAccount`, `Guard`,
-`WithSession`; authz `EnsureGrant`, `Grant`, `ListRoles`; people `UpdateMe`, `Create`, `Conflict
-protected`; departments/events/settings `Create`, `AddScheduleItem`, `Set`; notify a swappable
+`WithSession`; authz `EnsureGrant`, `Grant`, `StarterRoleIDs`; people `UpdateMe`, `Create`, `Conflict
+protected` (delete and link); departments/events/settings `Create`, `AddScheduleItem`, `Set`; notify a swappable
 `ChannelFactory`; files `PolicySource`; api `Options.NoIndex`; web-shell the banner, `useDemo()`;
 module-contract `demo` reserved, `demo.seed` core point; volunteers a `Provider`; db the set order.
 
@@ -155,7 +155,7 @@ const Point = "demo.seed"
 const (
 	ActorParticipant   = "participant"    // base role only; booked on shifts
 	ActorNewcomer      = "newcomer"       // base role only; empty profile (the first-run flow)
-	ActorLead          = "lead"           // department-admin at Rangers
+	ActorLead          = "lead"           // department-admin at Rangers, Gate, Greeters, Medical and DPW
 	ActorCoordinator   = "coordinator"    // volunteer-coordinator
 	ActorSteward       = "steward"        // department-steward
 	ActorEventAdmin    = "event-admin"    // event-admin
@@ -282,7 +282,12 @@ type Accounts interface {
 type Access interface {
 	EnsureGrant(ctx context.Context, in authz.GrantInput) (authz.Grant, bool, error) // proposed, bootstrap only
 	Grant(ctx context.Context, in authz.GrantInput) (authz.Grant, error)             // as the demo access-admin
-	ListRoles(ctx context.Context) ([]authz.Role, error)                              // role keys to IDs
+	StarterRoleIDs(ctx context.Context, keys []string) (map[string]authz.RoleID, error) // authz's role lookup seam (not ListRoles): role keys to IDs; actor-less, read-only
+}
+// Addresses is identity's EmailOf (existing): the login address of the viewer's account,
+// the only address ListMail matches. NotFound (no account) gives an empty list.
+type Addresses interface {
+	EmailOf(ctx context.Context, person model.PersonID) (model.Email, error)
 }
 type Profiles interface {
 	UpdateMe(ctx context.Context, in people.ProfileInput) (people.Person, error) // as each demo account
@@ -316,9 +321,9 @@ type Contributor struct {
 }
 
 // Options. Validate fails Invalid naming the field (demo.db, demo.clock, demo.logger,
-// demo.tracer, demo.audit, demo.authz, demo.actor, demo.files, demo.accounts, demo.access,
+// demo.tracer, demo.audit, demo.actor, demo.files, demo.accounts, demo.access, demo.addresses,
 // demo.profiles, demo.departments, demo.events, demo.settings, demo.schema, demo.objects,
-// demo.schemas (empty or a name outside the db schema grammar), demo.data_dir,
+// demo.schemas (empty, a name outside the db schema grammar, or `public`), demo.data_dir,
 // demo.contributor_timeout (outside 10s..30m), demo.public_url (not canonical per settings
 // decision 15)). PublicURL may be empty.
 type Options struct {
@@ -330,11 +335,11 @@ type Options struct {
 	Tracer             telemetry.Tracer
 	Meter              telemetry.Meter
 	Audit              audit.Recorder    // scoped "demo"
-	Authz              authz.Authorizer  // ListMail's permission check
-	Actor              authz.ActorFunc   // ListMail's actor
+	Actor              authz.ActorFunc   // ListMail's viewer (the signed-in person)
 	Files              files.PolicySource // the inner (settings-backed) source Policy caps
 	Accounts           Accounts
 	Access             Access
+	Addresses          Addresses
 	Profiles           Profiles
 	Departments        Departments
 	Events             Events
@@ -382,8 +387,9 @@ func (s *Service) Channel() notify.Channel
 // app passes the service as files' PolicySource when Enabled.
 func (s *Service) Policy(ctx context.Context) (files.Policy, error)
 
-// ListMail lists captured mail, newest first, for a signed-in holder of demo.mail.read;
-// records demo.mail.read per returned row. Consumer: GET /api/demo/mail.
+// ListMail lists captured mail addressed to the signed-in account's login address, newest
+// first; never another address's mail, whoever asks. Needs a session, no permission, and
+// is not audited (the viewer's own mail). Consumer: GET /api/demo/mail.
 func (s *Service) ListMail(ctx context.Context, q MailQuery) ([]Mail, error)
 
 // Routes and OpenAPI: GET / (public) and GET /mail (signed-in), relative to /api/demo.
@@ -401,7 +407,7 @@ Defined here: `Info`, `AccountInfo`, `Report`, `Step`, `MailID`, `Mail`, `MailQu
 `EventID`, `Email`; `identity.Credentials`, `AccountResult` (proposed), `Session`;
 `authz.GrantInput`, `Grant`, `Role`; `people.ProfileInput`, `Person`; `departments.CreateInput`;
 `events.CreateInput`, `ScheduleInput`, `Created`; `settings.Changes`; `notify.Channel`,
-`Envelope`; `files.Policy`; `audit.Entry`, `Ref`.
+`Envelope`; `identity.EmailOf` (as `Addresses`); `files.Policy`; `audit.Entry`, `Ref`.
 
 ## Data
 
@@ -412,19 +418,19 @@ and unread when demo is off; a conditional set would make `Protected` undefined)
 |---|---|---|---|
 | `core.demo_state` | `id smallint PK CHECK (id = 1)`, `seed_version int`, `instance text`, `started_at timestamptz`, `seeded_at timestamptz NULL` (null = seeding or failed) | internal | until reset |
 | `core.demo_account` | `account_id uuid PK REFERENCES core.account(id) ON DELETE RESTRICT`, `person_id uuid REFERENCES core.person(id) ON DELETE RESTRICT`, `key text UNIQUE`, `email text`, `position int` | internal (generated addresses, not a person's) | until reset |
-| `core.demo_mail` | `id uuid PK`, `to_address text`, `subject text`, `body text`, `message_id text`, `captured_at timestamptz` | `to_address`, `subject`, `body`: personal (a stranger may have typed a real address; a body may name them) | the newest `MaxMail` rows; all gone at reset |
+| `core.demo_mail` | `id uuid PK`, `to_address text`, `subject text`, `body text`, `message_id text`, `captured_at timestamptz` | `to_address`, `subject`, `body`: personal (a stranger may have typed a real address despite the sign-up note; a body may name them) | the newest `MaxMail` rows; all gone at reset |
 
-Index `demo_mail_captured_at_idx (captured_at DESC)`. The foreign keys are the backstop behind
+Index `demo_mail_captured_at_idx (captured_at DESC)` and `demo_mail_to_idx (lower(to_address),
+captured_at DESC)` for the recipient filter. The foreign keys are the backstop behind
 the `Guard`: even a direct deletion cannot remove a demo account's rows while the marker table
 references them.
 
 ## Permissions
 
-| Permission | Allows | Scoped by | Reaches | Default roles |
-|---|---|---|---|---|
-| `demo.mail.read` | `ListMail`, the `/demo/mail` screen | site | personal | `participant` (the base role: every signed-in tester) |
-
-`GET /api/demo` needs none (public by design). `Seed` and `Reset` are commands: the operator has
+None owned. `ListMail` and the `/demo/mail` screen need a session and nothing else: the data
+is the viewer's own (people's `UpdateMe` is the same shape), so a permission would only add a
+role that could widen it; the recipient filter is in the query, not in a grant (owner,
+2026-10-28, Q-DEMO2: self only, no admin override). `GET /api/demo` needs none (public by design). `Seed` and `Reset` are commands: the operator has
 the database; audited as `ActorOperator` (`demo.seed.ran`, `demo.reset.ran`) with each step's
 own entries recorded by the demo account that performed it. `Protected` and `Policy` are system
 reads (no actor). `Channel.Send` runs inside notify's sender loop (system).
@@ -464,21 +470,24 @@ phone number or anything about a real person." Phone-first: wraps, no fixed heig
 link targets. It links to `/demo/mail` ("Captured mail") when signed in.
 
 **The sign-in page.** On `/accounts/sign-in` the frame renders the banner expanded with the
-account table (`shell.demo.accounts.title` "Try a demo account", columns Account, Role,
+account table (in a `<details>` disclosure: collapsed below the `sm` breakpoint so the sign-in form stays near the top on a phone, open at `sm` and above; `shell.demo.accounts.title` "Try a demo account", columns Account, Role,
 E-mail; the shared password once above the table with a copy button; `shell.demo.password`
 "Password for every demo account: {password}"). Role labels are catalogue keys
 `core.demo.account.<key>` (10 keys, `en` and `es`); a `@<dept>` suffix renders as "at {dept}"
-with `core.demo.department.<key>`. The accounts area itself is unchanged: the tester types or
-pastes the address. Self sign-up stays per `accounts.signup` (the sign-up link is identity's).
+with `core.demo.department.<key>`. The lead's label `core.demo.account.lead` says the lead
+of the volunteer departments (the lead holds five, D1.1). The accounts area itself is unchanged: the tester types or
+pastes the address. Self sign-up stays per `accounts.signup` (the sign-up link is identity's). On the sign-up form
+in demo mode the frame renders a note (`shell.demo.signup_note`, "Use a made-up address, not
+your own. Mail the demo sends can be read only by the account it is sent to, but strangers see
+everything else you enter.") above the e-mail field.
 
 **Captured mail (`web/src/core/demo/`, route `/demo/mail`, `kind: "core"`, no nav entry).**
 A list newest first: to, subject, captured time (`useFormat` relative), the body expanded on
 tap (plain text, links clickable so a tester can complete a password reset). Reads
 `GET /api/demo/mail`. States: loading; empty (`core.demo.mail.empty` "No mail has been captured
-yet. Mail the demo would send appears here instead of being delivered."); forbidden (a `403`
-shows `ErrorState`); off (`501` shows `core.demo.mail.off` "This is not a demo instance.");
-error with reference and retry. A note above the list: "Anyone signed in to the demo can read
-this mail, including password-reset links." Phone-first.
+yet. Mail the demo would send appears here instead of being delivered."); signed out (a `401` sends to sign-in as any screen); off (`501` shows `core.demo.mail.off` "This is not a demo instance.");
+error with reference and retry. A note above the list (`core.demo.mail.note`): "Only mail sent to your own
+account's address appears here." Phone-first.
 
 **The password screen (accounts area, Proposed change 10).** A `403` with field `account` code
 `protected` shows `core.accounts.field.protected` ("This is a shared demo account. Its
@@ -525,15 +534,20 @@ the `demo` route set.
    (writer-only; the one actor-less grant). Then as `access-admin`, `Access.Grant` for:
    steward → `department-steward`; event-admin → `event-admin`; settings-admin →
    `settings-admin`; account-admin → `account-admin`; audit-reviewer → `audit-reviewer`;
-   coordinator → `volunteer-coordinator`. Role IDs come from `ListRoles` by key; a missing
+   coordinator → `volunteer-coordinator`. Role IDs come from `authz.StarterRoleIDs` by key (actor-less, read-only; no superuser session); a missing
    starter role (a regional deleted it; impossible on a fresh schema) fails `NotFound`. The
-   self-grant rule keeps `access-admin` to its one role.
+   self-grant rule keeps `access-admin` to its one role. The `grants` step counts 12: 1 bootstrap, 6 by `access-admin`, 5 for the lead (step 4).
 4. *Departments.* As `steward`: `Departments.Create` for Rangers ("Keep the event safe and
    calm: patrols, perimeters, the radio"), Gate ("Tickets, waivers and wristbands at the
    entrance"), Greeters ("Welcome arrivals and point them to camp"), Medical ("First aid and
    the medical tent"), DPW ("Build and strike the city"), Sanctuary ("Peer support and a
    quiet place"); each with `ContactEmail` `<key>@demo.invalid`. Then as `access-admin`:
-   `Grant({Person: lead, Role: department-admin, Department: Rangers})`.
+   `Grant({Person: lead, Role: department-admin, Department: D})` for D in Rangers, Gate,
+   Greeters, Medical, DPW, in that order (five rows; `access-admin` holds
+   `access.grants.manage` site-wide, so the no-escalation rule does not apply, and the rows
+   differ by department, so none is a `duplicate`). Sanctuary stays without a lead on purpose
+   (the department whose leads have left, D1.1). The `departments` step reports 6; the five lead grants are not
+   counted there but printed as a separate progress line `lead grants 5` after the step.
 5. *Event.* As `event-admin`: `Events.Create{Name: "Ember Flats <year>", Kind: burn, Zone,
    Dates}` where the start is 10:00 on the first Thursday at least 21 days after the seed
    date in `Zone`, the end 12:00 the following Monday, `<year>` the start's year. Schedule
@@ -594,9 +608,9 @@ anything is touched). Order, each a `Step`:
 2. *spool*: delete every file under `<data.dir>/audit/spool` (a failed import of strangers'
    entries must not resurrect them).
 3. *drop*: `DROP SCHEMA IF EXISTS <s> CASCADE` for each of `Schemas`, in one statement, under
-   `migrateTimeout`; the migrator's bookkeeping lives in `core` and goes with it.
+   `migrateTimeout`; `Options.Validate` refuses `public` and the statement excludes it, so a mismatched count is `Internal`; the migrator's bookkeeping lives in `core` and goes with it.
 4. *migrate*: `Schema.Migrate` (every set in order, authz's starter-role seed), as
-   `bms migrate` does; `secrets.json` and the session key are untouched, so existing tokens
+   `bms migrate` does, and exits with the migrate command's own mapping (a failed migrate is wrapped as `demo.ErrMigrate`); `secrets.json` and the session key are untouched, so existing tokens
    now name unknown accounts and every session is over (identity's stateless design).
 5. *seed*: `Seed` (the marker check passes: the schema is empty).
 
@@ -616,7 +630,7 @@ the HTTP shell. The owner can run `bms demo reset` by hand at any time.
 
 **Guard.** `Protected` is one indexed read of `core.demo_account`. identity consults its
 `Guard` (nil in production) in `ChangePassword`, `SetTemporaryPassword`, `DisableAccount`,
-`DeletePerson`, `RequestPasswordReset` (answers nil and sends nothing, as for a superuser
+`DeletePerson`, `LinkAccount` (after the superuser check), `RequestPasswordReset` (answers nil and sends nothing, as for a superuser
 address), `CompletePasswordReset` (no token can exist) and any later e-mail change; the
 refusal is `Permission` with field `account` code `protected`. `EnableAccount`, `SignOut`,
 `EndOtherSessions` stay allowed (harmless to others). A `Guard` error fails the use case
@@ -631,10 +645,11 @@ envelope (`To`, `Subject`, `Body`, `MessageID`) in its own short `Write` transac
 deletes rows beyond the newest `MaxMail`; records `bms.demo.mail_captured`; a malformed
 envelope (zero `To`, empty subject) is `Invalid` wrapping `notify.ErrRejected` so notify ends
 the row `rejected` instead of retrying; a store failure is `Unavailable` and notify retries.
-`Ping` answers nil (the outbox screen's "check connection" succeeds). `ListMail`: actor →
-`Authz.Allow(demo.mail.read)` → `Enabled` (`Unsupported` when off) → load → one
-`demo.mail.read` entry per row (`Level: personal`, `Record: Ref{Kind: "demo.mail", ID}`,
-`Fields: [to, subject, body]`) → return. Never logs an address or a subject.
+`Ping` answers nil (the outbox screen's "check connection" succeeds). `ListMail`: actor
+(`Unauthenticated` without one) → `Enabled` (`Unsupported` when off) → `Addresses.EmailOf(actor)`
+(`NotFound` → empty list) → load rows whose `to_address` equals that address
+(`WHERE lower(to_address) = $1`, the viewer's address lower-cased; there is no other filter and
+no parameter or role that widens it) → return. No audit entry: the rows are the viewer's own. Never logs an address or a subject.
 
 **Upload cap.** `Policy` calls the inner source and lowers each field to the constant; it
 never raises one. The constants are not settings: a demo settings-admin must not be able to
@@ -683,22 +698,27 @@ is covered by the integration test, so a column rename breaks the build, not the
 | F21 | `Reset` | `Objects.Clear` fails | Unavailable | exit 1; database intact; rerun | `TestReset_ObjectsFail_LeavesDatabase` |
 | F22 | `Reset` | spool dir unreadable | Unavailable | exit 1; rerun | `TestReset_SpoolUnreadable_ReturnsUnavailable` |
 | F23 | `Reset` | drop refused by the server (privilege) | the store's kind (Permission/Unavailable) | exit 1; marker stays | `TestReset_DropFails_KeepsMarker` (integration) |
-| F24 | `Reset` | `Schema.Migrate` fails | the migrator's kind (`Conflict` → exit 3) | exit 3/1; say "run `bms migrate`, then `bms demo seed`" | `TestReset_MigrateFails_SaysHowToRecover` |
+| F24 | `Reset` | `Schema.Migrate` fails | the migrator's kind (`Conflict` → exit 3) | exit by the migrate command's mapping (3 behind, ahead or busy; else 1, see F43); say "run `bms migrate`, then `bms demo seed`" | `TestReset_MigrateFails_SaysHowToRecover` |
 | F25 | `Protected` | store unavailable | Unavailable | identity fails the change (closed) | `TestProtected_StoreDown_ReturnsUnavailable` |
 | F26 | `Protected` | unknown account | — (`false, nil`) | proceed | `TestProtected_Unknown_False` |
 | F27 | `Channel.Send` | zero `To` or empty subject | Invalid wrapping `notify.ErrRejected` | notify ends the row `rejected` | `TestCapture_BadEnvelope_Rejected` |
 | F28 | `Channel.Send` | store down or read-only | Unavailable (+ `db.ErrReadOnly`) | notify retries | `TestCapture_StoreDown_ReturnsUnavailable` |
 | F29 | `Channel.Send` | ctx canceled | Canceled | notify releases | `TestCapture_Canceled` |
 | F30 | `ListMail` | no actor | Unauthenticated | 401 | `TestListMail_NoActor_ReturnsUnauthenticated` |
-| F31 | `ListMail` | no `demo.mail.read` | Permission | 403 | `TestListMail_NoPermission_ReturnsPermission` |
+| F31 | `ListMail` | mail exists for other addresses (including a demo account's) | — (not listed; no kind) | show only the viewer's own | `TestListMail_OtherAccountsMail_NotListed` |
 | F32 | `ListMail` | `Enabled` false | Unsupported | 501, "not a demo" | `TestListMail_DemoOff_ReturnsUnsupported` |
 | F33 | `ListMail` | `Limit` outside 1..`MaxMailList` | Invalid `limit` `range` | 400 | `TestListMail_BadLimit_ReturnsInvalid` |
-| F34 | `ListMail` | `Audit.Record` fails | the recorder's kind | no audit, no read | `TestListMail_AuditFails_ReturnsNothing` |
+| F34 | `ListMail` | the viewer has no account address (`EmailOf` NotFound) | — (empty list) | show the empty state | `TestListMail_NoAccountAddress_Empty` |
 | F35 | `ListMail` | store down | Unavailable | 503 | `TestListMail_StoreDown_ReturnsUnavailable` |
 | F36 | `Policy` | inner source fails | the inner kind | files answers it | `TestPolicy_InnerFails_Passthrough` |
 | F37 | `Policy` | inner values above the caps | — (lowered) | — | `TestPolicy_CapsNeverRaise` |
 | F38 | `bms demo <x>` | unknown subcommand or extra arguments | — (usage) | exit 2 | `TestDemoCommand_Usage_Exit2` |
-| F39 | `Info`, `Enabled`, `Channel` | — | cannot fail: constants and no I/O | — | `TestInfo_NoIO` (built against `db.None()`) |
+
+| F40 | `Options.Validate` | `Schemas` contains `public` | Invalid `demo.schemas` | exit 2 | `TestOptions_PublicSchema_ReturnsInvalid` |
+| F41 | `Reset` | the drop statement's schema count differs from `Schemas` | Internal | exit 1; marker stays | `TestReset_DropCountMismatch_ReturnsInternal` |
+| F42 | `bms demo <x>` | `BMS_DEMO_ENABLED` off, checked right after config load | — (usage-style) | exit 2, name the key; telemetry and the database untouched | `TestDemoCommand_Disabled_Exit2_NamesKey` |
+| F43 | `Reset` | `Schema.Migrate` fails | `demo.ErrMigrate` wrapping the migrator's kind | exit by the migrate command's mapping | `TestReset_MigrateFails_WrapsErrMigrate` |
+| F44 | files policy wiring | demo enabled but the demo service is missing | Unavailable (fail closed) | files answers it | `TestDemoPolicy_ServiceMissing_FailsClosed` |
 
 ## Lock-in check
 
@@ -716,7 +736,9 @@ timer is a systemd unit; cron or a compose sidecar does the same (`docs/operatin
   `TestSeed_Deterministic` runs twice with a fixed clock and compares everything but IDs);
   `Info` from constants; the cap; the capture's trim to `MaxMail`; the marker rule;
   `TestDemo_ChangesOnlyTheListed`.
-- **Permission tests.** F11, F30, F31; the guard through identity's tests (Proposed change
+- **Permission tests.** F11, F30; F31 (`TestListMail_OtherAccountsMail_NotListed`: with mail
+  captured for two accounts, each sees only its own; a superuser and an `account-admin` see
+  only their own; no query parameter widens it); the leak test below covers the rest; the guard through identity's tests (Proposed change
   3: `TestChangePassword_Protected_ReturnsPermission` and siblings).
 - **Leak tests.** `telemetrytest.New(t)` around the seed, the capture and `ListMail`: no
   address, no subject, no legal name, no password in logs or spans.
@@ -726,49 +748,159 @@ timer is a systemd unit; cron or a compose sidecar does the same (`docs/operatin
   `bms demo seed` again → exit 2; `bms demo reset` → objects gone, spool empty, old cookie
   rejected, the same counts as the first seed; `bms demo reset` with `BMS_DEMO_ENABLED`
   unset → exit 2 and nothing changed; a reset on a schema without the marker → exit 2 and
-  nothing changed; a notification sent as a tester appears on `/demo/mail` and never reaches
-  a listening SMTP fake; an upload over `MaxUploadBytes` fails `too_large` while
+  nothing changed; a notification sent to a tester's address appears on that account's `/demo/mail`, not on
+  another account's, and never reaches a listening SMTP fake; an upload over `MaxUploadBytes` fails `too_large` while
   `files.max_bytes` is set higher.
 - **Conformance.** Each contributing module's `moduletest.Conformance` gains the optional rule
   `demoseed_provider_valid` (`WithDemoSeed()`): the provider runs against the module's fakes
   with a `demotest.NewFakeActors()` and creates at least one record without a `Permission`
-  error (Proposed change 7).
+  error (Proposed change 7, as superseded by `module-volunteers.md` "Amendment D1 changes").
+  The rule registers the request's event with dates (as step 5 computes them from the rig's
+  clock, zone `UTC`) and calls the module's `Start` before `Provider.Seed` and `Stop` after
+  (D1.5, D1.6); a provider that finds an event without dates fails `Invalid`.
 - **Web.** The banner renders on every route and on the sign-in page with the table; axe
   passes at 320 px; the mail screen's five states; `useDemo` failure hides the banner and
   reports.
 
+## Accepted implementation deviations (demo build, 2026-10-29)
+
+Verified against the code and accepted:
+
+- `Options.Instance string`: the marker's instance name, `demo` when empty (a valid ident otherwise, else `Invalid`).
+- `Service.State(ctx) (seededAt time.Time, found bool, err error)`: the marker for `bms check`; `found` is false when there is no row.
+- The command's usage is `seed|reset` (`bms demo seed|reset`).
+- Audit and span `Fields` use normalised step names (lower case, runs of non-alphanumerics become `_`): `walk_ons`, `module_volunteers`.
+- A contributor that exceeds `ContributorTimeout` returns `Timeout` (not `Internal`), wrapped with the module name.
+- The mail capture maps a table refusal (an envelope with no recipient or no subject) to `Invalid` wrapping `notify.ErrRejected`, so notify records a rejected send and does not retry.
+- `Reset`'s migrate-failure message names the recovery: "the demo schemas were dropped and not rebuilt: run `bms migrate`, then `bms demo seed`".
+- Routes: the core mounts the set at `/` under `/api/demo/`, so the info route is `GET /api/demo/` (public) and the mail route `GET /api/demo/mail`, answering `{"mail":[{"id","to","subject","body","captured_at"}]}`.
+- The demo route set is mounted and documented only when `demo.enabled`; `bms openapi` honours `BMS_DEMO_ENABLED`.
+- Role IDs for the grants step come from authz's actor-less `StarterRoleIDs(ctx, keys []string) (map[string]RoleID, error)` (see authz.md), the demo's role lookup seam, not `ListRoles`; no superuser session is created.
+- D56 review: `identity.LinkAccount` runs the protected-demo-account guard after the superuser check; a protected account gets `Permission` (field `account`, code `protected`) and a guard error fails the link closed; `people.LinkAccount` maps it to `Conflict` `protected`, as for delete.
+- D56 review: `bms demo reset` refuses the `public` schema (`Options.Validate`, field `demo.schemas`; the drop excludes it, a mismatched count is `Internal`); `bms demo` checks `BMS_DEMO_ENABLED` right after config load and exits 2 naming the key when off.
+- D56 review: exit codes are 2 for `Unsupported` and Conflict `seeded`, `not_empty`, `not_demo` only; any other Conflict exits 1; reset's migrate step uses the migrate command's own mapping (a failed migrate wrapped as `demo.ErrMigrate`).
+- D56 review: the demo files policy fails closed (`Unavailable`) when demo is enabled but the demo service is missing.
+- D56 review: the seed report's `grants` step counts 12 (1 bootstrap, 6 by access-admin, 5 for the lead); `departments` reports 6; a separate `lead grants 5` progress line follows the departments step.
+- api.md: the error mapper keeps field errors with code `protected` on a `Permission` error, so the web shows the protected message.
+
+## Amendment D1 (raised 2026-10-28, Approved 2026-10-29, D56; Q-DEMO5: one lead for five departments): what the volunteers provider build found
+
+Building the volunteers `demoseed.Provider` (Proposed change 7) against the seed as specified
+found seven gaps between the core's steps and the volunteers table. Each is settled below;
+one needs the owner. Nothing here changes what demo mode does for a tester beyond the data
+they find; decisions 1 to 15 stand. Folded into Behavior step 4, the `ActorLead` comment, the lead's label and the Test plan on 2026-10-29
+(Q-DEMO5 answered).
+
+**D1.1 The lead's grants (Behavior step 4, `ActorLead`).** Step 4 grants `lead`
+`department-admin` at Rangers only, but the volunteers table has the lead create positions,
+members, shifts and bookings in Gate, Greeters, Medical and DPW too, so the first Gate step
+fails `Permission` (volunteers F171). Three ways out: (a) grant the lead `department-admin`
+at every department that gets volunteer data; (b) give the other departments' work to
+another of the ten accounts; (c) add a lead account per department. (b) is impossible as the
+roles stand: volunteers decision 1 seeds every lead permission into `department-admin` only,
+and no other account holds it anywhere. (c) changes D53's ten accounts and the sign-in
+page's table for no gain a tester can see. **Decided: (a).** Step 4 becomes: as
+`access-admin`, `Grant({Person: lead, Role: department-admin, Department: D})` for D in
+Rangers, Gate, Greeters, Medical, DPW, in that order (five rows; `access-admin` holds
+`access.grants.manage` site-wide, so the no-escalation rule does not apply, and the rows
+differ by department, so none is a `duplicate`). Sanctuary stays without a lead on purpose:
+it is the demo's "department whose leads have left", which a `steward` tester repairs with
+`access.department-grants.manage`. The `ActorLead` comment reads "department-admin at
+Rangers, Gate, Greeters, Medical and DPW". Realism: at a small burn with few volunteers one person
+often leads several departments at once (owner, 2026-10-29, Q-DEMO5), and the demo's point is that one sign-in shows every lead screen;
+the account list on the sign-in page says "lead of the volunteer departments". The
+`steward` still creates the org-wide qualifications and "First aid" (unchanged).
+
+**D1.2 The pending self-upload (Proposed change 7, "records").** The table gave it to
+walk-on 02, but walk-ons have no account and `UploadCertificate` records the signed-in person
+as the subject; there is no path for a lead to upload on someone's behalf (volunteers
+decision 2). **Decided:** the `participant` uploads it, for ICS-100 (org-wide), as the last
+record step, with `volunteers.self_upload` at its default `true`. The lead then has one
+pending record to verify on `/qualification-records` (org-wide, so any verify extent sees it,
+volunteers decision 3), which is a better demo than a walk-on's would have been.
+
+**D1.3 The lead's own records.** `RecordQualification` and `VerifyRecord` refuse the actor's
+own records (`Invalid self`), and no other account holds `qualifications.verify` at Rangers,
+so "Ranger training, Over 18 and ICS-100 verified for the lead" cannot be seeded. **Decided:**
+the lead has no records; the lead holds Khaki on Friday through `Assign` with `Waive: true`
+on themself, which volunteers decision 21 (withdrawn by Q-VOL7, owner: yes) allows and F152
+tests. The roster then shows a flagged self-waiver, a state the owner asked for and no other
+seeded row shows. A second lead account was not added (D1.1 (c)).
+
+**D1.4 The inventory position.** The standing "Winter inventory" shift needs a DPW position
+and the table had none. **Decided:** "Inventory Crew" (DPW, open, no requirements), created
+by the lead (D1.1 gives `positions.manage@DPW`). The shift: the day 14 days after the event's
+end day, 09:00 to 13:00 in the event's zone, 6 slots, location "Warehouse", no bookings.
+
+**D1.5 Event dates in the conformance rule (Test plan, "Conformance"; module-contract).**
+`moduletest`'s `demoseed_provider_valid` registers the request's event in `eventstest` with
+no dates, so the built provider falls back to the core's own date rule (step 5's "first
+Thursday at least 21 days ahead"), copied into the module. A module must not carry a core
+part's rule, and the core always gives the event dates (step 5), so the fallback can only
+ever serve the fake. **Decided:** the rule registers the event *with* dates, computed as
+step 5 does from the rig's clock (Thursday 10:00 to the following Monday 12:00, zone
+`UTC`), and a provider that finds an event without dates fails `Invalid` (field `event`,
+code `required`); the fallback is removed. Volunteers F175 below.
+
+**D1.6 `Start` before `Seed` in the conformance rule (module-contract).** `bms demo seed`
+runs inside an assembly whose modules are started (app.md: the seed is step 8 of a command
+that builds and starts every part), so a provider may use anything `Start` set up: the
+volunteers `Assign` enqueues `volunteers.shift-reminder`, which `Start` registers, and
+`jobstest.Fake.Enqueue` answers `Invalid` (`name`, `unknown`) for an unregistered name. The
+rule built the module without starting it. **Decided:** the rule calls the harness's
+`start` before `Provider.Seed` (the rig's cleanup stops it), as the command does, so a
+provider may rely on what `Start` registered. Proposed change 18 below.
+
+**D1.7 The bookings the table left open.** Recorded as built, so the counts are fixed:
+members: `participant`, `lead` and walk-ons 01 to 06 in Rangers; walk-ons 08 to 11 in
+Medical; walk-on 07 in neither (the waiver case) and walk-on 12 in neither (an open
+position needs no membership). Friday 08 to 14 Dirt Ranger is full with walk-ons 01 to 04.
+Walk-on 07 is assigned to Saturday 14 to 20 Dirt Ranger with `Waive: true` (no Ranger
+training, not a member; the position is open so membership is not the missing piece). Gate
+Crew, Thursday to Sunday: walk-on 09 on 10 to 14, 10 on 14 to 18, 11 on 18 to 22; Greeter,
+Thursday to Sunday: walk-on 12 on 10 to 14, 08 on 14 to 18 (one booking per shift, no
+overlaps for any person). Medic shifts have no bookings: nobody at Medical has First aid
+verified, so a tester as `lead` sees the "needs First aid" eligibility state. The Sunday
+20 to 02 Dirt Ranger shift is canceled by the lead with no bookings, so the cancellation
+sends no mail.
+
+**What changes where.** Behavior step 4 (five grants), the `ActorLead` comment, the account
+list's lead label (web-shell `core.demo.account.lead`), Proposed change 7 (the volunteers
+table, superseded by `module-volunteers.md` "Amendment D1 changes"), the Test plan's
+conformance bullet (dates and `Start`), `SeedVersion` stays 1 (the demo has not shipped).
+
+**Q-DEMO5 (owner, 2026-10-29, answered).** One `lead` account may run five departments (a
+small burn has few volunteers, so one person often leads several); D53's ten accounts and
+the sign-in page stand. D1.1 (a) is the decision.
+
+**Proposed change 18** (applied 2026-10-29) (D1.5, D1.6) **`module-contract.md`:** `moduletest`'s rule
+`demoseed_provider_valid` (and `WithDemoSeed`'s doc) registers the request's event with
+dates (Thursday 10:00 to Monday 12:00 at least 21 days after the rig's clock, zone `UTC`)
+and calls the module's `Start` before `Provider.Seed` and `Stop` after, as `bms demo seed`
+does; F66's note says a provider may rely on what `Start` registered. **`add-module`
+skill:** one clause: "the provider may rely on `Start` having run".
+
 ## Open questions
 
-- **Q-DEMO1. The account set and password.** One account per starter role (nine) plus a
-  second participant with an empty profile ("newcomer"), all sharing `burn-demo-password`,
-  addresses `<key>@demo.invalid`; the "shift lead" the owner named is a position (Khaki) the
-  volunteers seed creates, not a role. *Recommend:* yes. Alternative: fewer, bundled
-  accounts (one "admin" with the four site-admin roles), which is closer to a small
-  regional but hides permission gaps testers should find.
-- **Q-DEMO2. Captured mail is readable by anyone signed in**, including password-reset
-  links and the address a self-signed-up stranger typed. *Recommend:* yes, with the note on
-  the screen; it is what makes the reset flow testable, and the banner already says strangers
-  see everything. Alternative: show only mail addressed to the signed-in account (the reset
-  flow, signed out, becomes untestable) or run Mailpit outside bms (the same exposure, less
-  control).
-- **Q-DEMO3. The automatic reset is an operator timer** (`deploy/systemd/`, shipped disabled,
-  runs with `serve` stopped), not a job. *Recommend:* yes. Alternative: a `jobs`-hosted reset
-  behind a setting, which would drop its own table under itself and run migrations inside a
-  serving process.
-- **Q-DEMO4. What "not perfect" covers.** A tester holding `access-admin`, `settings-admin`,
-  `department-steward`, `event-admin` or `account-admin` can break the demo for everyone
-  until the next reset (revoke the lead's role, archive Rangers, close the event, clear the
-  SMTP settings, rename Marbles). Only the lock-out cases (password, address, disable, delete)
-  are guarded. *Recommend:* accept, run `bms demo reset` by hand when it happens, and turn the
-  timer on once the owner has reviewed a seeded instance.
+**None open.** Q-DEMO5 (one lead for five departments) was answered by the owner on
+2026-10-29 and is folded into D1.1.
+
+**Answered (D53).** All four were answered by the owner on 2026-10-28 and are folded into the Summary's
+decisions: Q-DEMO1 (the ten accounts and the shared password) into 13; Q-DEMO2 (captured
+mail) into 10, **changed from the recommendation**: mail is shown only to the account it was
+addressed to, so there is no `demo.mail.read` permission and no audit entry; Q-DEMO3 (the
+operator timer) into 7; Q-DEMO4 (what "not perfect" covers) into 9. Consequence of Q-DEMO2: a
+signed-out visitor cannot read their own password-reset link on `/demo/mail`, so the
+forgotten-password flow is testable only from a second session of the same account; the
+sign-up form tells testers to use a made-up address.
 
 ## Proposed changes elsewhere
 
-1. **`config.md`.** Section `Demo{Enabled bool, PublicURL string}`; keys `demo.enabled`
+1. (applied 2026-10-28, config.md F36 to F39) **`config.md`.** Section `Demo{Enabled bool, PublicURL string}`; keys `demo.enabled`
    (`BMS_DEMO_ENABLED`, bool, default false) and `demo.public_url` (`BMS_DEMO_PUBLIC_URL`,
    default empty, canonical URL rule, `Invalid` when set while `demo.enabled` is false);
    failure modes F1–F3 above; the catalogue and `Keys()`.
-2. **`app.md`.** Part 11 `demo` after `files`: `declare` (`demo.Set`, `demo.Permissions`,
+2. (applied 2026-10-28, app.md row 11 and amendment) **`app.md`.** Part 11 `demo` after `files`: `declare` (`demo.Set`; no permissions, as mail is own-only (D53);
    the commands `demo seed` and `demo reset` as one `demo` command with two subcommands,
    `demoseed.Point` in `Env.CoreExtensionPoints`); `build` (`demo.New` over `cfg.Demo`, the
    seams as adapters over the real services, `Schemas` from the core set order plus the
@@ -779,11 +911,11 @@ timer is a systemd unit; cron or a compose sidecar does the same (`docs/operatin
    `ChannelFactory` = `func(SMTPConfig) (Channel, error) { return demo.Channel(), nil }`,
    files' `PolicySource` = the demo service over the settings-backed one, `api.Options.NoIndex`
    = true; route set `demo`; `serve`'s warn line; `bms check`'s `demo:` line; exit statuses
-   for the two commands (2 for `Unsupported`/`Conflict seeded|not_empty|not_demo`, 3 for the
+   for the two commands (2 for `Unsupported`/`Conflict seeded|not_empty|not_demo` only, any other Conflict 1; reset's migrate step uses the migrate command's own mapping, 3 for the
    migrator's `Conflict`, else 1); the actor closures' documented preference for a session in
    ctx over the operator (already the behaviour); `TestDemo_ChangesOnlyTheListed`; the
    end-to-end demo test.
-3. **`identity.md`.** (a) `EnsureAccount(ctx, Credentials) (AccountResult{Account
+3. (applied 2026-10-28, identity.md amendment (F99 to F108)) **`identity.md`.** (a) `EnsureAccount(ctx, Credentials) (AccountResult{Account
    model.AccountID, Person model.PersonID, Created bool}, error)`: writer-only, no actor,
    for commands; creates the account (password validated as `SignUp` does: length, common
    list; no sign-up mode check, no limiter) and publishes `identity.account-created`, or, when
@@ -796,17 +928,17 @@ timer is a systemd unit; cron or a compose sidecar does the same (`docs/operatin
    answers nil and sends nothing for a protected account; a `Guard` error fails the use case;
    failure modes and tests. (c) `WithSession`'s doc gains `core/demo`'s seed as a permitted
    caller.
-4. **`authz.md`.** `EnsureGrant(ctx, GrantInput) (Grant, bool, error)`: writer-only, no
+4. (applied 2026-10-28, authz.md amendment (F72 to F75)) **`authz.md`.** `EnsureGrant(ctx, GrantInput) (Grant, bool, error)`: writer-only, no
    actor, for commands (the sibling of `Seed`); site-scoped grants only (`Invalid scope` for a
    department); separation-of-duties rules checked (`Conflict`); an existing grant is returned
    with `false`; audited `access.grant.created` with `ActorOperator`; publishes
    `access.grant-created`.
-5. **`people.md`.** `Delete`/`FulfilRequest` and `bms delete` map identity's `Permission
+5. (applied 2026-10-28, people.md amendment (F89)) **`people.md`.** `Delete`/`FulfilRequest`, `LinkAccount` and `bms delete` map identity's `Permission
    protected` to `Conflict protected` beside `Conflict superuser`; one failure mode and test.
-6. **`module-contract.md`.** `demo` joins the reserved core areas (`IsCoreArea`); `demo.seed`
+6. (applied 2026-10-28, module-contract.md (F66)) **`module-contract.md`.** `demo` joins the reserved core areas (`IsCoreArea`); `demo.seed`
    is a core extension point; `moduletest.Conformance` gains the option `WithDemoSeed()` and
    the rule `demoseed_provider_valid` (Test plan).
-7. **`module-volunteers.md`.** `ContributesTo` gains `demoseed.Point`; `Contributions()`
+7. (applied 2026-10-28, module-volunteers.md amendment (F171 to F174); the table is superseded by `module-volunteers.md` "Amendment D1 changes", 2026-10-29) **`module-volunteers.md`.** `ContributesTo` gains `demoseed.Point`; `Contributions()`
    returns a `demoseed.Provider` (`demo.go`) that, as `lead`: creates the qualifications
    "Ranger training" (Rangers, 365-day validity), "ICS-100" (org-wide, no expiry), "First
    aid" (Medical, 730 days), "Over 18" (org-wide, no expiry); the positions Dirt Ranger
@@ -828,33 +960,33 @@ timer is a systemd unit; cron or a compose sidecar does the same (`docs/operatin
    `qualifications.manage` site-wide (`department-steward`), so those two are created as
    `steward`. Permissions seed order and the `Conflict unnamed` rule mean every booked person
    must have a playa name (they do).
-8. **`notify.md`.** Note that `app` may supply a `ChannelFactory` that ignores `SMTPConfig`
+8. (applied 2026-10-28, notify.md) **`notify.md`.** Note that `app` may supply a `ChannelFactory` that ignores `SMTPConfig`
    (demo mode); `Configured` is unchanged. No interface change.
-9. **`files.md`.** Note that `app` may wrap `PolicySource` to lower the limits (demo mode);
+9. (applied 2026-10-28, files.md) **`files.md`.** Note that `app` may wrap `PolicySource` to lower the limits (demo mode);
    no interface change.
-10. **`web-shell.md`.** `useDemo()` in `@/api` over `GET /api/demo` read at boot;
+10. (applied 2026-10-28, web-shell.md amendment (F40 to F52)) **`web-shell.md`.** `useDemo()` in `@/api` over `GET /api/demo` read at boot;
     `DemoBanner` in the frame (every screen; expanded with the account table on
     `/accounts/sign-in`); keys `shell.demo.banner.title|body`, `shell.demo.accounts.title`,
-    `shell.demo.password`, `shell.demo.mail_link`; `core.demo.*` keys for the ten account
+    `shell.demo.password`, `shell.demo.mail_link`, `shell.demo.signup_note` (Q-DEMO2: use a made-up address), `core.demo.mail.note`; `core.demo.*` keys for the ten account
     labels, the six department labels and the mail screen; `web/src/core/demo/` as a core
     area with `/demo/mail`; the accounts area's `field.protected` message; the people
     deletion screen's `Conflict protected` message.
-11. **`api.md`.** `Options.NoIndex bool`: when set, every UI-handler response (D29's set)
+11. (applied 2026-10-28, api.md amendment (F63, F64)) **`api.md`.** `Options.NoIndex bool`: when set, every UI-handler response (D29's set)
     carries `X-Robots-Tag: noindex, nofollow`; a test.
-12. **`db.md`.** The fixed core set order gains `demo` after `files`;
+12. (applied 2026-10-28, db.md) **`db.md`.** The fixed core set order gains `demo` after `files`;
     `demo.postgres.Migrations`, `demo.Set`.
-13. **`telemetry.md`.** Instrument rows `bms.demo.seeds{outcome}`, `bms.demo.resets{outcome}`,
+13. (applied 2026-10-28, telemetry.md metrics table and spans) **`telemetry.md`.** Instrument rows `bms.demo.seeds{outcome}`, `bms.demo.resets{outcome}`,
     `bms.demo.mail_captured`; span names `demo.seed`, `demo.seed.step`, `demo.reset`,
     `demo.mail.capture`.
-14. **`07-abstractions.md`.** A `### demo` entry under Core (purpose, owns, doesn't do, spec
+14. (applied 2026-10-28, 07-abstractions.md) **`07-abstractions.md`.** A `### demo` entry under Core (purpose, owns, doesn't do, spec
     link) and `contracts/demoseed` beside `greeter`, `personpage`, `eventsetup`,
     `membership` in the contracts entry; the Delivery entry for `app` lists the `demo`
     command.
-15. **`plan/design/README.md`.** The row for this spec (added with this draft).
-16. **`deploy/` and `docs/operating.md`** (targets not written): `deploy/systemd/
+15. (applied (added with this draft)) **`plan/design/README.md`.** The row for this spec (added with this draft).
+16. (pending: target not written (deploy/ and docs/operating.md)) **`deploy/` and `docs/operating.md`** (targets not written): `deploy/systemd/
     bms-demo-reset.service` and `.timer` (disabled), the compose equivalent, the operator
     text: what demo mode changes, the reset's recovery steps, "the banner is not a
     substitute for keeping real data out", and that backups of a demo hold whatever strangers
     typed.
-17. **`.claude/skills/add-module/SKILL.md`** (main session): a module that wants demo data
+17. (applied 2026-10-28, add-module skill) **`.claude/skills/add-module/SKILL.md`** (main session): a module that wants demo data
     adds `demo.go` with a `demoseed.Provider` and `WithDemoSeed()` in its conformance test.

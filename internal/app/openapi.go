@@ -31,7 +31,12 @@ func runOpenAPI(ctx context.Context, p *process) int {
 	cfg.Log.Format = config.LogText
 	cfg.Instance.Name = "openapi"
 	cfg.Session.Key = secret.New(placeholderSessionKey)
+	// The one variable the document depends on: the demo route set exists only in demo mode.
+	if v, ok := p.lookup(config.Prefix + "DEMO_ENABLED"); ok && v == "true" {
+		cfg.Demo.Enabled = true
+	}
 	a := newAssembly(p, cfg)
+	a.forDocument = true // the client services are built off and empty (usage.go)
 	if err := a.startTelemetry(ctx, noEnvironment, p.stderr); err != nil {
 		return p.earlyFail(ctx, err, ExitUsage)
 	}

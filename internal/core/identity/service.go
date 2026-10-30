@@ -52,6 +52,10 @@ type store interface {
 	TouchLogin(ctx context.Context, id model.AccountID, at time.Time) error
 	Rehash(ctx context.Context, id model.AccountID, newHash, oldHash secret.Secret) error
 	Superuser(ctx context.Context, id model.AccountID, person model.PersonID, e model.Email, hash secret.Secret, at time.Time) (account.Superuser, error)
+	// EnsureAccount is Superuser's sibling for a participant account (D53): it creates the
+	// account or replaces the password of the participant account that holds the address,
+	// and fails Conflict when the superuser's account holds it.
+	EnsureAccount(ctx context.Context, id model.AccountID, person model.PersonID, e model.Email, hash secret.Secret, at time.Time) (account.Ensured, error)
 
 	// The forgotten-password flow (D39). hash is the SHA-256 of the token; the token itself
 	// never reaches the store.
@@ -98,6 +102,7 @@ type Options struct {
 	Names          NameSource
 	Alerter        Alerter
 	Notify         notify.Notifier // scoped to "identity"; nil means no reset: RequestPasswordReset answers Unsupported
+	Guard          Guard           // optional; nil protects nothing (D53, demo mode only)
 }
 
 // Validate fails errs.Invalid joining a validate.FieldError per problem: "identity.db",
@@ -146,6 +151,7 @@ type Service struct {
 	names          NameSource
 	alerter        Alerter
 	notify         notify.Notifier
+	guard          Guard
 
 	common  map[string]struct{}
 	dummy   secret.Secret // verified when no account matched, so the answer costs the same
@@ -201,7 +207,7 @@ func newService(o Options, st store) (*Service, error) {
 		store: st, db: o.DB, clock: o.Clock, logger: o.Logger, tracer: o.Tracer,
 		key: key, allowPlaintext: o.AllowPlaintext, audit: o.Audit, signals: o.Signals,
 		policySource: o.Policy, perms: o.Permissions, lister: o.Lister, names: o.Names, alerter: o.Alerter,
-		notify: o.Notify,
+		notify: o.Notify, guard: o.Guard,
 		common: common, dummy: dummyHash(), limiter: newLimiter(), resetLimiter: newResetLimiter(), sem: make(chan struct{}, HashConcurrency),
 		rand: rand.Reader, metrics: m,
 	}, nil

@@ -85,6 +85,8 @@ interface CallInfo {
   upload?: boolean;
   /** A download: a success body is bytes, kept as a Blob (never read as text). */
   binary?: boolean;
+  /** `performance.now()` when the call began; set by `perform` (the report's `duration_ms`). */
+  startedAt?: number;
 }
 
 function parseRetryAfter(h: string | null): number | undefined {
@@ -123,7 +125,12 @@ function fail(
   init: ConstructorParameters<typeof ApiError>[0],
   is401: boolean,
 ): never {
-  const error = new ApiError(init);
+  // Wall time as measured here, capped at the longest timeout (telemetry.md T1.2).
+  const durationMs =
+    info.startedAt === undefined
+      ? undefined
+      : Math.min(UPLOAD_TIMEOUT_MS, Math.max(0, Math.round(performance.now() - info.startedAt)));
+  const error = new ApiError(durationMs === undefined ? init : { ...init, durationMs });
   if (is401 && !NO_REDIRECT_ON_401.has(info.route)) {
     safely(() => hooks.onUnauthenticated(location.pathname + location.search));
   }
@@ -143,6 +150,7 @@ function fail(
 
 /** One call, start to finish (the spec's "A call, step by step"). Never calls anything but fetch. */
 async function perform(req: Request, info: CallInfo): Promise<Response> {
+  info.startedAt = performance.now();
   const base = {
     method: info.method,
     route: info.route,

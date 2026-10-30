@@ -5,7 +5,9 @@ import (
 	"log/slog"
 	"net"
 	"net/netip"
+	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -78,6 +80,7 @@ func (c Config) problems() []problem {
 	c.validateLog(&col)
 	c.validateData(&col)
 	c.validateFiles(&col)
+	c.validateDemo(&col)
 	c.validateModules(&col)
 	return col.probs
 }
@@ -320,4 +323,88 @@ func validS3Endpoint(v string) bool {
 		return true
 	}
 	return !strings.Contains(rest, ":") || strings.HasPrefix(rest, "[")
+}
+
+// validateDemo checks the demo keys: a public URL needs the switch (F37) and must be a
+// canonical URL (F38). Telemetry.Usage is a bool with nothing to range-check.
+func (c Config) validateDemo(col *collector) {
+	d := c.Demo
+	if d.PublicURL == "" {
+		return
+	}
+	env := envOf("demo.public_url")
+	if reason := demoURLProblem(d.PublicURL); reason != "" {
+		col.addf(env, codeFormat, "%s", reason)
+		return
+	}
+	if !d.Enabled {
+		col.addf(env, codeConflict, "requires %s", envOf("demo.enabled"))
+	}
+}
+
+// canonicalDemoURL returns the canonical form of an operator-typed public URL: lower-case
+// scheme and host, the scheme's default port dropped, every trailing slash removed from the
+// path (which is otherwise kept, so a regional behind a sub-path keeps it). It returns a
+// reason, never containing the text, for what cannot be canonicalised: a scheme other than
+// http or https, no host, userinfo, a query or fragment, a port outside 1..65535, stray
+// whitespace or control characters, or more than MaxDemoPublicURLBytes bytes. The result
+// satisfies demoURLProblem.
+func canonicalDemoURL(v string) (canon, reason string) {
+	const rule = "must be an http or https URL with a host and no userinfo, query or fragment, at most 256 bytes"
+	if len(v) > MaxDemoPublicURLBytes || v != strings.TrimSpace(v) ||
+		strings.ContainsAny(v, "?#\\ \t\r\n\x00") || strings.ContainsFunc(v, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
+		return "", rule
+	}
+	u, err := url.Parse(v)
+	if err != nil || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" {
+		return "", rule
+	}
+	scheme := strings.ToLower(u.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return "", rule
+	}
+	host := strings.ToLower(u.Hostname())
+	if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+	if p := u.Port(); p != "" {
+		n, perr := strconv.Atoi(p)
+		if perr != nil || n < 1 || n > 65535 {
+			return "", rule
+		}
+		if defaultPort := (scheme == "http" && n == 80) || (scheme == "https" && n == 443); !defaultPort {
+			host += ":" + strconv.Itoa(n)
+		}
+	}
+	out := scheme + "://" + host + strings.TrimRight(u.EscapedPath(), "/")
+	if demoURLProblem(out) != "" {
+		return "", rule
+	}
+	return out, ""
+}
+
+// demoURLProblem returns why v is not a canonical public URL, or "". The reason states the
+// rule and never contains v.
+func demoURLProblem(v string) string {
+	const rule = "must be an http or https URL with a host, no userinfo, query or fragment, " +
+		"a lower-case scheme and host and no trailing slash, at most 256 bytes"
+	if len(v) > MaxDemoPublicURLBytes || v != strings.TrimSpace(v) ||
+		strings.ContainsAny(v, "?#\\ \t\r\n\x00") || strings.ContainsFunc(v, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
+		return rule
+	}
+	u, err := url.Parse(v)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" ||
+		u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" {
+		return rule
+	}
+	if p := u.Port(); p != "" {
+		n, perr := strconv.Atoi(p)
+		if perr != nil || n < 1 || n > 65535 {
+			return rule
+		}
+	}
+	if strings.HasSuffix(v, "/") || v != strings.ToLower(u.Scheme+"://"+u.Host)+u.EscapedPath() {
+		return rule
+	}
+	return ""
 }

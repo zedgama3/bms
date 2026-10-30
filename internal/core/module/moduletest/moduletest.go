@@ -16,14 +16,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zedgama3/bms/internal/contracts/demoseed"
 	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/audit/audittest"
+	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/authz/authztest"
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/db/dbtest"
+	"github.com/zedgama3/bms/internal/core/demo"
+	"github.com/zedgama3/bms/internal/core/demo/demotest"
 	"github.com/zedgama3/bms/internal/core/departments/departmentstest"
+	"github.com/zedgama3/bms/internal/core/events"
 	"github.com/zedgama3/bms/internal/core/events/eventstest"
 	"github.com/zedgama3/bms/internal/core/files/filestest"
+	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/jobs"
 	"github.com/zedgama3/bms/internal/core/jobs/jobstest"
 	"github.com/zedgama3/bms/internal/core/module"
@@ -99,6 +105,7 @@ type options struct {
 	seedNum    int // times WithSeed was given
 	withoutNum int // times WithoutPersonData was given
 	noViews    bool
+	demoNum    int // times WithDemoSeed was given
 }
 
 // capOption is one WithCapability.
@@ -160,6 +167,21 @@ func WithoutViews() Option {
 	}}
 }
 
+// WithDemoSeed states that the module contributes demo data (D53): its manifest lists
+// demoseed.Point in ContributesTo and Contributions() returns a demoseed.Provider. The rule
+// demoseed_provider_valid then runs the provider against the module's fakes with
+// demotest.NewFakeActors() and requires it to create at least one record (Result.Items > 0)
+// and to return no Permission error. The module is started first (as `bms demo seed` does)
+// and the fake event has dates, so a provider may rely on both. Optional; without it the
+// rule is skipped. Conformance
+// fails t before the first rule when the manifest does not list demoseed.Point. Cannot fail.
+func WithDemoSeed() Option {
+	return Option{apply: func(o *options) error {
+		o.demoNum++
+		return nil
+	}}
+}
+
 // isNil reports whether v is nil or an interface holding a nil pointer, map, func, chan,
 // slice or interface, which a Factory's type assertion would accept and then crash on.
 func isNil(v any) bool {
@@ -210,6 +232,12 @@ func resolveOptions(m module.Manifest, opts []Option) (options, []string) {
 			problems = append(problems, fmt.Sprintf("module %q requires capability %q: add moduletest.WithCapability(%q, fake)", m.Name, c, c))
 		}
 	}
+	if o.demoNum > 1 {
+		problems = append(problems, "WithDemoSeed is given more than once")
+	}
+	if o.demoNum > 0 && !slices.Contains(m.ContributesTo, module.ExtensionPoint(demoseed.Point)) {
+		problems = append(problems, fmt.Sprintf("WithDemoSeed: module %q does not list %q in ContributesTo", m.Name, demoseed.Point))
+	}
 	switch {
 	case o.seedNum > 1:
 		problems = append(problems, "WithSeed is given more than once")
@@ -249,7 +277,7 @@ func resolveOptions(m module.Manifest, opts []Option) (options, []string) {
 // first rule when the options disagree with the manifest, naming the option and the
 // capability; otherwise it runs the rules as named subtests, in this order, and stops at
 // the first that fails, so the failing subtest's name is the broken rule: manifest_valid,
-// views_tagged, visibility_settings_declared, templates_register, registers_under_its_name, implements_declared, rejects_wrong_capability_type,
+// views_tagged, visibility_settings_declared, templates_register, registers_under_its_name, implements_declared, demoseed_provider_valid (only with WithDemoSeed), rejects_wrong_capability_type,
 // used_capability_absent_builds_and_starts, start_read_only, subscribes_every_declared_name,
 // jobs_register_scoped, stop_honors_context, stop_without_start_is_nil, export_zero_id, delete_zero_id,
 // export_unknown_person_is_empty, delete_unknown_person_is_zero_and_idempotent,
@@ -278,6 +306,7 @@ func Conformance(t *testing.T, m module.Manifest, f module.Factory, provision mo
 		{"templates_register", ruleTemplatesRegister},
 		{"registers_under_its_name", ruleRegisters},
 		{"implements_declared", ruleImplementsDeclared},
+		{"demoseed_provider_valid", ruleDemoSeedProviderValid},
 		{"rejects_wrong_capability_type", ruleRejectsWrongCapabilityType},
 		{"used_capability_absent_builds_and_starts", ruleUsedCapabilityAbsent},
 		{"start_read_only", ruleStartReadOnly},
@@ -355,6 +384,11 @@ type harness struct {
 	notify  *notifytest.Fake // the module under test's notifier
 	jobs    *jobstest.Fake   // the module under test's job registrar
 	files   *filestest.Fake  // the module under test's file store
+	authz   *authztest.Fake  // the module under test's authorizer, when it is the fake
+	depts   *departmentstest.Fake
+	events  *eventstest.Fake
+	people  *peopletest.Fake
+	clock   clock.Clock // the module under test's clock
 	capture *telemetrytest.Capture
 	started bool
 	stopped bool
@@ -492,6 +526,21 @@ func (h *harness) provisioner(readOnly bool) module.Provision {
 		if m.Name == r.m.Name {
 			fake.SetReadOnly(readOnly)
 			h.db, h.sig, h.audit, h.notify, h.jobs, h.files = fake, bus, rec, out, jf, ff
+			// The demo rule registers its request in the standard fakes; a module that supplied
+			// its own keeps them, and the rule then relies on what it supplied.
+			h.clock = d.Clock
+			if f, ok := d.Authz.(*authztest.Fake); ok {
+				h.authz = f
+			}
+			if f, ok := d.Departments.(*departmentstest.Fake); ok {
+				h.depts = f
+			}
+			if f, ok := d.Events.(*eventstest.Fake); ok {
+				h.events = f
+			}
+			if f, ok := d.People.(*peopletest.Fake); ok {
+				h.people = f
+			}
 		}
 		return d, nil
 	}
@@ -695,6 +744,79 @@ func ruleRegisters(t *testing.T, r *rig) {
 
 func ruleImplementsDeclared(t *testing.T, r *rig) {
 	r.build(t, false)
+}
+
+// ruleDemoSeedProviderValid proves the module's demo provider (D53, F66): Contributions()
+// returns a demoseed.Provider for demoseed.Point, and running it against the module's fakes
+// with demotest.NewFakeActors() creates at least one record and returns no Permission error.
+// The rule makes the demo actors superusers of the authorizer fake (when it is the standard
+// fake) and registers the request's departments, event and people in the other fakes, so a
+// Permission error means the provider acts as an actor it does not have, not that a fake was
+// empty. The event is registered with dates (Thursday 10:00 to the following Monday 12:00, at
+// least 21 days after the module's clock, zone UTC), and the module is started before the
+// provider runs, as `bms demo seed` does, and stopped at cleanup. It is skipped without
+// WithDemoSeed.
+func ruleDemoSeedProviderValid(t *testing.T, r *rig) {
+	if r.opts.demoNum == 0 {
+		t.Skip("WithDemoSeed was not given")
+	}
+	h := r.build(t, false)
+	c, ok := h.mod.(module.Contributor)
+	if !ok {
+		t.Fatalf("module %q lists %q in ContributesTo but does not implement module.Contributor", r.m.Name, demoseed.Point)
+	}
+	v, ok := c.Contributions()[module.ExtensionPoint(demoseed.Point)]
+	if !ok {
+		t.Fatalf("module %q: Contributions() has no entry for %q", r.m.Name, demoseed.Point)
+	}
+	prov, ok := v.(demoseed.Provider)
+	if !ok {
+		t.Fatalf("module %q: the contribution for %q is a %T, not a demoseed.Provider", r.m.Name, demoseed.Point, v)
+	}
+	actors := demotest.NewFakeActors()
+	req := actors.Request()
+	if h.authz != nil {
+		h.authz.SetActor(func(ctx context.Context) (authz.Actor, bool) {
+			p, ok := identity.PersonFrom(ctx)
+			return authz.Actor{Person: p}, ok
+		})
+		for _, p := range req.People {
+			h.authz.Superuser(p)
+		}
+	}
+	if h.depts != nil {
+		for k, id := range req.Departments {
+			h.depts.Add(id, k)
+		}
+	}
+	if h.events != nil {
+		// The core always gives the event dates (its step 5), so the fake does too, from the
+		// module's clock by the core's own rule; a provider never invents dates (D1.5).
+		dates, derr := demo.EventDates(h.clock.Now(), "UTC")
+		if derr != nil {
+			t.Fatalf("the demo event dates: %v", derr)
+		}
+		h.events.Add(events.Info{ID: req.Event, Name: "Demo event", Kind: events.KindBurn, Zone: "UTC", Dates: dates})
+	}
+	if h.people != nil {
+		for k, id := range req.People {
+			h.people.Add(id, k)
+		}
+	}
+	// bms demo seed runs in an assembly whose modules are started, so a provider may rely on
+	// what Start set up (jobs it registered, signals it subscribed to); the harness stops
+	// the module at cleanup (D1.6).
+	h.start(r.ctx(t))
+	res, err := prov.Seed(r.ctx(t), req)
+	if errs.Is(err, errs.Permission) {
+		t.Fatalf("module %q: the demo provider returned Permission (it acts as an actor without the permission): %v", r.m.Name, err)
+	}
+	if err != nil {
+		t.Fatalf("module %q: the demo provider failed: %v", r.m.Name, err)
+	}
+	if res.Items < 1 {
+		t.Fatalf("module %q: the demo provider created nothing (Result.Items = %d); a contributor must add at least one record", r.m.Name, res.Items)
+	}
 }
 
 // ruleRejectsWrongCapabilityType proves F32 for this module: for each capability it

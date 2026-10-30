@@ -23,6 +23,7 @@ var nameRE = regexp.MustCompile(`^[a-z][a-z0-9]{1,31}$`)
 var coreAreas = []string{
 	"core", "people", "accounts", "access", "identity", "authz", "departments", "events",
 	"signals", "notify", "audit", "files", "jobs", "settings", "telemetry", "db", "module",
+	"demo",
 	"modules",
 }
 

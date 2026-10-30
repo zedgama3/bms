@@ -111,6 +111,8 @@ func runCheck(ctx context.Context, p *process) int {
 	r.files(ctx, a)
 	r.auditSpool(cfg)
 	r.ui()
+	r.usage(a)
+	r.demo(ctx, a)
 
 	if err := a.closeQuiet(ctx); err != nil {
 		r.printf("shutdown: %s\n", indent(problemText(err)))
@@ -238,6 +240,12 @@ func valueOf(cfg config.Config, k config.Key) string {
 		return secretState(cfg.Files.S3AccessKey.IsSet())
 	case "files.s3_secret_key":
 		return secretState(cfg.Files.S3SecretKey.IsSet())
+	case "telemetry.usage":
+		text = strconv.FormatBool(cfg.Telemetry.Usage)
+	case "demo.enabled":
+		text = strconv.FormatBool(cfg.Demo.Enabled)
+	case "demo.public_url":
+		text = cfg.Demo.PublicURL
 	case "modules.disabled":
 		text = strings.Join(cfg.Modules.Disabled, ",")
 	default:

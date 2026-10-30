@@ -2,3 +2,4 @@
 export { ToastProvider } from "./Toast";
 export { setUntranslatedHandler } from "./errors/untranslated";
 export type { UntranslatedHandler } from "./errors/untranslated";
+export { loadingCount, subscribeLoading } from "./Loading";

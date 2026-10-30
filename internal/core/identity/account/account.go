@@ -87,3 +87,10 @@ type Superuser struct {
 	Person  model.PersonID
 	Created bool // false: an existing superuser account was reset
 }
+
+// Ensured is what the EnsureAccount upsert reports: the account it created or reset.
+type Ensured struct {
+	ID      model.AccountID
+	Person  model.PersonID
+	Created bool // false: an existing participant account's password was replaced
+}

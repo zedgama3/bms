@@ -204,6 +204,36 @@ test.describe("the frame", () => {
   });
 });
 
+test.describe("usage counts (D54)", () => {
+  test("one navigation produces a screen_view and a screen_ready, sent when the page is hidden", async ({
+    page,
+  }) => {
+    // The browser may ask not to be counted; the collector is then (correctly) not installed.
+    const off = await page.evaluate(
+      () =>
+        (navigator as Navigator & { globalPrivacyControl?: boolean }).globalPrivacyControl ===
+          true || navigator.doNotTrack === "1",
+    );
+    test.skip(off, "the browser asks not to be counted");
+    await page.route("**/api/client-events", (r) => r.fulfill({ status: 202 }));
+    await page.goto("/");
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await page.goto("/hello"); // a navigation within the app would do; this is the simplest
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    const sent = page.waitForRequest(
+      (r) => new URL(r.url()).pathname === "/api/client-events" && r.method() === "POST",
+    );
+    // Give the router time to settle (50 ms) and the screen to become ready, then hide the page.
+    await page.waitForTimeout(400);
+    await page.evaluate(() => window.dispatchEvent(new Event("pagehide")));
+    const body = (await sent).postDataJSON() as { events: { kind: string; screen: string }[] };
+    const kinds = body.events.map((e) => e.kind);
+    expect(kinds).toContain("screen_view");
+    expect(kinds).toContain("screen_ready");
+    expect(JSON.stringify(body)).not.toMatch(/\?|person|@/);
+  });
+});
+
 test.describe("hello", () => {
   test.use({ stubPublicSettings: false }); // the real server answers
   test("the entry appears and its screen calls GET /api/hello/public-greeting", async ({

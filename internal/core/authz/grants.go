@@ -416,3 +416,93 @@ func (s *Service) Revoke(ctx context.Context, id GrantID) (err error) {
 		return wrap(op, s.signals.Publish(ctx, SignalGrantRevoked, grantPayload(g)))
 	})
 }
+
+// EnsureGrant is the writer-only bootstrap grant for commands (the sibling of Seed): no
+// actor and no permission check, because a command acts with the operator's hands. It
+// exists for the demo seed's one actor-less grant (D53); a request never reaches it. In one
+// Write transaction under the invariants lock it refuses a department-scoped role or a
+// set in.Department (Invalid, field scope, code mismatch, F72) and the base role
+// (Invalid, field role, code base), returns an existing grant of the same person and role
+// as (that grant, false, nil) (F74), else checks EndsAt (Invalid, field ends_at, code
+// range), inserts the grant with no granter, checks the person's permissions, the new role
+// included, against the separation-of-duties rules (Conflict separation_of_duties, F73),
+// records access.grant.created with ActorOperator and publishes access.grant-created.
+// Fails NotFound for an unknown role, Invalid (field person, code unknown) for an unknown
+// person, Unavailable wrapping db.ErrReadOnly on a read-only copy (F75), and store, audit
+// and signal kinds; a failed Record or Publish rolls the grant back.
+func (s *Service) EnsureGrant(ctx context.Context, in GrantInput) (_ Grant, _ bool, err error) {
+	const op = "authz.Service.EnsureGrant"
+	ctx, span := s.start(ctx, "ensure-grant")
+	defer endSpan(span, &err)
+	if err := in.Validate(); err != nil {
+		return Grant{}, false, err
+	}
+	span.SetAttrs(telemetry.ID("role_id", in.Role))
+	var (
+		out     Grant
+		created bool
+	)
+	err = s.inTx(ctx, db.Write, func(ctx context.Context) error {
+		if err := s.store.LockInvariants(ctx); err != nil {
+			return wrap(op, err)
+		}
+		role, err := s.store.GetRole(ctx, in.Role)
+		if err != nil {
+			return wrap(op, err)
+		}
+		switch {
+		case role.Base:
+			return fieldInvalid(op, "role", codeBase, "the base role is held by everyone and cannot be granted")
+		case role.Scope != rows.ScopeSite:
+			return fieldInvalid(op, "scope", codeMismatch, "only site-wide roles can be granted by a command")
+		case !in.Department.IsZero():
+			return fieldInvalid(op, "scope", codeMismatch, "a site-wide role is not granted for a department")
+		}
+		now := s.now()
+		existing, err := s.store.ListGrants(ctx, rows.GrantFilter{
+			Person: in.Person, Role: in.Role, IncludeEnded: true, Now: now, WholeSite: true, Limit: 1,
+		})
+		if err != nil {
+			return wrap(op, err)
+		}
+		if len(existing) > 0 {
+			out = grantOf(existing[0])
+			out.RoleKey, out.RoleName = role.Key, role.Name
+			return nil
+		}
+		if !in.EndsAt.IsZero() && !in.EndsAt.After(now) {
+			return fieldInvalid(op, "ends_at", codeRange, "must be in the future")
+		}
+		g := rows.Grant{
+			ID: model.NewID[GrantID](), Person: in.Person, Role: in.Role,
+			EndsAt: in.EndsAt.UTC(), CreatedAt: now,
+		}
+		if err := s.store.InsertGrant(ctx, g); err != nil {
+			switch constraintOf(err) {
+			case "role_grant_person_role_department_key":
+				return fieldConflict(op, "role", codeDuplicate, nil, "this person already has this role here")
+			case "role_grant_person_id_fkey":
+				return fieldInvalid(op, "person", codeUnknown, "is not a known person")
+			}
+			return wrap(op, err)
+		}
+		if err := s.checkSeparation(ctx, op, in.Person); err != nil {
+			return err
+		}
+		out = grantOf(g)
+		out.RoleKey, out.RoleName = role.Key, role.Name
+		if err := s.record(ctx, audit.Entry{
+			Action: actionGrantCreated, Outcome: audit.Succeeded, Actor: audit.Actor{Kind: audit.ActorOperator},
+			Subject: g.Person, Record: audit.RefOf(kindGrant, g.ID),
+		}); err != nil {
+			return err
+		}
+		created = true
+		return wrap(op, s.signals.Publish(ctx, SignalGrantCreated, grantPayload(g)))
+	})
+	if err != nil {
+		return Grant{}, false, err
+	}
+	span.SetAttrs(telemetry.ID("grant_id", out.ID))
+	return out, created, nil
+}

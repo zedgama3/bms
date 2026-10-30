@@ -17,6 +17,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/db"
+	"github.com/zedgama3/bms/internal/core/demo"
 	"github.com/zedgama3/bms/internal/core/departments"
 	"github.com/zedgama3/bms/internal/core/events"
 	"github.com/zedgama3/bms/internal/core/files"
@@ -28,7 +29,6 @@ import (
 	"github.com/zedgama3/bms/internal/core/settings"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/telemetry"
-	"github.com/zedgama3/bms/internal/core/telemetry/intake"
 	"github.com/zedgama3/bms/internal/lib/clock"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/lib/validate"
@@ -130,6 +130,9 @@ type assembly struct {
 	started     []runnable
 	srv         httpServer
 	uiVersion   string
+	demo        *demo.Service      // the demo part's service (demo seed|reset, the lazy adapters); nil before its build
+	filesPolicy files.PolicySource // the settings-backed files policy; the demo part wraps it when enabled
+	forDocument bool               // the openapi command: the client services are built off and empty (usage.go)
 }
 
 // newAssembly returns the assembly of one command run over cfg. Telemetry and everything
@@ -462,19 +465,15 @@ func (a *assembly) apiOptions(version string, database api.Database, schema api.
 	if err != nil {
 		return api.Options{}, err
 	}
-	_, im, err := a.scopes("intake")
-	if err != nil {
-		return api.Options{}, err
-	}
-	in, err := intake.New(intake.Options{Logger: a.component("intake"), Meter: im, Clock: a.clock})
-	if err != nil {
-		return api.Options{}, fmt.Errorf("intake: %w", err)
-	}
 	var routes []module.ModuleRoutes
 	if a.set != nil {
 		routes = append(routes, a.set.Routes()...)
 	}
 	routes = append(routes, a.routeSets...)
+	in, usage, err := a.clientServices(routes)
+	if err != nil {
+		return api.Options{}, err
+	}
 	return api.Options{
 		Addr:           a.cfg.HTTP.Addr,
 		RequestTimeout: a.cfg.HTTP.RequestTimeout,
@@ -489,11 +488,13 @@ func (a *assembly) apiOptions(version string, database api.Database, schema api.
 		Routes:         routes,
 		Database:       database,
 		Intake:         in,
+		Usage:          usage,
 		Graph:          a.plan.Graph(),
 		Schema:         schema,
 		Authenticator:  a.authenticator,
 		Permissions:    a.permissions,
 		UI:             a.ui,
+		NoIndex:        a.cfg.Demo.Enabled,
 	}, nil
 }
 

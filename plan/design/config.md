@@ -5,6 +5,7 @@
 - **Amended 2026-10-18 (owner approval of audit/identity):** Proposed change 6 applied in part for identity (HKDF info `bms identity session v1`, failed logins limited by `httpx.ClientAddrFrom`, rotation a later command, no new keys) and Proposed change 8 applied for audit (`Instance.Name` on every entry; the spool under `Data.Dir/audit/spool`, created by `Run` at start, failing `Invalid` under `data.dir`, printed by app as `BMS_DATA_DIR`).
 - **Amended 2026-10-19 (D39, owner approval of settings):** Proposed change 9 applied: catalogue key `settings.sealing_key` (`BMS_SETTINGS_SEALING_KEY`, `_FILE`, secrets-file field `settings_sealing_key`, `Generated`, when set 32..1024 bytes, no NUL), `Config.Settings{SealingKey secret.Secret}`, `bms migrate` generates it like the session key (decision 7); unset is not an error for any command (decision 17); failure rows F31 to F33.
 - **Amended 2026-10-20 (D44, owner approval of files):** Proposed change (files.md 3) applied: a `Files` section and the keys `files.store`, `files.dir`, `files.s3_*` (catalogue and Validate below, F34, F35); `S3-compatible access keys (files)` leaves "Later keys". Proposed change 14.
+- **Amended 2026-10-28 (D53, D54, owner approval of demo and telemetry T1):** Proposed changes (demo.md 1, telemetry.md 22) applied: sections `Demo{Enabled, PublicURL}` and `Telemetry{Usage}`; keys `demo.enabled`, `demo.public_url`, `telemetry.usage` (catalogue, Validate, F36 to F39).
 - **Package:** `internal/config` (Go module `github.com/zedgama3/bms`; foundation-level, not
   a bms module). **UI:** none.
 - **Depends on specs:** `lib-errs.md` (Implemented): `errs.E`, `errs.Is`, kinds `Invalid`,
@@ -25,10 +26,10 @@
 **Exported names.**
 - `Prefix = "BMS_"`, `TestPrefix = "BMS_TEST_"` (never read by `Load`), `MaxSecretFileBytes = 64<<10`, `SecretsFileName = "secrets.json"`, `SecretsFieldSessionKey = "session_key"`, `SecretsFieldSettingsSealingKey = "settings_sealing_key"`.
 - `Key{Name, Env, Default, Required, Secret, Generated, Doc}` and `Keys() []Key` (copy of the single source of truth; `Env` = `BMS_` + upper-cased Name with `.` replaced by `_`).
-- `Config{Instance, DB, HTTP, Session, Settings, Secrets, Log, Data, Files, Modules}`: immutable value, safe to log or marshal (credentials are `secret.Secret`). Sections: `Instance{Name}`, `DB{URL secret.Secret, MaxConns, ConnectTimeout, QueryTimeout}`, `HTTP{Addr, RequestTimeout, ShutdownTimeout, MaxBodyBytes int64, TrustedProxies []netip.Prefix, AllowPlaintext}`, `Session{Key secret.Secret}`, `Settings{SealingKey secret.Secret}`, `Secrets{File}`, `Log{Level slog.Level, Format LogFormat}` (`LogJSON`, `LogText`), `Data{Dir}`, `Files{Store FilesStore, Dir, S3Endpoint, S3Bucket, S3Region, S3Prefix string, S3PathStyle bool, S3AccessKey, S3SecretKey secret.Secret}` (`FilesDisk`, `FilesS3`; D44), `Modules{Disabled []string}`.
+- `Config{Instance, DB, HTTP, Session, Settings, Secrets, Log, Data, Files, Demo, Telemetry, Modules}`: immutable value, safe to log or marshal (credentials are `secret.Secret`). Sections: `Instance{Name}`, `DB{URL secret.Secret, MaxConns, ConnectTimeout, QueryTimeout}`, `HTTP{Addr, RequestTimeout, ShutdownTimeout, MaxBodyBytes int64, TrustedProxies []netip.Prefix, AllowPlaintext}`, `Session{Key secret.Secret}`, `Settings{SealingKey secret.Secret}`, `Secrets{File}`, `Log{Level slog.Level, Format LogFormat}` (`LogJSON`, `LogText`), `Data{Dir}`, `Files{Store FilesStore, Dir, S3Endpoint, S3Bucket, S3Region, S3Prefix string, S3PathStyle bool, S3AccessKey, S3SecretKey secret.Secret}` (`FilesDisk`, `FilesS3`; D44), `Demo{Enabled bool, PublicURL string}` (D53), `Telemetry{Usage bool}` (D54), `Modules{Disabled []string}`.
 - `Default() Config` (defaults applied, `db.url` unset, so `Validate` fails on `BMS_DB_URL` only); `Load(ctx, environ []string) (Config, error)`; `(Config) Validate() error` (no I/O).
 
-**Catalogue (variable: default, range).** `BMS_INSTANCE_NAME` main, 1..64 `[a-z0-9]([a-z0-9-]*[a-z0-9])?`; `BMS_DB_URL` (+`_FILE`) required secret, `postgres`/`postgresql` URL with host, <= 4096 bytes, no NUL; `BMS_DB_MAX_CONNS` 10, 1..1000; `BMS_DB_CONNECT_TIMEOUT` 30s, 1s..10m; `BMS_DB_QUERY_TIMEOUT` 10s, 100ms..10m; `BMS_HTTP_ADDR` 127.0.0.1:8080 (non-loopback needs trusted proxies or allow_plaintext); `BMS_HTTP_REQUEST_TIMEOUT` 30s, 1s..10m; `BMS_HTTP_SHUTDOWN_TIMEOUT` 15s, 1s..5m; `BMS_HTTP_MAX_BODY_BYTES` 1048576, 1024..1073741824; `BMS_HTTP_TRUSTED_PROXIES` empty, <= 64 prefixes or bare addresses, no zero-bit prefix; `BMS_HTTP_ALLOW_PLAINTEXT` false; `BMS_SESSION_KEY` (+`_FILE`, else secrets file) generated, when set 32..1024 bytes, no NUL; `BMS_SETTINGS_SEALING_KEY` (+`_FILE`, else the secrets file's `settings_sealing_key`) generated, when set 32..1024 bytes, no NUL, unset is never an error; `BMS_SECRETS_FILE` `<data.dir>/secrets.json`; `BMS_LOG_LEVEL` info (debug|info|warn|error); `BMS_LOG_FORMAT` json (json|text); `BMS_DATA_DIR` data; `BMS_MODULES_DISABLED` empty list, <= 64 unique non-empty items.
+**Catalogue (variable: default, range).** `BMS_INSTANCE_NAME` main, 1..64 `[a-z0-9]([a-z0-9-]*[a-z0-9])?`; `BMS_DB_URL` (+`_FILE`) required secret, `postgres`/`postgresql` URL with host, <= 4096 bytes, no NUL; `BMS_DB_MAX_CONNS` 10, 1..1000; `BMS_DB_CONNECT_TIMEOUT` 30s, 1s..10m; `BMS_DB_QUERY_TIMEOUT` 10s, 100ms..10m; `BMS_HTTP_ADDR` 127.0.0.1:8080 (non-loopback needs trusted proxies or allow_plaintext); `BMS_HTTP_REQUEST_TIMEOUT` 30s, 1s..10m; `BMS_HTTP_SHUTDOWN_TIMEOUT` 15s, 1s..5m; `BMS_HTTP_MAX_BODY_BYTES` 1048576, 1024..1073741824; `BMS_HTTP_TRUSTED_PROXIES` empty, <= 64 prefixes or bare addresses, no zero-bit prefix; `BMS_HTTP_ALLOW_PLAINTEXT` false; `BMS_SESSION_KEY` (+`_FILE`, else secrets file) generated, when set 32..1024 bytes, no NUL; `BMS_SETTINGS_SEALING_KEY` (+`_FILE`, else the secrets file's `settings_sealing_key`) generated, when set 32..1024 bytes, no NUL, unset is never an error; `BMS_SECRETS_FILE` `<data.dir>/secrets.json`; `BMS_LOG_LEVEL` info (debug|info|warn|error); `BMS_LOG_FORMAT` json (json|text); `BMS_DATA_DIR` data; `BMS_DEMO_ENABLED` false; `BMS_DEMO_PUBLIC_URL` empty, an `http`/`https` URL with a host, no query, fragment or userinfo, <= 256 bytes, an error while demo is off; `BMS_TELEMETRY_USAGE` true (usage counts by screen template; off makes `POST /api/client-events` answer 501); `BMS_MODULES_DISABLED` empty list, <= 64 unique non-empty items.
 
 **Key decisions.**
 1. Environment is the only source (no file, no `.env`). 2. No command-line flags for values.
@@ -47,7 +48,7 @@
 16. TLS is offloaded to a front end under stated conditions; bind rule F28 (non-loopback bind needs `trusted_proxies` or `allow_plaintext`), F30 (no zero-bit trusted prefix); loopback recognised by literal host, no DNS.
 17. (D39) the sealing key for settings' `Secret` values is the second generated field of the secrets file, read and generated exactly like the session key; unset is not an error for any command (a deployment that never stores a secret setting needs none), and `settings` answers `Unsupported` when a secret is set without it.
 
-**What callers handle.** `Load` returns the zero `Config` and one `errs.Invalid` joining every problem (catalogue order, unknown variables last), each a `validate.FieldError` named by env variable, never echoing a value (read with `validate.Fields`). Other kinds: `Internal` for an `environ` entry without `=` (F12); `Canceled`/`Timeout` if ctx is done before or after a file read (F13; ctx is checked around each read, it cannot interrupt a blocking open or read such as a FIFO with no writer). A `*_FILE` or secrets-file read error names only a reason class (not found, permission denied, is a directory, unreadable), never the path. A missing secrets file is not an error: `Session.Key` stays unset. Failure modes F1-F30; obligations on `app`: F22 (unknown disabled module, `Invalid` under `BMS_MODULES_DISABLED`, derive `module.Env.Enabled`) and F22b (commands that sign sessions refuse an unset key, naming the secrets file). Secrets-file problems (F23-F27) are `Invalid` under `BMS_SECRETS_FILE`/`BMS_SESSION_KEY`: not a regular file, group/other bits set (Unix), malformed JSON, bad key length, key in both env and file.
+**What callers handle.** `Load` returns the zero `Config` and one `errs.Invalid` joining every problem (catalogue order, unknown variables last), each a `validate.FieldError` named by env variable, never echoing a value (read with `validate.Fields`). Other kinds: `Internal` for an `environ` entry without `=` (F12); `Canceled`/`Timeout` if ctx is done before or after a file read (F13; ctx is checked around each read, it cannot interrupt a blocking open or read such as a FIFO with no writer). A `*_FILE` or secrets-file read error names only a reason class (not found, permission denied, is a directory, unreadable), never the path. A missing secrets file is not an error: `Session.Key` stays unset. Failure modes F1-F39; obligations on `app`: F22 (unknown disabled module, `Invalid` under `BMS_MODULES_DISABLED`, derive `module.Env.Enabled`) and F22b (commands that sign sessions refuse an unset key, naming the secrets file). Secrets-file problems (F23-F27) are `Invalid` under `BMS_SECRETS_FILE`/`BMS_SESSION_KEY`: not a regular file, group/other bits set (Unix), malformed JSON, bad key length, key in both env and file.
 
 **Config vs settings rule.** Configuration is what reaches the database or listens, credentials and security boundaries, per-process values, and what fixes what may run before `migrate`. Everything else is a runtime setting (`settings`). Reloading is not supported.
 
@@ -180,6 +181,9 @@ type Config struct {
 	Secrets  Secrets
 	Log      Log
 	Data     Data
+	Files    Files
+	Demo     Demo
+	Telemetry Telemetry
 	Modules  Modules
 }
 
@@ -292,6 +296,26 @@ type Data struct {
 	Dir string
 }
 
+// Demo is the public-demo switch (D53, demo.md). With Enabled false (the default) the
+// demo part declares its empty tables and nothing else.
+type Demo struct {
+	// Enabled is BMS_DEMO_ENABLED: true or false (config's strict boolean grammar, F29/F36).
+	Enabled bool
+	// PublicURL is BMS_DEMO_PUBLIC_URL: the demo's canonical public URL, written to
+	// regional.public_url by the seed. Empty allowed. When set: an http or https URL with a
+	// host, no query, fragment or userinfo, at most 256 bytes (F38); setting it while
+	// Enabled is false is an error (F37): an operator who set it meant demo mode.
+	PublicURL string
+}
+
+// Telemetry is the client-telemetry switch (D54, telemetry.md T1.6).
+type Telemetry struct {
+	// Usage is BMS_TELEMETRY_USAGE: count screen views, declared actions and Web Vitals by
+	// screen template, never by person. Default true. False: POST /api/client-events
+	// answers 501 and the shell stops sending for the page load. A restart changes it.
+	Usage bool
+}
+
 // Modules is the opt-out list of module-contract decision 7.
 type Modules struct {
 	// Disabled names compiled-in modules not to run. Default empty: every compiled-in
@@ -381,6 +405,9 @@ holds an ID, a sensitivity or an address) and nothing from `core/`.
 | `files.s3_path_style` | `BMS_FILES_S3_PATH_STYLE` | bool | `true` | `true` or `false` | files (`s3`) |
 | `files.s3_access_key` | `BMS_FILES_S3_ACCESS_KEY` (+`_FILE`) | secret | empty | <= 1024 bytes, no NUL; required for `s3` (F35) | files (`s3`) |
 | `files.s3_secret_key` | `BMS_FILES_S3_SECRET_KEY` (+`_FILE`) | secret | empty | <= 1024 bytes, no NUL; required for `s3` (F35) | files (`s3`) |
+| `demo.enabled` | `BMS_DEMO_ENABLED` | bool | `false` | `true` or `false` (F36) | app (the `demo` part, the banner) |
+| `demo.public_url` | `BMS_DEMO_PUBLIC_URL` | string | empty | an `http`/`https` URL with a host, no query, fragment or userinfo, at most 256 bytes; empty allowed; set while `demo.enabled` is false is an error (F37, F38) | demo (through `app`) |
+| `telemetry.usage` | `BMS_TELEMETRY_USAGE` | bool | `true` | `true` or `false` (F39); doc "count screen views, declared actions and Web Vitals by screen template, never by person; see docs/telemetry.md" | telemetry `intake.Usage` (through `app`) |
 | `modules.disabled` | `BMS_MODULES_DISABLED` | list | empty | items non-empty after trimming, unique; ≤ 64; registered (checked by app) | app |
 
 Variables the process reads that are **not** in the catalogue and are not `BMS_*`:
@@ -646,6 +673,8 @@ logger; `cmd/bms` prints what `Load` returns.
 | `Log` | `Level` one of the four (F4; a hand-built `slog.Level(3)` is rejected); `Format` one of two (F4). |
 | `Data` | `Dir` non-empty after trimming and no NUL (F21). |
 | `Files` | `Store` one of the two (F34); `Dir` non-empty and no NUL; for `s3`: endpoint, bucket, access key and secret key set, else `Invalid` naming each missing variable (F35); the other store's keys are ignored but still checked for shape. |
+| `Demo` | `PublicURL` empty or a canonical URL (F38); non-empty with `Enabled` false is F37. |
+| `Telemetry` | nothing to range-check: a bool; the strict grammar is applied by `Load` (F39). |
 | `Modules` | each item non-empty after trimming, no duplicates, ≤ 64 items (F5). |
 
 Reasons never echo string input, following `lib-core`'s rule: "must be a postgres:// or
@@ -724,6 +753,10 @@ change 1). `cmd/bms` and `internal/app` are the only packages allowed to import
 | F33 | `Load` | the secrets file's `settings_sealing_key` fails F31, or is not a string (D39) | Invalid under `BMS_SECRETS_FILE` (not a string) or `BMS_SETTINGS_SEALING_KEY` (length, NUL); never echoed | restore the file from backup | `TestLoad_SecretsFileBadSealingKey_ReturnsInvalid` |
 | F34 (D44) | `Load`, `Validate` | `files.store` is not `disk` or `s3` (`postgres` included) | Invalid under `BMS_FILES_STORE` (`one_of`) | fix the value | `TestLoad_FilesStoreUnknown_ReturnsInvalid` |
 | F35 (D44) | `Validate` | `files.store` is `s3` and the endpoint, bucket, access key or secret key is unset | Invalid, one `FieldError` per missing variable | set them or use `disk` | `TestValidate_FilesS3MissingKeys_ReportsEachVariable` |
+| F36 (D53) | `Load` | `demo.enabled` is not exactly `true` or `false` | Invalid under `BMS_DEMO_ENABLED` | fix the value | `TestLoad_DemoEnabled_Malformed_ReturnsInvalid` |
+| F37 (D53) | `Load`, `Validate` | `demo.public_url` set while `demo.enabled` is false | Invalid under `BMS_DEMO_PUBLIC_URL`, reason "requires BMS_DEMO_ENABLED" | set both or neither | `TestLoad_DemoPublicURL_WithoutDemo_ReturnsInvalid` |
+| F38 (D53) | `Load`, `Validate` | `demo.public_url` not a canonical URL (scheme, host, query, fragment, userinfo, over 256 bytes) | Invalid under `BMS_DEMO_PUBLIC_URL`, reason never echoes the value | fix the value | `TestLoad_DemoPublicURL_Malformed_ReturnsInvalid` |
+| F39 (D54) | `Load` | `telemetry.usage` is not exactly `true` or `false` | Invalid under `BMS_TELEMETRY_USAGE` | fix the value | `TestLoad_TelemetryUsage_Malformed_ReturnsInvalid` |
 
 An unset `settings.sealing_key` is not a failure of `Load` or of any command (decision 17): `TestLoad_SealingKeyUnset_IsNotAnError`, `TestDefault_Validate_FailsOnlyOnRequired` (unchanged). A missing secrets file is not a failure of `Load` (decision 3): `TestLoad_SecretsFileAbsent_LeavesSessionKeyUnset`
 pins that `Load` succeeds and `Session.Key.IsSet()` is false.
@@ -785,7 +818,7 @@ passwords or people.
   a short key built from the marker: `err.Error()` and every `FieldError.Reason` lack it).
 - Concurrency: `TestConfig_ConcurrentReads` (under `-race`, several goroutines read every
   field of one loaded `Config`).
-- Failure modes: F1–F21 and F23–F29, one test each as named (F22 and F22b are `app.md`'s).
+- Failure modes: F1–F21, F23–F29 and F36–F39, one test each as named (F22 and F22b are `app.md`'s).
   F19 sets a bad int, a bad enum, an unknown variable, both forms of a secret, a
   non-loopback bind with no proxy, a too-open secrets file, and omits `BMS_DB_URL`, and
   asserts the exact set of `Field`s with no repeats and in catalogue order (unknown

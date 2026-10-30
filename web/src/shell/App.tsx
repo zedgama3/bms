@@ -3,15 +3,20 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createBrowserRouter } from "react-router";
 import { RouterProvider } from "react-router/dom";
 import type { DataRouter } from "react-router";
-import { api, ApiError } from "@/api";
-import { registerSessionRefresh, setSessionCheckFailed } from "@/api/internal";
+import { api, ApiError, demoApi } from "@/api";
+import {
+  demoStateOf,
+  demoStore,
+  registerSessionRefresh,
+  setSessionCheckFailed,
+} from "@/api/internal";
 import { I18nProvider, useLanguage, useT } from "@/i18n";
 import type { ScreenSet } from "@/registry/types";
 import { enabledSets } from "@/registry/registry";
 import { Button, ErrorState, Loading } from "@/ui";
 import { ToastProvider } from "@/ui/internal";
 import { BootContext } from "./boot";
-import { MODULES_KEY, PUBLIC_KEY, SESSION_KEY } from "./bootKeys";
+import { DEMO_KEY, MODULES_KEY, PUBLIC_KEY, SESSION_KEY } from "./bootKeys";
 import type { SessionResult } from "./bootKeys";
 import { applyPublic } from "./publicDoc";
 import { getReporter } from "./report";
@@ -85,6 +90,29 @@ function Boot({ sets, createRouter = browserRouter, onRouter, leave }: AppProps)
     },
   });
 
+  // Demo mode (D53): read once beside the public settings. An older server without the route
+  // (404) means "not a demo". Any other failure hides the banner, is reported like a failed
+  // catalogue load, and is retried by the same retry (F40).
+  const demoQ = useQuery({
+    queryKey: DEMO_KEY,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    queryFn: async ({ signal }) => {
+      try {
+        return await demoApi.GET("/api/demo/", { signal });
+      } catch (e) {
+        if (e instanceof ApiError && e.code === "not_found") return { enabled: false };
+        throw e;
+      }
+    },
+  });
+  useEffect(() => {
+    demoStore.set(demoStateOf(demoQ.data));
+  }, [demoQ.data]);
+  useEffect(() => {
+    if (demoQ.isError) getReporter()?.screenCrash(demoQ.error, "/");
+  }, [demoQ.isError, demoQ.error]);
+
   const enabledNames = useMemo(
     () => new Set((modulesQ.data?.modules ?? []).filter((m) => m.enabled).map((m) => m.name)),
     [modulesQ.data],
@@ -122,6 +150,7 @@ function Boot({ sets, createRouter = browserRouter, onRouter, leave }: AppProps)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modulesQ.data, activeKey, lang, catalogueAttempt]);
   const retryCatalogues = useCallback(() => setCatalogueAttempt((n) => n + 1), []);
+  const retryDemo = useCallback(() => void demoQ.refetch(), [demoQ]);
 
   useEffect(() => {
     setSessionCheckFailed(sessionQ.isError);
@@ -163,6 +192,8 @@ function Boot({ sets, createRouter = browserRouter, onRouter, leave }: AppProps)
     refreshSession,
     catalogueFailed,
     retryCatalogues,
+    demoFailed: demoQ.isError,
+    retryDemo,
     leave: leave ?? ((to) => window.location.replace(to)),
   };
 
@@ -192,6 +223,7 @@ function Boot({ sets, createRouter = browserRouter, onRouter, leave }: AppProps)
     router !== null &&
     !sessionQ.isPending &&
     (!publicQ.isPending || publicQ.failureCount > 0) &&
+    (!demoQ.isPending || demoQ.failureCount > 0) &&
     loadedFor === `${activeKey}|${lang}`;
   if (!ready || router === null) {
     return (

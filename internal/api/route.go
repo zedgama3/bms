@@ -26,6 +26,9 @@ type route struct {
 	access    module.Access
 	handler   http.Handler
 	unmatched bool // the fallback: its 4xx are debug noise
+	// sessionless routes never read the session (client-events, D54): authentication is
+	// skipped, so no person reaches the handler, the span or a log line.
+	sessionless bool
 }
 
 // routeLimits are the per-route raises of the body cap and the request deadline
@@ -142,6 +145,9 @@ func (st *reqState) layers(r *http.Request) (*http.Request, bool) {
 // signed-in route answers 401 without one.
 func (st *reqState) authenticate(r *http.Request) (*http.Request, bool) {
 	const op = "api.authenticate"
+	if st.rt.sessionless {
+		return r, true
+	}
 	signedIn := st.rt.access == module.AccessSignedIn
 	ctx := r.Context()
 	if a := st.s.opts.Authenticator; a != nil {

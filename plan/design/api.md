@@ -6,6 +6,7 @@
 - **Amended 2026-10-18 (owner approval of authz/people):** the mapper emits `fields` (from `validate.FieldError`) for a `409 conflict` as it does for `400 invalid`, so a duplicate can name its field (sign-up's `taken` names `email`; identity.md F15); `authz.Allow` satisfies `PermissionChecker` and refuses the actor inside `signals.InDelivery`; the declaration of `core.modules.read` gains `StarterRoles: authz.SiteAdminRoles` (authz.md Proposed change 6, Proposed change 10 applied).
 - **Amended 2026-10-18 (M2 build, accepted deviations):** `api.Permissions` and the exported `core.modules.read` declaration (`StarterRoles: authz.SiteAdminRoles`) are in the exported surface (app.md, "Accepted implementation deviations (M2 build, 2026-10-18)"). A record of what was built, not a design change.
 - **Amendment 2026-10-19 (approved, owner, 2026-10-20, D40):** Proposed change 15 settled for M4: decision 12's `no-store` stays on every mounted `/api/` route, a handler never sets `Cache-Control`, and `ETag`/`304` are allowed with it (the settings public routes); `Options.PublicOrigin` waits, its shape fixed over `regional.public_url`. F58, F59. See "Amendment 2026-10-19 (approved, owner, 2026-10-20, D40): Proposed change 15 settled for M4" before Open questions.
+- **Amendment 2026-10-28 (approved, owner, D53 and D54; demo.md Proposed change 11, telemetry.md Proposed change 19):** `Options.NoIndex` (`X-Robots-Tag: noindex, nofollow` on every UI-handler response); `POST /api/client-events` (`AccessPublic`) over `Options.Usage *intake.Usage`; `bms.api.errors{http.request.method, http.route, code}`; `RouteTokens`; section "Amendment 2026-10-28" before Open questions; F63 to F72.
 - **Package:** `internal/api` (Go module `github.com/zedgama3/bms`), plus the foundation
   helper package `internal/lib/httpx` that this spec owns (decision 2): the wire form of an
   error, the kind-to-status table, and the three calls a handler makes (`ReadJSON`,
@@ -53,7 +54,7 @@
 
 **Exported, `api`:**
 - `New(Options) (*Server, error)`, `Options.Validate()`; `Server`: `Handler()`, `OpenAPI() []byte`, `Listen(ctx) (net.Addr, error)`, `Serve() error`, `Shutdown(ctx) error`.
-- `Options`: `Addr, RequestTimeout, MaxBodyBytes, TrustedProxies []netip.Prefix, AllowPlaintext` (from `config.HTTP`); `Logger, Tracer, Meter, Clock, Version, Routes []module.ModuleRoutes, Database, Intake, Graph, Schema, Authenticator, Permissions, UI fs.FS, ContentSecurityPolicy`.
+- `Options`: `Addr, RequestTimeout, MaxBodyBytes, TrustedProxies []netip.Prefix, AllowPlaintext` (from `config.HTTP`); `Logger, Tracer, Meter, Clock, Version, Routes []module.ModuleRoutes, Database, Intake, Usage *intake.Usage (D54), Graph, Schema, Authenticator, Permissions, UI fs.FS, NoIndex bool (D53), ContentSecurityPolicy`; `RouteTokens(routes []module.ModuleRoutes) []string` (D54).
 - Seams: `Authenticator.Authenticate(ctx, r) (ctx, model.PersonID, error)` (identity, nil in M0 so signed-in routes 401); `PermissionChecker.Allow(ctx, authz.Permission) error` (authz, nil until M2 so permissioned shell routes 403); `Database{Ping, ReadOnly}`; `SchemaStatus func(ctx) ([]db.Status, error)`; `PermissionModulesRead = "core.modules.read"`; `DefaultCSP`.
 
 **Key decisions:**
@@ -76,7 +77,7 @@
 - D17 `Canceled`: client gone writes nothing; while draining `503 shutting_down` + `Connection: close`.
 - D18 request deadline = ctx deadline + connection read deadline; `WriteTimeout = RequestTimeout + 15s` is a backstop.
 - D19 every response to a routed request (the `/api/` chain) carries `X-Trace-Id`; not UI files, `/healthz`, `/readyz`, the misdirected 403 or pre-routing errors.
-- D20 shell routes are absolute paths (`/healthz`, `/readyz`, `/api/modules`, `/api/admin/modules`, `/api/client-errors`, `/api/openapi.json`); set names `core`, `modules`, `admin` refused.
+- D20 shell routes are absolute paths (`/healthz`, `/readyz`, `/api/modules`, `/api/admin/modules`, `/api/client-errors`, `/api/client-events` (D54), `/api/openapi.json`); set names `core`, `modules`, `admin` refused.
 - D21 `/healthz` carries no version.
 - D22 `/readyz` single-flights and caches `Ping` for 1 s (ping deadline 2 s).
 - D23 `Serve` after `Shutdown` is nil; `Listen` after `Shutdown` is `Conflict`.
@@ -92,7 +93,7 @@
 
 **Errors callers handle:** `Options.Validate`/`New`: `Invalid` (fields `http.addr`, `http.request_timeout`, `http.max_body_bytes`, `http.trusted_proxies`, `api.*`), `Conflict` (pattern or schema-name clash), `Invalid` for route/fragment mismatch or bad route token; `Listen`: `Unavailable` (in use), `Invalid`, `Conflict`; `Serve`: `Internal` (no Listen), `Unavailable`; `Shutdown`: `Timeout`/`Canceled` (late handlers may still run). `ReadJSON`: `Invalid` (wrapping `ErrUnsupportedMediaType` for 415; field `body` or JSON path), `*http.MaxBytesError` returned unchanged (413), `Timeout`, `Canceled`, `Internal` (bad dst). `WriteJSON`: `Internal` (unencodable), `Canceled` (write failed). Mapper checks sentinels before kind: `db.ErrReadOnly`, `intake.ErrRateLimited` (429, `Retry-After: 60`), `httpx.ErrUnsupportedMediaType`, `*http.MaxBytesError`. `Unavailable` adds `Retry-After: 5`.
 
-**Owns:** config consumed (via `Options`): `http.addr`, `http.request_timeout`, `http.max_body_bytes`, `http.trusted_proxies`, `http.allow_plaintext`. Permission `core.modules.read` (scope site, reaches internal; declared here, registered by `app`). No settings, signals, tables. Metric `http.server.request.duration` (s; method, route, status). Span attrs `http.request.method`, `http.route`, `http.response.status_code`, `person_id`, `duration_ms`. Headers: nosniff, Referrer-Policy (`no-referrer` on the password-reset page document, D40), X-Frame-Options, Permissions-Policy, COOP/CORP, HSTS, `X-Trace-Id`, `X-Read-Only`. `POST /api/client-errors` answers 202/400/413/415/429 over `intake.Accept` (64 KiB cap). Constants (not keys): ReadHeaderTimeout 10s, IdleTimeout 120s, MaxHeaderBytes 64 KiB.
+**Owns:** config consumed (via `Options`): `http.addr`, `http.request_timeout`, `http.max_body_bytes`, `http.trusted_proxies`, `http.allow_plaintext`. Permission `core.modules.read` (scope site, reaches internal; declared here, registered by `app`). No settings, signals, tables. Metrics `http.server.request.duration` (s; method, route, status) and `bms.api.errors{http.request.method, http.route, code}` (counter, `{response}`, D54). Span attrs `http.request.method`, `http.route`, `http.response.status_code`, `person_id`, `duration_ms`. Headers: nosniff, Referrer-Policy (`no-referrer` on the password-reset page document, D40), X-Frame-Options, Permissions-Policy, COOP/CORP, HSTS, `X-Trace-Id`, `X-Read-Only`. `POST /api/client-errors` answers 202/400/413/415/429 over `intake.Accept` (64 KiB cap). Constants (not keys): ReadHeaderTimeout 10s, IdleTimeout 120s, MaxHeaderBytes 64 KiB.
 
 **Expects of dependencies:** telemetry (`Tracer.Start` with `WithParentFrom`, `RefFrom`, `TraceIDFrom`, token grammar admitting `_OTHER` and the `<METHOD> <route>` span form, `intake`); module-contract (`Route.Access`, `ModuleRoutes`, `Graph`, `RouteProvider` must also provide an OpenAPI fragment); db (`Ping`, `ReadOnly`, `ErrReadOnly`, `Status`, `Close` tolerant of late callers); identity (Authenticator, cookie rules); authz (PermissionChecker); lib-core (`validate.FieldError.Code/Params`, applied in spec, implementation follow-up needed); app (shutdown order and sub-deadline).
 
@@ -418,6 +419,13 @@ type Options struct {
 	// UI is the built web shell (index.html at its root, hashed files under assets/).
 	// nil means no UI: paths outside /api, /healthz and /readyz answer 404 (decision 12).
 	UI fs.FS
+	// NoIndex, when true, adds X-Robots-Tag: noindex, nofollow to every UI-handler response
+	// (D29's set: index.html, assets, 404 and 405 bodies). Default false; app sets it in demo
+	// mode (D53). /api/ JSON responses carry none.
+	NoIndex bool
+	// Usage is the client usage intake behind POST /api/client-events (D54). nil: the route
+	// answers 501 unsupported, like a nil Intake would for errors.
+	Usage *intake.Usage
 	// ContentSecurityPolicy is sent with every text/html response (index.html served for
 	// an app path or as a file). Empty means DefaultCSP.
 	ContentSecurityPolicy string
@@ -1461,6 +1469,40 @@ A seam error is treated as `""` for that request and logged at warn once per min
 | F62 (D44) | pipeline | a route with `Timeout` or `MaxBodyBytes` above the shell's | the route's own limits apply; a body over the route's cap is `413 payload_too_large` | nothing | `TestPipeline_RouteCapRaised_AppliesRouteLimits` |
 
 Proposed change 15 now reads: deferred, shape settled above; it is applied when a regional needs a front end that rewrites `Host`, or with `files`, whichever comes first.
+
+## Amendment 2026-10-28 (approved, owner, D53 and D54): `NoIndex`, `client-events`, `bms.api.errors`, `RouteTokens`
+
+**`Options.NoIndex` (D53).** When set, every UI-handler response (D29's set) carries `X-Robots-Tag: noindex, nofollow`; `/api/` JSON does not. `app` sets it in demo mode only.
+
+**`POST /api/client-events` (D54).** Mounted as `AccessPublic` beside `/api/client-errors` (decision 20's shell-route list grows by one). The handler decodes under the 64 KiB `http.MaxBytesReader` into `intake.EventBatch` (unknown fields ignored), calls `Usage.Accept` with `EventSubmission{From: the derived client address, UserAgent, Batch}` and **never the session's person** (the handler does not read the session for this route; its request log, when any, carries no `person_id`). It answers 202 with no body, 400 with field errors, 413, 415, 429 with `Retry-After: 60` and code `rate_limited` when `errors.Is(err, intake.ErrRateLimited)` (checked before the kind), and 501 `unsupported` when `Usage` is nil or the kind is `Unsupported` (usage counting off). The span is the normal request span.
+
+**`bms.api.errors` (D54).** The error mapper records `bms.api.errors{http.request.method, http.route, code}` (counter, `{response}`) for every error response it writes, `code` being the problem code it chose (a kind name or a shell code); `/healthz` and `/readyz` are excluded as for the histogram.
+
+**`RouteTokens` (D54).** `func RouteTokens(routes []module.ModuleRoutes) []string` returns the route tokens the tracing middleware names spans with (`{$}` as `/`, the shell's own routes included), for `app` to hand to `intake` (telemetry.md T1.5). It cannot fail and is pure.
+
+**OpenAPI.** The shell routes' fragment documents `/api/client-events` with the `Event` schema and the response codes above.
+
+### Failure modes (added)
+
+| # | Method | Condition | errs kind | Caller is expected to | Test |
+|---|---|---|---|---|---|
+| F63 | UI handler | `NoIndex` true | — | every response carries `X-Robots-Tag: noindex, nofollow` | `TestUI_NoIndex_SetsRobotsHeader` |
+| F64 | UI handler | `NoIndex` false | — | no such header; `/api/` never has it | `TestUI_NoIndexOff_NoHeader` |
+| F65 | `POST /api/client-events` | `Usage.Accept` fails `Invalid` | Invalid | 400 with `events[i].<field>` errors | `TestClientEvents_Invalid_Returns400` |
+| F66 | `POST /api/client-events` | body over 64 KiB; wrong content type | Invalid | 413; 415 | `TestClientEvents_TooLarge_413`, `TestClientEvents_WrongContentType_415` |
+| F67 | `POST /api/client-events` | `errors.Is(err, intake.ErrRateLimited)` | Unavailable | 429, `Retry-After: 60`, `rate_limited` | `TestClientEvents_RateLimited_429` |
+| F68 | `POST /api/client-events` | usage off, or `Options.Usage` nil | Unsupported | 501 `unsupported` | `TestClientEvents_Off_501`, `TestClientEvents_NilUsage_501` |
+| F69 | `POST /api/client-events` | a signed-in request | — | the person is never read or logged | `TestClientEvents_NeverReadsSession` |
+| F70 | `POST /api/client-events` | accepted | — | 202, no body | `TestClientEvents_Accepted_202` |
+| F71 | error mapper | any error response | — | `bms.api.errors{method, route, code}` counted; `/healthz` and `/readyz` excluded | `TestMapper_CountsErrorsByCode` |
+| F72 | `RouteTokens` | routes mounted | — | tokens equal the span names | `TestRouteTokens_MatchSpanNames` |
+
+## Accepted implementation deviations (demo and telemetry build, 2026-10-29)
+
+- The mapper keeps field errors whose code is `protected` on a `Permission` error (identity's `Guard` on a shared demo account), so the 403 body carries `account`/`protected` for the web (demo.md Proposed change 11). Other field errors on a `Permission` stay dropped.
+- `POST /api/client-events` is a sessionless route (`route.sessionless`): the `Authenticator` is not called, so no person reaches a span or log (F69 holds by construction).
+- `RouteTokens` excludes `/healthz` and `/readyz` (they are mounted outside the route table and have no span).
+- Demo routes are mounted and documented only when `demo.enabled`; `bms openapi` reads `BMS_DEMO_ENABLED`.
 
 ## Open questions
 

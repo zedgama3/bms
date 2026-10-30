@@ -109,8 +109,11 @@ type Options struct {
 
 	Database Database       // never nil
 	Intake   *intake.Intake // never nil
-	Graph    module.Graph   // from Plan.Graph(); serializable
-	Schema   SchemaStatus   // never nil
+	// Usage is the client usage intake behind POST /api/client-events (D54). nil: the route
+	// answers 501 unsupported, as it does when usage counting is off.
+	Usage  *intake.Usage
+	Graph  module.Graph // from Plan.Graph(); serializable
+	Schema SchemaStatus // never nil
 
 	// Authenticator is nil in M0: every signed-in route answers 401.
 	Authenticator Authenticator
@@ -122,6 +125,9 @@ type Options struct {
 	UI fs.FS
 	// ContentSecurityPolicy is sent with every text/html response. Empty means DefaultCSP.
 	ContentSecurityPolicy string
+	// NoIndex adds X-Robots-Tag: noindex, nofollow to every UI-handler response, so a public
+	// demo instance is not indexed (D53). It never touches /api responses.
+	NoIndex bool
 }
 
 // DefaultCSP is the policy sent with every HTML response when

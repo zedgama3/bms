@@ -38,7 +38,8 @@ func (s *Service) EmailOf(ctx context.Context, person model.PersonID) (_ model.E
 // person, Record: account}; it publishes no signal. Its sessions follow at the next
 // request, which re-reads the account row. Fails Invalid for a zero person or a malformed
 // address, NotFound (field email, code unknown; it never says more, F65), Conflict
-// (field email, code superuser, F66; field person, code has_account, F67), Unavailable
+// (field email, code superuser, F66; field person, code has_account, F67), Permission (field
+// account, code protected) for a shared demo account the Guard protects, Unavailable
 // wrapping db.ErrReadOnly, store and audit kinds.
 func (s *Service) LinkAccount(ctx context.Context, email model.Email, person model.PersonID) (_ model.AccountID, _ model.PersonID, err error) {
 	const op = "identity.Service.LinkAccount"
@@ -67,6 +68,11 @@ func (s *Service) LinkAccount(ctx context.Context, email model.Email, person mod
 		rec := recs[0]
 		if rec.Superuser {
 			return errs.E(op, errs.Conflict, &validate.FieldError{Field: "email", Code: codeSuperuser, Reason: "this account cannot be linked"})
+		}
+		// Re-pointing a shared demo account to another person would lock everyone else out of
+		// it (D53, Q-DEMO4): the Guard refuses, and fails closed when it cannot answer.
+		if err := s.checkProtected(ctx, op, rec.ID); err != nil {
+			return err
 		}
 		switch _, err := s.store.ExportByPerson(ctx, person); {
 		case err == nil:

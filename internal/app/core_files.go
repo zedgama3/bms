@@ -128,6 +128,8 @@ func buildFiles(_ context.Context, a *assembly) error {
 	if err != nil {
 		return err
 	}
+	inner := filesPolicy{r: rd}
+	a.filesPolicy = inner
 	svc, err := files.New(files.Options{
 		DB:      a.dbc,
 		Clock:   a.clock,
@@ -138,7 +140,7 @@ func buildFiles(_ context.Context, a *assembly) error {
 		Actor:   authzActor,
 		Objects: store,
 		TempDir: filepath.Join(dir, "tmp"),
-		Policy:  filesPolicy{r: rd},
+		Policy:  lazyFilesPolicy{a: a}, // the settings-backed policy, capped by demo mode (core_demo.go)
 	})
 	if err != nil {
 		return err //nolint:wrapcheck // files.New names itself

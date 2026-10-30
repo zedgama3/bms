@@ -9,6 +9,7 @@
 - **Accepted 2026-10-20 (owner, D40):** the implementation deviations marked "(implementation, 2026-10-19)" in this spec are accepted as written; no text changed.
 - **Amendment P1 (2026-10-22, approved 2026-10-23, D48):** the owner's answers to volunteers' Q-VOL10 and Q-VOL11 (2026-10-22): **a playa name is unique across the whole installation** (decision 3's "not unique" is reversed by decision 29), **self-appointed** and **permanent once set** (decision 30). One exported rule, `people.NameKey`, says when two names are the same (NFKC, trim, one space between words, lower case; decision 31); the store writes it to the new column `core.person.playa_name_key` and the partial unique index `person_playa_name_key_idx` (migration `0003`) decides every clash, including the race between two people claiming one name; the violation is translated to `Conflict` with field `playa_name` code `taken`, which names nobody. `UpdateMe` refuses a different name once one is set (`Invalid` `playa_name` `permanent`); the same name again is a no-op and a respelling with the same key is accepted; the language-only exemption (D37) stands. A holder of `people.profiles.manage` may always change any person's set name, their own included, through `Update`, audited `people.person.changed` with `Fields [playa_name]` and `Reason "rename"` (Q-PEOPLE-8, answered yes by the owner 2026-10-23: "An admin may always make changes - that's why they exist, for when workflows are broken and exceptions need to be made."). A deleted person's name is free at once (decision 32). Name retirement, approval pipelines and several names per person (an alias plus a unique radio handle) are Later (decision 33). The profile screen makes the field read-only once set and says so before the first save. The record with the choices, the test expectations that changed and the owner's answer is "Amendment P1" before Open questions.
 - **Amended 2026-10-23 (D51, owner; build deviations, accepted):** migration `0003`'s SQL key expression is the collapse-then-trim form with an explicit whitespace class (`lower(btrim(regexp_replace(normalize(playa_name, NFKC), '[\s\u0085\u1680\u2028\u2029]+', ' ', 'g')))`, as in the file) instead of the earlier `btrim`-then-collapse expression; its locale guard also refuses ICU-provider databases whose `lower()` cannot fold (F88); F85's "names the IDs" holds through db's `P0001` pass-through (db decision 4, D51); `peopletest.Fake` gains `SetName` and `RenameByManager` (an accepted deviation: the spec said the fake is unchanged); the error message keys are `module.people.field.taken` and `module.people.field.permanent`, not `core.people.field.*`; the locked playa name shows no "(required)".
+- **Amendment 2026-10-28 (approved, owner, D53, demo.md Proposed change 5):** `Delete`, `FulfilRequest`, `LinkAccount` and `bms delete` map identity's `Permission` `protected` to `Conflict` `protected`; F89, F90.
 - **Package:** `internal/core/people` (contract and service), `internal/core/people/postgres`
   (store, SQL, migrations), `internal/core/people/peopletest` (the fake `Directory` modules
   test with), `internal/contracts/personpage` (the person-page extension point's shape), `internal/contracts/membership` (the membership extension point's shape, D44).
@@ -916,6 +917,17 @@ F5 (`required`) is unchanged and runs before F75. The earlier sentence "the UI s
 | `TestMigrations_Apply` (integration) | version 2 | version 3; the F85 and F87 cases added |
 | the app end-to-end profile flow | "fill in the playa name, see it in the header" | plus "a second account tries that name and sees the taken message" |
 | web `MyProfile` tests | the field always editable | read-only once set, with its explanation; `taken` inline; the new banner wording |
+
+## Amendment 2026-10-28 (approved, owner, D53): shared demo accounts cannot be deleted
+
+In demo mode identity's `Guard` refuses `DeletePerson` for a demo account with `Permission` (field `account`, code `protected`; identity.md F105). `Delete`, `FulfilRequest` and `DeleteCommand` map that to `Conflict` with code `protected`, beside `Conflict superuser`; `LinkAccount` does the same when identity's `LinkAccount` refuses a protected account (identity.md F109; the guard error fails the link closed); nothing is deleted (the transaction rolls back, as for F35). The people deletion screen shows the shared-account message for it (web-shell Proposed change 10).
+
+### Failure modes (added)
+
+| # | Method | Condition | errs kind | Caller is expected to | Test |
+|---|---|---|---|---|---|
+| F89 | `Delete`, `FulfilRequest`, `DeleteCommand` | identity refuses with `Permission` `protected` (a shared demo account) | Conflict `protected`; nothing deleted | message | `TestDelete_ProtectedAccount_ReturnsConflict_RollsBack` |
+| F90 | `LinkAccount` | identity refuses with `Permission` `protected` (a shared demo account) | Conflict `protected`; nothing linked | message | `TestLinkAccount_ProtectedAccount_ReturnsConflict` |
 
 ## Open questions
 

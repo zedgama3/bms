@@ -60,6 +60,7 @@ var (
 	sqlRehash         = mustSQL("rehash_password.sql")
 	sqlUpsertSuperuse = mustSQL("upsert_superuser.sql")
 	sqlSetPerson      = mustSQL("set_account_person.sql")
+	sqlUpsertAccount  = mustSQL("upsert_account.sql")
 )
 
 func mustSQL(name string) string {
@@ -383,6 +384,28 @@ func (s *Store) Superuser(ctx context.Context, id model.AccountID, person model.
 			return account.Superuser{}, errs.E(op, errs.Conflict, errors.New("a participant account holds the address"))
 		}
 		return account.Superuser{}, db.Wrap(op, err)
+	}
+	out.ID, out.Person = model.AccountID(aid), model.PersonID(pi)
+	return out, nil
+}
+
+// EnsureAccount creates a participant account at e, or replaces the password of the
+// participant account that holds it (re-enabled, every session ended), in one statement.
+// id and person are used only when it creates. Fails errs.Conflict when the superuser's
+// account holds the address, and as SetPassword does otherwise.
+func (s *Store) EnsureAccount(ctx context.Context, id model.AccountID, person model.PersonID, e model.Email, hash secret.Secret, at time.Time) (account.Ensured, error) {
+	const op = "identity.postgres.EnsureAccount"
+	var (
+		out     account.Ensured
+		aid, pi [16]byte
+	)
+	err := s.db.QueryRow(ctx, sqlUpsertAccount, [16]byte(id), [16]byte(person), string(e), hash.Value(), at.UTC()).
+		Scan(&aid, &pi, &out.Created)
+	if err != nil {
+		if errs.Is(err, errs.NotFound) {
+			return account.Ensured{}, errs.E(op, errs.Conflict, errors.New("the superuser account holds the address"))
+		}
+		return account.Ensured{}, db.Wrap(op, err)
 	}
 	out.ID, out.Person = model.AccountID(aid), model.PersonID(pi)
 	return out, nil

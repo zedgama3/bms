@@ -14,6 +14,7 @@
 - **Amended 2026-10-21 (D47, owner approval of the settings logo amendment; settings.md Proposed change 15):** the "M4 files additions" gain their contract: `upload()` (`UPLOAD_TIMEOUT_MS`, never retried, `413` maps to `payload_too_large`), `FileField`'s props and client-side `maxBytes` check, the header `<img>`, `applyPublic` keeping `logo`, and the catalogue keys `field.too_large|type|quota|too_many|order`; `Attachments` unchanged. Audience label wording accepted (owner, 2026-10-21, D47): each `privacy.audience.*` description says "the person this information is about"; the `holders` title is "People whose role allows it".
 - **Amended 2026-10-23 (D51, owner; build deviations, accepted):** `@/api` gains `download(route, opts)` (returns a `Blob` through the same trace, cookie and `ApiError` handling); `ui/Attachments` gets its callback contract (M4 files additions (g)); a paged list shows an error when a background refresh fails. files.md Proposed change 7 (Attachments) was already marked applied.
 - **Amended 2026-10-19 (D39, owner approval of settings and notify):** Proposed change 7 applied (settings.md Proposed change 8): the frame fetches `GET /api/settings/public` at boot, `termsOf` merges the document's terms over the catalogue's `term.*` entries (now with plural and title forms), `/api/settings/theme.css` is linked, `field.contrast` joins the field codes, `/settings` joins the admin nav, and `web/src/core/settings/` and `web/src/core/notify/` are core area folders. The logo is not part of M4 (it comes with the `files` spec): the header shows the regional's name as text.
+- **Amendment 2026-10-28 (approved, owner, D53 and D54; demo.md Proposed change 10, telemetry.md Proposed change 18):** the demo banner, `useDemo()` and `web/src/core/demo/` (`/demo/mail`); the reporter's `chunk` kind and `duration_ms`; the usage collector (`web/src/shell/usage.ts`, `@/usage`, `trackAction`, `ScreenSet.actions`); `dist/client-manifest.json`; decision 15's analytics clause; section "Amendment 2026-10-28" before Open questions; F40 to F52.
 - **Package:** `web/` (pnpm workspace; `web/src/...`), plus the Go package `web`
   (`web/embed.go`, Go module `github.com/zedgama3/bms/web`) that embeds the built files for
   `app`. **UI:** this spec is the UI frame; module and core-area screens plug into it.
@@ -45,18 +46,20 @@
 
 **Purpose:** host every module's screens in one browser application (`web/`, React/TypeScript, pnpm), plus the Go package `web` (`web/embed.go`) that embeds the built files for `app`. This spec is the UI frame; module and core-area screens plug into it.
 
-**Exported to screens (TypeScript; a module may import only `@/registry/types`, `@/api`, `@/i18n`, `@/ui`):**
-- `ScreenSet{name, kind: "module"|"core", routes: RouteObject[] (relative paths, lazy elements, handle {title, access?}), nav: NavEntry[], messages: {lang: () => Promise<Messages>}}` (`en` required); `NavEntry{label: MessageKey, to, area: "main"|"admin", access?: "public"|"signed-in"|string[]}`. A set is exported as `ui` from `web/src/modules/<name>/index.ts` or `web/src/core/<area>/index.ts` and listed in the matching `index.ts` (D31).
+**Exported to screens (TypeScript; a module may import only `@/registry/types`, `@/api`, `@/i18n`, `@/ui`, `@/usage`):**
+- `ScreenSet{name, kind: "module"|"core", actions?: readonly string[] (names `[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*){1,2}`, D54), routes: RouteObject[] (relative paths, lazy elements, handle {title, access?}), nav: NavEntry[], messages: {lang: () => Promise<Messages>}}` (`en` required); `NavEntry{label: MessageKey, to, area: "main"|"admin", access?: "public"|"signed-in"|string[]}`. A set is exported as `ui` from `web/src/modules/<name>/index.ts` or `web/src/core/<area>/index.ts` and listed in the matching `index.ts` (D31).
 - `api` typed client generated from `/api/openapi.json` (`openapi-typescript` + `openapi-fetch`, both outputs committed); `CallOptions{signal, params}`; `ApiError{status, code, ref, fields, method, route, module, traceId, retryAfter, reported}`; `ProblemCode` (mirrors api.md codes), `ClientCode` (`network`, `malformed_response`); `Problem`, `Field`, `Method`; wire types `ID`, `Sensitivity`, `TimeRange`; `configureClient({onUnauthenticated, onReadOnly, onFailure})` (frame only).
 - i18n: `useT()`, `MessageKey` (generated typed keys), `isMessageKey(s)` (runtime guard for keys another module contributes), `useFormat()` (date/time with an event zone, number, relative, list), `useLanguage()`.
-- Shared helpers (D52): `@/api` also exports `useAction(mapError?)` (returns `{run, busy, error, clear}`), `holdsSite`, `holdsAt`, `holdsAny`, `useNames(ids, fallback?)` and `searchPeople(q, signal)`; `@/ui` exports `PersonSearch` and `PersonMatch`.
+- Shared helpers (D52): `@/api` also exports `useAction(mapError?)` (returns `{run, busy, error, clear}`), `holdsSite`, `holdsAt`, `holdsAny`, `useNames(ids, fallback?, unnamed?)` and `searchPeople(q, signal)`; `@/ui` exports `PersonSearch` and `PersonMatch`.
 - Error display: `messageFor`, `ErrorState` (optional `message` prop), `ErrorSummary`, `useFieldErrors` (returns `FieldMessage{text, reason?}`), `showsRef`.
-- Reporter: `installReporter(...)`, `Reporter{apiFailure, screenCrash, flush, reportable}`.
+- Reporter: `installReporter(...)`, `Reporter{apiFailure, screenCrash, flush, reportable}`; kinds gain `chunk` and an `api` report gains `duration_ms` (D54).
+- Usage (D54): `@/usage` exports `trackAction(name: string): void` and, for tests, `installUsage`, `uninstallUsageForTest`; the collector `web/src/shell/usage.ts` is installed by `main.tsx` after the reporter and not under Global Privacy Control or Do Not Track.
+- Demo (D53): `@/api` exports `useDemo()` (`GET /api/demo`, read once at boot); the frame renders `DemoBanner`; core area `web/src/core/demo/` with `/demo/mail` (captured mail addressed to the signed-in account only).
 - UI kit: `Button`, `Field`, `Dialog` (native `<dialog>`), `Banner`, `EmptyState`, `Loading`, `Table`, `Toast`, `PersonSearch`.
-- Go `web`: `FS() (fs.FS, error)` (`errs.NotFound` when `dist/index.html` is missing; dot-prefixed paths hidden, D26), `Version() (string, error)` (`NotFound`, or `Invalid` unless a telemetry token of at most 64 bytes). Imports stdlib and `lib/errs`; only `app` imports it.
+- Go `web`: `ClientManifest() (Manifest, error)` (D54: reads `dist/client-manifest.json`, `{screens:[{pattern,set}], actions:[{name,set}]}`; `NotFound` when missing, `Invalid` when malformed), `FS() (fs.FS, error)` (`errs.NotFound` when `dist/index.html` is missing; dot-prefixed paths hidden, D26), `Version() (string, error)` (`NotFound`, or `Invalid` unless a telemetry token of at most 64 bytes). Imports stdlib and `lib/errs`; only `app` imports it.
 
 **Key decisions:**
-- D1 modules mount under `/<name>/` in the browser; reserved names `api, assets, admin, account, sign-in, healthz, readyz, modules, core`.
+- D1 modules mount under `/<name>/` in the browser; reserved names `api, assets, admin, account, sign-in, healthz, readyz, modules, core, demo` (`demo` added 2026-10-28, D53).
 - D2 an untranslated field code shows the server's English `reason` inside the translated `field.unknown` wrapper in `<span lang="en">` and is reported (owner 2026-10-17); a top-level unknown code shows `error.unknown`.
 - D3 core areas register through the same `ScreenSet` (`kind: "core"`, always enabled); from M1 `web/src/core/accounts/` (sign-in, sign-up, password, account admin; identity.md) and from M2 `web/src/core/audit/` (the audit log; audit.md), `web/src/core/access/` (roles, grants; authz.md) and `web/src/core/people/` (profile, people, deletion requests; people.md), and from M3 `web/src/core/departments/` (departments; departments-events.md) and `web/src/core/events/` (events, kinds, schedule; departments-events.md). Nav entries: main area Departments (`/departments`, signed-in) and Events (`/events`, signed-in); admin area Event kinds (`/events/kinds`, `events.manage`). An event's times are shown with `useFormat` in the event's IANA zone, the documented way to render them; the access grant screens' department picker reads `GET /api/departments` (D37).
 - D4 module isolation enforced by ESLint and `scripts/check-web-module-imports.sh` (under `make imports`); a literal `"/api/<other>/"` is refused.
@@ -77,6 +80,7 @@
 - D25 licence allowlist adds MIT-0 and Python-2.0; caniuse-lite (CC-BY-4.0, dev-only) is an explicit exception (owner 2026-10-17).
 - D26 `web.FS()` hides dot-prefixed paths (owner 2026-10-17).
 - M1 additions to `@/api`: `refreshSession`, `setSessionEnded` (ESLint limits both to `core/accounts`), `safeReturnTo`, `useReadOnly`, `useSessionCheckFailed`.
+- D28 (2026-10-28, D53, D54) the demo banner and usage collector are described under "Amendment 2026-10-28"; decision 14's list is unchanged by chunk reports (which are their own kind, not `api`).
 - D27 accepted deviations: react-router 8.4; the client resolves with the body; `useSession` and `Session` are exported from `@/api`, every other client/i18n/ui setter is frame-private (`internal.ts`) and lint-banned in `modules/**` and `core/**`; nav catalogues load at boot (report plus retry banner on failure); `ui` may `import type` from `@/api`; sets may not declare route loaders or actions; `axe-core` helper instead of `vitest-axe`; logical-property violations are lint errors; the isolation script is `scripts/check-web-module-imports.sh`.
 
 **Errors/codes callers handle (client side, no Go errs except `web.*`):** `ApiError.code` is the problem body code or `network` (offline, DNS, reset, 35 s timeout) or `malformed_response` (non-2xx without problem body, or unparseable 2xx). `RegistryError` (F19-F21) for a bad name, absolute route path, untitled leaf or missing `en`. `web.FS`: `errs.NotFound` (app warns, `UI: nil`). `web.Version`: `NotFound`/`Invalid` (app warns).
@@ -399,7 +403,7 @@ func Version() (string, error)
 | `messageFor`, `ErrorState`, `ErrorSummary`, `useFieldErrors`, `showsRef` | every screen with a query or a form | — | errors shown the same way everywhere |
 | `useAction(mapError?)` | every screen with a mutation (`core/*`, `modules/volunteers` through its `withRangeCodes` wrapper) | `mapError` is a stable function | `run(fn)` sets busy, clears the last error, keeps an `ApiError`, resolves true on success; returns `{run, busy, error, clear}`; nothing is cached |
 | `holdsSite`, `holdsAt`, `holdsAny` | screens deciding what to show from the session's grants | a loaded `Session` | a boolean; the server still decides |
-| `useNames(ids, fallback?)`, `searchPeople(q, signal)` | screens showing or picking people (`core/access`, `core/audit`, `modules/volunteers`) | signed in | names from `GET /api/people/names` (at most 200 ids; `fallback` or the ID until they arrive); query keys `["names", …]` and `["people-search", …]` are shared |
+| `useNames(ids, fallback?, unnamed?)`, `searchPeople(q, signal)` | screens showing or picking people (`core/access`, `core/audit`, `modules/volunteers`) | signed in | names from `GET /api/people/names` (at most 200 ids; `unnamed` is used only once the answer has arrived and lists the person with an empty name; an ID absent from the answer, or any person while loading or after a failed call, shows `fallback`, else the ID; access and audit pass "No playa name yet", `shell.person_search.unnamed`; D55); query keys `["names", …]` and `["people-search", …]` are shared |
 | `PersonSearch`, `PersonMatch` | the grant, audit and volunteer screens | the screen passes `search(q, signal)` (normally `searchPeople`); the kit makes no request of its own | a chosen person's ID and name; the typed term stays in the component; messages `shell.person_search.*` |
 | `installReporter`, `Reporter` | `main.tsx`; the client's `onFailure`; `ErrorBoundary`; tests | — | reports reach intake within its limits |
 | `web.FS`, `web.Version` | `app` | `pnpm build` ran | the files `api` serves; the version to compare |
@@ -442,6 +446,7 @@ long. The rule: **personal data lives in the page's memory only and leaves with 
 | `Session` (person ID, playa name, superuser flag, permission names) | memory (the session store) | internal | the frame's header and navigation; route gating before the server's own check | until sign-out, a `401`, or the tab closes |
 | Query cache: whatever the current screens fetched (up to `sensitive`, e.g. an incident) | memory (TanStack Query, no persister) | the record's own level | screens render from it; back navigation does not refetch | `gcTime` 5 minutes after the last screen using it unmounts; cleared entirely on sign-out and on `401` (decision 11) |
 | Pending error reports (`message`, `stack`, route patterns, `app_version`, counts) | memory (the reporter's queue, at most 100) | internal; patterns and messages, never values | D20 | until sent (≤ 10 s) or the page is hidden |
+| Pending usage events (screen templates, action names, counts, timings) | memory (the usage collector's batch, at most 50) | not about a person (D54) | telemetry.md T1 | until flushed |
 | Language tag | `localStorage["bms.lang"]`: the one key the shell writes (decision 7) | not personal (a BCP 47 tag) | a person's choice must survive sign-out and reload | until changed |
 | The session cookie | the browser's cookie jar, `HttpOnly`: unreadable by this code | — | `identity.md` | identity's |
 | URLs (history) | the browser | — | module screens put IDs in paths and filters in query strings, never names, e-mail addresses or free text (privacy-data: "never in URLs"); a module spec that needs a text search uses `POST` or keeps the query in memory | the browser's |
@@ -703,7 +708,7 @@ under `module.<name>.field.<code>` (for example `module.volunteers.field.overlap
     stack; owner, 2026-10-17: system fonts for the MVP, a self-hosted brand font is a
     later `settings` feature, Proposed change 7), no map tiles, no error-tracking SaaS:
     D20 routes browser errors through bms,
-    privacy-data forbids analytics, and principle 6 forbids a dependency a regional cannot
+    privacy-data forbids third-party analytics (bms's own usage counts, telemetry.md T1, hold screen templates and numbers, never a person or a visit), and principle 6 forbids a dependency a regional cannot
     self-host. `connect-src 'self'` in the CSP makes this a runtime guarantee, and
     `TestBundle_NoExternalURLs` greps the built assets for `https://` origins other than
     documentation links.
@@ -1136,6 +1141,49 @@ Prettier, Spectral over `web/openapi.json`.
 **Conformance:** `module-hello`'s `web/src/modules/hello/` is the reference set and must
 pass `registry.test.ts`, the boundary script and the Go catalogue test; every later module
 UI is checked by the same three.
+
+## Amendment 2026-10-28 (approved, owner, D53 and D54): demo banner and client usage telemetry
+
+### The demo (D53)
+
+`useDemo()` in `@/api` reads `GET /api/demo` once at boot beside `/api/settings/public`; a failed read hides the banner and is reported like a failed nav catalogue load, with the same retry. `DemoBanner` is rendered by the frame above the navigation on every screen when `enabled`; on `/accounts/sign-in` it is expanded with the account table and the shared password (copy button); the accounts list sits in a `<details>` disclosure, collapsed below the `sm` breakpoint so the sign-in form stays near the top on a phone, and open at `sm` and above. It is not dismissible, `role="note"`, phone-first, and links to `/demo/mail` when signed in. On the sign-up form in demo mode the frame renders a note above the e-mail field telling the tester to use a made-up address (Q-DEMO2, owner 2026-10-28). The captured-mail screen at `/demo/mail` (`web/src/core/demo/`, `kind: "core"`, no nav entry) lists only the signed-in account's own captured mail; its states are loading, empty, signed out (`401` goes to sign-in), off (`501`) and error with reference.
+
+Catalogue keys (`en` and `es`): `shell.demo.banner.title|body`, `shell.demo.accounts.title`, `shell.demo.password`, `shell.demo.mail_link`, `shell.demo.signup_note`; `core.demo.account.<key>` (ten account labels), `core.demo.department.<key>` (six), `core.demo.mail.empty|off|note` and the screen's own labels. The accounts area gains `core.accounts.field.protected` ("This is a shared demo account. Its password and e-mail address can't be changed."), shown for a `403` with field `account` code `protected`; the people deletion screen shows it for `Conflict protected`.
+
+### Client telemetry (D54)
+
+(a) The reporter gains the `chunk` kind: a lazy route module that fails to load (`TypeError` "Failed to fetch dynamically imported module", `ChunkLoadError`, or a rejected `import()` from the router's `lazy`) is reported once per asset path with `message` `chunk load failed <asset path>` (query and fragment stripped) and the screen that needed it; the crashed screen for that case says the site was updated and offers a "Reload" button (keys `shell.crashed.stale.title|body|reload`). An `ApiError`'s `api` report carries `duration_ms` (wall time as the client measured it, capped at `UPLOAD_TIMEOUT_MS`).
+
+(b) The usage collector, `web/src/shell/usage.ts`, follows the contract in telemetry.md T1.3: not installed under Global Privacy Control or Do Not Track; `screen_view` (the final settled match, `from` the previous pattern or `_entry`); `screen_ready` (navigation to idle with no `ui/Loading` mounted; `Loading` keeps a mount counter for it); `vital` through `web-vitals` (`onLCP`, `onINP`, `onCLS`; a new runtime dependency, Apache-2.0); `action` from `trackAction`. Deduplicated by `(kind, screen, from, action)` into `count`; batch 50; a 10 s timer while pending; `pagehide` via `sendBeacon`; 429 and network back-off as the reporter; a `404` or `501` stops it for the page load; nothing in storage; never the query string; its own route's failures are never reported. The browser sends no browser class or form factor: the server reduces the User-Agent (Q-TEL-3, owner 2026-10-28).
+
+(c) `@/usage` joins the imports a module may use; ESLint and `scripts/check-web-module-imports.sh` are updated. (d) `ScreenSet.actions` names are `[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*){1,2}`, at most 64 bytes, unique within the set; a bad name is a `RegistryError` (F19-F21's family); `trackAction` with an undeclared name is dropped with a development-only warning. (e) The build emits `dist/client-manifest.json` (`{"screens":[{"pattern","set"}],"actions":[{"name","set"}]}`) from `buildRoutes(sets)` with the shell's own screens as set `shell`; a vitest test asserts it equals the router's patterns; `.gitkeep` handling as `version.txt`. (g) Decision 14's list is unchanged. (h) The Playwright smoke run adds the one navigation that produces a `screen_view` and a `screen_ready`.
+
+### Failure modes (added)
+
+| # | Where | Condition | Behaviour | Test |
+|---|---|---|---|---|
+| F40 | boot | `GET /api/demo` fails | banner hidden; failure reported; retry as the nav catalogues | `demo.test.tsx` "demo read failure hides the banner and reports" |
+| F41 | frame | demo enabled | banner on every route; on sign-in with the table and password | "banner renders on every route and expanded on sign-in" |
+| F42 | sign-up | demo enabled | made-up-address note above the e-mail field | "sign-up shows the made-up address note" |
+| F43 | `/demo/mail` | five states | loading, empty, `401` to sign-in, `501` off, error with reference; only the account's own mail is requested (no id or address parameter) | `demomail.test.tsx` (five states) |
+| F44 | password and deletion screens | `403` `account` `protected`; `Conflict protected` | the shared-account message | "protected account shows the shared-account message" |
+| F45 | reporter | a lazy chunk fails to load | one `chunk` report per asset path; the crashed screen offers Reload | `report.test.ts` "chunk failure reported once per asset" |
+| F46 | reporter | `ApiError` | the `api` report carries `duration_ms` | "api report carries duration" |
+| F47 | usage | GPC or DNT set | the collector is not installed; nothing sent | `usage.test.ts` "not installed under GPC or DNT" |
+| F48 | usage | a screen view and a ready | one `screen_view` with `from`, one `screen_ready`; deduplicated with a count | "screen_view and screen_ready batch" |
+| F49 | usage | `trackAction` with an undeclared name | dropped, development warning | "undeclared action dropped" |
+| F50 | usage | `404` or `501` from the route; `429`; network failure | stop for the page load; back-off; back-off | "usage stops on 501", "usage backs off" |
+| F51 | registry | a bad `actions` name or a duplicate | `RegistryError` | `registry.test.ts` "bad action names are refused" |
+| F52 | build | `client-manifest.json` differs from the router's patterns | vitest fails | `manifest.test.ts` |
+
+## Accepted implementation deviations (demo and telemetry build, 2026-10-29)
+
+- The protected message is the shell key `field.protected` (it works on every screen, not only the accounts area; the `core.accounts.field.protected` key is not used).
+- Only the `en` catalogue exists; there is no `es` yet (the "`en` and `es`" above is the target, not the build).
+- `@/usage` exports only `trackAction`; `installUsage` and `uninstallUsageForTest` live in `@/shell/usage` to keep the layering.
+- The demo info is read at boot; a `404` is treated as "not a demo" (the route set is mounted only when `demo.enabled`), not as a failure to report.
+- Role labels on the account table come from `core.access.role.<key>.title`, with "at <department>" through `core.demo.role_at`; an unknown role key shows `shell.demo.role_unknown`, an unknown account key `shell.demo.account_unknown`.
+- `patternOf` resolves route parameters in path order (a bug fix).
 
 ## Open questions
 

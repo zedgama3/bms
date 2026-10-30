@@ -21,21 +21,24 @@ const (
 	readinessTTL     = time.Second
 	readinessTimeout = 2 * time.Second
 	clientErrorsCap  = 64 << 10
+	clientEventsCap  = 64 << 10
 )
 
 // shellRoute is one of the shell's own routes, mounted at an absolute path (decision 20).
 type shellRoute struct {
 	method, path string
 	access       module.Access
+	sessionless  bool // the route never reads the session: authentication is skipped (client-events, D54)
 	handler      http.Handler
 }
 
 func (s *Server) shellRoutes() []shellRoute {
 	return []shellRoute{
-		{http.MethodGet, "/api/modules", module.AccessPublic, http.HandlerFunc(s.handleModules)},
-		{http.MethodGet, "/api/admin/modules", module.AccessSignedIn, http.HandlerFunc(s.handleAdminModules)},
-		{http.MethodPost, "/api/client-errors", module.AccessPublic, http.HandlerFunc(s.handleClientErrors)},
-		{http.MethodGet, "/api/openapi.json", module.AccessPublic, http.HandlerFunc(s.handleOpenAPI)},
+		{http.MethodGet, "/api/modules", module.AccessPublic, false, http.HandlerFunc(s.handleModules)},
+		{http.MethodGet, "/api/admin/modules", module.AccessSignedIn, false, http.HandlerFunc(s.handleAdminModules)},
+		{http.MethodPost, "/api/client-errors", module.AccessPublic, false, http.HandlerFunc(s.handleClientErrors)},
+		{http.MethodPost, "/api/client-events", module.AccessPublic, true, http.HandlerFunc(s.handleClientEvents)},
+		{http.MethodGet, "/api/openapi.json", module.AccessPublic, false, http.HandlerFunc(s.handleOpenAPI)},
 	}
 }
 
@@ -200,6 +203,33 @@ func (s *Server) handleClientErrors(w http.ResponseWriter, r *http.Request) {
 	}
 	sub := intake.Submission{From: from, Person: actorFrom(r.Context()), UserAgent: r.UserAgent(), Batch: batch}
 	if err := s.opts.Intake.Accept(r.Context(), sub); err != nil {
+		httpx.Fail(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusAccepted)
+}
+
+// handleClientEvents answers POST /api/client-events (D54). The route is mounted sessionless,
+// so the person is never read, put on the span or logged, and Accept has no field for one.
+func (s *Server) handleClientEvents(w http.ResponseWriter, r *http.Request) {
+	const op = "api.handleClientEvents"
+	if s.opts.Usage == nil {
+		httpx.Fail(w, r, errs.E(op, errs.Unsupported, errors.New("usage counting is not available")))
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, clientEventsCap)
+	var batch intake.EventBatch
+	if err := httpx.ReadJSON(r, &batch); err != nil {
+		httpx.Fail(w, r, err)
+		return
+	}
+	from, ok := httpx.ClientAddrFrom(r.Context())
+	if !ok {
+		httpx.Fail(w, r, errs.E(op, errs.Internal, errors.New("no client address in the request context")))
+		return
+	}
+	sub := intake.EventSubmission{From: from, UserAgent: r.UserAgent(), Batch: batch}
+	if err := s.opts.Usage.Accept(r.Context(), sub); err != nil {
 		httpx.Fail(w, r, err)
 		return
 	}

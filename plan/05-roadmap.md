@@ -36,7 +36,7 @@ Design comes before code. Specs are tracked in [design/README.md](design/README.
       built and Implemented 2026-10-23 on feat/m1 (V1 D49, V2 D50, D51 included).
 - [x] Privacy tags (`privacy-tags.md`, Approved 2026-10-20, D44) built before the volunteers module's services, in the same milestone; `hello` is retagged with them. Built before volunteers.
 - [ ] Later: identity, notify and people adopt privacy tags and per-group visibility settings (when a regional asks for a people-level choice, privacy-tags Q-PRIV2).
-- [ ] A working demo on the dev instance (bms.zg3.net) with demo accounts, for the owner's review. Packaging comes after the owner's review (D52).
+- [ ] A working demo on the dev instance (bms.zg3.net) with demo accounts, for the owner's review. Packaging comes after the owner's review (D52). Update 2026-10-30: demo mode (design/demo.md, D53, Amendment D1 / D56) and telemetry Amendment T1 (D54) are Implemented; the instance deployment and the owner's review are not yet recorded as done, so this box stays open.
 - [ ] Packaging for a volunteer operator: one container image, compose file, backup and
       upgrade docs
 - [ ] Pilot at one real event

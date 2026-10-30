@@ -680,6 +680,27 @@ describe("/accounts/admin/:account", () => {
     expect(calls).toHaveBeenCalledTimes(1);
   });
 
+  it("F44: disabling a protected account shows the shared-account sentence, without a reference", async () => {
+    mountApp(
+      detail(account(), {
+        [`POST /api/accounts/${OTHER}/disable`]: () =>
+          problem(403, {
+            code: "permission",
+            ref: "AB12-CD34",
+            fields: [{ field: "account", code: "protected", reason: "x" }],
+          }),
+      }),
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Disable account" }));
+    const dialog = await screen.findByRole("dialog", { name: "Disable this account?" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Disable account" }));
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert).toHaveTextContent(
+      "This is a shared demo account. Its password and e-mail address can't be changed.",
+    );
+    expect(alert).not.toHaveTextContent("AB12-CD34");
+  });
+
   it("a disabled account offers Enable", async () => {
     const calls = vi.fn();
     mountApp(

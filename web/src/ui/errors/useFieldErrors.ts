@@ -25,6 +25,8 @@ export function useFieldErrors(error: ApiError | null): Readonly<Record<string, 
     const out: Record<string, FieldMessage> = {};
     const unknownCodes: string[] = [];
     for (const f of error?.fields ?? []) {
+      // `protected` has no input: the error's own sentence says it (messageFor).
+      if (f.code === "protected") continue;
       if (Object.hasOwn(out, f.field)) continue; // the first problem with an input is the one shown
       const own = `module.${error?.module ?? ""}.field.${f.code}`;
       const shared = `field.${f.code}`;

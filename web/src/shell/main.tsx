@@ -13,6 +13,7 @@ import { App } from "./App";
 import { shellLanguages, shellMessages } from "./catalogues";
 import { DEFAULT_LANGUAGE } from "./regional";
 import { installReporter } from "./report";
+import { installUsage } from "./usage";
 import { wireClient } from "./wire";
 
 // 1. The reporter first: a crash during boot is the kind a maintainer never hears about.
@@ -35,6 +36,12 @@ async function boot(): Promise<void> {
   try {
     // 2. The registry: a bad set is a crashed screen, not a half-built page.
     const sets = validateRegistry([...coreSets, ...moduleSets]);
+    // 2b. Usage counts (D54), after the reporter and the registry (it needs the declared
+    // actions); none at all under Global Privacy Control or Do Not Track.
+    installUsage({
+      appVersion: __BMS_VERSION__,
+      actions: new Set(sets.flatMap((s) => s.actions ?? [])),
+    });
     // The shell's own English catalogue is needed even by the very first loading state.
     addCatalogue("shell", "en", await shellMessages["en"]!());
     createRoot(rootEl).render(

@@ -25,7 +25,7 @@ copy and can fork it. Features are modules.
 ## Status
 
 - **Phase:** 1, first module (core M0–M4 done 2026-10-23)
-- **Last updated:** 2026-10-28
+- **Last updated:** 2026-10-30
 - **Done 2026-10-16:**
   - Repo scaffolded: plan, agents, skills, lint rules, dev compose. Methodology carried over
     from Sojourn (D7).
@@ -122,8 +122,18 @@ copy and can fork it. Features are modules.
     is fully public at the public demo instance; automatic resets built but shipped disabled.
     D54: telemetry Amendment T1 Approved (client telemetry for the public demo).
     D55: minor follow-ups from the D52 review approved with the recommendations.
-- **Next steps (current, 2026-10-28, D53–D55):**
-  1. Build the demo spec (design/demo.md) and telemetry Amendment T1.
+- **Owner's answers 2026-10-29 (D56):** demo Amendment D1 (design/demo.md) approved as
+    recommended. Q-DEMO5: one `lead` demo account may run five departments (Rangers, Gate,
+    Greeters, Medical, DPW). Also as recommended: the participant does the pending ICS-100
+    self-upload; the lead has no own records and holds Khaki by self-waiver; DPW gains
+    "Inventory Crew"; an event without dates is Invalid (F175), no date fallback in the
+    module; moduletest's `demoseed_provider_valid` gives the fake event dates and starts the
+    module before Seed; walk-on bookings fixed as built.
+- **Status update 2026-10-30 (not a decision):** demo mode (design/demo.md, D53, with Amendment
+    D1 / D56) and telemetry Amendment T1 (client telemetry for the public demo, D54) are
+    Implemented, marked by the main session (checks green; the reviews' must-fix findings fixed).
+- **Next steps (current, 2026-10-30, D53–D56):**
+  1. Done 2026-10-30: build the demo spec (design/demo.md) and telemetry Amendment T1.
   2. Run the app locally for the owner.
   3. Deploy to the public demo instance.
   - Still open, the owner's command: the local dev database is half-reset (the `authz` and `hello` version-2 rows in `core.schema_migration`); `make migrate` again, or `make down && make up`.

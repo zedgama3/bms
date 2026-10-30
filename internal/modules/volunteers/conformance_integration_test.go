@@ -11,7 +11,9 @@ import (
 
 	"github.com/zedgama3/bms/internal/core/audit/audittest"
 	"github.com/zedgama3/bms/internal/core/authz/authztest"
+	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/db/dbtest"
+	"github.com/zedgama3/bms/internal/core/demo/demotest"
 	"github.com/zedgama3/bms/internal/core/departments/departmentstest"
 	"github.com/zedgama3/bms/internal/core/events/eventstest"
 	"github.com/zedgama3/bms/internal/core/files/filestest"
@@ -76,6 +78,9 @@ func (c *conformance) factory(ctx context.Context, deps module.Deps) (module.Mod
 		deps.DB = pool
 	}
 	r.db = pool
+	if err := insertDemoRows(ctx, pool); err != nil {
+		return nil, err
+	}
 	mod, err := volunteers.New(ctx, deps)
 	if err != nil {
 		return nil, fmt.Errorf("volunteers.New: %w", err)
@@ -167,5 +172,27 @@ func (c *conformance) seed(ctx context.Context, mod module.Module, subject modul
 // real database (the seed books, verifies and uploads for real).
 func TestConformance_RealDatabase(t *testing.T) {
 	c := &conformance{t: t, rigs: map[*volunteers.Service]*rig{}}
-	moduletest.Conformance(t, volunteers.Manifest, c.factory, c.provision, moduletest.WithSeed(c.seed))
+	moduletest.Conformance(t, volunteers.Manifest, c.factory, c.provision, moduletest.WithSeed(c.seed), moduletest.WithDemoSeed())
+}
+
+// insertDemoRows inserts the persons, departments and event of demotest's fixed request, so
+// the demo seed check (WithDemoSeed) finds the rows its foreign keys point at. The IDs are
+// fixed, so the rows are the ones that check's request names.
+func insertDemoRows(ctx context.Context, pool db.DB) error {
+	req := demotest.NewFakeActors().Request()
+	for _, p := range req.People {
+		if _, err := pool.Exec(ctx, "INSERT INTO core.person (id, created_at, updated_at) VALUES ($1, now(), now()) ON CONFLICT DO NOTHING", [16]byte(p)); err != nil {
+			return fmt.Errorf("demo person: %w", err)
+		}
+	}
+	for k, d := range req.Departments {
+		if _, err := pool.Exec(ctx, "INSERT INTO core.department (id, name, created_at, updated_at) VALUES ($1, $2, now(), now()) ON CONFLICT DO NOTHING", [16]byte(d), "Demo "+k); err != nil {
+			return fmt.Errorf("demo department: %w", err)
+		}
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO core.event (id, name, kind, starts_at, ends_at, zone, created_at, updated_at)
+		VALUES ($1, 'Demo event', 'burn', now(), now() + interval '4 days', 'UTC', now(), now()) ON CONFLICT DO NOTHING`, [16]byte(req.Event)); err != nil {
+		return fmt.Errorf("demo event: %w", err)
+	}
+	return nil
 }

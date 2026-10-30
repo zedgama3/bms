@@ -1216,6 +1216,25 @@ describe("/people/admin/requests", () => {
     expect(report).toHaveTextContent("Profile records removed");
   });
 
+  it("F44: fulfilling a request for a protected account shows the shared-account sentence", async () => {
+    admin({
+      [`POST /api/people/requests/${REQ}/fulfil`]: () =>
+        problem(409, {
+          code: "conflict",
+          ref: "AB12-CD34",
+          fields: [{ field: "person", code: "protected", reason: "x" }],
+        }),
+    });
+    await userEvent.click(await screen.findByRole("button", { name: "Fulfil" }));
+    const dlg = await screen.findByRole("dialog", { name: "Delete this person?" });
+    await userEvent.click(within(dlg).getByRole("button", { name: "Delete person" }));
+    const alert = await within(dlg).findByRole("alert");
+    expect(alert).toHaveTextContent(
+      "This is a shared demo account. Its password and e-mail address can't be changed.",
+    );
+    expect(alert).not.toHaveTextContent("AB12-CD34");
+  });
+
   it("switches tabs; empty, forbidden and read-only states", async () => {
     const calls: string[] = [];
     const a = admin({

@@ -80,6 +80,7 @@ func runServe(ctx context.Context, p *process) int {
 	if debugLogging(cfg) {
 		a.logger.WarnContext(ctx, debugWarning, slog.String("log.level", "debug"))
 	}
+	a.logDemo(ctx)
 
 	// bail reports err, stops what started, and returns the exit status.
 	bail := func(err error, status int) int {
@@ -105,6 +106,7 @@ func runServe(ctx context.Context, p *process) int {
 		return bail(err, statusOf(err, ExitSchema))
 	}
 	a.loadUI(ctx)
+	a.logUsage(ctx)
 
 	opts, err := a.apiOptions(a.version, a.pool, func(ctx context.Context) ([]db.Status, error) {
 		return a.migrator.Status(ctx, a.setsFor(a.plan.Order()))

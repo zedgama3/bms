@@ -1,0 +1,144 @@
+{
+  "tags": [
+    {
+      "name": "demo",
+      "description": "The public demo: the banner data and the mail the demo captured instead of sending."
+    }
+  ],
+  "paths": {
+    "/": {
+      "get": {
+        "tags": [
+          "demo"
+        ],
+        "operationId": "demoInfo",
+        "summary": "Whether this instance is a public demo and, if so, its regional, accounts and the shared password. Public; answers enabled false on any other instance. Not cached.",
+        "responses": {
+          "200": {
+            "description": "The demo information.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "enabled"
+                  ],
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "regional": {
+                      "type": "string",
+                      "description": "The fictional regional's name. Omitted when enabled is false."
+                    },
+                    "accounts": {
+                      "type": "array",
+                      "description": "The demo accounts in display order. Omitted when enabled is false.",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "key",
+                          "email",
+                          "roles"
+                        ],
+                        "properties": {
+                          "key": {
+                            "type": "string"
+                          },
+                          "email": {
+                            "type": "string",
+                            "description": "A generated address at the reserved demo.invalid domain."
+                          },
+                          "roles": {
+                            "type": "array",
+                            "description": "Starter role keys; a department-scoped one as <role>@<department key>.",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "password": {
+                      "type": "string",
+                      "description": "The one password every demo account shares; public by design. Omitted when enabled is false."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mail": {
+      "get": {
+        "tags": [
+          "demo"
+        ],
+        "operationId": "demoMail",
+        "summary": "The mail the demo captured for the signed-in account's own login address, newest first. Needs a session and no permission; never lists another address's mail. 501 when this is not a demo. 400 limit range.",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The captured mail.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "mail"
+                  ],
+                  "properties": {
+                    "mail": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "to",
+                          "subject",
+                          "body",
+                          "captured_at"
+                        ],
+                        "properties": {
+                          "id": {
+                            "$ref": "#/components/schemas/ID"
+                          },
+                          "to": {
+                            "type": "string"
+                          },
+                          "subject": {
+                            "type": "string"
+                          },
+                          "body": {
+                            "type": "string"
+                          },
+                          "captured_at": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

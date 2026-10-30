@@ -7,6 +7,7 @@ import {
   refreshSession,
   safeReturnTo,
   useAction,
+  useDemo,
   useReadOnly,
   useSession,
   useSessionCheckFailed,
@@ -32,6 +33,7 @@ import { text } from "../text";
 export function SignUp() {
   const t = useT();
   const session = useSession();
+  const demo = useDemo();
   const { readOnly } = useReadOnly();
   const [params] = useSearchParams();
   const navigate = useNavigate();
@@ -131,6 +133,7 @@ export function SignUp() {
           inputMode="email"
           autoComplete="username"
           required
+          {...(demo.enabled ? { hint: t("shell.demo.signup_note") } : {})}
           error={fieldErrors["email"]}
         />
         <PasswordField

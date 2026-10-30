@@ -4,6 +4,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 import { makeApi } from "./client";
+import type { DemoPaths } from "./demo";
 import { publicStore } from "./public";
 import type { components, paths } from "./schema";
 import { useSession } from "./session";
@@ -24,6 +25,8 @@ export type {
   TimeRange,
 } from "./errors";
 export type { paths, components } from "./schema";
+export { useDemo } from "./demo";
+export type { DemoAccount, DemoInfo, DemoMail, DemoState } from "./demo";
 export { useReadOnly } from "./readonly";
 export type { ReadOnlyState } from "./readonly";
 export {
@@ -41,6 +44,9 @@ export const usePublic = publicStore.use;
 export type { PublicState } from "./public";
 
 export const api = makeApi<paths>();
+
+/** `GET /api/demo` and `GET /api/demo/mail`, typed locally until the OpenAPI document lists them. */
+export const demoApi = makeApi<DemoPaths>();
 
 /** The signed-in person's own profile (`GET /api/people/me`), read once per session by the frame
  *  (language, the playa-name prompt, the header) and by the people screens. Memory only. Not

@@ -92,6 +92,7 @@ func buildNotify(_ context.Context, a *assembly) error {
 		Languages: languageSource{p: a.people},
 		Names:     nameSource{p: a.people},
 		Hostname:  a.cfg.Instance.Name,
+		Channel:   demoChannelFactory(a), // nil unless demo mode: notify then sends over SMTP
 	})
 	if err != nil {
 		return err //nolint:wrapcheck // notify.New names itself

@@ -14,6 +14,8 @@
 - **Amendment A2 (approved 2026-10-21, D46; privacy-tags A2):** `Manifest.Validate`'s F64 check takes its levels from `privacy.GroupLevels(Views)`; F62's `privacy.Check` is widened again: every non-public field of a response type carries the omit option its kind needs (`omitzero` for a struct or array, `omitempty` or `omitzero` for the rest), and a view that marshals itself (`marshaler`), a field of interface kind (`dynamic`) and a non-public named unexported embedded field (`unsettable`) are rejected; the `module` fixtures (`viewOK` and the rest) carry the option on every non-public field.
 - **Amended 2026-10-20 (D44, owner approval of files and the jobs follow-ups):** `Deps.Files files.Store` (M4, scoped per module); `Route` gains `MaxBodyBytes` and `Timeout` (api.md decision 32); `moduletest.Conformance` supplies `filestest.NewFake(manifest.Name)` and scans its `Files()` and `Staged()` names, and the jobs leak rule also checks `Fake.Enqueued()` keys against the seed person markers (`jobs_key_not_person`). Proposed change 19.
 - **Accepted 2026-10-20 (owner, D40):** the implementation deviations marked "(implementation, 2026-10-19)" in this spec are accepted as written; no text changed.
+- **Amendment 2026-10-28 (approved, owner, D53, demo.md Proposed change 6):** `demo` joins the reserved core areas (`IsCoreArea`); `demo.seed` is a core extension point (defined by `core/demo`, listed in `Env.CoreExtensionPoints`); `moduletest.Conformance` gains the option `WithDemoSeed()` and the rule `demoseed_provider_valid`; F66.
+- **Amendment D1 (approved 2026-10-29, D56; demo.md Proposed change 18, applied 2026-10-29):** `demoseed_provider_valid` registers the request's event with dates (Thursday 10:00 to Monday 12:00, at least 21 days after the rig's clock, zone `UTC`) and calls the module's `Start` before `Provider.Seed` and `Stop` after, as `bms demo seed` does, so a provider may rely on what `Start` registered and carries no default-date rule of its own.
 - **Package:** `internal/core/module` (Go module `github.com/zedgama3/bms`), plus the test
   helper package `internal/core/module/moduletest`. **UI:** none of its own; the admin
   "modules" screen is `web-shell.md`'s, fed by `GET /api/admin/modules` (`api.md`), both
@@ -84,7 +86,7 @@ Exported names (package `module`):
 - `moduletest.Conformance(t, manifest, factory, provision, opts ...Option)`: named subtests
   (`manifest_valid`, `start_read_only`, `delete_read_only`, `no_personal_data_in_logs`, ...).
   Options (owner-approved 2026-10-17): `WithCapability(name, impl)` (mandatory per `Requires`);
-  exactly one of `WithSeed(Seed)` / `WithoutPersonData()`; `Seed func(ctx, Module, Subject)
+  exactly one of `WithSeed(Seed)` / `WithoutPersonData()`; optional `WithDemoSeed()` (D53: runs `demoseed_provider_valid`); `Seed func(ctx, Module, Subject)
   error`; `Subject{Person, LegalName, Email, Phone, Note}` (markers; the unknown-person ID is
   unexported and distinct); rules (D44: `views_tagged`, `visibility_settings_declared`, with the option `WithoutViews()`; D39: `templates_register`; D43: `jobs_register_scoped`, and a nil `Deps.Jobs` becomes `jobstest.NewFake(manifest.Name)` with the leak rule scanning `Fake.Enqueued()` and `Fake.Queued()` args and, as `jobs_key_not_person` (D44), the keys against the seed person markers; D44: a nil `Deps.Files` becomes `filestest.NewFake(manifest.Name)` and the leak rule scans the fake's `Files()` and `Staged()` names for the seed markers; a nil `Deps.Settings` becomes `settingstest.NewFake(manifest.Name, manifest.Settings)` and a nil `Deps.Notify` `notifytest.NewFake(manifest.Name)`, and the leak rule also scans `Fake.Sent()` vars and links for the seed markers) `rejects_wrong_capability_type`, `used_capability_absent_
   builds_and_starts`, `seeded_person_exports_data`, `seeded_person_delete_counts_and_is_
@@ -783,6 +785,17 @@ func WithSeed(seed Seed) Option
 // against the spec's Data section.
 func WithoutPersonData() Option
 
+// WithDemoSeed states that the module contributes demo data (D53): its manifest lists
+// demoseed.Point in ContributesTo and Contributions() returns a demoseed.Provider. The rule
+// demoseed_provider_valid then runs the provider against the module's fakes with
+// demotest.NewFakeActors() and requires it to create at least one record (Result.Items > 0)
+// and to return no Permission error. The event is registered with dates (Thursday 10:00 to
+// Monday 12:00, at least 21 days after the rig's clock, zone UTC) and the module's Start runs
+// before Provider.Seed (Stop after), as `bms demo seed` does (D56). Optional; without it the rule is skipped. Fails t
+// before the first rule when the manifest does not list demoseed.Point, or the
+// contribution is not a demoseed.Provider (F66).
+func WithDemoSeed() Option
+
 // WithoutViews states that the module sends no response types on the wire (D44): the
 // rules views_tagged and visibility_settings_declared then pass trivially. Without it,
 // Manifest.Views must list every response type, tagged as privacy-tags.md describes.
@@ -1142,7 +1155,7 @@ None of its own. What this spec provides for screens elsewhere:
 ### Reserved module names
 
 `Manifest.Validate` rejects: the core areas (`core`, `people`, `accounts`, `access`,
-`identity`, `authz`, `departments`, `events`, `signals`, `notify`, `audit`, `files`, `jobs`,
+`identity`, `authz`, `departments`, `events`, `signals`, `notify`, `audit`, `files`, `jobs`, `demo` (D53),
 `settings`, `telemetry`, `db`, `module`, `modules`), `regional` (the settings area of the regional's own values, D39; reserved so no module can declare `regional.*` keys; `IsCoreArea` is unchanged), the shell packages (`api`, `app`,
 `config`, `web`, `admin`, `client`), and PostgreSQL's (`public`, `information`, anything
 starting with `pg`). The list is a constant in the package and a test pins it. `func IsCoreArea(name string) bool`
@@ -1294,6 +1307,7 @@ Standard library (`context`, `encoding/json`, `errors`, `fmt`, `io/fs`, `log/slo
 | F63 (D44) | `Manifest.Validate` | `privacy.Settings(Groups)` is not present in `Settings` with equal options and default | Invalid (`settings[k]` `missing` or `mismatch`) | append `privacy.Settings(Groups)` | `TestManifestValidate_VisibilitySettingMissing_ReturnsInvalid` |
 | F64 (D44) | `Manifest.Validate` | a group offering `holders` whose `Permission` this module declares has a `Reaches` below its highest field level (levels from `privacy.GroupLevels(Views)`) | Invalid (`permissions[i].reaches` `too_low`) | raise `Reaches` | `TestManifestValidate_HoldersPermissionReachesTooLow_ReturnsInvalid` |
 | F65 (D44) | `Conformance/views_tagged`, `visibility_settings_declared` | a module sends a response type that `Views` does not list, or `Views` lists a type with no tags (and `WithoutViews()` not passed) | the rule fails | list and tag the type | `TestConformance_ViewsNotTagged_Fails` (the `untaggedView` fixture; the other fixtures pass `WithoutViews()`, since their routes answer with `http.NotFoundHandler` and no response type) |
+| F66 (D53) | `Conformance/demoseed_provider_valid` | `WithDemoSeed()` given but `demoseed.Point` is not in `ContributesTo`, the contribution is not a `demoseed.Provider`, or the provider creates nothing or returns `Permission` | the rule fails | fix the provider or its actors; a provider may rely on what `Start` registered (D56) | `TestConformance_DemoSeed_*` (one per branch) |
 
 Members that cannot fail, and why: `Definer`, `Publisher`, `Permission.Module` (string
 split); the `String` methods (name or `Kind(<n>)`); `NewRegistry`, `Default` (allocation);

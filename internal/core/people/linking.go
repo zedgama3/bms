@@ -61,7 +61,8 @@ func (s *Service) handleAccountCreated(ctx context.Context, sig signals.Signal) 
 // deletes the empty row sign-up minted for the account (OrphanDeleted) and publishes
 // people.person-deleted for it. A non-empty or referenced orphan is kept. Fails
 // errs.Permission (F14), errs.NotFound (F11; field email, code unknown when no account has
-// the address), errs.Conflict (has_account, superuser: F25, F26) and store kinds.
+// the address), errs.Conflict (has_account, superuser: F25, F26; field account, code protected for a shared
+// demo account) and store kinds.
 func (s *Service) LinkAccount(ctx context.Context, person model.PersonID, email model.Email) (_ LinkResult, err error) {
 	const op = "people.Service.LinkAccount"
 	ctx, span := s.start(ctx, "link-account")
@@ -98,6 +99,9 @@ func (s *Service) LinkAccount(ctx context.Context, person model.PersonID, email 
 		}
 		acct, orphan, err := s.accounts.LinkAccount(ctx, email, person)
 		if err != nil {
+			if isProtected(err) {
+				return fieldConflict(op, "account", codeProtected, nil, "this is a shared demo account and cannot be linked to another person")
+			}
 			return wrap(op, err)
 		}
 		res = LinkResult{Account: acct, Orphan: orphan}

@@ -20,6 +20,9 @@ const (
 	noCache    = "no-cache"
 	indexName  = "index.html"
 
+	// noIndexValue is the X-Robots-Tag of a demo instance (Options.NoIndex).
+	noIndexValue = "noindex, nofollow"
+
 	// passwordResetPath is the SPA route whose URL carries a one-time token in the query. Its
 	// document response sends no referrer at all (api.md pipeline step 4, F60; D40).
 	passwordResetPath = "/accounts/password-reset"
@@ -35,6 +38,9 @@ func (s *Server) serveUI(w http.ResponseWriter, r *http.Request) {
 	// browser sniffs (extensionless) or renders as a document (.svg, .xhtml) must not
 	// escape it, and a 404 body is not a place to find out.
 	w.Header().Set("Content-Security-Policy", s.csp)
+	if s.noIndex {
+		w.Header().Set("X-Robots-Tag", noIndexValue)
+	}
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		writeNotAllowed(w, "GET, HEAD")
 		return

@@ -61,3 +61,22 @@ export function CatalogueBanner() {
     </Banner>
   );
 }
+
+/** The demo notice could not be read, so it is hidden: say so, with a retry. */
+export function DemoReadBanner() {
+  const t = useT();
+  const boot = useBoot();
+  if (!boot.demoFailed) return null;
+  return (
+    <Banner
+      live={false}
+      actions={
+        <Button variant="secondary" onClick={boot.retryDemo}>
+          {t("shell.retry")}
+        </Button>
+      }
+    >
+      {t("shell.banner.demo")}
+    </Banner>
+  );
+}
