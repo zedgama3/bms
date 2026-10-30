@@ -1,0 +1,53 @@
+# bms on a Linux host with systemd. Install the binary as /usr/local/bin/bms, create the
+# `bms` system user and the data directory, put the configuration in /etc/bms/bms.env
+# (mode 640, root:bms; see bms.env.example) and run `bms migrate` once as the bms user
+# before the first start. docs/operating.md has the whole procedure.
+[Unit]
+Description=bms, a regional burn's management system
+Documentation=https://github.com/zedgama3/bms/blob/main/docs/operating.md
+Wants=network-online.target
+# PostgreSQL's unit name depends on the distribution (postgresql.service,
+# postgresql-18.service, ...); when it runs on this host, add it to After= with a drop-in.
+After=network-online.target postgresql.service
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=simple
+User=bms
+Group=bms
+EnvironmentFile=/etc/bms/bms.env
+WorkingDirectory=/var/lib/bms
+ExecStart=/usr/local/bin/bms serve
+Restart=on-failure
+# Exit 2 is a configuration error: restarting cannot fix it.
+RestartPreventExitStatus=2
+RestartSec=10
+KillSignal=SIGTERM
+TimeoutStopSec=30
+UMask=0077
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+# Add any BMS_FILES_DIR or BMS_SECRETS_FILE you move outside the data directory.
+ReadWritePaths=/var/lib/bms
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+
+[Install]
+WantedBy=multi-user.target

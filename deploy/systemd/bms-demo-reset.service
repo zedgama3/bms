@@ -1,0 +1,45 @@
+# Demo mode only (docs/operating.md, "Demo mode"): wipe the demo regional and seed it again.
+# It stops bms first, so the reset never races requests, jobs or the settings snapshot, and
+# starts it again afterwards, also when the reset fails. When bms is not running (an operator
+# stopped it on purpose), the reset is skipped and bms stays stopped. Run by
+# bms-demo-reset.timer, which ships disabled, or by hand: systemctl start bms-demo-reset
+[Unit]
+Description=bms demo reset (wipe and reseed the fictional demo regional)
+After=network-online.target postgresql.service
+
+[Service]
+Type=oneshot
+User=bms
+Group=bms
+EnvironmentFile=/etc/bms/bms.env
+WorkingDirectory=/var/lib/bms
+# Skip, without failing, when bms is not running.
+ExecCondition=/usr/bin/systemctl is-active -q bms.service
+# The "+" runs these with full privileges; the reset itself runs as bms. The marker makes
+# the restart happen only when this run stopped bms.
+ExecStartPre=+/bin/sh -c 'touch /run/bms-demo-reset.stopped-bms && systemctl stop bms.service'
+ExecStart=/usr/local/bin/bms demo reset
+ExecStopPost=+/bin/sh -c 'if [ -e /run/bms-demo-reset.stopped-bms ]; then rm -f /run/bms-demo-reset.stopped-bms; systemctl start bms.service; fi'
+TimeoutStartSec=30min
+UMask=0077
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/bms
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+SystemCallArchitectures=native
+SystemCallFilter=@system-service

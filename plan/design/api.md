@@ -107,7 +107,7 @@
 - db: `Ping`, `ReadOnly`, `ErrReadOnly`, `Status`, `Close` tolerant of late callers. identity: Authenticator, cookie rules. authz: PermissionChecker.
 - lib-core: `validate.FieldError.Code/Params` (applied in spec; implementation follow-up needed). app: shutdown order and sub-deadline.
 
-**Pending proposed changes:** items 10 (authz), 15 (settings: trusted origins and Host allowlist; settled 2026-10-20, D40, with `PublicOrigin` deferred), and the front-end examples and `docs/operating.md` half of 14 wait on targets not yet written; the rest are applied.
+**Pending proposed changes:** items 10 (authz), 15 (settings: trusted origins and Host allowlist; settled 2026-10-20, D40, with `PublicOrigin` deferred), wait on targets not yet written; item 14 is applied (the `docs/operating.md` and front-end examples halves, 2026-10-30); the rest are applied.
 
 **Amendments:** folded into the text; narratives in `plan/design/history/api.md`.
 
@@ -1545,9 +1545,9 @@ recorded as decisions:
 ## Proposed changes elsewhere
 
 Status as of 2026-10-17: items 1, 2, 3, 4, 5, 6, 7, 8, 13 and the `.env.example` half of
-14 are applied. Items 9, 10, 11, 12, 15, 16 and the `deploy/` front-end examples and
-`docs/operating.md` half of 14 wait for their target to be written and are carried by
-this list until then. Item 17 needs nothing.
+14 are applied. Items 9, 10, 11, 12, 15 and 16 wait for their target to be written and are carried by
+this list until then; the `deploy/` front-end examples and `docs/operating.md` half of 14
+are applied 2026-10-30. Item 17 needs nothing.
 
 1. **`plan/07-abstractions.md`, `api shell` entry** (applied 2026-10-17): replace with: "**Purpose:** expose
    the core's and the modules' routes over HTTP with one request pipeline. **Owns:** the
@@ -1717,8 +1717,8 @@ this list until then. Item 17 needs nothing.
     fragment disagree" and "an error response is `application/problem+json` with `code`
     and `ref`".
 14. **`deploy/compose/.env.example` (applied 2026-10-17: the same-host note and the
-    zero-bit refusal), the `deploy/` front-end examples and `docs/operating.md` (pending:
-    not written):** the front end
+    zero-bit refusal), the `deploy/` front-end examples and `docs/operating.md` (applied
+    2026-10-30):** the front end
     must preserve the `Host` header (decision 6: Caddy does by default; nginx needs
     `proxy_set_header Host $host`), set `X-Forwarded-For` and `X-Forwarded-Proto` and
     strip incoming ones (config.md Proposed change 11), and health checks come from

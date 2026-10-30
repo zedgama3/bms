@@ -1157,8 +1157,8 @@ the owner on 2026-10-16 and are recorded as decisions 20, 10 and 7.
 ## Proposed changes elsewhere
 
 Status as of 2026-10-18: items 1, 2, 3, 4, 5, 6, 7, 8, 9, 12 and the `.env.example` half of
-11 are applied. Items 13, item 10 for the specs not yet written, and the `docs/operating.md` half of 11 wait for their
-target to be written and are carried by this list until then. Items 14 and 15 (D36 (e), approved D37) are applied 2026-10-18.
+11 are applied. Items 13 and item 10 for the specs not yet written wait for their
+target to be written and are carried by this list until then. The `docs/operating.md` half of 11 was applied 2026-10-30. Items 14 and 15 (D36 (e), approved D37) are applied 2026-10-18.
 
 1. **`plan/07-abstractions.md`, `db` entry** (applied 2026-10-16): replace "Owns" with: the pool and its
    bounded, retried connect; statements with deadlines, on the pool or on the transaction
@@ -1236,7 +1236,7 @@ target to be written and are carried by this list until then. Items 14 and 15 (D
     installs the guard trigger, so the table is append-only except through `core.audit_purge`
     (audit.md decision 9; this replaces "insert and select only", which a one-role installation
     cannot enforce while keeping the retention purge).
-11. **`docs/operating.md` (pending: not written) and `deploy/compose/.env.example` (applied
+11. **`docs/operating.md` (applied 2026-10-30) and `deploy/compose/.env.example` (applied
     2026-10-16):** PostgreSQL 16
     or newer; the `bms` role needs `CREATE` on the database (schemas) and ownership of
     what it creates; pgx honours `PG*` variables and `~/.pgpass` for anything `BMS_DB_URL`

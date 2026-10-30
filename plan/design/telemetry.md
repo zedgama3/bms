@@ -107,7 +107,7 @@
 - (T1) `web.ClientManifest()` (screen and action allowlists), `api.RouteTokens` (route allowlist), api mounting `POST /api/client-events` and recording `bms.api.errors`.
 
 **Pending proposed changes:**
-- Items 23 and 24 (Amendment T1: dashboards, alert rules, `docs/telemetry.md`) wait for their targets; item 9 is pending for Loki retention, alert rules and `docs/operating.md`; item 6 applied for `jobs.md` 2026-10-20 (D43); all others applied.
+- Item 23 (Amendment T1: dashboards, alert rules) waits for its target; item 24 (`docs/telemetry.md`) is applied 2026-10-30; item 9 is pending for Loki retention and alert rules (its `docs/operating.md` part applied 2026-10-30); item 6 applied for `jobs.md` 2026-10-20 (D43); all others applied.
 
 ## Purpose
 
@@ -1707,11 +1707,10 @@ target to be written and are carried by this list until then.
    use telemetry.Tracer, Meter and slog"); allow `go.opentelemetry.io` under
    `internal/core/telemetry/**`. forbidigo: deny `otel\.GetTracerProvider`,
    `otel\.Tracer`, `otel\.Meter` everywhere (globals are not used).
-9. **`deploy/compose/.env.example`, `deploy/compose/observability/*`, `docs/operating.md`
-   (when written)** (`.env.example`, Tempo's `block_retention: 720h` and Prometheus's
-   `--storage.tsdb.retention.time=1y` applied 2026-10-16; pending: Loki retention needs a
-   Loki config file the compose stack does not yet carry, the alert rules wait for the production example, and
-   `docs/operating.md` is not written): add a commented `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`
+9. **`deploy/compose/.env.example`, `deploy/compose/observability/*`, `docs/operating.md`**
+   (`.env.example`, Tempo's `block_retention: 720h` and Prometheus's
+   `--storage.tsdb.retention.time=1y` applied 2026-10-16; `docs/operating.md` and `docs/telemetry.md` applied 2026-10-30; still pending: Loki retention needs a
+   Loki config file the compose stack does not yet carry, and the alert rules wait for the production example): add a commented `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`
    with a note that only `http/protobuf` is supported and that `OTEL_EXPORTER_OTLP_HEADERS`
    is a credential; set retention in Loki (30 d), Tempo (30 d) and Prometheus (1 y) per
    decision 18 and say so; add D20's alert rules (error rate, client-error spikes, slow
@@ -1842,7 +1841,7 @@ target to be written and are carried by this list until then.
     shared. Loki retention (telemetry Proposed change 9, pending) is set in the same change,
     so the stack states all three retentions. A `make observe` smoke step opens Grafana's
     dashboard list and checks the six are provisioned.
-24. (pending: target not written (docs/telemetry.md)) **`docs/telemetry.md` (new)**: the participant-facing page of T1.7: both routes field by
+24. (applied 2026-10-30) **`docs/telemetry.md` (new)**: the participant-facing page of T1.7: both routes field by
     field in plain words, the retention of each sink, "by screen, never by person", GPC and
     DNT, how to turn usage counting off (`BMS_TELEMETRY_USAGE=false`), and that a signed-in
     person's error reports carry the account's ID. `docs/operating.md` (when written) links

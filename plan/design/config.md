@@ -946,7 +946,7 @@ None. The three questions in the first draft were answered by the owner on 2026-
     `ListenAddr`, `Range`, `OneOf`, `NonEmpty`, `Errors`, `Fields`) but not `retry.Policy`
     (the connect schedule is `db`'s constant); amend the `retry` consumer row.
 11. **`deploy/compose/.env.example`, the `deploy/` front-end examples and the operator docs
-    (`docs/operating.md`, when written):** list every catalogue row with its default; the
+    (`docs/operating.md`, applied 2026-10-30):** list every catalogue row with its default; the
     `BMS_TEST_*` variables stay and are documented as test-only; the deploy examples set
     `BMS_DATA_DIR=/var/lib/bms` and never `BMS_LOG_FORMAT=text`. **TLS offloading
     (decision 16):** every example states and satisfies the conditions: the hop between the

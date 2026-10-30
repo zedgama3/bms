@@ -157,7 +157,7 @@
 
 **Open questions:** None. Answered questions are folded into the decisions above; their record is in `plan/design/history/people.md`.
 
-**Proposed changes elsewhere:** 30, listed at the end. All applied or needing no change except 18 and 24 (pending: `docs/operating.md`, target not written).
+**Proposed changes elsewhere:** 30, listed at the end. All applied or needing no change (18 and 24: `docs/operating.md`, applied 2026-10-30).
 
 **Accepted deviations (M2 build, 2026-10-18).**
 
@@ -1134,7 +1134,7 @@ None. Q-PEOPLE-8 to Q-PEOPLE-10 and the earlier questions are answered and folde
 
 ## Proposed changes elsewhere
 
-Status as of 2026-10-30: items 1 to 17, 19 to 23 and 26 to 30 are applied (17: the redelivery part, 2026-10-20, D43); item 25 needs no change; items 18 and 24 (`docs/operating.md`) wait for their target.
+Status as of 2026-10-30: items 1 to 17, 19 to 23 and 26 to 30 are applied (17: the redelivery part, 2026-10-20, D43); item 25 needs no change; items 18 and 24 (`docs/operating.md`) are applied 2026-10-30.
 
 1. (applied 2026-10-18, in app.md, row 5 of "How later core services plug in") **`plan/design/app.md` (row 18) and `internal/app`:** part 5 `people` in `core_people.go`: `declare` appends `people.Set` to `coreSets` (set name `people`, already in db's fixed order), `people.Permissions` to
    `corePerms`, the three signal names to `coreSignals`, `module.ExtensionPointDecl{Name: personpage.Point, Accepts: func(v any) bool { _, ok := v.(personpage.Provider); return ok }}` to `corePoints`, and the commands `export` (`usage: <person-id>`) and `delete` (`usage: <person-id>`), both
@@ -1173,8 +1173,8 @@ Status as of 2026-10-30: items 1 to 17, 19 to 23 and 26 to 30 are applied (17: t
 15. (applied 2026-10-19, D39) **`plan/design/settings.md` (row 15):** declare `people.legal_name`, `people.phone`, `people.emergency_contacts` with the ranges above and implement `people.PolicySource` (`Policy.Validate` is the check); `app` sets the lazy adapter.
 16. (applied 2026-10-19, D39, as notify Proposed change 5: people sends the notice itself instead of notify subscribing; see the amendment) **`plan/design/notify.md` (row 11):** tell holders of `people.data.delete` that a request is waiting (no note, no name in the body; a link to `/people/admin/requests`).
 17. (applied 2026-10-20, D43, for the redelivery part, by jobs.md Proposed change 7; the `people.retention.unused` proposal stays with `people`, its key would be `people.retention_unused`, declared when `people` registers that job) **`plan/design/jobs.md` (row 14):** redeliver a failed `identity.account-created` handling to people (retryable kinds); carry the `people.retention.unused` proposal (delete account-less people with no module data after a regional-set period; default forever).
-18. (pending: target not written) **`docs/operating.md` (unwritten):** `bms export <person-id>` prints one JSON document to stdout (handle it as personal data); `bms delete <person-id>` deletes across every module and prints the report, refuses the last access admin and a superuser's person, must run on the writing copy, and is audited as the operator; backups still hold the deleted data (privacy-data "Backups contain everything").
-19. **`plan/design/files.md` (row 16), `privacy-tags.md` and `module-volunteers.md`** (applied 2026-10-20, D44): the amendment above. The "docs/operating.md" half of files Proposed change 8 waits for its target.
+18. (applied 2026-10-30) **`docs/operating.md`:** `bms export <person-id>` prints one JSON document to stdout (handle it as personal data); `bms delete <person-id>` deletes across every module and prints the report, refuses the last access admin and a superuser's person, must run on the writing copy, and is audited as the operator; backups still hold the deleted data (privacy-data "Backups contain everything").
+19. **`plan/design/files.md` (row 16), `privacy-tags.md` and `module-volunteers.md`** (applied 2026-10-20, D44): the amendment above. The "docs/operating.md" half of files Proposed change 8 is applied 2026-10-30.
 
 Raised by Amendment P1 (2026-10-22, approved 2026-10-23, D48; another architect is revising `module-volunteers.md` in parallel and takes item 20 up there, so it is listed as a dependency, not applied from here):
 
@@ -1187,7 +1187,7 @@ Raised by Amendment P1 (2026-10-22, approved 2026-10-23, D48; another architect 
     handle) of which only the handle must be unique, deferred. Keep the "Handle" row as is.
 22. (applied 2026-10-23) **`plan/07-abstractions.md`, "people":** Owns gains "the installation-wide uniqueness and permanence of playa names (`NameKey`, `playa_name_key`)"; Doesn't do gains "retiring or approving names (Later)".
 23. (applied 2026-10-23) **`plan/design/db.md`** (low priority): state that a UTF-8 server encoding is required (`normalize()` needs it; people `0003` checks it itself, so nothing breaks until `db` adds the check at `Open`).
-24. **`docs/operating.md`** (pending: target not written): `bms migrate` stops at people `0003` when two people share a playa name; the message lists their IDs; resolve on the previous version (one of them renames, or a profile manager renames them), then migrate again; a non-UTF-8 database is refused by the same migration.
+24. **`docs/operating.md`** (applied 2026-10-30): `bms migrate` stops at people `0003` when two people share a playa name; the message lists their IDs; resolve on the previous version (one of them renames, or a profile manager renames them), then migrate again; a non-UTF-8 database is refused by the same migration.
 25. **`plan/design/identity.md`, `plan/design/web-shell.md`:** no change. `NameSource` is a read and the session's `playa_name` is unaffected; the first-sign-in banner is people's own screen and catalogue key (`core.people.me.first`), the shell's `field.taken` message is overridden by people's `core.people.field.taken` the way `last_access_admin` already is, and `field.permanent` lives in people's catalogue too.
 
 Raised by Amendment P-W1 (2026-10-30, D57; Approved 2026-10-30, D58; items 26 to 30 applied 2026-10-30, D58):

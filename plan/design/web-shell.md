@@ -93,7 +93,7 @@
 
 **Expects of dependencies:** api (problem body with `fields[].code/params/reason`, `X-Read-Only`, `X-Trace-Id`, `GET /api/modules` and `/api/admin/modules` shapes, `POST /api/client-errors`, CSP, `Options.UI`); telemetry (intake wire form and limits, `Ref`, `traceparent` form, token grammar for `screen` and `api.route`); module-contract (name grammar, message-key derivation, admin graph); identity (`GET /api/accounts/session`, `POST /api/accounts/sign-in|sign-out`; M0 answers 404 and the shell is signed out); authz (`permissions` in the session response); settings (`GET /api/settings/public`, `/theme.css`); lib-core (field codes `required, range, positive, one_of, url, host_port, malformed`).
 
-**Pending proposed changes:** items 5 (identity endpoints) and 15 (`docs/operating.md`) wait on targets not yet written; item 7 applied 2026-10-19 (D39) except `language.detect_browser` and the brand font (Later); items 6 and 13 applied 2026-10-18; the rest are applied.
+**Pending proposed changes:** items 5 (identity endpoints) and 15 (`README.md` half; the `docs/operating.md` half applied 2026-10-30) wait on targets not yet written; item 7 applied 2026-10-19 (D39) except `language.detect_browser` and the brand font (Later); items 6 and 13 applied 2026-10-18; the rest are applied.
 
 **M4 privacy additions (D44).** Catalogue keys `privacy.audience.nobody|self|holders|signed_in` (title and description) in the shell's `en` and `es` catalogues; (D47) each description says "the person this information is about" and the `holders` title is "People whose role allows it"; the rule "an absent field renders nothing". (D46) An absent `internal` scalar is its zero (a count shows 0, a flag is off); only a grouped field's absence means hidden. A module's TypeScript response types mark every non-public field optional.
 
@@ -1344,7 +1344,7 @@ requirement (decision 21).
     viewport). §1 "Done when" gains: the shell's screens pass the smoke run at a phone
     viewport. §7 "Admin screens": the admin "modules" screen is the shell's; the others
     are each core area's `ScreenSet`.
-15. **`docs/operating.md` (when written) and `README.md`** (pending: target not written): supported browsers (decision 17);
+15. **`docs/operating.md` and `README.md`** (`docs/operating.md` half applied 2026-10-30; the `README.md` half is pending): supported browsers (decision 17);
     building the UI (`make web-build`, Node LTS and pnpm); that the binary serves the UI
     and no Node is needed at runtime; that a build without `dist/` serves the API only;
     that the UI is built for phones first.

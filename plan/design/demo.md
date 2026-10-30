@@ -621,10 +621,12 @@ the operator runs `bms migrate` if step 4 failed, then `bms demo seed`; the comm
 The superuser account is gone with the rest; `bms create-superuser` recreates one when the
 owner needs break-glass. Captured mail and jobs rows are in the dropped schema.
 
-**Running the reset.** Shipped as `deploy/systemd/bms-demo-reset.service` (oneshot:
-`ExecStartPre=systemctl stop bms`, `ExecStart=bms demo reset`, `ExecStartPost=systemctl start
-bms`, same environment file as `bms.service`) and `bms-demo-reset.timer` (`OnCalendar=daily
-04:00`, **not enabled**; `docs/operating.md` says how to enable it and gives the compose
+**Running the reset.** Shipped as `deploy/systemd/bms-demo-reset.service` (oneshot,
+same environment file as `bms.service`; deploy, 2026-10-30): `ExecCondition` skips the run,
+without failing, when bms is not active; `ExecStartPre` stops bms and leaves a marker;
+`ExecStart=bms demo reset`; `ExecStopPost` starts bms only if the marker shows this run
+stopped it, so also after a failure; `TimeoutStartSec=30min`. `bms-demo-reset.timer` has
+`OnCalendar` 04:00 with `RandomizedDelaySec=10m` and is **not enabled**; `docs/operating.md` says how to enable it and gives the compose
 equivalent). Stopping `serve` first keeps the drop from racing the settings snapshot, the
 job leases and in-flight requests. A jobs-hosted reset was not chosen: it would drop its own
 table under itself, needs the whole migration step inside a serving process, and cannot stop
@@ -999,7 +1001,7 @@ sign-up form tells testers to use a made-up address.
     `membership` in the contracts entry; the Delivery entry for `app` lists the `demo`
     command.
 15. (applied (added with this draft)) **`plan/design/README.md`.** The row for this spec (added with this draft).
-16. (pending: target not written (deploy/ and docs/operating.md)) **`deploy/` and `docs/operating.md`** (targets not written): `deploy/systemd/
+16. (applied 2026-10-30, `docs/operating.md` "Demo mode" and `deploy/systemd/`; the compose equivalent is written as a pattern only, as no production compose file exists) **`deploy/` and `docs/operating.md`**: `deploy/systemd/
     bms-demo-reset.service` and `.timer` (disabled), the compose equivalent, the operator
     text: what demo mode changes, the reset's recovery steps, "the banner is not a
     substitute for keeping real data out", and that backups of a demo hold whatever strangers

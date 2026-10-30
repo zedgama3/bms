@@ -1299,7 +1299,7 @@ decision 17 (not in M0); the stderr logging of `migrate`, `check` and `openapi` 
     is `_ "github.com/zedgama3/bms/internal/modules/<name>"` in `internal/app/modules.go`
     (plus the web line, D31); a `Factory` needs no database read (item 2(b)); every module
     ships `messages/en.json` (item 2(d)).
-17. **`docs/operating.md` (when written):** (pending: target not written) the commands and their exit statuses; `bms
+17. **`docs/operating.md`:** (applied 2026-10-30) the commands and their exit statuses; `bms
     check` before `bms serve`; signals (`SIGTERM` for an orderly stop, a second signal to
     force; `SIGHUP` does nothing); a systemd unit example with `KillSignal=SIGTERM` and
     `TimeoutStopSec` greater than `BMS_HTTP_SHUTDOWN_TIMEOUT`; that `serve` logs to
