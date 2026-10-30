@@ -3,7 +3,7 @@ Vars: label, department, position, starts, zone, location
 
 {{if .Recipient.PlayaName}}Hi {{.Recipient.PlayaName}},{{else}}Hi,{{end}}
 
-this is a reminder that you are booked on a shift.
+this is a reminder of your upcoming {{term "shift"}}.
 
 {{.Vars.label}} ({{.Vars.position}}, {{.Vars.department}})
 Starts: {{.Vars.starts}} ({{.Vars.zone}}){{if .Vars.location}}

@@ -2747,11 +2747,13 @@ export interface components {
             value: string | null;
         };
         SettingsTerm: {
+            /** @description "core" for a core term, else the name of the module that declares it. */
+            area: string;
             default: components["schemas"]["SettingsForms"];
             override: components["schemas"]["SettingsFormChanges"];
         };
         SettingsTermChanges: {
-            /** @description Term to its form changes; 1 to 4 terms. */
+            /** @description Term to its form changes; 1 to as many terms as are declared. */
             terms: {
                 [key: string]: components["schemas"]["SettingsFormChanges"];
             };

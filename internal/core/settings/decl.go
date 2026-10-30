@@ -3,6 +3,7 @@ package settings
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -61,6 +62,9 @@ const (
 	codeURL       = validate.CodeURL
 	codeContrast  = "contrast" // params: ratio, min
 	codeConflict  = "conflict" // a form both set and reset
+	codeFormat    = "format"   // a term key that is not an ident (D57)
+	codeReserved  = "reserved" // a term key that is a CoreTerms name (D57)
+	codeDuplicate = "duplicate"
 )
 
 // Limits, in bytes (they match the CHECK constraints), and bounds.
@@ -182,6 +186,9 @@ type Area struct {
 	Name  string // a module name or a core area name; "regional" is this package's own
 	Core  bool
 	Decls []Decl
+	// Terms are the words this area lets a regional rename (D57). Keys are one flat
+	// namespace across areas and CoreTerms.
+	Terms []TermDecl
 	// Check is an optional cross-field rule over the area's effective values (every
 	// declared key, defaults filled in, bare keys; a Secret's value is always ""). Pure.
 	// Field names it returns are bare keys and are prefixed with "<area>." by Set.
@@ -190,7 +197,8 @@ type Area struct {
 
 // Validate fails errs.Invalid joining one validate.FieldError per problem: the name is not
 // an ident ("name"), a Decl is invalid ("decls[i].<field>") or two Decls share a key
-// ("decls[i].key").
+// ("decls[i].key"), a TermDecl is invalid ("terms[i].<field>", including key "reserved")
+// or two TermDecls share a key ("terms[i].key", "duplicate").
 func (a Area) Validate() error {
 	acc := validate.Errors{Op: "settings.Area.Validate"}
 	if len(a.Name) > maxAreaBytes || !areaRE.MatchString(a.Name) {
@@ -206,6 +214,67 @@ func (a Area) Validate() error {
 			acc.Addf(prefix+".key", "duplicate", "declared more than once")
 		}
 		seen[d.Key] = struct{}{}
+	}
+	seenTerm := make(map[string]struct{}, len(a.Terms))
+	for i, t := range a.Terms {
+		prefix := fmt.Sprintf("terms[%d]", i)
+		for _, fe := range validate.Fields(t.Validate()) {
+			acc.Addf(prefix+"."+fe.Field, fe.Code, "%s", fe.Reason)
+		}
+		if _, dup := seenTerm[t.Key]; dup {
+			acc.Addf(prefix+".key", codeDuplicate, "declared more than once")
+		}
+		seenTerm[t.Key] = struct{}{}
+	}
+	return acc.Err() //nolint:wrapcheck // Err already carries Op and errs.Invalid
+}
+
+// maxTermKeyBytes is the longest term key.
+const maxTermKeyBytes = 32
+
+// TermDecl declares a word a regional may rename (D57). Key is the term's identity
+// everywhere: core.terminology.term, TermsDocument, the shell's {term_<key>[_plural|_title|
+// _plural_title]} and notify's {{term "<key>"}}. A language without an entry in Defaults
+// uses the "en" entry.
+type TermDecl struct {
+	Key      string           // [a-z][a-z0-9]*(_[a-z0-9]+)*, at most 32 bytes; not in CoreTerms
+	Defaults map[string]Forms // per language in Languages; "en" required, every form set
+}
+
+// Validate fails errs.Invalid joining one validate.FieldError per problem: key "format"
+// (not an ident, or over 32 bytes) or "reserved" (a CoreTerms name); defaults.<lang>
+// "unknown" for a language not in Languages; defaults.en "required" when "en" is missing;
+// defaults.<lang>.<form> "required", "too_long {max}", "control_chars" or "malformed" for
+// a form that is empty after trimming, over MaxTermBytes, with a control character or not
+// UTF-8. Messages never echo a value.
+func (d TermDecl) Validate() error {
+	acc := validate.Errors{Op: "settings.TermDecl.Validate"}
+	switch {
+	case len(d.Key) > maxTermKeyBytes || !keyRE.MatchString(d.Key):
+		acc.Addf("key", codeFormat, "must be lower-case letters and digits in snake_case, starting with a letter, at most %d bytes", maxTermKeyBytes)
+	case slices.Contains(CoreTerms, d.Key):
+		acc.Addf("key", codeReserved, "is a core term; a word two parts need is declared once, in CoreTerms")
+	}
+	if _, ok := d.Defaults[fallbackLanguage]; !ok {
+		acc.Addf("defaults."+fallbackLanguage, codeRequired, "the %s defaults are required", fallbackLanguage)
+	}
+	langs := make([]string, 0, len(d.Defaults))
+	for lang := range d.Defaults {
+		langs = append(langs, lang)
+	}
+	slices.Sort(langs)
+	for _, lang := range langs {
+		if !validLanguage(lang) {
+			acc.Addf("defaults."+safeField(lang), codeUnknown, "no such language")
+			continue
+		}
+		f := d.Defaults[lang]
+		for _, form := range formNames {
+			v := f.formValue(form)
+			if pr := termShape(strings.TrimSpace(v)); pr.code != "" {
+				acc.Add(fieldError("defaults."+lang+"."+form, pr.code, pr.params, pr.reason))
+			}
+		}
 	}
 	return acc.Err() //nolint:wrapcheck // Err already carries Op and errs.Invalid
 }

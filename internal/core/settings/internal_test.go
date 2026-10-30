@@ -403,3 +403,124 @@ func TestInternalRenderTheme_GuardsEachScheme(t *testing.T) {
 		}
 	})
 }
+
+// ---- module-declared terms (D57) ----
+
+func termDeclOf(key, singular string) TermDecl {
+	return TermDecl{Key: key, Defaults: map[string]Forms{"en": {
+		Singular: singular, Plural: singular + "s", SingularTitle: strings.ToUpper(singular[:1]) + singular[1:], PluralTitle: strings.ToUpper(singular[:1]) + singular[1:] + "s",
+	}}}
+}
+
+func TestInternalIndexTerms_CoreFirstThenAreasInBuildOrder(t *testing.T) {
+	s := newTestSvc(t, 1,
+		Area{Name: "gamma", Terms: []TermDecl{termDeclOf("gate", "gate")}},
+		Area{Name: "alpha", Terms: []TermDecl{termDeclOf("shift", "shift"), termDeclOf("position", "position")}},
+	)
+	var got []string
+	for _, te := range s.terms {
+		got = append(got, te.area+":"+te.key)
+	}
+	want := []string{"core:event", "core:department", "core:participant", "core:theme_camp", "core:lead",
+		"gamma:gate", "alpha:shift", "alpha:position"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("terms = %v\nwant    %v", got, want)
+	}
+	for i, te := range s.terms {
+		if s.termIdx[te.key] != i {
+			t.Errorf("termIdx[%s] = %d, want %d", te.key, s.termIdx[te.key], i)
+		}
+	}
+}
+
+func TestInternalDefaultOf_ModuleTerm_UsesLanguageEntryElseEnglish(t *testing.T) {
+	es := Forms{Singular: "turno", Plural: "turnos", SingularTitle: "Turno", PluralTitle: "Turnos"}
+	d := termDeclOf("shift", "shift")
+	d.Defaults["es"] = es
+	s := newTestSvc(t, 1, Area{Name: "alpha", Terms: []TermDecl{d, termDeclOf("position", "position")}})
+	at := func(key string) termEntry { return s.terms[s.termIdx[key]] }
+	if got := s.defaultOf("es", at("shift")); got != es {
+		t.Errorf("es shift = %+v", got)
+	}
+	if got := s.defaultOf("en", at("shift")); got.Singular != "shift" {
+		t.Errorf("en shift = %+v", got)
+	}
+	if got := s.defaultOf("es", at("position")); got.Plural != "positions" {
+		t.Errorf("es position falls back to en: %+v", got)
+	}
+	if got := s.defaultOf("es", at("lead")); got.Singular != "lead" {
+		t.Errorf("a core term in es uses the embedded fallback: %+v", got)
+	}
+}
+
+func TestInternalTermsIn_IgnoresStoredRowOfUndeclaredTerm(t *testing.T) {
+	s := newTestSvc(t, 1, Area{Name: "alpha", Terms: []TermDecl{termDeclOf("shift", "shift")}})
+	sn := snapshotOf(1, nil, []rows.Term{
+		{Lang: "en", Term: "ghost", Form: "singular", Value: "spirit"},
+		{Lang: "en", Term: "shift", Form: "singular", Value: "watch"},
+	})
+	got := s.termsIn(sn, "en")
+	if _, ok := got["ghost"]; ok {
+		t.Error("an undeclared term was listed")
+	}
+	if got["shift"].Singular != "watch" || got["shift"].Plural != "shifts" {
+		t.Errorf("shift = %+v, want the override on singular only", got["shift"])
+	}
+	if len(got) != len(CoreTerms)+1 {
+		t.Errorf("%d terms, want %d", len(got), len(CoreTerms)+1)
+	}
+}
+
+func TestInternalCloneArea_TermDefaults_AreNotShared(t *testing.T) {
+	in := Area{Name: "alpha", Terms: []TermDecl{termDeclOf("shift", "shift")}}
+	out := cloneArea(in)
+	out.Terms[0].Defaults["en"] = Forms{Singular: "changed"}
+	out.Terms[0].Key = "other"
+	if in.Terms[0].Defaults["en"].Singular != "shift" || in.Terms[0].Key != "shift" {
+		t.Errorf("the input area changed through the clone: %+v", in.Terms[0])
+	}
+}
+
+func TestInternalFlatten_ModuleTerm_GivesFourArguments(t *testing.T) {
+	s := newTestSvc(t, 1, Area{Name: "alpha", Terms: []TermDecl{termDeclOf("shift", "shift")}})
+	out := flatten(s.termsIn(snapAt(1), "en"))
+	for k, want := range map[string]string{
+		"term_shift": "shift", "term_shift_plural": "shifts", "term_shift_title": "Shift", "term_shift_plural_title": "Shifts",
+		"term_lead": "lead", "term_lead_plural_title": "Leads",
+	} {
+		if out[k] != want {
+			t.Errorf("%s = %q, want %q", k, out[k], want)
+		}
+	}
+}
+
+func TestInternalPlanTerms_FollowsDeclarationOrder(t *testing.T) {
+	s := newTestSvc(t, 1, Area{Name: "alpha", Terms: []TermDecl{termDeclOf("shift", "shift")}})
+	v := "x1"
+	plan, err := s.planTerms("test", "en", TermChanges{Terms: map[string]FormChanges{
+		"shift": {Singular: &v}, "lead": {Singular: &v}, "event": {Singular: &v},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, tc := range plan {
+		got = append(got, tc.term)
+	}
+	if strings.Join(got, ",") != "event,lead,shift" {
+		t.Errorf("plan order = %v", got)
+	}
+}
+
+func TestInternalOptionsValidate_TermRepeatedInOneArea_IsReportedOnce(t *testing.T) {
+	o := Options{Areas: []Area{{Name: "alpha", Terms: []TermDecl{termDeclOf("shift", "shift"), termDeclOf("shift", "shift")}}}}
+	n := 0
+	for _, fe := range validate.Fields(o.Validate()) {
+		if strings.HasSuffix(fe.Field, ".key") && fe.Code == "duplicate" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("%d duplicate-key reports, want 1", n)
+	}
+}

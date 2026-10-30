@@ -1,8 +1,8 @@
-import { useRef, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router";
 import { api, ApiError, useAction, useReadOnly } from "@/api";
-import { languageName, useLanguage, useT } from "@/i18n";
+import { isMessageKey, languageName, useLanguage, useT } from "@/i18n";
 import {
   Banner,
   Button,
@@ -27,6 +27,30 @@ type TermDocs = TermsDocument["terms"][string];
 
 /** The API's field path for one form of one term. */
 const fieldOf = (term: string, form: Form): string => `terms.${term}.${form}`;
+
+interface TermGroup {
+  area: string;
+  title: string;
+  names: string[];
+}
+
+/** The terms by area: "core" first, then each module's area alphabetically by its title, and
+ *  the terms of an area by key (the document is a map, so its order is not defined). */
+function groupTerms(terms: TermDocs, titleOf: (area: string) => string): TermGroup[] {
+  const by = new Map<string, string[]>();
+  for (const [name, doc] of Object.entries(terms)) {
+    by.set(doc.area, [...(by.get(doc.area) ?? []), name]);
+  }
+  const out: TermGroup[] = [];
+  for (const [area, names] of by) {
+    out.push({ area, title: area === "core" ? "" : titleOf(area), names: names.sort() });
+  }
+  return out.sort((a, b) =>
+    a.area === "core" || b.area === "core"
+      ? Number(b.area === "core") - Number(a.area === "core")
+      : a.title.localeCompare(b.title) || a.area.localeCompare(b.area),
+  );
+}
 
 /** `/settings/terms` (`settings.read`): per language, the four forms of each term, the default
  *  under each box, Reset per box and one Save per language (`PUT /api/settings/terms/{lang}`).
@@ -132,6 +156,10 @@ function TermsForm({
   const act = useAction();
   const fieldErrors = useFieldErrors(act.error);
   const names = Object.keys(terms).sort();
+  const groups = groupTerms(terms, (name) => {
+    const key = `module.${name}.title`;
+    return isMessageKey(key) ? t(key) : t("core.settings.area.fallback", { area: name });
+  });
 
   const current = (term: string, form: Form): string =>
     drafts[fieldOf(term, form)] ?? terms[term]?.override[form] ?? "";
@@ -172,6 +200,53 @@ function TermsForm({
     });
   };
 
+  const card = (term: string) => {
+    const docs = terms[term]!;
+    return (
+      <fieldset
+        key={term}
+        className="flex min-w-0 flex-col gap-4 rounded-md border border-border bg-surface p-4"
+      >
+        <legend className="px-1 text-lg font-bold">{docs.default.singular_title}</legend>
+        {FORMS.map((form) => {
+          const name = fieldOf(term, form);
+          const label = t(`core.settings.terms.form.${form}`);
+          const value = current(term, form);
+          return (
+            <div key={form} className="flex flex-col gap-1">
+              <Field
+                label={label}
+                name={name}
+                hint={t("core.settings.terms.default", { value: docs.default[form] })}
+                error={fieldErrors[name]}
+                maxLength={60}
+                autoComplete="off"
+                value={value}
+                onChange={(e) => setDrafts((d) => ({ ...d, [name]: e.target.value }))}
+              />
+              {value !== "" ? (
+                <div>
+                  <Button
+                    variant="secondary"
+                    aria-label={t("core.settings.terms.reset_label", {
+                      field: `${docs.default.singular_title}, ${label}`,
+                    })}
+                    onClick={() => {
+                      setDrafts((d) => ({ ...d, [name]: "" }));
+                      focusSoon(byName(name));
+                    }}
+                  >
+                    {t("core.settings.terms.reset")}
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+      </fieldset>
+    );
+  };
+
   const langName = languageName(lang);
   const readOnlyId = "settings-terms-readonly";
   return (
@@ -179,49 +254,14 @@ function TermsForm({
       <ErrorSummary error={act.error} formRef={formRef} />
       <fieldset disabled={!canManage} className="m-0 flex min-w-0 flex-col gap-5 border-0 p-0">
         <legend className="sr-only">{t("core.settings.terms.title")}</legend>
-        {names.map((term) => {
-          const docs = terms[term]!;
-          return (
-            <fieldset
-              key={term}
-              className="flex min-w-0 flex-col gap-4 rounded-md border border-border bg-surface p-4"
-            >
-              <legend className="px-1 text-lg font-bold">{docs.default.singular_title}</legend>
-              {FORMS.map((form) => {
-                const name = fieldOf(term, form);
-                const label = t(`core.settings.terms.form.${form}`);
-                const value = current(term, form);
-                return (
-                  <div key={form} className="flex flex-col gap-1">
-                    <Field
-                      label={label}
-                      name={name}
-                      hint={t("core.settings.terms.default", { value: docs.default[form] })}
-                      error={fieldErrors[name]}
-                      maxLength={60}
-                      autoComplete="off"
-                      value={value}
-                      onChange={(e) => setDrafts((d) => ({ ...d, [name]: e.target.value }))}
-                    />
-                    {value !== "" ? (
-                      <div>
-                        <Button
-                          variant="secondary"
-                          aria-label={t("core.settings.terms.reset_label", {
-                            field: `${docs.default.singular_title}, ${label}`,
-                          })}
-                          onClick={() => {
-                            setDrafts((d) => ({ ...d, [name]: "" }));
-                            focusSoon(byName(name));
-                          }}
-                        >
-                          {t("core.settings.terms.reset")}
-                        </Button>
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
+        {groups.map((group) => {
+          const cards = group.names.map((term) => card(term));
+          return group.area === "core" ? (
+            <Fragment key="core">{cards}</Fragment>
+          ) : (
+            <fieldset key={group.area} className="m-0 flex min-w-0 flex-col gap-5 border-0 p-0">
+              <legend className="mb-3 text-xl font-bold">{group.title}</legend>
+              {cards}
             </fieldset>
           );
         })}

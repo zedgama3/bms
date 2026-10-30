@@ -424,25 +424,27 @@ func (s *Service) SetTerms(ctx context.Context, lang string, c TermChanges) (_ R
 	return rev, nil
 }
 
-// planTerms validates c and returns its terms in CoreTerms order.
+// planTerms validates c and returns its terms in declaration order: CoreTerms, then the
+// areas' terms in build order.
 func (s *Service) planTerms(op, lang string, c TermChanges) ([]termChange, error) {
 	v := validate.Errors{Op: op}
 	switch n := len(c.Terms); {
 	case n == 0:
 		v.Addf("terms", codeRequired, "set at least one term")
-	case n > len(CoreTerms):
+	case n > len(s.terms):
 		v.Add(errs.E(op, errs.Invalid, &validate.FieldError{
-			Field: "terms", Code: codeTooMany, Params: map[string]string{"max": itoa(len(CoreTerms))},
-			Reason: "at most " + itoa(len(CoreTerms)) + " terms",
+			Field: "terms", Code: codeTooMany, Params: map[string]string{"max": itoa(len(s.terms))},
+			Reason: "at most " + itoa(len(s.terms)) + " terms",
 		}))
 	}
 	var plan []termChange
 	for name := range c.Terms {
-		if !slices.Contains(CoreTerms, name) {
+		if _, ok := s.termIdx[name]; !ok {
 			v.Addf("terms."+safeField(name), codeUnknown, "no such term")
 		}
 	}
-	for _, term := range CoreTerms {
+	for _, te := range s.terms {
+		term := te.key
 		fc, ok := c.Terms[term]
 		if !ok {
 			continue
@@ -459,7 +461,7 @@ func (s *Service) planTerms(op, lang string, c TermChanges) ([]termChange, error
 				v.Add(fieldError(field, pr.code, pr.params, pr.reason))
 				continue
 			}
-			if val == s.defaultsFor(lang)[term].formValue(form) {
+			if val == s.defaultOf(lang, te).formValue(form) {
 				tc.resets = append(tc.resets, form)
 				continue
 			}

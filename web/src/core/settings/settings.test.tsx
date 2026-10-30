@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
+import { addCatalogue } from "@/i18n/internal";
 import shellEn from "@/shell/messages/en.json";
 import { mountApp } from "@/test/app";
 import { expectNoAxeViolations } from "@/test/axe";
@@ -606,6 +607,7 @@ const termsBody = () => ({
   terms: {
     en: {
       department: {
+        area: "core",
         default: {
           singular: "department",
           plural: "departments",
@@ -615,6 +617,7 @@ const termsBody = () => ({
         override: { plural: "teams" },
       },
       event: {
+        area: "core",
         default: {
           singular: "event",
           plural: "events",
@@ -623,9 +626,30 @@ const termsBody = () => ({
         },
         override: {},
       },
+      shift: {
+        area: "volunteers",
+        default: {
+          singular: "shift",
+          plural: "shifts",
+          singular_title: "Shift",
+          plural_title: "Shifts",
+        },
+        override: {},
+      },
+      position: {
+        area: "volunteers",
+        default: {
+          singular: "position",
+          plural: "positions",
+          singular_title: "Position",
+          plural_title: "Positions",
+        },
+        override: {},
+      },
     },
     es: {
       event: {
+        area: "core",
         default: {
           singular: "event",
           plural: "events",
@@ -660,6 +684,29 @@ describe("/settings/terms", () => {
     expect(within(group).getByLabelText("One, in a sentence")).toHaveValue("");
     expect(within(group).getByText("Default: Departments")).toBeInTheDocument();
     await expectNoAxeViolations(container);
+  });
+
+  it("groups the cards by area: core first, then each module under its title, terms by key", async () => {
+    addCatalogue("volunteers", "en", { "module.volunteers.title": "Volunteers" });
+    mountApp({ path: "/settings/terms", session: ident(ADMIN), routes: routes() });
+    const module = await screen.findByRole("group", { name: "Volunteers" });
+    // The module's cards sit inside its group, by key (position before shift).
+    const cards = within(module)
+      .getAllByRole("group")
+      .map((g) => g.querySelector("legend")?.textContent);
+    expect(cards).toEqual(["Position", "Shift"]);
+    // The core's cards are outside it, and come first in the document, by key.
+    expect(within(module).queryByRole("group", { name: "Department" })).not.toBeInTheDocument();
+    const order = screen
+      .getAllByRole("group")
+      .map((g) => g.querySelector(":scope > legend")?.textContent);
+    expect(order.filter((n) => n && n !== "Terminology")).toEqual([
+      "Department",
+      "Event",
+      "Volunteers",
+      "Position",
+      "Shift",
+    ]);
   });
 
   it("saves one language: sets what changed and resets what was cleared", async () => {

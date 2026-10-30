@@ -55,6 +55,18 @@ func (s *Service) defaultsFor(lang string) map[string]Forms {
 	return s.defaults[fallbackLanguage]
 }
 
+// defaultOf returns the defaults of one declared term in lang: a core term's embedded
+// file entry, or a module term's declared entry, else its "en" one.
+func (s *Service) defaultOf(lang string, t termEntry) Forms {
+	if t.defaults == nil {
+		return s.defaultsFor(lang)[t.key]
+	}
+	if f, ok := t.defaults[lang]; ok {
+		return f
+	}
+	return t.defaults[fallbackLanguage]
+}
+
 func validLanguage(lang string) bool { return slices.Contains(Languages, lang) }
 
 func unknownLanguage(op string) error {
@@ -94,9 +106,9 @@ func (c *FormChanges) formPtr(name string) **string {
 
 // formsIn returns the forms of one term in sn for lang: the embedded defaults with the
 // overrides applied. An override of a form this build does not know is ignored.
-func (s *Service) formsIn(sn *snapshot, lang, term string) Forms {
-	f := s.defaultsFor(lang)[term]
-	for form, v := range sn.terms[lang][term] {
+func (s *Service) formsIn(sn *snapshot, lang string, t termEntry) Forms {
+	f := s.defaultOf(lang, t)
+	for form, v := range sn.terms[lang][t.key] {
 		if p := f.formPtr(form); p != nil {
 			*p = v
 		}
@@ -104,8 +116,9 @@ func (s *Service) formsIn(sn *snapshot, lang, term string) Forms {
 	return f
 }
 
-// TermsFor returns every core term in one language, overrides applied over the embedded
-// defaults (a language without a defaults file uses "en"). Fails errs.Invalid (lang, one_of)
+// TermsFor returns every declared term (core and module, D57) in one language, overrides
+// applied over the defaults: the embedded file for a core term, the declaration for a
+// module's (a language without an entry uses "en"). Fails errs.Invalid (lang, one_of)
 // for a language not in Languages, and the snapshot's kinds (Unavailable, Timeout,
 // Canceled) before the first load.
 func (s *Service) TermsFor(ctx context.Context, lang string) (map[string]Forms, error) {
@@ -121,9 +134,9 @@ func (s *Service) TermsFor(ctx context.Context, lang string) (map[string]Forms, 
 }
 
 func (s *Service) termsIn(sn *snapshot, lang string) map[string]Forms {
-	out := make(map[string]Forms, len(CoreTerms))
-	for _, term := range CoreTerms {
-		out[term] = s.formsIn(sn, lang, term)
+	out := make(map[string]Forms, len(s.terms))
+	for _, t := range s.terms {
+		out[t.key] = s.formsIn(sn, lang, t)
 	}
 	return out
 }
@@ -140,7 +153,8 @@ func flatten(terms map[string]Forms) map[string]string {
 	return out
 }
 
-// Terms returns every language and term with its default and its override. Needs
+// Terms returns every language and declared term with its area, default and override; a
+// stored row of an undeclared term is not listed (D57). Needs
 // settings.read. Fails errs.Unauthenticated, errs.Permission and the snapshot's kinds.
 func (s *Service) Terms(ctx context.Context) (_ TermsDocument, err error) {
 	const op = "settings.Service.Terms"
@@ -158,15 +172,15 @@ func (s *Service) Terms(ctx context.Context) (_ TermsDocument, err error) {
 		Terms:     make(map[string]map[string]TermDoc, len(Languages)),
 	}
 	for _, lang := range Languages {
-		doc.Terms[lang] = make(map[string]TermDoc, len(CoreTerms))
-		for _, term := range CoreTerms {
-			td := TermDoc{Default: s.defaultsFor(lang)[term]}
-			for form, v := range sn.terms[lang][term] {
+		doc.Terms[lang] = make(map[string]TermDoc, len(s.terms))
+		for _, t := range s.terms {
+			td := TermDoc{Area: t.area, Default: s.defaultOf(lang, t)}
+			for form, v := range sn.terms[lang][t.key] {
 				if p := td.Override.formPtr(form); p != nil {
 					*p = &v
 				}
 			}
-			doc.Terms[lang][term] = td
+			doc.Terms[lang][t.key] = td
 		}
 	}
 	return doc, nil

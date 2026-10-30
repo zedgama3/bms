@@ -15,8 +15,13 @@ import (
 // Languages are the languages of the build. Callers must not modify it.
 var Languages = []string{"en", "es"}
 
-// CoreTerms are the terms a regional may rename. Callers must not modify it.
-var CoreTerms = []string{"event", "department", "participant", "theme_camp"}
+// CoreTerms are the terms the core lets a regional rename; areas declare more in
+// Area.Terms (D57). A word two parts of bms need belongs here, as "lead" does. Callers
+// must not modify it.
+var CoreTerms = []string{"event", "department", "participant", "theme_camp", "lead"}
+
+// coreArea is TermDoc.Area for a term of CoreTerms.
+const coreArea = "core"
 
 // formNames are the four forms of a term, in the order Forms lists them.
 var formNames = []string{formSingular, formPlural, formSingularTitle, formPluralTitle}
@@ -157,6 +162,7 @@ type TermsDocument struct {
 
 // TermDoc is one term in one language.
 type TermDoc struct {
+	Area     string      `json:"area"` // "core" for CoreTerms, else the declaring area's name (D57)
 	Default  Forms       `json:"default"`
 	Override FormChanges `json:"override"` // nil fields = not overridden
 }

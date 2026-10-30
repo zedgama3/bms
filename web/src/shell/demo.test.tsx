@@ -82,6 +82,22 @@ describe("demo banner", () => {
     await expectNoAxeViolations(container);
   });
 
+  it("shows just the term for a lead with no department-admin roles", async () => {
+    mountApp({
+      routes: {
+        "GET /api/demo/": () =>
+          json({
+            ...DEMO,
+            accounts: [{ key: "lead", email: "lead@demo.invalid", roles: [] }],
+          }),
+      },
+      path: "/accounts/sign-in",
+    });
+    const table = await screen.findByRole("table", { name: "Demo accounts" });
+    expect(within(table).getByText("Lead")).toBeInTheDocument();
+    expect(within(table).queryByText(/Lead:/)).toBeNull();
+  });
+
   it("has no copy button, and a sign-in button per account named by its label", async () => {
     mountApp({ routes: { "GET /api/demo/": () => json(DEMO) }, path: "/accounts/sign-in" });
     const table = await screen.findByRole("table", { name: "Demo accounts" });

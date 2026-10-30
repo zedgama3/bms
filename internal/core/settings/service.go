@@ -105,9 +105,21 @@ func (o Options) Validate() error {
 		v.Add(validate.Range("settings.refresh_interval", o.RefreshInterval, minRefreshInterval, maxRefreshInterval))
 	}
 	seen := make(map[string]struct{}, len(o.Areas))
+	termArea := map[string]int{} // term key -> index of the first area that declared it
 	for i, a := range o.Areas {
 		for _, fe := range validate.Fields(a.Validate()) {
 			v.Addf(fmt.Sprintf("settings.areas[%d].%s", i, fe.Field), fe.Code, "%s", fe.Reason)
+		}
+		for k, t := range a.Terms {
+			first, dup := termArea[t.Key]
+			if !dup {
+				termArea[t.Key] = i
+				continue
+			}
+			if first != i { // a repeat inside one area is Area.Validate's
+				v.Addf(fmt.Sprintf("settings.areas[%d].terms[%d].key", i, k), codeDuplicate,
+					"the term is also declared by another area; move the word to CoreTerms so both use one")
+			}
 		}
 		switch _, dup := seen[a.Name]; {
 		case a.Name == regionalArea:
@@ -146,7 +158,9 @@ type Service struct {
 	areaIdx  map[string]int   // area name -> position in areas
 	sealer   *sealer          // nil without a sealing key
 	interval time.Duration
-	defaults map[string]map[string]Forms // lang -> term -> forms, embedded
+	defaults map[string]map[string]Forms // lang -> term -> forms, embedded (core terms)
+	terms    []termEntry                 // every declared term: CoreTerms first, then areas in build order (D57)
+	termIdx  map[string]int              // term key -> position in terms
 
 	snap    atomic.Pointer[snapshot]
 	loading chan struct{} // capacity 1: held while the first load runs
@@ -206,6 +220,7 @@ func newService(o Options, st store) (*Service, error) {
 		s.interval = DefaultRefreshInterval
 	}
 	s.areas = orderAreas(o.Areas)
+	s.indexTerms()
 	s.index = make(map[string]entry)
 	s.areaIdx = make(map[string]int, len(s.areas))
 	for i, a := range s.areas {
@@ -243,7 +258,47 @@ func cloneArea(a Area) Area {
 		ds[i] = d
 	}
 	a.Decls = ds
+	ts := make([]TermDecl, len(a.Terms))
+	for i, t := range a.Terms {
+		if t.Defaults == nil {
+			ts[i] = t
+			continue
+		}
+		defs := make(map[string]Forms, len(t.Defaults))
+		for lang, f := range t.Defaults {
+			defs[lang] = f
+		}
+		t.Defaults = defs
+		ts[i] = t
+	}
+	a.Terms = ts
 	return a
+}
+
+// termEntry is one declared term in the index: where it comes from and, for a module's
+// term, its defaults (a core term's are in Service.defaults).
+type termEntry struct {
+	key      string
+	area     string           // coreArea, or the declaring area's name
+	defaults map[string]Forms // nil for a core term
+}
+
+// indexTerms lists every declared term: CoreTerms first, then each area's in build order.
+// Options.Validate has already refused a key declared twice.
+func (s *Service) indexTerms() {
+	s.terms = make([]termEntry, 0, len(CoreTerms))
+	for _, k := range CoreTerms {
+		s.terms = append(s.terms, termEntry{key: k, area: coreArea})
+	}
+	for _, a := range s.areas {
+		for _, t := range a.Terms {
+			s.terms = append(s.terms, termEntry{key: t.Key, area: a.Name, defaults: t.Defaults})
+		}
+	}
+	s.termIdx = make(map[string]int, len(s.terms))
+	for i, t := range s.terms {
+		s.termIdx[t.key] = i
+	}
 }
 
 // ---- helpers shared by the use cases -----------------------------------------------------

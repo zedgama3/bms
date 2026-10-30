@@ -26,3 +26,15 @@ const (
 // allow no hyphen). Validate is settings.Decl.Validate: errs.Invalid joining one
 // validate.FieldError per problem (key, kind, options, default).
 type SettingDecl = settings.Decl
+
+// TermDecl declares a word a module lets a regional rename (D57; settings.TermDecl). Key is
+// the term's identity everywhere (core.terminology, the shell's {term_<key>}, notify's
+// {{term "<key>"}}); Defaults holds the Forms per language, "en" required. The catalogue keys
+// module.<name>.term.<key>, .plural, .title and .plural_title (decision 8) mirror the
+// "en" defaults as the shell's boot fallback. Validate is settings.TermDecl.Validate:
+// errs.Invalid joining one validate.FieldError per problem (key, defaults.<lang>,
+// defaults.<lang>.<form>). The key grammar is [a-z][a-z0-9]*(_[a-z0-9]+)*, at most 32 bytes.
+type TermDecl = settings.TermDecl
+
+// TermForms are the four forms of one term in one language (settings.Forms).
+type TermForms = settings.Forms

@@ -62,7 +62,7 @@ func TestConstants_Pinned(t *testing.T) {
 	if !slices.Equal(settings.Languages, []string{"en", "es"}) {
 		t.Errorf("Languages = %v", settings.Languages)
 	}
-	if !slices.Equal(settings.CoreTerms, []string{"event", "department", "participant", "theme_camp"}) {
+	if !slices.Equal(settings.CoreTerms, []string{"event", "department", "participant", "theme_camp", "lead"}) {
 		t.Errorf("CoreTerms = %v", settings.CoreTerms)
 	}
 	// Kind values are part of the stored contract: zero is invalid, Bool is 1.

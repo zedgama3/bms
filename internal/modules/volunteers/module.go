@@ -134,6 +134,7 @@ var Manifest = module.Manifest{
 			StarterRoles: []string{authz.RoleDepartmentAdmin}}, // D41: never participant
 	},
 	Settings:      manifestSettings(),
+	Terms:         manifestTerms(),
 	Publishes:     []signals.Name{SignalSignupBooked, SignalSignupCanceled, SignalQualificationVerified},
 	Subscribes:    []signals.Name{departments.SignalArchived, events.SignalClosed},
 	ContributesTo: []module.ExtensionPoint{personpage.Point, eventsetup.Point, membership.Point, demoseed.Point},
@@ -160,6 +161,18 @@ func mustSub(fsys fs.FS, dir string) fs.FS {
 		panic("volunteers: embedded " + dir + " missing: " + err.Error())
 	}
 	return sub
+}
+
+// manifestTerms returns the three words a regional may rename (module-volunteers.md,
+// Amendment V3, D57), with their English defaults. "lead" is a core term
+// (settings.CoreTerms), not this module's. The fallback catalogue keys
+// module.volunteers.term.<key>[.plural|.title|.plural_title] mirror these defaults.
+func manifestTerms() []module.TermDecl {
+	return []module.TermDecl{
+		{Key: "shift", Defaults: map[string]module.TermForms{"en": {Singular: "shift", Plural: "shifts", SingularTitle: "Shift", PluralTitle: "Shifts"}}},
+		{Key: "position", Defaults: map[string]module.TermForms{"en": {Singular: "position", Plural: "positions", SingularTitle: "Position", PluralTitle: "Positions"}}},
+		{Key: "qualification", Defaults: map[string]module.TermForms{"en": {Singular: "qualification", Plural: "qualifications", SingularTitle: "Qualification", PluralTitle: "Qualifications"}}},
+	}
 }
 
 // manifestSettings returns the seven settings: five of its own and the two visibility

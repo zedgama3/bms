@@ -2726,6 +2726,10 @@
       },
       "SettingsTerm": {
         "properties": {
+          "area": {
+            "description": "\"core\" for a core term, else the name of the module that declares it.",
+            "type": "string"
+          },
           "default": {
             "$ref": "#/components/schemas/SettingsForms"
           },
@@ -2734,6 +2738,7 @@
           }
         },
         "required": [
+          "area",
           "default",
           "override"
         ],
@@ -2745,7 +2750,7 @@
             "additionalProperties": {
               "$ref": "#/components/schemas/SettingsFormChanges"
             },
-            "description": "Term to its form changes; 1 to 4 terms.",
+            "description": "Term to its form changes; 1 to as many terms as are declared.",
             "type": "object"
           }
         },

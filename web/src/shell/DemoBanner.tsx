@@ -71,9 +71,10 @@ function DemoAccounts({
   const known = (a: DemoAccount): boolean => isMessageKey(`core.demo.account.${a.key}`);
   const accountLabel = (a: DemoAccount): string => {
     const k = `core.demo.account.${a.key}`;
-    return isMessageKey(k)
-      ? t(k, { departments: departments(a) })
-      : t("shell.demo.account_unknown");
+    if (!isMessageKey(k)) return t("shell.demo.account_unknown");
+    const list = departments(a);
+    // A lead without a `department-admin@` role shows just the term, not "Lead: ".
+    return t(k, { departments: list, has_departments: list === "" ? "no" : "yes" });
   };
 
   // The name must differ per row: an account the catalogue doesn't know is named by its address.

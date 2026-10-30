@@ -86,6 +86,13 @@ type Manifest struct {
 	// Settings this module declares. Keys are stored as "<Name>.<Key>" by settings.
 	Settings []SettingDecl
 
+	// Terms are the words this module lets a regional rename (D57; settings.md "module-
+	// declared terms"). Validate runs each TermDecl.Validate (problems under terms[i]:
+	// key format or reserved, defaults.<lang>[.<form>]) and fails a key declared twice
+	// (terms[i].key duplicate). One flat namespace across modules: a word two modules need
+	// is promoted to settings.CoreTerms, and settings.New fails a key two modules declare.
+	Terms []TermDecl
+
 	// Views lists the response types the module sends on the wire (zero values); Groups
 	// the field groups they name (D44, privacy-tags.md). Validate runs privacy.Check(Views,
 	// Groups) (problems under views[i] and groups[j]), requires privacy.Settings(Groups)
@@ -135,6 +142,7 @@ func (m Manifest) Validate() error {
 	}
 	m.validatePermissions(&acc)
 	m.validateSettings(&acc)
+	m.validateTerms(&acc)
 	m.validatePrivacy(&acc)
 	m.validateSignals(&acc)
 	m.validateCapabilities(&acc)
@@ -166,6 +174,18 @@ func (m Manifest) validateSettings(acc *validate.Errors) {
 			acc.Addf(prefix+".key", "duplicate", "declared more than once")
 		}
 		seen[s.Key] = struct{}{}
+	}
+}
+
+func (m Manifest) validateTerms(acc *validate.Errors) {
+	seen := make(map[string]struct{}, len(m.Terms))
+	for i, t := range m.Terms {
+		prefix := fmt.Sprintf("terms[%d]", i)
+		asNested(acc, prefix, t.Validate())
+		if _, dup := seen[t.Key]; dup {
+			acc.Addf(prefix+".key", "duplicate", "declared more than once")
+		}
+		seen[t.Key] = struct{}{}
 	}
 }
 

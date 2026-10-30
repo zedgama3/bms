@@ -1394,6 +1394,18 @@ export interface GeneratedKeys {
   "module.volunteers.template.qualification-verified.title": true;
   "module.volunteers.template.shift-reminder.title": true;
   "module.volunteers.template.signup-removed.title": true;
+  "module.volunteers.term.position": true;
+  "module.volunteers.term.position.plural": true;
+  "module.volunteers.term.position.plural_title": true;
+  "module.volunteers.term.position.title": true;
+  "module.volunteers.term.qualification": true;
+  "module.volunteers.term.qualification.plural": true;
+  "module.volunteers.term.qualification.plural_title": true;
+  "module.volunteers.term.qualification.title": true;
+  "module.volunteers.term.shift": true;
+  "module.volunteers.term.shift.plural": true;
+  "module.volunteers.term.shift.plural_title": true;
+  "module.volunteers.term.shift.title": true;
   "module.volunteers.title": true;
   "module.volunteers.unknown_department": true;
   "module.volunteers.verify.done": true;

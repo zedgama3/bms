@@ -10,6 +10,49 @@ const list =
   () =>
     json({ items });
 
+const publicDoc = (terms: Record<string, string>) => ({
+  name: "Dust Bowl",
+  logo: "",
+  contact_email: "",
+  language: "en",
+  languages: ["en"],
+  public_url: "",
+  theme: false,
+  timezone: "",
+  terms: { en: terms },
+});
+
+describe("volunteers: the regional's word for shift (F170)", () => {
+  it("renders the regional's word for shift", async () => {
+    mount({
+      path: "/volunteers",
+      routes: {
+        "GET /api/settings/public": () =>
+          json(
+            publicDoc({
+              term_shift: "stint",
+              term_shift_plural: "stints",
+              term_shift_title: "Stint",
+              term_shift_plural_title: "Stints",
+            }),
+          ),
+        [`GET ${V}/shifts`]: list(),
+      },
+    });
+    expect(await screen.findByRole("heading", { level: 1, name: "Stints" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Stints" })).toBeInTheDocument();
+    expect(await screen.findByText("No stints to show yet.")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Shifts" })).not.toBeInTheDocument();
+  });
+
+  it("falls back to the module's default when there is no document", async () => {
+    mount({ path: "/volunteers", routes: { [`GET ${V}/shifts`]: list() } });
+    expect(await screen.findByRole("heading", { level: 1, name: "Shifts" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Shifts" })).toBeInTheDocument();
+    expect(await screen.findByText("No shifts to show yet.")).toBeInTheDocument();
+  });
+});
+
 describe("volunteers: Shifts", () => {
   it("lists shifts with fill and Sign up; the nav has the two main entries", async () => {
     const { container } = mount({

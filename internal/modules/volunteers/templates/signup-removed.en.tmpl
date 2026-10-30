@@ -1,8 +1,8 @@
-Subject: Your shift {{.Vars.label}} was removed
+Subject: Your {{term "shift"}} {{.Vars.label}} was removed
 Vars: label, starts, zone, reason, is_lead, is_self, is_shift_canceled, is_department_archived, is_event_closed
 
 {{if .Recipient.PlayaName}}Hi {{.Recipient.PlayaName}},{{else}}Hi,{{end}}
 
-your booking on {{.Vars.label}} ({{.Vars.starts}}, {{.Vars.zone}}) was removed.{{if .Vars.is_lead}} A lead canceled your booking.{{else if .Vars.is_self}} You canceled your booking.{{else if .Vars.is_shift_canceled}} The shift was canceled.{{else if .Vars.is_department_archived}} This {{term "department"}} was archived.{{else if .Vars.is_event_closed}} This {{term "event"}} was closed.{{end}}
+your booking on {{.Vars.label}} ({{.Vars.starts}}, {{.Vars.zone}}) was removed.{{if .Vars.is_lead}} A {{term "lead"}} canceled your booking.{{else if .Vars.is_self}} You canceled your booking.{{else if .Vars.is_shift_canceled}} The {{term "shift"}} was canceled.{{else if .Vars.is_department_archived}} This {{term "department"}} was archived.{{else if .Vars.is_event_closed}} This {{term "event"}} was closed.{{end}}
 
 Your schedule: {{.Link}}

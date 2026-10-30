@@ -59,3 +59,19 @@ func ExampleManifest_Validate() {
 	fmt.Println(m.Validate() != nil)
 	// Output: true
 }
+
+func ExampleTermDecl() {
+	m := module.Manifest{
+		Name: "alpha",
+		Terms: []module.TermDecl{{Key: "shift", Defaults: map[string]module.TermForms{
+			"en": {Singular: "shift", Plural: "shifts", SingularTitle: "Shift", PluralTitle: "Shifts"},
+		}}},
+	}
+	fmt.Println(m.Validate())
+
+	m.Terms = append(m.Terms, m.Terms[0]) // two declarations of one word
+	fmt.Println(m.Validate() != nil)
+	// Output:
+	// <nil>
+	// true
+}

@@ -3,6 +3,6 @@ Vars: qualification, expires_on, days
 
 {{if .Recipient.PlayaName}}Hi {{.Recipient.PlayaName}},{{else}}Hi,{{end}}
 
-your {{.Vars.qualification}} expires on {{.Vars.expires_on}} ({{.Vars.days}} days from now). Shifts that need it can only be booked while it is valid, so renew it before then and upload the new certificate.
+your {{.Vars.qualification}} expires on {{.Vars.expires_on}} ({{.Vars.days}} days from now). {{term "shift_plural_title"}} that need it can only be booked while it is valid, so renew it before then and upload the new certificate.
 
 {{.Link}}

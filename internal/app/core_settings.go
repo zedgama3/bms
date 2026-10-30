@@ -93,8 +93,9 @@ func buildSettings(_ context.Context, a *assembly) error {
 }
 
 // settingsAreas is every area but "regional": the core's, then one per enabled module that
-// declares a setting, in build order. A module that declares none has no area, so its screen
-// list stays empty of it (provision then gives it no Reader: it has no key to read).
+// declares a setting or a term (D57), in build order, carrying its terms. A module that
+// declares neither has no area, so its screen list stays empty of it (provision gives a
+// module a Reader only when it declares a setting: a terms-only module has no key to read).
 func settingsAreas(a *assembly) []settings.Area {
 	areas := []settings.Area{
 		{Name: accountsSettings, Core: true, Decls: identity.Settings, Check: identity.CheckSettings},
@@ -107,10 +108,10 @@ func settingsAreas(a *assembly) []settings.Area {
 		return areas
 	}
 	for _, ms := range a.plan.Settings() {
-		if len(ms.Settings) == 0 {
+		if len(ms.Settings) == 0 && len(ms.Terms) == 0 {
 			continue
 		}
-		areas = append(areas, settings.Area{Name: ms.Module, Decls: ms.Settings})
+		areas = append(areas, settings.Area{Name: ms.Module, Decls: ms.Settings, Terms: ms.Terms})
 	}
 	return areas
 }

@@ -18,12 +18,13 @@ type Plan struct {
 	corePoints []ExtensionPointDecl
 }
 
-// ModuleSettings pairs a module name with its declared settings.
+// ModuleSettings pairs a module name with its declared settings and terms.
 //
 //nolint:revive // the name is fixed by module-contract.md
 type ModuleSettings struct {
 	Module   string
 	Settings []SettingDecl
+	Terms    []TermDecl // D57: Plan.Settings() carries a module's terms to settings
 }
 
 // Graph is the admin view of the module graph (09 §7). It is serializable; it carries no
@@ -428,6 +429,21 @@ func nodeOf(m Manifest, enabled bool) Node {
 	return n
 }
 
+func cloneTerms(in []TermDecl) []TermDecl {
+	out := slices.Clone(in)
+	for i := range out {
+		if out[i].Defaults == nil {
+			continue
+		}
+		defs := make(map[string]TermForms, len(out[i].Defaults))
+		for lang, f := range out[i].Defaults {
+			defs[lang] = f
+		}
+		out[i].Defaults = defs
+	}
+	return out
+}
+
 func cloneSettings(in []SettingDecl) []SettingDecl {
 	out := slices.Clone(in)
 	for i := range out {
@@ -456,12 +472,12 @@ func (p *Plan) Permissions() []authz.PermissionDecl {
 	return out
 }
 
-// Settings returns every enabled module's setting declarations, keyed by module, in build
-// order, for settings. A module without settings is listed with none. Cannot fail.
+// Settings returns every enabled module's setting and term declarations, keyed by module,
+// in build order, for settings. A module without either is listed with none. Cannot fail.
 func (p *Plan) Settings() []ModuleSettings {
 	out := make([]ModuleSettings, len(p.order))
 	for i, e := range p.order {
-		out[i] = ModuleSettings{Module: e.m.Name, Settings: cloneSettings(e.m.Settings)}
+		out[i] = ModuleSettings{Module: e.m.Name, Settings: cloneSettings(e.m.Settings), Terms: cloneTerms(e.m.Terms)}
 	}
 	return out
 }
@@ -495,6 +511,7 @@ func (p *Plan) Graph() Graph {
 func cloneManifest(m Manifest) Manifest {
 	m.Permissions = slices.Clone(m.Permissions)
 	m.Settings = cloneSettings(m.Settings)
+	m.Terms = cloneTerms(m.Terms)
 	m.Publishes = slices.Clone(m.Publishes)
 	m.Subscribes = slices.Clone(m.Subscribes)
 	m.Provides = slices.Clone(m.Provides)

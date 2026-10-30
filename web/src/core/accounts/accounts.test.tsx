@@ -361,6 +361,12 @@ describe("/accounts/password", () => {
     expect(current).toHaveAttribute("name", "current_password");
     expect(next).toHaveAttribute("autocomplete", "new-password");
     expect(next).toHaveAttribute("name", "new_password");
+    expect(screen.getByRole("heading", { level: 1, name: "Account" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "Change password" })).toBeInTheDocument();
+    // The h1 is outside the labelled section, which is named by the h2.
+    expect(screen.getByRole("region", { name: "Change password" })).not.toContainElement(
+      screen.getByRole("heading", { level: 1, name: "Account" }),
+    );
     expect(
       screen.getByRole("heading", { level: 2, name: "Sign out everywhere else" }),
     ).toBeInTheDocument();

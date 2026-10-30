@@ -134,6 +134,28 @@ describe("terms", () => {
   });
 });
 
+describe("module terms", () => {
+  it("reads module.<name>.term.<key>[.<form>] as term_<key>[_<form>]", () => {
+    expect(
+      termsOf({
+        "module.volunteers.term.shift": "shift",
+        "module.volunteers.term.shift.plural_title": "Shifts",
+        "module.volunteers.setting.x.title": "not a term",
+      }),
+    ).toEqual({ term_shift: "shift", term_shift_plural_title: "Shifts" });
+  });
+
+  it("lets a term.<key> entry win over the module's default, whatever the order", () => {
+    expect(
+      termsOf({
+        "term.shift": "stint",
+        "module.volunteers.term.shift": "shift",
+        "module.volunteers.term.shift.plural": "shifts",
+      }),
+    ).toEqual({ term_shift: "stint", term_shift_plural: "shifts" });
+  });
+});
+
 describe("isMessageKey", () => {
   it("is true for keys of the loaded en catalogues and false otherwise", () => {
     expect(isMessageKey("shell.home.title")).toBe(true);

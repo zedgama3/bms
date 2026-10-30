@@ -22,5 +22,11 @@
     "plural": "theme camps",
     "singular_title": "Theme camp",
     "plural_title": "Theme camps"
+  },
+  "lead": {
+    "singular": "lead",
+    "plural": "leads",
+    "singular_title": "Lead",
+    "plural_title": "Leads"
   }
 }
