@@ -180,8 +180,9 @@ type SessionInfo struct {
 	Superuser              bool            `json:"superuser"`
 	PasswordChangeRequired bool            `json:"password_change_required"`
 	ExpiresAt              time.Time       `json:"expires_at,omitzero"`
-	SignupOpen             bool            `json:"signup_open"` // Policy.SignupMode == SignupOpen; also when signed out
-	Permissions            []string        `json:"permissions"` // PermissionLister; [] in M1, never null
+	SignupOpen             bool            `json:"signup_open"`         // Policy.SignupMode == SignupOpen; also when signed out
+	Permissions            []string        `json:"permissions"`         // PermissionLister; [] in M1, never null
+	Protected              bool            `json:"protected,omitempty"` // Options.Guard says the account is shared (demo mode; D58); false with a nil Guard, on a Guard error and when signed out
 }
 
 // Issued is a session the service started. The token is unexported: only the handlers in

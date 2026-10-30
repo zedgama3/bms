@@ -43,6 +43,7 @@ var (
 	sqlLease          = mustSQL("lease_messages.sql")
 	sqlMarkSent       = mustSQL("mark_sent.sql")
 	sqlMarkFailed     = mustSQL("mark_failed.sql")
+	sqlMarkSkipped    = mustSQL("mark_skipped.sql")
 	sqlRequeue        = mustSQL("requeue_message.sql")
 	sqlRelease        = mustSQL("release_message.sql")
 	sqlRetry          = mustSQL("retry_message.sql")
@@ -237,6 +238,12 @@ func (s *Store) MarkSent(ctx context.Context, id message.ID, lease, at time.Time
 // admin can retry the row; ExpireStale clears them at expires_at.
 func (s *Store) MarkFailed(ctx context.Context, id message.ID, lease time.Time, token string, at time.Time) (bool, error) {
 	return s.returned(ctx, "notify.postgres.MarkFailed", sqlMarkFailed, [16]byte(id), utc(lease), token, utc(at))
+}
+
+// MarkSkipped ends a leased row as skipped with a token (no_address), clearing its address and
+// text; failed_at holds the instant it ended. lease is the fence.
+func (s *Store) MarkSkipped(ctx context.Context, id message.ID, lease time.Time, token string, at time.Time) (bool, error) {
+	return s.returned(ctx, "notify.postgres.MarkSkipped", sqlMarkSkipped, [16]byte(id), utc(lease), token, utc(at))
 }
 
 // Requeue puts a leased row back to queued, due at next, keeping the attempt counted.

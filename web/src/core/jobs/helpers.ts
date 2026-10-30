@@ -1,5 +1,8 @@
 export { holdsSite } from "@/api";
 
+/** The server's cap on each list of the status (jobs.md `MaxRecent`, J-W1 decision 25). */
+export const MAX_RECENT = 50;
+
 /** `identity.password-reset` is owner `identity`, ident `password-reset`. */
 export function splitName(name: string): { owner: string; ident: string } {
   const i = name.indexOf(".");

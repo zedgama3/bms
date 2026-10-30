@@ -57,8 +57,8 @@ func insertNamed(t *testing.T, pool *db.Pool, name string) [16]byte {
 // does nothing.
 func TestMigration0003_EmptyDatabase_AddsColumnAndPartialUniqueIndex(t *testing.T) {
 	pool := newPool(t)
-	if v := setVersion(t, pool); v != 3 {
-		t.Errorf("people version = %d, want 3", v)
+	if v := setVersion(t, pool); v != 4 {
+		t.Errorf("people version = %d, want 4 (all migrations applied, 0004 included)", v)
 	}
 	if n := count(t, pool, `SELECT count(*) FROM information_schema.columns WHERE table_schema = 'core' AND table_name = 'person' AND column_name = 'playa_name_key' AND is_nullable = 'NO'`); n != 1 {
 		t.Error("core.person.playa_name_key (NOT NULL) is missing")

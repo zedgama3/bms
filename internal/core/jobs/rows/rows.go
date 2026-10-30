@@ -87,3 +87,10 @@ type QueueStat struct {
 	Due       int    // rows with run_at <= now
 	OldestDue time.Time
 }
+
+// Queue is the four lists of the status screen (Amendment J-W1), each already in its order and
+// at most the limit the store was given: Failed newest finished first, Running earliest started
+// first, Retrying (queued with a last_error) and Waiting (queued without) soonest due first.
+type Queue struct {
+	Failed, Running, Retrying, Waiting []Job
+}

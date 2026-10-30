@@ -8,19 +8,19 @@ import { Banner, Button, EmptyState, ErrorState, Loading, Table, useToast } from
 import type { Column } from "@/ui";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { focusSoon } from "../focus";
-import { Forbidden } from "../Forbidden";
-import { byId, holdsSite, secondsBetween, spanOf, splitName } from "../helpers";
+import { byId, holdsSite, MAX_RECENT, secondsBetween, spanOf, splitName } from "../helpers";
 import { JOBS_KEY, useJobsStatus } from "../queries";
 import { ScreenError } from "../ScreenError";
 
-type Record = components["schemas"]["JobsRecord"];
+type Rec = components["schemas"]["JobsRecord"];
 type Registered = components["schemas"]["JobsRegistered"];
+type Section = "failed" | "running" | "retrying" | "waiting";
 
 const cardId = (name: string) => `job-${name}`;
 
-/** `/jobs` (`jobs.read`): what is registered, when it last ran, what waits or failed. Run now,
- *  Retry and Cancel need `jobs.manage` and are hidden on a read-only copy. A job's arguments are
- *  never shown (the API doesn't send them). */
+/** `/jobs` (`jobs.read`): what failed, what runs, what waits, and every registered job (jobs.md
+ *  J-W1 W1.6). Run now, Retry and Cancel need `jobs.manage` and are hidden on a read-only server.
+ *  Only titles are shown: never an ID, a key or an argument (the API sends no arguments). */
 export function Jobs() {
   const t = useT();
   const format = useFormat();
@@ -35,9 +35,16 @@ export function Jobs() {
   const row = useAction();
   const [rowId, setRowId] = useState<string | null>(null);
   const cancel = useAction();
-  const [canceling, setCanceling] = useState<Record | null>(null);
+  const [canceling, setCanceling] = useState<Rec | null>(null);
 
-  if (!allowed) return <Forbidden title={t("core.jobs.title")} />;
+  if (!allowed) {
+    return (
+      <div className="flex flex-col gap-4">
+        <h1 className="text-2xl font-bold">{t("core.jobs.title")}</h1>
+        <ScreenError />
+      </div>
+    );
+  }
 
   const error = q.error instanceof ApiError ? q.error : null;
   const data = q.data;
@@ -46,8 +53,8 @@ export function Jobs() {
   const refresh = () => client.invalidateQueries({ queryKey: JOBS_KEY });
 
   const open = (name: string) =>
-    (data?.recent ?? []).some(
-      (r) => r.name === name && (r.status === "queued" || r.status === "running"),
+    [...(data?.running ?? []), ...(data?.retrying ?? []), ...(data?.waiting ?? [])].some(
+      (r) => r.name === name,
     ) ||
     (data?.registered ?? []).some(
       (r) => r.name === name && (r.last?.status === "queued" || r.last?.status === "running"),
@@ -66,7 +73,7 @@ export function Jobs() {
       });
   };
 
-  const retry = (r: Record) => {
+  const retry = (r: Rec) => {
     setRowId(r.id);
     void row
       .run(async () => {
@@ -75,7 +82,7 @@ export function Jobs() {
       })
       .then((ok) => {
         void refresh();
-        if (ok) focusSoon("#jobs-recent"); // the row changes and the pressed button is gone
+        if (ok) focusSoon("#jobs-failed"); // the row changes and the pressed button is gone
       });
   };
 
@@ -91,7 +98,8 @@ export function Jobs() {
         void refresh();
         if (ok) {
           setCanceling(null);
-          focusSoon("#jobs-recent"); // the row is gone with the dialog
+          // the row is gone with the dialog: focus its own section's heading
+          focusSoon(data?.retrying.some((x) => x.id === r.id) ? "#jobs-retrying" : "#jobs-waiting");
         }
       });
   };
@@ -110,19 +118,31 @@ export function Jobs() {
     return undefined;
   };
 
-  /** The catalogue's title for a job or its owner; none when no catalogue has one. */
+  /** The catalogue's title for a job or its owner; none when no catalogue has one (W1.4). */
   const look = (...keys: string[]): string | null => {
     for (const k of keys) if (isMessageKey(k)) return t(k);
     return null;
   };
   const ownerTitle = (owner: string) =>
     look(`module.${owner}.title`, `core.${owner}.title`) ?? owner;
-  const jobTitle = (name: string): ReactNode => {
+  /** A job's title, or its raw name as the fallback (a missing key never hides a job). */
+  const titleText = (name: string): string => {
     const { owner, ident } = splitName(name);
-    const title = look(`module.${owner}.job.${ident}.title`, `core.${owner}.job.${ident}.title`);
-    return title ?? <code translate="no">{name}</code>;
+    return look(`module.${owner}.job.${ident}.title`, `core.${owner}.job.${ident}.title`) ?? name;
   };
-  const statusText = (s: Record["status"]) => t(`core.jobs.status.${s}`);
+  const hasTitle = (name: string) => titleText(name) !== name;
+  const jobTitle = (name: string): ReactNode =>
+    hasTitle(name) ? titleText(name) : <code translate="no">{name}</code>;
+  /** True when a run was by a server other than the one that answered (F67). */
+  const elsewhere = (instance: string | undefined) =>
+    instance !== undefined && instance !== "" && instance !== data?.instance;
+  const anotherServer = (instance: string) => (
+    <span className="block text-sm font-normal [overflow-wrap:anywhere]">
+      {t("core.jobs.registered.instance", { instance })}
+    </span>
+  );
+
+  const statusText = (s: Rec["status"]) => t(`core.jobs.status.${s}`);
   /** A known token in words; an unknown one as it came. */
   const errorText = (token: string): ReactNode => {
     const key = `core.jobs.error.${token}`;
@@ -130,59 +150,131 @@ export function Jobs() {
   };
   const span = (seconds: number) => spanOf(seconds);
 
-  const columns: Column<Record>[] = [
-    { header: t("core.jobs.col.name"), rowHeader: true, cell: (r) => jobTitle(r.name) },
-    {
-      header: t("core.jobs.col.key"),
-      cell: (r) => (r.key ? <code className="break-all">{r.key}</code> : t("core.jobs.none")),
-    },
-    { header: t("core.jobs.col.status"), cell: (r) => statusText(r.status) },
-    { header: t("core.jobs.col.attempts"), cell: (r) => format.number(r.attempts) },
-    { header: t("core.jobs.col.due"), cell: (r) => format.dateTime(r.run_at) },
-    {
-      header: t("core.jobs.col.error"),
-      cell: (r) => (r.last_error ? errorText(r.last_error) : t("core.jobs.none")),
-    },
-    ...(manage
-      ? [
-          {
-            header: t("core.jobs.col.actions"),
-            cell: (r: Record) => {
-              const label = { name: r.name, when: format.dateTime(r.run_at) };
-              return (
-                <div className="flex flex-wrap gap-2">
-                  {r.status === "failed" ? (
-                    <Button
-                      variant="secondary"
-                      busy={row.busy && rowId === r.id}
-                      disabled={row.busy && rowId !== r.id}
-                      aria-label={t("core.jobs.retry_label", label)}
-                      onClick={() => retry(r)}
-                    >
-                      {t("core.jobs.retry")}
-                    </Button>
-                  ) : null}
-                  {r.status === "queued" ? (
-                    <Button
-                      variant="danger"
-                      aria-label={t("core.jobs.cancel_label", label)}
-                      onClick={() => {
-                        cancel.clear();
-                        setCanceling(r);
-                      }}
-                    >
-                      {t("core.jobs.cancel")}
-                    </Button>
-                  ) : null}
-                </div>
-              );
-            },
-          } satisfies Column<Record>,
-        ]
-      : []),
-  ];
+  const jobColumn: Column<Rec> = {
+    header: t("core.jobs.col.name"),
+    rowHeader: true,
+    cell: (r) => (
+      <>
+        {jobTitle(r.name)}
+        {elsewhere(r.instance) ? anotherServer(r.instance ?? "") : null}
+      </>
+    ),
+  };
+  const attempts: Column<Rec> = {
+    header: t("core.jobs.col.attempts"),
+    cell: (r) => format.number(r.attempts),
+  };
+  const problem = (header: string): Column<Rec> => ({
+    header,
+    cell: (r) => (r.last_error ? errorText(r.last_error) : t("core.jobs.none")),
+  });
+  const actions = (cell: (r: Rec) => ReactNode): Column<Rec>[] =>
+    manage ? [{ header: t("core.jobs.col.actions"), cell }] : [];
 
-  const owners = [...new Set((data?.registered ?? []).map((r) => r.owner))].sort();
+  const retryCell = (r: Rec) => (
+    <Button
+      variant="secondary"
+      busy={row.busy && rowId === r.id}
+      disabled={row.busy && rowId !== r.id}
+      aria-label={t("core.jobs.retry_label", {
+        title: titleText(r.name),
+        when: format.dateTime(r.finished_at ?? r.run_at),
+      })}
+      onClick={() => retry(r)}
+    >
+      {t("core.jobs.retry")}
+    </Button>
+  );
+  const cancelCell = (r: Rec) => (
+    <Button
+      variant="danger"
+      aria-label={t("core.jobs.cancel_label", {
+        title: titleText(r.name),
+        when: format.dateTime(r.run_at),
+      })}
+      onClick={() => {
+        cancel.clear();
+        setCanceling(r);
+      }}
+    >
+      {t("core.jobs.cancel")}
+    </Button>
+  );
+
+  const counts = data?.counts ?? {};
+  const total: Record<Section, number | null> = {
+    failed: counts["failed"] ?? 0,
+    running: counts["running"] ?? 0,
+    retrying: null,
+    waiting: counts["queued"] ?? 0,
+  };
+
+  /** One section: its heading, its table (or empty state) and the cap line. */
+  const section = (
+    id: Section,
+    rows: readonly Rec[],
+    columns: Column<Rec>[],
+    error: ReactNode = null,
+  ) => (
+    <section aria-labelledby={`jobs-${id}`} className="flex flex-col gap-3">
+      <h2
+        id={`jobs-${id}`}
+        tabIndex={-1}
+        className="text-xl font-bold focus:[outline:2px_solid_var(--focus)] focus:outline-offset-2"
+      >
+        {t(`core.jobs.${id}.title`)}
+      </h2>
+      {error}
+      {rows.length === 0 ? (
+        <EmptyState>{t(`core.jobs.${id}.empty`)}</EmptyState>
+      ) : (
+        <Table
+          caption={t(`core.jobs.${id}.caption`)}
+          columns={columns}
+          rows={rows}
+          rowKey={(r) => r.id}
+        />
+      )}
+      {rows.length >= MAX_RECENT ? (
+        <p className="text-sm text-muted">
+          {t(`core.jobs.${id}.capped`, {
+            n: format.number(rows.length),
+            total: format.number(total[id] ?? rows.length),
+          })}
+        </p>
+      ) : null}
+    </section>
+  );
+
+  const jump = (id: Section) => (e: { preventDefault: () => void }) => {
+    e.preventDefault();
+    focusSoon(`#jobs-${id}`);
+  };
+  const summary = (id: Section, count: number, key: "failed" | "running" | "waiting") => (
+    <li key={id}>
+      <a
+        href={`#jobs-${id}`}
+        onClick={jump(id)}
+        className="inline-flex min-h-11 items-center whitespace-nowrap rounded-md border border-border px-3 font-semibold underline"
+      >
+        {t(`core.jobs.summary.${key}`, { count: format.number(count) })}
+      </a>
+    </li>
+  );
+
+  const owners = [...new Set((data?.registered ?? []).map((r) => r.owner))]
+    .map((o) => ({ owner: o, title: ownerTitle(o) }))
+    .sort((a, b) => a.title.localeCompare(b.title));
+  /** Scheduled names first, then on-demand, each by title. */
+  const ordered = (owner: string) =>
+    (data?.registered ?? [])
+      .filter((r) => r.owner === owner)
+      .sort(
+        (a, b) =>
+          Number(a.every_seconds === 0) - Number(b.every_seconds === 0) ||
+          titleText(a.name).localeCompare(titleText(b.name)),
+      );
+
   const card = (r: Registered) => {
     const waiting = open(r.name);
     const onDemand = r.every_seconds === 0;
@@ -194,11 +286,6 @@ export function Jobs() {
         <h4 id={cardId(r.name)} tabIndex={-1} className="font-bold focus:outline-none">
           {jobTitle(r.name)}
         </h4>
-        <p className="text-sm text-muted">
-          <code translate="no" className="break-all">
-            {r.name}
-          </code>
-        </p>
         <p>
           {onDemand
             ? t("core.jobs.registered.on_demand")
@@ -213,9 +300,9 @@ export function Jobs() {
                 ...span(took ?? 0),
               })}
             </p>
-            {r.last.instance ? (
+            {elsewhere(r.last.instance) ? (
               <p className="text-sm">
-                {t("core.jobs.registered.instance", { instance: r.last.instance })}
+                {t("core.jobs.registered.instance", { instance: r.last.instance ?? "" })}
               </p>
             ) : null}
             {r.last.last_error ? (
@@ -237,7 +324,7 @@ export function Jobs() {
               busy={run.busy && runName === r.name}
               disabled={waiting || (run.busy && runName !== r.name)}
               {...(waiting ? { "aria-describedby": waitId } : {})}
-              aria-label={t("core.jobs.run_label", { name: r.name })}
+              aria-label={t("core.jobs.run_label", { title: titleText(r.name) })}
               onClick={() => runNow(r.name)}
             >
               {t("core.jobs.run")}
@@ -256,6 +343,10 @@ export function Jobs() {
     );
   };
 
+  const rowError = row.error ? (
+    <ErrorState error={row.error} {...msg(actionMessage(row.error, "queue"))} />
+  ) : null;
+
   return (
     <div className="flex flex-col gap-6" aria-busy={q.isPending || undefined}>
       <h1 id="jobs-title" tabIndex={-1} className="text-2xl font-bold focus:outline-none">
@@ -272,6 +363,48 @@ export function Jobs() {
               {t("core.jobs.refresh")}
             </Button>
           </div>
+          <nav aria-label={t("core.jobs.summary.label")}>
+            <ul className="flex flex-wrap gap-x-3 gap-y-2">
+              {summary("failed", total.failed ?? 0, "failed")}
+              {summary("running", total.running ?? 0, "running")}
+              {summary("waiting", total.waiting ?? 0, "waiting")}
+            </ul>
+          </nav>
+          {section(
+            "failed",
+            data.failed,
+            [
+              jobColumn,
+              {
+                header: t("core.jobs.col.failed"),
+                cell: (r) => format.dateTime(r.finished_at ?? r.run_at),
+              },
+              attempts,
+              problem(t("core.jobs.col.error")),
+              ...actions(retryCell),
+            ],
+            rowError,
+          )}
+          {section("running", data.running, [
+            jobColumn,
+            {
+              header: t("core.jobs.col.started"),
+              cell: (r) => format.dateTime(r.started_at ?? r.run_at),
+            },
+            { header: t("core.jobs.col.attempt"), cell: (r) => format.number(r.attempts) },
+          ])}
+          {section("retrying", data.retrying, [
+            jobColumn,
+            { header: t("core.jobs.col.due"), cell: (r) => format.dateTime(r.run_at) },
+            attempts,
+            problem(t("core.jobs.col.last_error")),
+            ...actions(cancelCell),
+          ])}
+          {section("waiting", data.waiting, [
+            jobColumn,
+            { header: t("core.jobs.col.due"), cell: (r) => format.dateTime(r.run_at) },
+            ...actions(cancelCell),
+          ])}
           <section aria-labelledby="jobs-registered" className="flex flex-col gap-4">
             <h2 id="jobs-registered" className="text-xl font-bold">
               {t("core.jobs.registered.title")}
@@ -279,38 +412,18 @@ export function Jobs() {
             {data.registered.length === 0 ? (
               <EmptyState>{t("core.jobs.registered.empty")}</EmptyState>
             ) : (
-              owners.map((owner) => (
+              owners.map(({ owner, title }) => (
                 <section
                   key={owner}
                   aria-labelledby={`jobs-owner-${owner}`}
                   className="flex flex-col gap-3"
                 >
                   <h3 id={`jobs-owner-${owner}`} className="text-lg font-bold">
-                    {ownerTitle(owner)}
+                    {title === owner ? <span translate="no">{title}</span> : title}
                   </h3>
-                  <ul className="grid gap-3 sm:grid-cols-2">
-                    {data.registered.filter((r) => r.owner === owner).map(card)}
-                  </ul>
+                  <ul className="grid gap-3 sm:grid-cols-2">{ordered(owner).map(card)}</ul>
                 </section>
               ))
-            )}
-          </section>
-          <section aria-labelledby="jobs-recent" className="flex flex-col gap-3">
-            <h2 id="jobs-recent" tabIndex={-1} className="text-xl font-bold focus:outline-none">
-              {t("core.jobs.recent.title")}
-            </h2>
-            {row.error ? (
-              <ErrorState error={row.error} {...msg(actionMessage(row.error, "queue"))} />
-            ) : null}
-            {data.recent.length === 0 ? (
-              <EmptyState>{t("core.jobs.recent.empty")}</EmptyState>
-            ) : (
-              <Table
-                caption={t("core.jobs.recent.caption")}
-                columns={columns}
-                rows={data.recent}
-                rowKey={(r) => r.id}
-              />
             )}
           </section>
         </>

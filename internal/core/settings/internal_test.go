@@ -524,3 +524,42 @@ func TestInternalOptionsValidate_TermRepeatedInOneArea_IsReportedOnce(t *testing
 		t.Errorf("%d duplicate-key reports, want 1", n)
 	}
 }
+
+// TestTermDecl_ReservedSuffixKeys: a key that ends in _plural or _title names a form of
+// another term, so it is refused as reserved (D58); a key that merely contains the word is fine.
+func TestTermDecl_ReservedSuffixKeys(t *testing.T) {
+	defaults := map[string]Forms{"en": {Singular: "x", Plural: "xs", SingularTitle: "X", PluralTitle: "Xs"}}
+	tests := []struct {
+		key      string
+		reserved bool
+	}{
+		{"gate_plural", true},
+		{"gate_title", true},
+		{"gate_plural_title", true},
+		{"plural", false},
+		{"title_gate", false},
+		{"gate_titles", false},
+		{"gate", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.key, func(t *testing.T) {
+			err := TermDecl{Key: tc.key, Defaults: defaults}.Validate()
+			if !tc.reserved {
+				if err != nil {
+					t.Fatalf("Validate() = %v, want nil", err)
+				}
+				return
+			}
+			if !errs.Is(err, errs.Invalid) {
+				t.Fatalf("Validate() kind = %v, want Invalid", errs.KindOf(err))
+			}
+			found := false
+			for _, fe := range validate.Fields(err) {
+				found = found || (fe.Field == "key" && fe.Code == codeReserved)
+			}
+			if !found {
+				t.Errorf("no key/reserved field error in %v", validate.Fields(err))
+			}
+		})
+	}
+}

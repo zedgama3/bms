@@ -12,7 +12,7 @@
           "people"
         ],
         "operationId": "peopleMe",
-        "summary": "Your own profile, every field group, contacts, consents and the modules' sections. A person with no row yet gets an empty, incomplete profile (nothing is written). Read once per session by the frame.",
+        "summary": "Your own profile, every field group, contacts, consents and the modules' sections. A person with no row yet gets an empty, incomplete profile (nothing is written). Read by the frame at boot. On a writable copy, when you have no playa name and have not been prompted since you signed in, this call records the prompt and answers first_prompt true once; a later read of the same session, a named person, the superuser and a read-only copy answer without it.",
         "responses": {
           "200": {
             "description": "Your profile.",
@@ -1158,6 +1158,10 @@
           },
           "policy": {
             "$ref": "#/components/schemas/PeoplePolicy"
+          },
+          "first_prompt": {
+            "type": "boolean",
+            "description": "Only on GET /me, and only when true: this call recorded the first-sign-in prompt for this session (the person has no playa name and was not yet prompted since signing in). The frame sends them to /people/me?first=1. Absent on every later read of the session, on a read-only copy, for the superuser and on every other route."
           }
         },
         "required": [

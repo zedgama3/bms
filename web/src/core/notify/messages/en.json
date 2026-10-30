@@ -51,7 +51,7 @@
   "core.notify.outbox.check": "Check connection",
   "core.notify.outbox.check_ok": "The mail server answered and accepted the sign-in.",
   "core.notify.outbox.refresh": "Refresh",
-  "core.notify.outbox.recent_title": "Waiting and failed messages",
+  "core.notify.outbox.recent_title": "Waiting, failed and skipped messages",
   "core.notify.outbox.caption": "Messages",
   "core.notify.outbox.empty": "Nothing waiting.",
   "core.notify.outbox.none": "None",
@@ -63,7 +63,7 @@
   "core.notify.error.timeout": "The mail server took too long to answer",
   "core.notify.error.smtp_4xx": "The mail server asked to try again later",
   "core.notify.error.rejected": "The mail server refused the message",
-  "core.notify.error.no_address": "The person has no e-mail address",
+  "core.notify.error.no_address": "No e-mail address",
   "core.notify.error.no_smtp": "E-mail isn't set up",
   "core.notify.error.canceled": "Canceled",
   "core.notify.error.expired": "Expired before it could be sent",
@@ -117,5 +117,7 @@
   "core.notify.setting.smtp_security.option.starttls": "STARTTLS (upgrade a plain connection)",
   "core.notify.setting.smtp_security.option.tls": "TLS (encrypted from the start)",
   "core.notify.setting.smtp_security.option.none": "None (not encrypted)",
-  "core.notify.setting.retention.zero": "Kept forever"
+  "core.notify.setting.retention.zero": "Kept forever",
+  "core.notify.status.skipped": "Skipped",
+  "core.notify.outbox.demo": "Mail is captured for the demo, not sent."
 }

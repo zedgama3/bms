@@ -424,6 +424,10 @@ type Profile struct {
 	Sections []personpage.Section
 	Can      Capabilities
 	Policy   Policy
+	// FirstPrompt is set by Me only: true when this call recorded the first-sign-in prompt
+	// for this session, so the frame sends the person to complete their profile (decision
+	// 35). Get never sets it, and neither does a change. Wire: first_prompt, omitempty.
+	FirstPrompt bool
 }
 
 // ProfileInput is a partial update: nil leaves a field unchanged; a pointer to "" clears

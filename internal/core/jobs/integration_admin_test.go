@@ -87,35 +87,6 @@ func TestStatus_ListsRegisteredNamesWithScheduleAndLastRun(t *testing.T) {
 	}
 }
 
-func TestStatus_RecentHoldsFailedAndQueuedNewestFirstCapped(t *testing.T) {
-	r, _, _ := adminIRig(t)
-	const n = jobs.MaxRecent + 5
-	for i := range n {
-		at := epoch.Add(time.Duration(i) * time.Second)
-		id := r.forceQueued("volunteers.remind", "q"+time.Duration(i).String(), at.Add(24*time.Hour), "")
-		r.exec("UPDATE core.job SET created_at = $1, updated_at = $1 WHERE id = $2", at, [16]byte(id))
-	}
-	failedID := r.forceFinal("volunteers.remind", "f", "failed", epoch.Add(time.Hour))
-	r.forceFinal("volunteers.remind", "d", "done", epoch.Add(2*time.Hour))
-	r.forceFinal("volunteers.remind", "c", "canceled", epoch.Add(2*time.Hour))
-	v, err := r.run.Status(r.holder(permRead))
-	wantNoErr(t, err)
-	if len(v.Recent) != jobs.MaxRecent {
-		t.Fatalf("Recent has %d rows, want the cap %d", len(v.Recent), jobs.MaxRecent)
-	}
-	for _, rec := range v.Recent {
-		if rec.Status != jobs.Queued && rec.Status != jobs.Failed {
-			t.Errorf("Recent holds a %v row", rec.Status)
-		}
-	}
-	if v.Recent[0].ID != failedID {
-		t.Errorf("newest row is %v, want the failed one %v", v.Recent[0].ID, failedID)
-	}
-	if v.Counts[jobs.Queued] != n || v.Counts[jobs.Failed] != 1 || v.Counts[jobs.Canceled] != 1 {
-		t.Errorf("Counts = %v", v.Counts)
-	}
-}
-
 func TestStatus_ReadOnlyCopy_StillWorks(t *testing.T) {
 	r, _, _ := adminIRig(t)
 	r.flt.set(true, nil)
@@ -131,6 +102,44 @@ func TestStatus_StoreUnavailable_ReturnsUnavailable(t *testing.T) {
 	r.flt.set(false, errs.E("test", errs.Unavailable, errors.New("down")))
 	_, err := r.run.Status(r.holder(permRead))
 	wantKind(t, err, errs.Unavailable)
+}
+
+// F62 for the list query itself: the first Status statements succeed and only list_queue.sql
+// fails, so the error must come from the last of the four reads and keep its kind.
+func TestStatus_QueueQueryFails_ReturnsStoreKind(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+		kind errs.Kind
+	}{
+		{"unavailable", errs.E("test", errs.Unavailable, errors.New("down")), errs.Unavailable},
+		{"timeout", errs.E("test", errs.Timeout, errors.New("slow")), errs.Timeout},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r, _, _ := adminIRig(t)
+			_, err := r.run.Status(r.holder(permRead))
+			wantNoErr(t, err) // the statements work before the fault is armed
+			var hit int
+			r.flt.mu.Lock()
+			r.flt.failSQL = func(sql string) error {
+				if strings.Contains(sql, "bucket") {
+					hit++
+					return tc.err
+				}
+				return nil
+			}
+			r.flt.mu.Unlock()
+			_, err = r.run.Status(r.holder(permRead))
+			wantKind(t, err, tc.kind)
+			r.flt.mu.Lock()
+			r.flt.failSQL = nil
+			n := hit
+			r.flt.mu.Unlock()
+			if n == 0 {
+				t.Error("the fault never reached the list_queue statement")
+			}
+		})
+	}
 }
 
 // ---- RunNow ------------------------------------------------------------------------------

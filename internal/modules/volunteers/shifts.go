@@ -186,7 +186,10 @@ func (s *Service) deptNames(ctx context.Context, ids []model.DepartmentID) (map[
 // and canceled or past ones only inside the actor's shifts.manage or rosters.read extent.
 // DepartmentName comes from one Departments.NamesOf per page. A shift whose department is
 // archived since the handlers ran (or unknown) is dropped from the page after the fetch, so the
-// page may be short; Next comes from the fetched rows, so nothing is skipped. Mates is never
+// page may be short; Next comes from the fetched rows, so nothing is skipped. With EligibleOnly
+// the store fetches up to vol.MaxList + 1 rows, the rows the actor is not eligible for (and does
+// not hold a booking on) are dropped, the first Limit that remain are returned and Next is the
+// cursor of the last row the call consumed (a page may be empty with Next set). Mates is never
 // filled on a list. Fails errs.Unauthenticated, errs.Invalid (limit, after, within),
 // errs.Permission (IncludeCanceled or a past window without such an extent), and store kinds.
 func (s *Service) ListShifts(ctx context.Context, q vol.ShiftQuery) (_ vol.ShiftList, err error) {
@@ -219,10 +222,16 @@ func (s *Service) ListShifts(ctx context.Context, q vol.ShiftQuery) (_ vol.Shift
 		return vol.ShiftList{}, wrap(op, err)
 	}
 	size := q.Size()
+	// With EligibleOnly rows are dropped after the fetch by something the store cannot see, so
+	// it fetches up to MaxList + 1 rows (one scan) instead of size + 1 (V4.3.4, D58).
+	fetch := size + 1
+	if q.EligibleOnly {
+		fetch = vol.MaxList + 1
+	}
 	f := vol.ShiftFilter{
 		Department: q.Department, Event: q.Event, Position: q.Position, WindowStart: q.Within.Start, WindowEnd: q.Within.End,
 		IncludeCanceled: q.IncludeCanceled, PrivilegedAll: privAll, PrivilegedDepartments: privDepts, Actor: actor,
-		AfterStarts: afterStarts, AfterID: afterID, Limit: size + 1,
+		AfterStarts: afterStarts, AfterID: afterID, Limit: fetch,
 	}
 	if f.WindowStart.IsZero() {
 		f.WindowStart = now
@@ -230,15 +239,23 @@ func (s *Service) ListShifts(ctx context.Context, q vol.ShiftQuery) (_ vol.Shift
 	for _, m := range mem {
 		f.MemberDepartments = append(f.MemberDepartments, m.Department)
 	}
-	rows, err := s.store.ListShifts(ctx, f)
+	fetched, err := s.store.ListShifts(ctx, f)
 	if err != nil {
 		return vol.ShiftList{}, wrap(op, err)
 	}
-	// Next comes from the rows as fetched, before anything is dropped below.
+	// Next comes from the rows as fetched, before anything is dropped below. The rows the call
+	// consumes are the first size of them, or, with EligibleOnly, the first MaxList.
+	consume := size
+	if q.EligibleOnly {
+		consume = vol.MaxList
+	}
 	var next vol.Cursor
-	if len(rows) > size {
-		rows = rows[:size]
-		next = vol.NewCursor(rows[size-1].Starts, rows[size-1].ID)
+	rows := slices.Clone(fetched)
+	if len(rows) > consume {
+		rows = rows[:consume]
+		if !q.EligibleOnly {
+			next = vol.NewCursor(rows[size-1].Starts, rows[size-1].ID)
+		}
 	}
 	rows = slices.DeleteFunc(rows, func(r vol.ShiftRow) bool {
 		return (r.Canceled() || !r.Ends.After(now)) && !priv(r.Department)
@@ -263,6 +280,9 @@ func (s *Service) ListShifts(ctx context.Context, q vol.ShiftQuery) (_ vol.Shift
 	for i, r := range rows {
 		out[i] = summaryOf(r, env, names[r.Department])
 	}
+	if q.EligibleOnly {
+		out, next = pageEligible(out, fetched, size)
+	}
 	v, err := s.policyView(ctx, actor)
 	if err != nil {
 		return vol.ShiftList{}, wrap(op, err)
@@ -271,6 +291,38 @@ func (s *Service) ListShifts(ctx context.Context, q vol.ShiftQuery) (_ vol.Shift
 		return vol.ShiftList{}, wrap(op, err)
 	}
 	return vol.ShiftList{Items: orEmpty(out), Next: next}, nil
+}
+
+// pageEligible keeps the summaries the actor can take or already holds (Eligibility.Eligible or
+// Mine), returns the first size of them and the Next cursor of the call: the cursor of the last
+// row the call consumed (V4.3.4). out is the fetched rows that survived the visibility drops, in
+// order; fetched is every row the store returned, up to vol.MaxList + 1. Next is the last
+// returned row's cursor when any fetched row lies beyond it (kept or not), the last scanned
+// row's (the MaxList-th) when fewer than size rows passed and a MaxList + 1-th row exists, and
+// empty otherwise. Cannot fail.
+func pageEligible(out []vol.ShiftSummary, fetched []vol.ShiftRow, size int) ([]vol.ShiftSummary, vol.Cursor) {
+	kept := slices.DeleteFunc(out, func(x vol.ShiftSummary) bool {
+		return !x.Eligibility.Eligible && x.Mine.IsZero()
+	})
+	if len(kept) >= size {
+		last := kept[size-1]
+		kept = kept[:size]
+		// Any fetched row after the last returned one, kept or not, means more may follow.
+		for i, r := range fetched {
+			if r.ID == last.ID {
+				if i < len(fetched)-1 {
+					return kept, vol.NewCursor(last.Starts, last.ID)
+				}
+				break
+			}
+		}
+		return kept, ""
+	}
+	if len(fetched) > vol.MaxList {
+		scanned := fetched[vol.MaxList-1]
+		return kept, vol.NewCursor(scanned.Starts, scanned.ID)
+	}
+	return kept, ""
 }
 
 // summaryOf builds the summary of a shift row for the viewer behind env.

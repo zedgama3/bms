@@ -313,7 +313,7 @@ test.describe("volunteers: a volunteer signs up and cancels", () => {
       await page.goto("/volunteers");
       await expect(page.getByRole("heading", { level: 1, name: "Shifts" })).toBeVisible();
       const card = page.getByRole("listitem").filter({ hasText: "Morning dirt" });
-      await expect(card.getByText("2 places free of 4")).toBeVisible();
+      await expect(card.getByText("2 of 4 booked")).toBeVisible();
       await phoneChecks(page, isPhone);
       await axe(page);
       // the primary action is within the first viewport (the one phoneChecks set, not a guess);
@@ -357,7 +357,7 @@ test.describe("volunteers: a volunteer signs up and cancels", () => {
         r.fulfill({ json: { items: [shiftOf({ booked: 4, eligibility: { reason: "full" } })] } }),
     });
     await page.goto("/volunteers");
-    await expect(page.getByText("This shift is full.")).toBeVisible();
+    await expect(page.getByText("Full", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: /^Sign up/ })).toHaveCount(0);
     if (info.project.name === "phone") await phoneChecks(page, true);
     await axe(page);
@@ -522,7 +522,7 @@ test.describe("volunteers: my volunteering on a phone", () => {
     await page.goto("/volunteers/me");
     await expect(page.getByRole("heading", { level: 1, name: "My volunteering" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Morning dirt" })).toBeVisible();
-    await expect(page.getByText("Removed by a lead")).toBeVisible();
+    await expect(page.getByText("Removed by the lead")).toBeVisible();
     await expect(page.getByRole("heading", { level: 3, name: "Removed shift" })).toHaveClass(
       /line-through/,
     );

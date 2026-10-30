@@ -18,6 +18,9 @@ export type Session =
       expiresAt: Date | null;
       signupOpen: boolean;
       permissions: readonly string[];
+      /** A shared demo account (identity D58): its password and e-mail address can't change.
+       *  Absent when false. */
+      protected?: boolean;
     };
 
 export const SIGNED_OUT: Session = { signedIn: false, signupOpen: false };
@@ -57,6 +60,7 @@ export function parseSession(body: unknown): Session {
     expiresAt: exp !== null && !Number.isNaN(exp.getTime()) ? exp : null,
     signupOpen,
     permissions: perms,
+    ...(b["protected"] === true ? { protected: true } : {}),
   };
 }
 

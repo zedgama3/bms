@@ -14,7 +14,9 @@ import (
 	"github.com/zedgama3/bms/internal/core/audit/audittest"
 	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/authz/authztest"
+	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/db/dbtest"
+	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/people/rows"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/signals/signalstest"
@@ -233,6 +235,13 @@ type fakeStore struct {
 	upserted   bool
 	orphanGone bool
 	exportErr  error // ExportPerson's failure
+
+	markDue    bool  // MarkNamePrompted's answer
+	markErr    error // MarkNamePrompted's failure
+	marks      int   // how many times MarkNamePrompted ran
+	markPerson model.PersonID
+	markIssued time.Time // the issued argument of the last mark
+	markNow    time.Time // the now argument of the last mark
 }
 
 func (f *fakeStore) add(c string) { f.calls = append(f.calls, c) }
@@ -240,6 +249,13 @@ func (f *fakeStore) add(c string) { f.calls = append(f.calls, c) }
 func (f *fakeStore) GetPerson(context.Context, model.PersonID) (rows.Person, error) {
 	f.add("GetPerson")
 	return f.person, f.personErr
+}
+
+func (f *fakeStore) MarkNamePrompted(_ context.Context, person model.PersonID, issued, now time.Time) (bool, error) {
+	f.add("MarkNamePrompted")
+	f.marks++
+	f.markPerson, f.markIssued, f.markNow = person, issued, now
+	return f.markDue, f.markErr
 }
 
 func (f *fakeStore) GetForUpdate(context.Context, model.PersonID) (rows.Person, error) {
@@ -301,13 +317,17 @@ func (f *fakeStore) ExportRequests(context.Context, model.PersonID) ([]rows.Requ
 
 // wbAccounts is an Accounts whose account exists or not.
 type wbAccounts struct {
-	has    bool
-	orphan model.PersonID
-	err    error // LinkAccount's failure
-	calls  []string
+	has      bool
+	orphan   model.PersonID
+	err      error // LinkAccount's failure
+	emailErr error // EmailOf's failure, when set
+	calls    []string
 }
 
 func (a *wbAccounts) EmailOf(context.Context, model.PersonID) (model.Email, error) {
+	if a.emailErr != nil {
+		return "", a.emailErr
+	}
 	if !a.has {
 		return "", errs.E("test.EmailOf", errs.NotFound, errors.New("no account"))
 	}
@@ -378,6 +398,7 @@ func newWB(t *testing.T, grants ...authz.Permission) *wbRig {
 		DB: dbtest.NewFake(), Clock: clock.NewFake(time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)),
 		Logger: c.Logger(), Tracer: c.Tracer("people"), Audit: rec, Signals: bus, Authz: az,
 		Actor:    func(context.Context) (authz.Actor, bool) { return authz.Actor{Person: me}, true },
+		Session:  identity.SessionFrom,
 		Accounts: acc, Access: wbAccess{}, AuditCount: wbCounter{},
 	}, st)
 	if err != nil {
@@ -578,5 +599,137 @@ func TestExport_CanceledBeforeTheAuditEntry_KeepsTheCooldown(t *testing.T) {
 	}
 	if !errors.Is(second, httpx.ErrRateLimited) {
 		t.Errorf("second error = %v, want the rate limit", second)
+	}
+}
+
+// sessionCtx is the rig's ctx carrying a session issued at issued (what identity.SessionFrom
+// hands Me).
+func (r *wbRig) sessionCtx(issued time.Time) context.Context {
+	return identity.WithSession(r.ctx, identity.Session{
+		ID: model.NewID[identity.SessionID](), Account: model.NewID[model.AccountID](), Person: r.me,
+		IssuedAt: issued, ExpiresAt: issued.Add(time.Hour),
+	})
+}
+
+func TestPromptName_MarkReceivesTheSessionIssueTimeAndTheClock(t *testing.T) {
+	r := newWB(t)
+	r.st.person = rows.Person{ID: r.me}
+	r.st.markDue = true
+	issued := time.Date(2026, 10, 18, 9, 30, 0, 0, time.UTC)
+	prof, err := r.svc.Me(r.sessionCtx(issued))
+	if err != nil {
+		t.Fatalf("Me: %v", err)
+	}
+	if !prof.FirstPrompt {
+		t.Error("FirstPrompt = false, want true when the mark updated the row")
+	}
+	if r.st.marks != 1 || r.st.markPerson != r.me {
+		t.Errorf("marks = %d for %v, want one for the actor", r.st.marks, r.st.markPerson)
+	}
+	if !r.st.markIssued.Equal(issued) {
+		t.Errorf("issued = %v, want the session's %v", r.st.markIssued, issued)
+	}
+	if want := time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC); !r.st.markNow.Equal(want) {
+		t.Errorf("now = %v, want the clock's %v", r.st.markNow, want)
+	}
+}
+
+func TestPromptName_StatementDecides_FalseWhenNothingUpdated(t *testing.T) {
+	r := newWB(t)
+	r.st.person = rows.Person{ID: r.me}
+	r.st.markDue = false
+	prof, err := r.svc.Me(r.sessionCtx(time.Date(2026, 10, 18, 9, 0, 0, 0, time.UTC)))
+	if err != nil {
+		t.Fatalf("Me: %v", err)
+	}
+	if prof.FirstPrompt {
+		t.Error("FirstPrompt = true although the statement updated no row")
+	}
+}
+
+func TestPromptName_NoSessionForAnActor_IsInternal(t *testing.T) {
+	r := newWB(t)
+	r.st.person = rows.Person{ID: r.me}
+	_, err := r.svc.Me(r.ctx) // the rig's actor func answers without a session in ctx
+	if !errs.Is(err, errs.Internal) {
+		t.Fatalf("kind = %v (%v), want Internal", errs.KindOf(err), err)
+	}
+	if r.st.marks != 0 {
+		t.Errorf("marks = %d, want 0", r.st.marks)
+	}
+}
+
+// modeSpy counts the transactions a use case opens, by mode.
+type modeSpy struct {
+	*dbtest.Fake
+	modes []db.Mode
+}
+
+func (m *modeSpy) Transact(ctx context.Context, mode db.Mode, fn func(ctx context.Context) error) error {
+	m.modes = append(m.modes, mode)
+	return m.Fake.Transact(ctx, mode, fn) //nolint:wrapcheck // a test spy
+}
+
+func TestPromptName_BuildFails_LeavesNoMarkSoTheNextReadPrompts(t *testing.T) {
+	r := newWB(t)
+	r.st.person = rows.Person{ID: r.me}
+	r.st.markDue = true
+	ctx := r.sessionCtx(time.Date(2026, 10, 18, 9, 0, 0, 0, time.UTC))
+
+	r.accounts.emailErr = errs.E("test.EmailOf", errs.Unavailable, errors.New("down"))
+	if _, err := r.svc.Me(ctx); !errs.Is(err, errs.Unavailable) {
+		t.Fatalf("kind = %v (%v), want Unavailable from the build", errs.KindOf(err), err)
+	}
+	if r.st.marks != 0 {
+		t.Fatalf("marks = %d after a failed build, want 0", r.st.marks)
+	}
+
+	r.accounts.emailErr = nil
+	prof, err := r.svc.Me(ctx)
+	if err != nil {
+		t.Fatalf("Me: %v", err)
+	}
+	if !prof.FirstPrompt || r.st.marks != 1 {
+		t.Errorf("FirstPrompt = %v with %d marks, want the next read to prompt once", prof.FirstPrompt, r.st.marks)
+	}
+}
+
+func TestPromptName_MarkRunsInAWriteTransactionOfItsOwn(t *testing.T) {
+	r := newWB(t)
+	r.st.person = rows.Person{ID: r.me}
+	r.st.markDue = true
+	spy := &modeSpy{Fake: dbtest.NewFake()}
+	r.svc.db = spy
+	if _, err := r.svc.Me(r.sessionCtx(time.Date(2026, 10, 18, 9, 0, 0, 0, time.UTC))); err != nil {
+		t.Fatalf("Me: %v", err)
+	}
+	if !slices.Equal(spy.modes, []db.Mode{db.Write}) {
+		t.Errorf("transactions = %v, want exactly one Write", spy.modes)
+	}
+}
+
+func TestWireProfileOf_FirstPrompt_OnlyWhenTrue(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		first bool
+		want  bool
+	}{
+		{"prompted", true, true},
+		{"not prompted", false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			b, err := json.Marshal(wireProfileOf(Profile{FirstPrompt: tc.first}))
+			if err != nil {
+				t.Fatalf("Marshal: %v", err)
+			}
+			var m map[string]any
+			if err := json.Unmarshal(b, &m); err != nil {
+				t.Fatalf("Unmarshal: %v", err)
+			}
+			v, present := m["first_prompt"]
+			if present != tc.want || (present && v != true) {
+				t.Errorf("first_prompt = %v (present %v), want present %v", v, present, tc.want)
+			}
+		})
 	}
 }

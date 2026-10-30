@@ -10,6 +10,7 @@
   api, web-shell, telemetry (names only; a parallel spec designs client telemetry)
   **Used by:** `app` (the part, the commands, the adapters), the project's public demo
   instance, every module that contributes seed data (volunteers first)
+- **Amendment 2026-10-30 (owner, D58; Q-DEMO6 answered):** the session answer carries `Protected bool` (`protected`), set from identity's `Guard` (identity.md amendment 2026-10-30 (D58), `SessionInfo.Protected`); the password screen reads it to show the notice and disable the form; on a `Guard` error the session answer says `protected: false` and logs a warning, the server refusal staying the backstop (F46, identity F110).
 - **Amendment 2026-10-30 (owner, D57):** the sign-in table shows one short label per account (built from a per-account catalogue key; the lead's departments joined), the password screen shows the protected-account notice up front with the form disabled, and in demo mode the notify outbox status says mail is captured; see the sign-in page, the password screen and Mail capture.
 - **Amendment D1 (raised 2026-10-28, Approved 2026-10-29, D56; Q-DEMO5: one lead for five departments): what the volunteers provider build found.** The `lead` holds `department-admin` at the five departments the demo gives volunteer data (Rangers, Gate, Greeters, Medical, DPW), not Rangers only; the pending self-upload is the participant's, not a walk-on's; the lead has no verified records and holds Khaki by a recorded self-waiver; DPW gets the "Inventory Crew" position; the conformance rule `demoseed_provider_valid` starts the module and gives the fake event dates, so a provider never invents dates; the walk-on bookings the table left open are fixed. Section "Amendment D1" before Open questions; the volunteers table changes are in `module-volunteers.md`, "Amendment D1 changes".
 
@@ -61,7 +62,7 @@ recreates one). 7 the automatic reset is an operator timer shipped disabled
 unless `demo.enabled`, and reset refuses without the marker row (`core.demo_state`) the seed
 writes first. 9 identity consults a `Guard`: a demo account cannot change or reset its password
 or address, be disabled, deleted or linked to a person (`Permission`, field `account`, code `protected`); anything
-else a tester breaks, the next reset repairs (owner, 2026-10-28); the password screen tells a protected account's holder up front and disables the form, the server refusal stays the backstop (D57); the sign-in table shows one short label per account (D57). 10 demo never sends mail: the capture `Channel`
+else a tester breaks, the next reset repairs (owner, 2026-10-28); the password screen tells a protected account's holder up front and disables the form, the server refusal stays the backstop (D57), and it knows from `SessionInfo.Protected`, which identity sets from this `Guard` (Q-DEMO6, D58); the sign-in table shows one short label per account (D57). 10 demo never sends mail: the capture `Channel`
 stores envelopes in `core.demo_mail` (newest `MaxMail`), shown on `/demo/mail` only to the
 signed-in account they were addressed to (login address; no one else's, no admin override, no
 permission, not audited: it is the viewer's own mail; owner, 2026-10-28); the sign-up form in
@@ -489,7 +490,7 @@ account's address appears here." Phone-first.
 
 **The password screen (accounts area, Proposed change 10).** (D57) A protected demo account sees the notice `core.accounts.field.protected` ("This is a shared demo account. Its
 password and e-mail address can't be changed.") above the form before typing anything, and the form's fields and button are disabled; nothing waits for a refusal. The server's refusal stays the backstop: a `403` with field `account` code
-`protected` (a stale page, a direct call) shows the same text. How the screen knows the account is protected is Q-DEMO6. The account admin screen shows the same for
+`protected` (a stale page, a direct call) shows the same text. The screen knows from `SessionInfo.Protected` (`protected` on `GET /api/accounts/session`), which identity sets from its `Guard` when it answers the session (Q-DEMO6, owner, 2026-10-30, D58); no e-mail matching, and `Info` stays free of I/O. The account admin screen shows the same for
 disable, and the people deletion screen for `Conflict protected`.
 
 ## Behavior
@@ -632,7 +633,7 @@ the HTTP shell. The owner can run `bms demo reset` by hand at any time.
 address), `CompletePasswordReset` (no token can exist) and any later e-mail change; the
 refusal is `Permission` with field `account` code `protected`. `EnableAccount`, `SignOut`,
 `EndOtherSessions` stay allowed (harmless to others). A `Guard` error fails the use case
-(fail closed). Not protected, by choice (Q-DEMO4): grants and roles (an `access-admin` tester
+(fail closed); that includes the session answer, which carries `Protected` (identity amendment D58, F110): on a Guard error it answers `protected: false` and logs a warning, so the session stays usable and the server's refusal is the backstop. Not protected, by choice (Q-DEMO4): grants and roles (an `access-admin` tester
 can revoke the lead's role; the last-access-admin rule still holds), settings, departments
 (archiving), the event (closing), profiles (a `people.profiles.manage` tester can rename
 Marbles). All are repaired by the reset.
@@ -718,6 +719,7 @@ is covered by the integration test, so a column rename breaks the build, not the
 | F43 | `Reset` | `Schema.Migrate` fails | `demo.ErrMigrate` wrapping the migrator's kind | exit by the migrate command's mapping | `TestReset_MigrateFails_WrapsErrMigrate` |
 | F44 | files policy wiring | demo enabled but the demo service is missing | Unavailable (fail closed) | files answers it | `TestDemoPolicy_ServiceMissing_FailsClosed` |
 | F45a | password screen (web) | a protected demo account opens it (D57) | notice above the form, fields and button disabled | read the notice | `demo.test.tsx` "password screen shows the protected notice and disables the form" (and "a 403 protected still shows the notice") |
+| F46 | session answer (`identity.SessionInfo`) | `Guard.Protected` fails (store down) | none: the call succeeds | answers `protected: false` and logs a warning (owner, D58 revision); the form may show for a protected account and the server's refusal stays the fail-closed backstop | identity `TestSessionInfo_GuardError_AnswersUnprotectedAndLogs` |
 | F45 | sign-in page (web) | a one-click "Sign in as" is refused or fails | the form's normal `ApiError` | the form shows its own error and clears its busy state; the tester may press another row or type | `demo.test.tsx` "sign in as failure shows the form's error" |
 
 ## Lock-in check
@@ -886,7 +888,7 @@ skill:** one clause: "the provider may rely on `Start` having run".
 
 ## Open questions
 
-**Open (D57).** Q-DEMO6. How does the password screen know the account is protected? The demo answer's account list (`Info.Accounts`) holds each account's key and e-mail, but the session has no e-mail, and `Info` does no I/O so it cannot hold account IDs. Proposed: the session carries it: `SessionInfo.Protected bool` (`protected`), set by identity from its `Guard` when the session is read, so the screen needs no matching; the alternative is adding the e-mail to the session. Either is a change to identity.md and the session type, which is why it is not folded in yet.
+**Answered (owner, 2026-10-30, D58, recommendation accepted).** Q-DEMO6. The session carries it: `SessionInfo.Protected bool` (`protected`), set by identity from its `Guard` when the session is read; the password screen uses it to show the notice and disable the form; the alternative of adding the e-mail to the session was not taken. On a `Guard` error the session answer says `protected: false` and logs a warning, so a Guard hiccup cannot break the whole app; the server refusal stays the backstop (F46; owner changed this choice, 2026-10-30). Open questions: None.
 
 Q-DEMO5 (one lead for five departments) was answered by the owner on
 2026-10-29 and is folded into D1.1.

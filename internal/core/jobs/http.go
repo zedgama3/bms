@@ -59,15 +59,21 @@ type wireRegistered struct {
 
 type wireStatus struct {
 	ReadOnly   bool             `json:"read_only"`
+	Instance   string           `json:"instance"`
 	Registered []wireRegistered `json:"registered"`
 	Counts     map[Status]int   `json:"counts"`
-	Recent     []wireRecord     `json:"recent"`
+	Failed     []wireRecord     `json:"failed"`
+	Running    []wireRecord     `json:"running"`
+	Retrying   []wireRecord     `json:"retrying"`
+	Waiting    []wireRecord     `json:"waiting"`
 }
 
 func wireStatusOf(v StatusView) wireStatus {
 	out := wireStatus{
-		ReadOnly: v.ReadOnly, Counts: v.Counts,
-		Registered: make([]wireRegistered, len(v.Registered)), Recent: make([]wireRecord, len(v.Recent)),
+		ReadOnly: v.ReadOnly, Instance: v.Instance, Counts: v.Counts,
+		Registered: make([]wireRegistered, len(v.Registered)),
+		Failed:     wireRecords(v.Failed), Running: wireRecords(v.Running),
+		Retrying: wireRecords(v.Retrying), Waiting: wireRecords(v.Waiting),
 	}
 	for i, g := range v.Registered {
 		w := wireRegistered{
@@ -80,8 +86,13 @@ func wireStatusOf(v StatusView) wireStatus {
 		}
 		out.Registered[i] = w
 	}
-	for i, rec := range v.Recent {
-		out.Recent[i] = wireOf(rec)
+	return out
+}
+
+func wireRecords(rs []Record) []wireRecord {
+	out := make([]wireRecord, len(rs))
+	for i, rec := range rs {
+		out[i] = wireOf(rec)
 	}
 	return out
 }

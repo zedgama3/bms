@@ -34,7 +34,7 @@ export function Table<Row>({
               key={c.header}
               role="columnheader"
               scope="col"
-              className="border-b border-border px-3 py-2 text-start font-semibold"
+              className="border-b border-border px-3 py-2 text-start font-semibold break-normal"
             >
               {c.header}
             </th>

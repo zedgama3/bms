@@ -374,6 +374,28 @@ describe("/accounts/password", () => {
     await expectNoAxeViolations(container);
   });
 
+  it("a protected demo account sees the shared-account notice and a disabled form", async () => {
+    const { container } = mountApp({ ...signedIn, session: { ...ident, protected: true } });
+    expect(
+      await screen.findByText(
+        "This is a shared demo account. Its password and e-mail address can't be changed.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Current password/)).toBeDisabled();
+    expect(screen.getByLabelText(/^New password/)).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Change password" })).toBeDisabled();
+    // Ending the other sessions stays allowed (demo.md).
+    expect(screen.getByRole("button", { name: "Sign out everywhere else" })).toBeEnabled();
+    await expectNoAxeViolations(container);
+  });
+
+  it("without protected there is no notice and the form works", async () => {
+    mountApp(signedIn);
+    expect(await screen.findByLabelText(/^Current password/)).toBeEnabled();
+    expect(screen.queryByText(/shared demo account/)).toBeNull();
+    expect(screen.getByRole("button", { name: "Change password" })).toBeEnabled();
+  });
+
   it("the show buttons have their own names", async () => {
     mountApp(signedIn);
     expect(await screen.findByRole("button", { name: "Show current password" })).toBeVisible();

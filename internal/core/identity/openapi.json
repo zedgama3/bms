@@ -200,7 +200,8 @@
           "password_change_required": {"type": "boolean", "description": "The password is temporary: only the accounts routes work until it is changed."},
           "expires_at": {"type": "string", "format": "date-time"},
           "signup_open": {"type": "boolean", "description": "Whether anyone may create an account; true also when signed out."},
-          "permissions": {"type": "array", "items": {"type": "string"}, "description": "The site-wide permissions the person holds; never null."}
+          "permissions": {"type": "array", "items": {"type": "string"}, "description": "The site-wide permissions the person holds; never null."},
+          "protected": {"type": "boolean", "description": "The session's account is shared (demo mode): its password, address and deletion cannot be changed. Absent when false, when signed out and outside demo mode."}
         }
       },
       "AccountsCredentials": {

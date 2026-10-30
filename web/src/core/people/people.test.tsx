@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { expectNoAxeViolations } from "@/test/axe";
 import { mountApp } from "@/test/app";
 import { json, noContent, problem } from "@/test/fakeFetch";
+import { refreshSession } from "@/api";
+import { resetSession } from "@/api/internal";
 
 const ME = "7d2c2f0e-0000-4000-8000-000000000001";
 const PAT = "7d2c2f0e-0000-4000-8000-000000000009";
@@ -132,10 +134,10 @@ describe("the frame and the profile (useMe)", () => {
     expect(called(fetchMock, "GET", "/api/people/me")).toBe(1);
   });
 
-  it("sends a session with no playa name to /people/me?first=1 once; the person may leave", async () => {
+  it("sends a session whose profile says first_prompt to /people/me?first=1 once; the person may leave", async () => {
     const { router } = mountApp({
       session: ident({ playa_name: "" }),
-      routes: mine(profile({}, { playa_name: "" })),
+      routes: mine(profile({ first_prompt: true }, { playa_name: "" })),
     });
     await waitFor(() => expect(router()!.state.location.pathname).toBe("/people/me"));
     expect(router()!.state.location.search).toBe("?first=1");
@@ -151,7 +153,7 @@ describe("the frame and the profile (useMe)", () => {
     const { router } = mountApp({
       path: "/people",
       session: ident({ playa_name: "" }),
-      routes: mine(profile({}, { playa_name: "" })),
+      routes: mine(profile({ first_prompt: true }, { playa_name: "" })),
     });
     await waitFor(() => expect(router()!.state.location.search).toBe("?first=1"));
     const skip = await screen.findByRole("link", { name: "Continue to where you were going" });
@@ -181,7 +183,7 @@ describe("the frame and the profile (useMe)", () => {
     const { router } = mountApp({
       path: "/people",
       session: ident({ playa_name: "" }),
-      routes: mine(profile({}, { playa_name: "" }), {
+      routes: mine(profile({ first_prompt: true }, { playa_name: "" }), {
         "PUT /api/people/me": () => json(profile({}, { playa_name: "Newbie" })),
       }),
     });
@@ -195,14 +197,44 @@ describe("the frame and the profile (useMe)", () => {
     ).toHaveAttribute("href", "/people");
   });
 
-  it("does not send the break-glass superuser to the prompt", async () => {
+  it("a reload whose profile has no first_prompt never navigates, even with no playa name", async () => {
     const { router } = mountApp({
-      session: ident({ playa_name: "", superuser: true }),
-      routes: mine(profile({}, { playa_name: "" })),
+      session: ident({ playa_name: "" }),
+      routes: mine(profile({ first_prompt: false }, { playa_name: "" })),
     });
     await screen.findByRole("heading", { name: /Welcome to BMS|Hi,/ });
     await new Promise((r) => setTimeout(r, 50));
     expect(router()!.state.location.pathname).toBe("/");
+    expect(router()!.state.location.search).toBe("");
+  });
+
+  it("a sign-out then a new sign-in acts on the new answer", async () => {
+    const { router, client } = mountApp({
+      session: ident({ playa_name: "" }),
+      routes: mine(profile({ first_prompt: true }, { playa_name: "" })),
+    });
+    await waitFor(() => expect(router()!.state.location.search).toBe("?first=1"));
+    await router()!.navigate("/");
+    resetSession();
+    await refreshSession();
+    // the new sign-in reads a fresh answer, which says to prompt again
+    client.setQueryData(["core", "me", ME], profile({ first_prompt: true }, { playa_name: "" }));
+    await waitFor(() => expect(router()!.state.location.search).toBe("?first=1"));
+  });
+
+  it("first_prompt navigates once: a route change does not send the person back, and nothing is stored", async () => {
+    const set = vi.spyOn(Storage.prototype, "setItem");
+    const { router } = mountApp({
+      session: ident({ playa_name: "" }),
+      routes: mine(profile({ first_prompt: true }, { playa_name: "" })),
+    });
+    await waitFor(() => expect(router()!.state.location.search).toBe("?first=1"));
+    await router()!.navigate("/people");
+    await router()!.navigate("/");
+    await new Promise((r) => setTimeout(r, 100));
+    expect(router()!.state.location.pathname).toBe("/");
+    expect(set.mock.calls.filter(([k]) => k !== "bms.lang")).toEqual([]);
+    set.mockRestore();
   });
 
   it("does not read the profile while a temporary password restricts the session", async () => {
@@ -374,7 +406,7 @@ describe("/people/me", () => {
     mountApp({
       path: "/people/me?first=1",
       session: ident({ playa_name: "" }),
-      routes: mine(profile({}, { playa_name: "" }), {
+      routes: mine(profile({ first_prompt: true }, { playa_name: "" }), {
         "PUT /api/people/me": () =>
           problem(409, {
             code: "conflict",
@@ -444,7 +476,7 @@ describe("/people/me", () => {
     const { router } = mountApp({
       path: "/people/me?first=1",
       session: ident({ playa_name: "" }),
-      routes: mine(profile({}, { playa_name: "" }), {
+      routes: mine(profile({ first_prompt: true }, { playa_name: "" }), {
         "PUT /api/people/me": () => json(profile({}, { playa_name: "Newbie" })),
       }),
     });

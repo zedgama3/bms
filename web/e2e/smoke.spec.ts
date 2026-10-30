@@ -138,6 +138,8 @@ function profileOf(playa: string, over: Record<string, unknown> = {}) {
     sections: [],
     can: NOBODY,
     policy: OPTIONAL,
+    // the server says so once per session; an unnamed mock is a first read (people P-W1)
+    ...(playa === "" ? { first_prompt: true } : {}),
     ...over,
   };
 }
@@ -2535,6 +2537,7 @@ test.describe("jobs: the background work screen", () => {
         json: {
           counts: { failed: 1 },
           read_only: false,
+          instance: "main",
           registered: [
             {
               name: "jobs.purge",
@@ -2544,7 +2547,10 @@ test.describe("jobs: the background work screen", () => {
               next_due: "2026-10-20T12:00:00Z",
             },
           ],
-          recent: [record],
+          failed: [record],
+          running: [],
+          retrying: [],
+          waiting: [],
         },
       }),
     );
@@ -2560,13 +2566,33 @@ test.describe("jobs: the background work screen", () => {
     await expect(page.getByRole("heading", { level: 1, name: "Background work" })).toBeVisible();
     await expect(page.getByText("Runs every 1 hour")).toBeVisible();
     await expect(page.getByText("The job kept failing and was given up on")).toBeVisible();
+    await expect(page.getByText("audit.purge")).toHaveCount(0); // titles, never raw names
     if (isPhone) {
       await noHorizontalScroll(page);
       await touchTargets(page);
+    } else {
+      // At 1280 px no table header wraps: each th is as tall as one line of its text.
+      const heights = await page.locator("th[scope=col]").evaluateAll((ths) =>
+        ths.map((th) => {
+          const cs = getComputedStyle(th);
+          const line = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.5;
+          const pad = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+          const border = parseFloat(cs.borderBottomWidth);
+          return th.getBoundingClientRect().height - pad - border - line;
+        }),
+      );
+      expect(heights.length).toBeGreaterThan(0);
+      for (const extra of heights) expect(Math.abs(extra)).toBeLessThan(2);
     }
     await axe(page);
-    await press(page.getByRole("button", { name: "Run now: jobs.purge" }), isPhone);
-    await press(page.getByRole("button", { name: /^Retry audit\.purge/ }), isPhone);
+    await press(
+      page.getByRole("button", { name: "Run now: Delete finished job records" }),
+      isPhone,
+    );
+    await press(
+      page.getByRole("button", { name: /^Retry Delete audit entries past their retention/ }),
+      isPhone,
+    );
     await expect.poll(() => calls).toEqual(["run", "retry"]);
   });
 

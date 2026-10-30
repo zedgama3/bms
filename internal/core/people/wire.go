@@ -79,6 +79,9 @@ type wireProfile struct {
 	Sections []wireSection `json:"sections"`
 	Can      wireCan       `json:"can"`
 	Policy   wirePolicy    `json:"policy"`
+	// FirstPrompt is internal and only ever the viewer's own: true on the one GET /me that
+	// recorded the first-sign-in prompt of this session, absent otherwise (decision 35).
+	FirstPrompt bool `json:"first_prompt,omitempty"`
 }
 
 type wireProfileInput struct {
@@ -165,11 +168,12 @@ func wireProfileOf(p Profile) wireProfile {
 			Email: string(p.Person.Email), HasAccount: p.Person.HasAccount, Complete: p.Person.Complete,
 			CreatedAt: p.Person.CreatedAt, UpdatedAt: p.Person.UpdatedAt,
 		},
-		Fields:   append([]string{}, p.Fields...),
-		Contacts: make([]wireContact, len(p.Contacts)),
-		Consents: make([]wireConsent, len(p.Consents)),
-		Sections: make([]wireSection, len(p.Sections)),
-		Can:      wireCan(p.Can),
+		FirstPrompt: p.FirstPrompt,
+		Fields:      append([]string{}, p.Fields...),
+		Contacts:    make([]wireContact, len(p.Contacts)),
+		Consents:    make([]wireConsent, len(p.Consents)),
+		Sections:    make([]wireSection, len(p.Sections)),
+		Can:         wireCan(p.Can),
 		Policy: wirePolicy{
 			LegalName: p.Policy.LegalName.String(), Phone: p.Policy.Phone.String(), EmergencyContacts: p.Policy.EmergencyContacts.String(),
 		},

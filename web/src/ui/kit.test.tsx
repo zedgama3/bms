@@ -134,6 +134,13 @@ describe("Banner, EmptyState, Table", () => {
     expect(caption).not.toHaveClass("table-caption");
     expect(container.querySelectorAll('td[data-label="Count"]')).toHaveLength(2);
     expect(container.querySelectorAll('th[scope="row"][data-label="Name"]')).toHaveLength(2);
+    // A header never breaks inside a word, whatever the body's overflow-wrap says.
+    const ths = container.querySelectorAll('th[scope="col"]');
+    expect(ths.length).toBeGreaterThan(0);
+    for (const th of ths) expect(th).toHaveClass("break-normal");
+    // A row header keeps the body's wrapping, so a long one-word value cannot overflow 320 px.
+    for (const th of container.querySelectorAll('th[scope="row"]'))
+      expect(th).not.toHaveClass("break-normal");
     await expectNoAxeViolations(container);
   });
 });

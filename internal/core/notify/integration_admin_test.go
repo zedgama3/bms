@@ -249,15 +249,16 @@ func TestResetTemplate_NoOverride_Nil(t *testing.T) {
 	}
 }
 
-func TestSendTest_NoAddress_RowFails(t *testing.T) {
+// F45 (D57)
+func TestSendTest_NoAddress_RowSkipped(t *testing.T) {
 	r := newIRig(t)
 	me := r.dbPerson("")
 	r.az.Grant(me, permTemplates)
 	_, err := r.svc.SendTest(as(ctxT(t), me))
 	wantNoErr(t, err)
 	r.sendOnce()
-	if x := r.one(me); x.Status != "failed" || *x.LastErr != "no_address" {
-		t.Fatalf("row = %+v", x)
+	if x := r.one(me); x.Status != "skipped" || x.LastErr == nil || *x.LastErr != "no_address" {
+		t.Fatalf("row = %+v, want skipped with last_error no_address", x)
 	}
 }
 

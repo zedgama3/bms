@@ -31,7 +31,7 @@ type faultDB struct {
 	mu       sync.Mutex
 	readOnly bool
 	failAll  error
-	failSQL  func(sql string) error // fails QueryRow statements it matches (nil = none)
+	failSQL  func(sql string) error // fails Query and QueryRow statements it matches (nil = none)
 	calls    atomic.Int64
 }
 
@@ -80,6 +80,14 @@ func (f *faultDB) Query(ctx context.Context, sql string, args ...any) (pgx.Rows,
 	ro, fail := f.state()
 	if fail != nil {
 		return nil, fail
+	}
+	f.mu.Lock()
+	match := f.failSQL
+	f.mu.Unlock()
+	if match != nil {
+		if err := match(sql); err != nil {
+			return nil, err
+		}
 	}
 	if ro && writes(sql) {
 		return nil, errs.E("test.faultDB", errs.Unavailable, db.ErrReadOnly)

@@ -58,6 +58,9 @@ type exportPerson struct {
 	ContactEmail string         `json:"contact_email"`
 	CreatedAt    time.Time      `json:"created_at,omitzero"`
 	UpdatedAt    time.Time      `json:"updated_at,omitzero"`
+	// NamePromptedAt is when the person was last asked for a playa name (decision 34);
+	// absent when never.
+	NamePromptedAt time.Time `json:"name_prompted_at,omitzero"`
 }
 
 type exportContact struct {
@@ -201,6 +204,7 @@ func (s *Service) exportDocument(ctx context.Context, op string, person model.Pe
 		doc.Person = &exportPerson{
 			ID: row.ID, PlayaName: row.PlayaName, Pronouns: row.Pronouns, Language: row.Language, LegalName: row.LegalName,
 			Phone: row.Phone, ContactEmail: row.ContactEmail, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+			NamePromptedAt: row.NamePromptedAt,
 		}
 	}
 	contacts, err := s.store.ExportContacts(ctx, person)

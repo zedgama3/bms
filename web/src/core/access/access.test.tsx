@@ -738,7 +738,7 @@ describe("/access/grants/new", () => {
       within(picker)
         .getAllByRole("option")
         .map((o) => o.textContent),
-    ).toEqual(["Choose a department", "Gate", "Rangers"]);
+    ).toEqual(["Choose the department", "Gate", "Rangers"]);
     await userEvent.selectOptions(picker, D_B);
     await userEvent.click(screen.getByRole("button", { name: "Grant role" }));
     await waitFor(async () =>

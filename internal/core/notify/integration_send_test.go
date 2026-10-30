@@ -395,26 +395,67 @@ func TestSendOnce_NotConfigured_SkipsWithoutAttempt(t *testing.T) {
 	}
 }
 
-func TestSendOnce_NoAddress_FailedFinal(t *testing.T) {
+// F22 (D57, D58)
+func TestSendOnce_NoAddress_SkippedFinal(t *testing.T) {
 	r := newIRig(t)
 	p := r.queue("a@example.org")
 	r.addrs.set(p, "")
 	got := r.sendOnce()
-	if got.Failed != 1 || got.Sent != 0 {
-		t.Fatalf("Sent = %+v", got)
+	if got.Skipped != 1 || got.Failed != 0 || got.Sent != 0 || got.Retried != 0 {
+		t.Fatalf("Sent = %+v, want Skipped 1 and nothing else", got)
 	}
 	x := r.one(p)
-	if x.Status != "failed" || x.LastErr == nil || *x.LastErr != "no_address" || x.FailedAt == nil {
-		t.Fatalf("row = %+v", x)
+	if x.Status != "skipped" || x.LastErr == nil || *x.LastErr != "no_address" || x.FailedAt == nil {
+		t.Fatalf("row = %+v, want skipped with last_error no_address and failed_at set", x)
+	}
+	if x.Subject != nil || x.Body != nil || x.Address != nil {
+		t.Errorf("a skipped row kept its text or address: %+v", x)
+	}
+	if x.Leased != nil {
+		t.Errorf("a skipped row still holds a lease: %v", x.Leased)
 	}
 	if len(r.ch.envelopes()) != 0 {
 		t.Fatal("sent without an address")
 	}
-	if g := r.metric("bms.notify.delivered", "outcome", "no_address"); g != 1 {
-		t.Errorf("delivered{no_address} = %v", g)
+	if g := r.metric("bms.notify.delivered", "outcome", "skipped"); g != 1 {
+		t.Errorf("delivered{skipped} = %v, want 1", g)
+	}
+	if g := r.metric("bms.notify.delivered", "outcome", "no_address"); g != 0 {
+		t.Errorf("delivered{no_address} = %v, want 0 (the outcome is skipped)", g)
+	}
+	if g := r.metric("bms.notify.delivered", "outcome", "failed"); g != 0 {
+		t.Errorf("delivered{failed} = %v, want 0", g)
+	}
+	reasoned := false
+	for _, sp := range r.cap.Spans() {
+		if sp.Attrs["outcome"] == "skipped" && sp.Attrs["reason"] == "no_address" {
+			reasoned = true
+		}
+	}
+	if !reasoned {
+		t.Error("no notify.deliver span with outcome=skipped and reason=no_address")
 	}
 	if r.sendOnce() != (notify.Sent{}) {
 		t.Fatal("a final row was picked up again")
+	}
+	if x := r.one(p); x.Attempts > 1 {
+		t.Errorf("a skipped row was retried: attempts = %d", x.Attempts)
+	}
+}
+
+// F22: a batch mixing an addressless row with a sendable one sends the other.
+func TestSendOnce_NoAddress_DoesNotBlockTheBatch(t *testing.T) {
+	r := newIRig(t)
+	first, second, third := r.queue("a@example.org"), r.queue("b@example.org"), r.queue("c@example.org")
+	r.addrs.set(second, "")
+	got := r.sendOnce()
+	if got.Sent != 2 || got.Skipped != 1 {
+		t.Fatalf("Sent = %+v, want Sent 2 and Skipped 1", got)
+	}
+	for p, want := range map[model.PersonID]string{first: "sent", second: "skipped", third: "sent"} {
+		if x := r.one(p); x.Status != want {
+			t.Errorf("row for %v is %s, want %s", p, x.Status, want)
+		}
 	}
 }
 

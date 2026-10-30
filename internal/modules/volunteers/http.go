@@ -464,6 +464,9 @@ func (s *Service) hListShifts(w http.ResponseWriter, r *http.Request) {
 	if q.IncludeCanceled, err = queryBool(r, "canceled"); !ok(w, r, err) {
 		return
 	}
+	if q.EligibleOnly, err = queryBool(r, "eligible"); !ok(w, r, err) {
+		return
+	}
 	if q.Page, err = queryPage(r); !ok(w, r, err) {
 		return
 	}

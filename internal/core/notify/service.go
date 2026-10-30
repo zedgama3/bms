@@ -30,10 +30,12 @@ type store interface {
 	// Lease takes up to limit due rows (Attempts counts this attempt; LeasedUntil is the
 	// fence for the four statements below).
 	Lease(ctx context.Context, now time.Time, limit int, leasedUntil time.Time) ([]message.Record, error)
-	// MarkSent, MarkFailed, Requeue and Release end or move a leased row; false means the
+	// MarkSent, MarkFailed, MarkSkipped, Requeue and Release end or move a leased row; false means the
 	// row is gone or was re-leased.
 	MarkSent(ctx context.Context, id message.ID, lease, at time.Time) (bool, error)
 	MarkFailed(ctx context.Context, id message.ID, lease time.Time, token string, at time.Time) (bool, error)
+	// MarkSkipped ends a leased row as skipped (no address) and clears its text.
+	MarkSkipped(ctx context.Context, id message.ID, lease time.Time, token string, at time.Time) (bool, error)
 	Requeue(ctx context.Context, id message.ID, lease time.Time, token string, next time.Time) (bool, error)
 	Release(ctx context.Context, id message.ID, lease, now time.Time, token string) (bool, error)
 	// Retry requeues a failed row that still has its text; Cancel deletes a queued or
@@ -193,14 +195,14 @@ func endSpan(span telemetry.Span, err *error) {
 
 // The outcomes bms.notify.delivered takes.
 const (
-	outcomeOK        = "ok"
-	outcomeRetry     = "retry"
-	outcomeFailed    = "failed"
-	outcomeRejected  = "rejected"
-	outcomeNoAddress = "no_address"
-	outcomeNoSMTP    = "no_smtp"
-	outcomeReadOnly  = "read_only"
-	outcomeExpired   = "expired"
+	outcomeOK       = "ok"
+	outcomeRetry    = "retry"
+	outcomeFailed   = "failed"
+	outcomeRejected = "rejected"
+	outcomeSkipped  = "skipped"
+	outcomeNoSMTP   = "no_smtp"
+	outcomeReadOnly = "read_only"
+	outcomeExpired  = "expired"
 )
 
 // metrics holds the instruments; each method is a no-op without a Meter.

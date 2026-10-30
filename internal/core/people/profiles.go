@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/zedgama3/bms/internal/contracts/personpage"
 	"github.com/zedgama3/bms/internal/core/audit"
@@ -455,7 +456,12 @@ func (s *Service) callProvider(ctx context.Context, sp SectionProvider, person m
 
 // Me returns the actor's own profile with every field group, their contacts, consents and
 // the modules' sections. A person with no row yet gets an empty, incomplete Person{ID}
-// and nothing is written (F4). Fails errs.Unauthenticated (F3) and the store's kinds.
+// and nothing is written (F4). On a writable copy, when the actor is not the superuser and
+// the row holds no playa name, Me records the first-sign-in prompt once per session in a
+// short Write transaction of its own and reports it in FirstPrompt (F91 to F100); on a
+// read-only copy it never prompts and does not fail (F96). Fails errs.Unauthenticated (F3)
+// and the store's kinds (F97). The mark is written after the profile is built, so a failed
+// build leaves the prompt for the next call.
 func (s *Service) Me(ctx context.Context) (_ Profile, err error) {
 	const op = "people.Service.Me"
 	ctx, span := s.start(ctx, "me")
@@ -465,12 +471,17 @@ func (s *Service) Me(ctx context.Context) (_ Profile, err error) {
 		return Profile{}, err
 	}
 	span.SetAttrs(telemetry.ID("person_id", a.Person))
-	return s.profileOf(ctx, op, a, a.Person)
+	prof, err := s.profileOf(ctx, op, a, a.Person, true)
+	if err != nil {
+		return Profile{}, err
+	}
+	span.SetAttrs(telemetry.Bool("first_prompt", prof.FirstPrompt))
+	return prof, nil
 }
 
 // profileOf builds the profile of a self view: the row is read, a missing one is an empty
-// profile.
-func (s *Service) profileOf(ctx context.Context, op string, a authz.Actor, person model.PersonID) (Profile, error) {
+// profile. With prompt set (Me only) it then decides and records the first-sign-in prompt.
+func (s *Service) profileOf(ctx context.Context, op string, a authz.Actor, person model.PersonID, prompt bool) (Profile, error) {
 	pol, err := s.policy(ctx)
 	if err != nil {
 		return Profile{}, wrap(op, err)
@@ -484,7 +495,67 @@ func (s *Service) profileOf(ctx context.Context, op string, a authz.Actor, perso
 	if err != nil && !errs.Is(err, errs.NotFound) {
 		return Profile{}, wrap(op, err)
 	}
-	return s.buildProfile(ctx, op, profileView{person: a.Person, self: true, perms: p, pol: pol}, row, exists)
+	var (
+		due    bool
+		issued time.Time
+	)
+	if prompt {
+		if due, issued, err = s.promptDue(ctx, op, a, row, exists); err != nil {
+			return Profile{}, err
+		}
+	}
+	prof, err := s.buildProfile(ctx, op, profileView{person: a.Person, self: true, perms: p, pol: pol}, row, exists)
+	if err != nil {
+		return Profile{}, err
+	}
+	// The mark is written only after the profile was built: a failed build leaves no mark,
+	// so the session's next /me still prompts.
+	if due {
+		if prof.FirstPrompt, err = s.markPrompted(ctx, op, a.Person, issued, exists); err != nil {
+			return Profile{}, err
+		}
+	}
+	return prof, nil
+}
+
+// promptDue is the cheap, write-free part of the first-sign-in decision (decisions 34 to
+// 36): due is false for the superuser, for a row that holds a playa name and on a read-only
+// copy; otherwise it is true and issued is the session's IssuedAt. A signed-in actor
+// without a session in ctx is Internal: the wiring is broken.
+func (s *Service) promptDue(ctx context.Context, op string, a authz.Actor, row rows.Person, exists bool) (due bool, issued time.Time, _ error) {
+	if a.Superuser || (exists && row.PlayaName != "") || s.db.ReadOnly() {
+		return false, time.Time{}, nil
+	}
+	sess, ok := s.sessionFn(ctx)
+	if !ok {
+		return false, time.Time{}, errs.E(op, errs.Internal, errors.New("the actor has no session to date the prompt by"))
+	}
+	return true, sess.IssuedAt.UTC(), nil
+}
+
+// markPrompted records the prompt once the profile is built. A person with no row yet is
+// prompted without writing (decision 2: their first save creates the row). Otherwise
+// MarkNamePrompted runs in a Write transaction of its own (never inside a read) and the
+// statement is the one decider: true exactly when it updated the row. db.ErrReadOnly means
+// "cannot record" and is false and not an error; any other failure fails the call with its
+// kind.
+func (s *Service) markPrompted(ctx context.Context, op string, person model.PersonID, issued time.Time, exists bool) (bool, error) {
+	if !exists {
+		return true, nil
+	}
+	var marked bool
+	err := s.inTx(ctx, db.Write, func(ctx context.Context) error {
+		var err error
+		marked, err = s.store.MarkNamePrompted(ctx, person, issued, s.now())
+		return err //nolint:wrapcheck // wrapped below, with the transaction's own errors
+	})
+	if err != nil {
+		if errors.Is(err, db.ErrReadOnly) {
+			return false, nil
+		}
+		return false, wrap(op, err)
+	}
+	return marked, nil
 }
 
 // Get returns another person's profile: internal fields for a holder of
@@ -505,7 +576,7 @@ func (s *Service) Get(ctx context.Context, person model.PersonID) (_ Profile, er
 	}
 	span.SetAttrs(telemetry.ID("person_id", person))
 	if a.Person == person {
-		return s.profileOf(ctx, op, a, person)
+		return s.profileOf(ctx, op, a, person, false)
 	}
 	if err := s.requireAnywhere(ctx, op, PermissionDirectoryRead); err != nil {
 		return Profile{}, err

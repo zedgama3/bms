@@ -448,6 +448,7 @@ func validOptions(t *testing.T, d db.DB) (people.Options, *rig) {
 		Signals:    bus,
 		Authz:      az,
 		Actor:      actorOf,
+		Session:    identity.SessionFrom,
 		Accounts:   r.accts,
 		Access:     r.access,
 		AuditCount: r.counter,

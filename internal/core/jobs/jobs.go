@@ -226,8 +226,8 @@ func (d Decl) Validate() error {
 type Request struct {
 	Name Name
 	// Key is the optional dedupe key, [A-Za-z0-9._:-]{1,MaxKeyBytes}; "" = none. Name the
-	// record's own ID (the sign-up, the shift, the upload), never a person ID: keys show on
-	// /jobs and in Status.Recent (conformance rule jobs_key_not_person).
+	// record's own ID (the sign-up, the shift, the upload), never a person ID: keys appear in
+	// GET /api/jobs/ and in logs, never on the screen (conformance rule jobs_key_not_person).
 	Key   string
 	Args  Args      // may be empty
 	RunAt time.Time // zero = now; else at most MaxDelay ahead (the past is "now")
@@ -343,12 +343,18 @@ type Registered struct {
 	NextDue time.Time // the next slot, zero for on demand
 }
 
-// StatusView is what GET /api/jobs/ returns.
+// StatusView is what GET /api/jobs/ returns (Amendment J-W1: Recent became four lists). Each
+// list is capped at MaxRecent by the store, so a long healthy queue cannot push a failure off
+// the screen; the service sorts nothing.
 type StatusView struct {
 	ReadOnly   bool
+	Instance   string // this process's Options.Instance; the screen marks a run by any other server
 	Registered []Registered
-	Counts     map[Status]int
-	Recent     []Record // Failed and Queued rows, newest first, at most MaxRecent
+	Counts     map[Status]int // every row by status
+	Failed     []Record       // status failed; newest finished_at first
+	Running    []Record       // status running; earliest started_at first
+	Retrying   []Record       // status queued with last_error set; soonest run_at first
+	Waiting    []Record       // status queued with last_error empty; soonest run_at first
 }
 
 // Ran counts one tick.

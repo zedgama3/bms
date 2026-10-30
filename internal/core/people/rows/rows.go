@@ -48,6 +48,10 @@ type Person struct {
 	CreatedBy    model.PersonID
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+	// NamePromptedAt is core.person.name_prompted_at: when the person was last asked for a
+	// playa name (decisions 34, 35). Zero is NULL. Only ExportPerson reads it; no other
+	// statement selects, writes or clears it except Store.MarkNamePrompted.
+	NamePromptedAt time.Time
 }
 
 // Contact is a row of core.person_emergency_contact. Position is 1-based and gapless after

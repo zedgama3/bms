@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router";
+import { Link, useLocation } from "react-router";
 import { useReadOnly } from "@/api";
 import { isMessageKey, useT } from "@/i18n";
 import { Button, EmptyState, linkButtonClass, Loading, useToast } from "@/ui";
+import { backTo } from "../back";
 import { vol } from "../calls";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { ShowMore, usePaged } from "../paging";
@@ -15,6 +16,7 @@ import type { ScheduleEntry } from "../types";
 /** My bookings, upcoming by default, past ones on request; each upcoming booking can be canceled. */
 export function MySchedule() {
   const t = useT();
+  const location = useLocation();
   const toast = useToast();
   const client = useQueryClient();
   const { readOnly } = useReadOnly();
@@ -98,6 +100,7 @@ export function MySchedule() {
                 <h3 className={`text-lg font-bold ${removed ? "line-through" : ""}`}>
                   <Link
                     to={`/volunteers/shifts/${e.shift.id}`}
+                    state={backTo("me", location)}
                     className="inline-flex min-h-11 items-center underline"
                   >
                     {e.shift.label}

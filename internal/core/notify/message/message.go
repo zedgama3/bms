@@ -28,9 +28,10 @@ const (
 	Sending                   // leased by a sender
 	Sent                      // delivered; text and address cleared
 	Failed                    // gave up; waits for an admin to retry or cancel it
+	Skipped                   // the recipient has no address; final, text cleared (D57)
 )
 
-// String returns "queued", "sending", "sent", "failed" or "Status(<n>)". Cannot fail.
+// String returns "queued", "sending", "sent", "failed", "skipped" or "Status(<n>)". Cannot fail.
 func (s Status) String() string {
 	switch s {
 	case Queued:
@@ -41,6 +42,8 @@ func (s Status) String() string {
 		return "sent"
 	case Failed:
 		return "failed"
+	case Skipped:
+		return "skipped"
 	default:
 		return fmt.Sprintf("Status(%d)", int(s))
 	}
@@ -48,18 +51,18 @@ func (s Status) String() string {
 
 // ParseStatus is the inverse of String. Fails errs.Invalid (field "status", code one_of).
 func ParseStatus(s string) (Status, error) {
-	for st := Queued; st <= Failed; st++ {
+	for st := Queued; st <= Skipped; st++ {
 		if st.String() == s {
 			return st, nil
 		}
 	}
 	v := validate.Errors{Op: "notify.ParseStatus"}
-	v.Addf("status", validate.CodeOneOf, "must be one of: queued, sending, sent, failed")
+	v.Addf("status", validate.CodeOneOf, "must be one of: queued, sending, sent, failed, skipped")
 	return 0, v.Err() //nolint:wrapcheck // Err already carries Op and errs.Invalid
 }
 
-// Valid reports whether s is one of the four statuses. Cannot fail.
-func (s Status) Valid() bool { return s >= Queued && s <= Failed }
+// Valid reports whether s is one of the five statuses. Cannot fail.
+func (s Status) Valid() bool { return s >= Queued && s <= Skipped }
 
 // MarshalText implements encoding.TextMarshaler, so a Status is a JSON string and a map key.
 // Fails errs.Invalid for an invalid status.

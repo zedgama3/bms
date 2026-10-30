@@ -192,6 +192,7 @@ export const vol = {
             ...(q.from ? { from: q.from } : {}),
             ...(q.to ? { to: q.to } : {}),
             ...(q.canceled ? { canceled: true } : {}),
+            ...(q.eligible ? { eligible: true } : {}),
             limit: PAGE_LIMIT,
             ...(after ? { after } : {}),
           },

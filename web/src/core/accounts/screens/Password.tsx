@@ -25,6 +25,9 @@ export function Password() {
   const [confirming, setConfirming] = useState(false);
   const othersForm = useRef<HTMLFormElement>(null);
   const restricted = session.signedIn && session.passwordChangeRequired;
+  // A shared demo account (identity D58): say so before anything is typed and disable the form.
+  // The server's refusal stays the backstop; "Sign out everywhere else" stays allowed (demo.md).
+  const isProtected = session.signedIn && session.protected === true;
 
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -64,32 +67,35 @@ export function Password() {
         <h2 id="password-change-title" className="text-xl font-bold">
           {t("core.accounts.password.section")}
         </h2>
+        {isProtected ? <Banner live={false}>{t("field.protected")}</Banner> : null}
         <form ref={formRef} onSubmit={submit} className="flex flex-col gap-4" noValidate>
           <ErrorSummary error={change.error} formRef={formRef} />
-          <PasswordField
-            label={t("core.accounts.password.current")}
-            name="current_password"
-            kind="current"
-            autoComplete="current-password"
-            error={fieldErrors["current_password"]}
-          />
-          <PasswordField
-            label={t("core.accounts.password.new")}
-            name="new_password"
-            kind="new"
-            autoComplete="new-password"
-            hint={t("core.accounts.password.new_hint", { min: DEFAULT_MIN_PASSWORD })}
-            error={fieldErrors["new_password"]}
-          />
-          <ReadOnlyNote id="password-readonly" readOnly={readOnly} />
-          <Button
-            type="submit"
-            busy={change.busy}
-            disabled={readOnly}
-            {...(readOnly ? { "aria-describedby": "password-readonly" } : {})}
-          >
-            {t("core.accounts.password.submit")}
-          </Button>
+          <fieldset disabled={isProtected} className="flex min-w-0 flex-col gap-4">
+            <PasswordField
+              label={t("core.accounts.password.current")}
+              name="current_password"
+              kind="current"
+              autoComplete="current-password"
+              error={fieldErrors["current_password"]}
+            />
+            <PasswordField
+              label={t("core.accounts.password.new")}
+              name="new_password"
+              kind="new"
+              autoComplete="new-password"
+              hint={t("core.accounts.password.new_hint", { min: DEFAULT_MIN_PASSWORD })}
+              error={fieldErrors["new_password"]}
+            />
+            <ReadOnlyNote id="password-readonly" readOnly={readOnly} />
+            <Button
+              type="submit"
+              busy={change.busy}
+              disabled={readOnly}
+              {...(readOnly ? { "aria-describedby": "password-readonly" } : {})}
+            >
+              {t("core.accounts.password.submit")}
+            </Button>
+          </fieldset>
         </form>
       </section>
 

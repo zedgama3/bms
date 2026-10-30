@@ -227,7 +227,7 @@
           "notify"
         ],
         "operationId": "notifyOutbox",
-        "summary": "Counts by status, whether e-mail is configured, and the newest queued, sending and failed rows. Never an address, subject or body. Needs notify.outbox.manage.",
+        "summary": "Counts by status, whether e-mail is configured, and the newest queued, sending, failed and skipped rows. Never an address, subject or body. Needs notify.outbox.manage.",
         "responses": {
           "200": {
             "description": "The outbox.",
@@ -262,7 +262,7 @@
           "notify"
         ],
         "operationId": "notifyRetryMessage",
-        "summary": "Requeue a failed message that still holds its text. 409 when the message is not failed (code conflict) or its text has expired (code expired). Needs notify.outbox.manage.",
+        "summary": "Requeue a failed message that still holds its text. 409 when the message is not failed, a skipped one included (code conflict) or its text has expired (code expired). Needs notify.outbox.manage.",
         "parameters": [
           {
             "name": "message",
@@ -287,7 +287,7 @@
           "notify"
         ],
         "operationId": "notifyCancelMessage",
-        "summary": "Delete a queued or failed message. 409 when it is being sent or was sent. Needs notify.outbox.manage.",
+        "summary": "Delete a queued or failed message. 409 when it is being sent, was sent or was skipped. Needs notify.outbox.manage.",
         "parameters": [
           {
             "name": "message",
@@ -478,7 +478,8 @@
               "queued",
               "sending",
               "sent",
-              "failed"
+              "failed",
+              "skipped"
             ]
           },
           "attempts": {
@@ -511,7 +512,7 @@
           },
           "last_error": {
             "type": "string",
-            "description": "A short token such as connect, auth, timeout, smtp_4xx, rejected, no_address or expired."
+            "description": "A short token such as connect, auth, timeout, smtp_4xx, rejected, no_address or expired. A skipped message carries no_address."
           }
         }
       },

@@ -14,10 +14,10 @@ func TestMigrations_VersionedAndForwardOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Version: %v", err)
 	}
-	if v != 3 {
-		t.Errorf("Version = %d, want 3 (0001_person.sql, 0002_requests.sql, 0003_playa_name_key.sql)", v)
+	if v != 4 {
+		t.Errorf("Version = %d, want 4 (0001_person.sql, 0002_requests.sql, 0003_playa_name_key.sql, 0004_name_prompted_at.sql)", v)
 	}
-	for _, name := range []string{"0001_person.sql", "0002_requests.sql", "0003_playa_name_key.sql"} {
+	for _, name := range []string{"0001_person.sql", "0002_requests.sql", "0003_playa_name_key.sql", "0004_name_prompted_at.sql"} {
 		b, err := fs.ReadFile(postgres.Migrations, name)
 		if err != nil {
 			t.Errorf("%s: %v", name, err)

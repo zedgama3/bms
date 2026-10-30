@@ -8,6 +8,7 @@ import (
 
 	"github.com/zedgama3/bms/internal/contracts/membership"
 	"github.com/zedgama3/bms/internal/contracts/personpage"
+	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/module"
 	"github.com/zedgama3/bms/internal/core/people"
 	"github.com/zedgama3/bms/internal/lib/errs"
@@ -96,6 +97,7 @@ func buildPeople(_ context.Context, a *assembly) error {
 		Signals:    bus,
 		Authz:      a.deps.authz,
 		Actor:      authzActor,
+		Session:    identity.SessionFrom,
 		Accounts:   a.identity,
 		Access:     a.authz,
 		AuditCount: a.deps.audit,

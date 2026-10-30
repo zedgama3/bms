@@ -36,21 +36,45 @@ export function useWhyNot(qualifications: readonly Qualification[] | undefined) 
   };
 }
 
+/** The short reason a list row shows instead of the sentence (V4.3): `why_short.*`, with the
+ *  missing qualifications named. */
+export function useWhyShort(qualifications: readonly Qualification[] | undefined) {
+  const t = useT();
+  return (s: ShiftSummary): string => {
+    const e = s.eligibility ?? {};
+    const missing = e.missing ?? [];
+    if (missing.length > 0) {
+      const names = missing.map(
+        (id) =>
+          qualifications?.find((q) => q.id === id)?.name ??
+          t("module.volunteers.why.a_qualification"),
+      );
+      return t("module.volunteers.why_short.missing", { names: names.join(", ") });
+    }
+    const key = `module.volunteers.why_short.${e.reason ?? ""}`;
+    return isMessageKey(key) && e.reason ? t(key) : t("module.volunteers.why_short.unknown");
+  };
+}
+
 /** The sign-up part of a shift card or page: **Sign up** when the server says the person is
  *  eligible, **Booked** when they hold a booking, else the reason. A refused sign-up shows its
  *  reason in place (the shell's forbidden sentence for a 403). */
 export function SignUpControl({
   shift,
   qualifications,
+  short = false,
 }: {
   shift: ShiftSummary;
   qualifications: readonly Qualification[] | undefined;
+  /** A list row: a reason is the short phrase, not the sentence. */
+  short?: boolean;
 }) {
   const t = useT();
   const toast = useToast();
   const client = useQueryClient();
   const { readOnly } = useReadOnly();
   const whyNot = useWhyNot(qualifications);
+  const whyShort = useWhyShort(qualifications);
   const statusId = `signup-status-${shift.id}`;
   const signUp = useMutation({
     mutationFn: () => vol.signUp(shift.id),
@@ -94,7 +118,7 @@ export function SignUpControl({
           <ReadOnlyNote id={noteId} readOnly={readOnly} />
         </div>
       ) : (
-        <p className="text-muted">{whyNot(shift)}</p>
+        <p className="text-muted">{short ? whyShort(shift) : whyNot(shift)}</p>
       )}
       {error && !shift.mine ? (
         error.code === "conflict" && error.fields.some((f) => f.code === "unnamed") ? (

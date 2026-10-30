@@ -167,5 +167,10 @@
   "shell.demo.mail_link": "Captured mail",
   "shell.demo.signup_note": "Use a made-up address, not your own. Mail the demo sends can be read only by the account it is sent to, but strangers see everything else you enter.",
   "module.core.title": "This installation",
-  "module.core.permission.modules.read.title": "See which modules are turned on"
+  "module.core.permission.modules.read.title": "See which modules are turned on",
+  "module.files.title": "Files",
+  "module.files.job.reap.title": "Delete the content of deleted files",
+  "module.files.job.sweep-orphans.title": "Remove uploads that were never attached",
+  "module.signals.title": "Messages between modules",
+  "module.signals.job.redeliver.title": "Deliver a message between modules again"
 }

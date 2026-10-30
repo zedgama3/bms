@@ -262,7 +262,7 @@ describe("/departments/:department", () => {
       "href",
       `/access/grants?department=${D1}&role=department-admin`,
     );
-    expect(within(card).getByRole("link", { name: "Appoint a lead" })).toHaveAttribute(
+    expect(within(card).getByRole("link", { name: "Appoint lead" })).toHaveAttribute(
       "href",
       `/access/grants/new?department=${D1}`,
     );
@@ -354,7 +354,7 @@ describe("/departments/:department", () => {
     expect(await screen.findByText(/^Archived on /)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit details" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Rename" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Appoint a lead" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Appoint lead" })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Restore" }));
     const dialog = await screen.findByRole("dialog", { name: "Restore this department?" });
     await userEvent.click(within(dialog).getByRole("button", { name: "Restore department" }));

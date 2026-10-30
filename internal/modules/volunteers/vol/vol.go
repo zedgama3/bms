@@ -560,6 +560,12 @@ type ShiftQuery struct {
 	Position        PositionID
 	Within          model.TimeRange // zero = from now on; either bound alone is allowed (Start only = from then on, End only = from now until then)
 	IncludeCanceled bool            // needs shifts.manage or rosters.read in that extent
+	// EligibleOnly keeps only the shifts the actor is eligible for (Eligibility.Eligible) and
+	// the shifts the actor holds a booking on (Mine not zero); the rest are dropped after the
+	// fetch, so a page may be short or empty with Next set (decision 22). Needs no permission
+	// beyond seeing the shift: it only removes rows. Query parameter "eligible" (a boolean,
+	// parsed like "canceled").
+	EligibleOnly bool
 	Page
 }
 

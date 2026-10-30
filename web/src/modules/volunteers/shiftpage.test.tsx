@@ -3,7 +3,20 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { expectNoAxeViolations } from "@/test/axe";
 import { json, problem } from "@/test/fakeFetch";
-import { bodyOf, mount, ME, OTHER, POS, QUAL, seen, shift, SHIFT, SIGNUP, V } from "./testkit";
+import {
+  bodyOf,
+  DEPT,
+  mount,
+  ME,
+  OTHER,
+  POS,
+  QUAL,
+  seen,
+  shift,
+  SHIFT,
+  SIGNUP,
+  V,
+} from "./testkit";
 
 const path = `/volunteers/shifts/${SHIFT}`;
 const one = (over: Record<string, unknown> = {}) => ({
@@ -33,7 +46,58 @@ describe("volunteers: a shift", () => {
     expect(within(section).queryByRole("link")).not.toBeInTheDocument();
     expect(within(section).getByText("and 2 people who are not listed")).toBeInTheDocument();
     expect(screen.getByText("Ranger HQ")).toBeInTheDocument();
+    expect(screen.getByText("3 of 4 booked")).toBeInTheDocument();
     await expectNoAxeViolations(container);
+  });
+
+  it("a deep link, or an unusable state, falls back to Back to shifts at /volunteers", async () => {
+    const states: unknown[] = [
+      undefined,
+      {},
+      { back: { to: "https://x", kind: "shifts" } },
+      { back: { to: "/people/me", kind: "me" } },
+      { back: { to: "/volunteers//x", kind: "shifts" } },
+      { back: { to: "/volunteers", kind: "lead" } },
+    ];
+    for (const state of states) {
+      const { router, unmount } = mount({ path: "/volunteers", routes: one({}) });
+      await screen.findByRole("heading", { level: 1, name: "Shifts" });
+      await router()!.navigate(path, { state });
+      const link = await screen.findByRole("link", { name: "Back to shifts" });
+      expect(link).toHaveAttribute("href", "/volunteers");
+      unmount();
+    }
+  });
+
+  it("from a department tab: the back link returns there and names the department once the shift loads", async () => {
+    const to = `/volunteers/departments/${DEPT}?tab=shifts`;
+    const { router } = mount({ path: "/volunteers", routes: one({}) });
+    await screen.findByRole("heading", { level: 1, name: "Shifts" });
+    await router()!.navigate(path, { state: { back: { to, kind: "department" } } });
+    const link = await screen.findByRole("link", { name: "Back to Gate" });
+    expect(link).toHaveAttribute("href", to);
+  });
+
+  it("from a department tab: names no department when the shift fails to load", async () => {
+    const to = `/volunteers/departments/${DEPT}?tab=shifts`;
+    const { router } = mount({
+      path: "/volunteers",
+      routes: { [`GET ${V}/shifts/${SHIFT}`]: () => problem(503, { code: "unavailable" }) },
+    });
+    await screen.findByRole("heading", { level: 1, name: "Shifts" });
+    await router()!.navigate(path, { state: { back: { to, kind: "department" } } });
+    const link = await screen.findByRole("link", { name: "Back to the department" });
+    expect(link).toHaveAttribute("href", to);
+  });
+
+  it("from My volunteering: Back to My volunteering", async () => {
+    const { router } = mount({ path: "/volunteers", routes: one({}) });
+    await screen.findByRole("heading", { level: 1, name: "Shifts" });
+    await router()!.navigate(path, { state: { back: { to: "/volunteers/me", kind: "me" } } });
+    expect(await screen.findByRole("link", { name: "Back to My volunteering" })).toHaveAttribute(
+      "href",
+      "/volunteers/me",
+    );
   });
 
   it("mates present but empty: 'No one else is booked yet'; absent: no section at all", async () => {

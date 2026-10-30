@@ -295,8 +295,8 @@ func (s *Service) deliver(ctx context.Context, ch Channel, cfg SMTPConfig, row m
 	if aerr != nil {
 		switch {
 		case errs.Is(aerr, errs.NotFound):
-			span.SetAttrs(telemetry.Token("outcome", outcomeNoAddress))
-			return s.finish(ctx, row, tokenNoAddress, outcomeNoAddress, res, now)
+			span.SetAttrs(telemetry.Token("outcome", outcomeSkipped), telemetry.Token("reason", tokenNoAddress))
+			return s.skip(ctx, row, tokenNoAddress, res, now)
 		case errs.Is(aerr, errs.Canceled):
 			return aerr
 		default:
@@ -376,6 +376,14 @@ func (s *Service) finish(ctx context.Context, row message.Record, token, outcome
 	})
 }
 
+// skip ends a row as skipped with a token: the recipient has no address, so there is nothing
+// to retry or to keep (D57). Counted in Sent.Skipped and delivered{outcome=skipped}.
+func (s *Service) skip(ctx context.Context, row message.Record, token string, res *Sent, now time.Time) error {
+	return s.record(ctx, row, outcomeSkipped, token, res, func(ctx context.Context) (bool, error) {
+		return s.store.MarkSkipped(ctx, row.ID, row.LeasedUntil, token, now)
+	})
+}
+
 // record runs the update of a row's outcome in a transaction of its own, on a context that
 // survives a shutdown (a message delivered just before it must be marked sent, or it would
 // be released and sent again), then counts it and logs a final failure by ID, template and
@@ -404,6 +412,11 @@ func (s *Service) record(ctx context.Context, row message.Record, outcome, token
 		res.Sent++
 	case outcomeRetry:
 		res.Retried++
+	case outcomeSkipped:
+		res.Skipped++
+		s.logger.InfoContext(ctx, "notify: a message was skipped",
+			slog.String("message_id", row.ID.String()), slog.String("template", row.Template),
+			slog.String("reason", token))
 	default:
 		res.Failed++
 		s.logger.WarnContext(ctx, "notify: a message failed for good",
@@ -437,7 +450,7 @@ func (s *Service) Ping(ctx context.Context) (err error) {
 	return channelError(op, ch.Ping(pctx))
 }
 
-// Purge deletes Sent and Failed rows older than the retention, in batches, and returns how
+// Purge deletes Sent, Failed and Skipped rows older than the retention, in batches, and returns how
 // many. A nil RetentionSource or a retention of 0 deletes nothing. A retention under
 // MinRetention is read as MinRetention. Fails errs.Unavailable wrapping db.ErrReadOnly, the
 // RetentionSource's kind and store kinds.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 
 	"github.com/zedgama3/bms/internal/core/telemetry"
@@ -64,7 +65,11 @@ func (s *Service) Authenticate(ctx context.Context, r *http.Request) (_ context.
 // SessionInfo is GET /session: SignedIn false (with SignupOpen) when ctx has no session,
 // else the session with PlayaName (Names) and Permissions (Lister). A restricted session
 // gets neither, since it cannot use them. Works on a read-only copy; nothing is audited
-// (the person reads their own state). Fails with Names', Lister's or Policy's kind (F8).
+// (the person reads their own state). With a non-nil Guard, Protected is Guard.Protected for
+// the session's account; on a Guard error it answers Protected false and logs a warning with
+// the account's ID and the error's kind, never failing the call (F110): the refusals of the
+// guarded use cases stay the fail-closed backstop. Fails with Names', Lister's or Policy's
+// kind (F8).
 func (s *Service) SessionInfo(ctx context.Context) (_ SessionInfo, err error) {
 	const op = "identity.Service.SessionInfo"
 	ctx, span := s.start(ctx, "session-info")
@@ -83,6 +88,7 @@ func (s *Service) SessionInfo(ctx context.Context) (_ SessionInfo, err error) {
 	info.PersonID, info.AccountID = sess.Person, sess.Account
 	info.Superuser, info.PasswordChangeRequired = sess.Superuser, sess.PasswordChangeRequired
 	info.ExpiresAt = sess.ExpiresAt
+	info.Protected = s.protectedForInfo(ctx, sess.Account)
 	if sess.PasswordChangeRequired {
 		return info, nil
 	}
@@ -106,4 +112,21 @@ func (s *Service) SessionInfo(ctx context.Context) (_ SessionInfo, err error) {
 		}
 	}
 	return info, nil
+}
+
+// protectedForInfo is the Guard's answer for SessionInfo.Protected: false without a Guard
+// and, so a hiccup in the guard cannot break every session answer, on a Guard error, which
+// it logs as a warning (account ID and kind only; no address). The guarded use cases
+// still fail closed on their own (F108).
+func (s *Service) protectedForInfo(ctx context.Context, a model.AccountID) bool {
+	if s.guard == nil {
+		return false
+	}
+	p, err := s.guard.Protected(ctx, a)
+	if err != nil {
+		s.logger.WarnContext(ctx, "session info: guard failed; answering protected false",
+			slog.String("account", a.String()), slog.String("kind", errs.KindOf(err).String()))
+		return false
+	}
+	return p
 }

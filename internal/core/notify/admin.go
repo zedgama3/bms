@@ -292,7 +292,7 @@ func (s *Service) Preview(ctx context.Context, name Template, lang Language, t T
 
 // SendTest queues notify.test to the signed-in person through the normal queue and returns
 // the message's ID. Needs notify.templates.manage and records notify.test.sent in the same
-// transaction. A person without an address gets a row that fails later (no_address). Fails
+// transaction. A person without an address gets a row that ends skipped later (no_address). Fails
 // errs.Unauthenticated, errs.Permission, errs.Unsupported (wrapping ErrNotConfigured, or a
 // superuser, who has no address), errs.Unavailable wrapping db.ErrReadOnly, the audit error
 // and store kinds.
@@ -331,7 +331,7 @@ func (s *Service) SendTest(ctx context.Context) (_ MessageID, err error) {
 // ---- the outbox -------------------------------------------------------------------------
 
 // Outbox returns the counts by status, whether e-mail is configured and the newest open
-// rows (queued, sending, failed): never an address, subject or body. Needs
+// rows (queued, sending, failed, skipped): never an address, subject or body. Needs
 // notify.outbox.manage. Fails errs.Unauthenticated, errs.Permission, the SMTPSource's kind
 // and store kinds.
 func (s *Service) Outbox(ctx context.Context) (_ OutboxView, err error) {
@@ -349,7 +349,7 @@ func (s *Service) Outbox(ctx context.Context) (_ OutboxView, err error) {
 	if err != nil {
 		return OutboxView{}, wrap(op, err)
 	}
-	full := map[Status]int{Queued: 0, Sending: 0, StatusSent: 0, Failed: 0}
+	full := map[Status]int{Queued: 0, Sending: 0, StatusSent: 0, Failed: 0, Skipped: 0}
 	for st, n := range counts {
 		full[st] = n
 	}
@@ -375,7 +375,8 @@ func (s *Service) CheckConnection(ctx context.Context) error {
 
 // Retry requeues a Failed row that still has its text, with its attempts reset. Needs
 // notify.outbox.manage and records notify.message.retried. Fails errs.Unauthenticated,
-// errs.Permission, errs.NotFound, errs.Conflict (field status: the row is not Failed, or
+// errs.Permission, errs.NotFound, errs.Conflict (field status: the row is not Failed (a
+// Skipped row included), or
 // its text has expired), errs.Unavailable wrapping db.ErrReadOnly, the audit error and
 // store kinds.
 func (s *Service) Retry(ctx context.Context, id MessageID) (err error) {
@@ -417,8 +418,8 @@ func (s *Service) retryRefused(ctx context.Context, op string, id MessageID) err
 }
 
 // Cancel deletes a Queued or Failed row. Needs notify.outbox.manage and records
-// notify.message.canceled. Fails as Retry (errs.Conflict, field status, for a Sending or
-// Sent row).
+// notify.message.canceled. Fails as Retry (errs.Conflict, field status, for a Sending, Sent
+// or Skipped row).
 func (s *Service) Cancel(ctx context.Context, id MessageID) (err error) {
 	const op = "notify.Service.Cancel"
 	ctx, span := s.start(ctx, "cancel")

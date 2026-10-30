@@ -995,3 +995,41 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
   V3"): approved, with the recommended answer to Q-VOL12.** `shift`, `position` and
   `qualification` become regional words declared by the volunteers module, and `lead` is a core
   word. Answers Q-VOL12 ([06-open-questions.md](06-open-questions.md)).
+
+## D58. Owner approved three amendments from the D57 review and accepted every recommendation put to them
+
+- **Status:** Accepted (2026-10-30), decided by the owner. The owner accepted every
+  recommendation the main session put to them.
+- **Amendments approved:**
+  - [design/people.md](design/people.md), "Amendment P-W1": the first-sign-in prompt, once per
+    session, recorded by the server.
+  - [design/jobs.md](design/jobs.md), "Amendment J-W1": the Background work screen for people.
+  - [design/module-volunteers.md](design/module-volunteers.md), "Amendment V4": shift
+    navigation and a compact shift list.
+- **Answers:**
+  - **Q-PEOPLE-9:** a password change or "sign out everywhere else" starts a new session, so a
+    still-nameless person is prompted once more.
+  - **Q-PEOPLE-10:** the prompt never stops for someone who keeps declining. Once per session
+    stays the rule.
+  - **Q-JOBS15:** job keys are hidden entirely for now. A link from a waiting job to its record
+    is a possible later addition.
+  - **Q-JOBS16:** "server" is the word for an instance on the Background work screen.
+  - **Q-VOL13:** the volunteers admin heading reads "All {departments}", with the note "You can
+    manage or view every {department}.", for site-wide holders, and "{Departments} you can
+    manage or view" for department holders. The empty state reads "No {department} you can
+    manage or view yet."
+  - **Q-DEMO6:** the password screen knows an account is a protected demo account because the
+    session answer carries `Protected` (bool), set from identity's Guard. The e-mail address is
+    not added to the session.
+  - **Skipped mail (notify):** a skipped row (`no_address`) records its end instant in the
+    existing `failed_at` column, so there is no new column, and purge covers it. A skipped row
+    offers no Retry or Cancel.
+  - **Q-SET:** the terms document (`GET /api/settings/terms`) promises no order. The
+    Terminology screen orders terms: core first, then modules alphabetically by title, then
+    terms by key.
+  - **Q-SET2:** a module term key may not end in `_plural` or `_title`; such a key is refused
+    with code `reserved`. Otherwise `term_<key>_<form>` arguments could collide with another
+    term's forms.
+  - **E-mail article wording:** the volunteers e-mail templates are reworded to avoid "a
+    {{term …}}" before a regional word, e.g. "The {lead} of your {department}…". Article forms
+    are not added to terms.

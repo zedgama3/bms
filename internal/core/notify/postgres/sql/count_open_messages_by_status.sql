@@ -1,4 +1,4 @@
--- Store.CountOpenByStatus: the counts of rows that are not sent (queued, sending, failed), for
+-- Store.CountOpenByStatus: the counts of rows that are not sent (queued, sending, failed, skipped), for
 -- the bms.notify.outbox{status} gauge after each tick and for the "waiting" log line. Read-only;
 -- use Query. Unlike count_messages_by_status.sql it does not read the sent rows, which pile up
 -- without bound while notify.retention is 0, so it costs the same however old the installation

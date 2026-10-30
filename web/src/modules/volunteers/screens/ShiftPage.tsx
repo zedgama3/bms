@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useParams } from "react-router";
+import { Link, useLocation, useParams } from "react-router";
 import { ApiError, useReadOnly, useSession, searchPeople } from "@/api";
 import { isMessageKey, useT } from "@/i18n";
 import {
@@ -17,6 +17,7 @@ import {
   PersonSearch,
 } from "@/ui";
 import type { Column } from "@/ui";
+import { backFrom, carry } from "../back";
 import { vol } from "../calls";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { holdsAt } from "../helpers";
@@ -40,6 +41,8 @@ export function ShiftPage() {
   const session = useSession();
   const { readOnly } = useReadOnly();
   const { shift: id = "" } = useParams();
+  const location = useLocation();
+  const back = backFrom(location.state);
   const [dialog, setDialog] = useState<"mine" | "shift" | "entry" | null>(null);
   const [entry, setEntry] = useState<RosterEntry | null>(null);
 
@@ -125,8 +128,14 @@ export function ShiftPage() {
   return (
     <div className="flex flex-col gap-5" aria-busy={q.isPending || undefined}>
       <div>
-        <Link to="/volunteers" className="inline-flex min-h-11 items-center underline">
-          {t("module.volunteers.shift.back")}
+        <Link to={back.to} className="inline-flex min-h-11 items-center underline">
+          {back.kind === "me"
+            ? t("module.volunteers.shift.back_me")
+            : back.kind === "department"
+              ? s?.department_name
+                ? t("module.volunteers.shift.back_department", { name: s.department_name })
+                : t("module.volunteers.shift.back_department_generic")
+              : t("module.volunteers.shift.back")}
         </Link>
       </div>
       {!s ? <h1 className="text-2xl font-bold">{t("module.volunteers.shift.title")}</h1> : null}
@@ -154,9 +163,7 @@ export function ShiftPage() {
             <dt className="font-semibold">{t("module.volunteers.shift.position")}</dt>
             <dd>{s.position_name ?? ""}</dd>
             <dt className="font-semibold">{t("module.volunteers.shift.slots")}</dt>
-            <dd>
-              {t("module.volunteers.shift.filled", { booked: s.booked ?? 0, slots: s.slots })}
-            </dd>
+            <dd>{t("module.volunteers.fill", { booked: s.booked ?? 0, slots: s.slots })}</dd>
           </dl>
           {s.notes ? <p className="whitespace-pre-line">{s.notes}</p> : null}
 
@@ -200,6 +207,7 @@ export function ShiftPage() {
                 {!s.canceled_at ? (
                   <Link
                     to={`/volunteers/shifts/${s.id}/edit`}
+                    state={carry(location)}
                     className={linkButtonClass("secondary")}
                   >
                     {t("module.volunteers.shift.edit")}

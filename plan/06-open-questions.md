@@ -171,3 +171,31 @@ Answered 2026-10-30: the volunteers question Q-VOL12, raised by Amendment V3
       "lead" live? Owner accepted the recommendation: `shift`, `position` and `qualification` are
       regional terms declared by volunteers; `lead` is a core term; `volunteer`, `waiver`,
       `roster` and `catalogue` are not added. → D57 (design/module-volunteers.md, Amendment V3)
+
+Answered 2026-10-30 (D58): the questions raised by the D57 amendments P-W1, J-W1 and V4, and
+two terms questions. None of them was listed here before; they are recorded now. The owner
+accepted every recommendation.
+
+- [x] **Q-PEOPLE-9:** After a password change or "sign out everywhere else", is a still-nameless
+      person prompted again? Yes: a new session starts and the person is prompted once more.
+      → D58 (design/people.md, Amendment P-W1)
+- [x] **Q-PEOPLE-10:** Does the first-sign-in prompt stop for someone who keeps declining? No.
+      Once per session stays the rule. → D58 (design/people.md, Amendment P-W1)
+- [x] **Q-JOBS15:** Are job keys hidden entirely, or is a link from a waiting row to its record
+      shown? Hidden entirely for now; a link is a possible later addition. → D58
+      (design/jobs.md, Amendment J-W1)
+- [x] **Q-JOBS16:** Which word names an instance on the Background work screen? "server".
+      → D58 (design/jobs.md, Amendment J-W1)
+- [x] **Q-VOL13:** How does the volunteers admin page head its department list for someone whose
+      permission is not "lead"? Site-wide holders see "All {departments}" with the note "You can
+      manage or view every {department}."; department holders see "{Departments} you can manage
+      or view"; the empty state reads "No {department} you can manage or view yet."
+      → D58 (design/module-volunteers.md, Amendment V4)
+- [x] **Q-DEMO6:** How does the password screen know an account is a protected demo account? The
+      session answer carries `Protected` (bool), set from identity's Guard; the e-mail address is
+      not added to the session. → D58 (design/demo.md)
+- [x] **Q-SET:** What order does the terms document and the Terminology screen use? The terms
+      document promises no order; the Terminology screen lists core terms first, then modules
+      alphabetically by title, then terms by key. → D58
+- [x] **Q-SET2:** May a module term key end in `_plural` or `_title`? No; such a key is refused
+      with code `reserved`. → D58

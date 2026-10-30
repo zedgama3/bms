@@ -1,18 +1,29 @@
 import { useState } from "react";
-import { Link, useSearchParams } from "react-router";
+import { Link, useLocation, useSearchParams } from "react-router";
 import { useFormat, useT } from "@/i18n";
-import { Button, controlClass, DateField, EmptyState, Field, linkButtonClass, Loading } from "@/ui";
+import {
+  Button,
+  Check,
+  controlClass,
+  DateField,
+  EmptyState,
+  Field,
+  linkButtonClass,
+  Loading,
+} from "@/ui";
+import { backTo } from "../back";
 import { vol } from "../calls";
 import { ShowMore, usePaged } from "../paging";
 import { nameIn, useDepartments, useEvents, useQualifications } from "../queries";
 import { ScreenError } from "../ScreenError";
-import { ShiftWhen } from "../ShiftWhen";
+import { ShiftTimes } from "../ShiftTimes";
 import { SignUpControl } from "../SignUpControl";
 import { browserZone, dayKey, dayWindow } from "../time";
 import type { ShiftSummary } from "../types";
 
-/** `/volunteers/`: the shifts the person may see, filtered by event, department and day, each
- *  with Sign up, Booked or the reason they cannot. Phone first: one card per shift. */
+/** `/volunteers/`: the shifts the person may see, filtered by event, department, day and
+ *  "only what I can take", each with Sign up, Booked or the short reason they cannot. Phone
+ *  first: dense rows grouped by day, three short lines on a phone and one grid row from 640 px. */
 export function Shifts() {
   const t = useT();
   const format = useFormat();
@@ -20,6 +31,8 @@ export function Shifts() {
   const event = params.get("event") ?? "";
   const department = params.get("department") ?? "";
   const day = params.get("day") ?? "";
+  const eligible = params.get("eligible") === "1";
+  const location = useLocation();
 
   const departments = useDepartments();
   const events = useEvents();
@@ -32,20 +45,21 @@ export function Shifts() {
     rows: all,
     error,
   } = usePaged<ShiftSummary>(
-    ["volunteers", "shifts", { event, department, from: range?.from, to: range?.to }],
+    ["volunteers", "shifts", { event, department, from: range?.from, to: range?.to, eligible }],
     (after, signal) =>
       vol.shifts(
         {
           ...(event ? { event } : {}),
           ...(department ? { department } : {}),
           ...(range ?? {}),
+          ...(eligible ? { eligible: true } : {}),
         },
         after,
         { signal },
       ),
   );
   // Phones start with the filters folded away so the first shift is on screen.
-  const [open, setOpen] = useState(event !== "" || department !== "" || day !== "");
+  const [open, setOpen] = useState(event !== "" || department !== "" || day !== "" || eligible);
   const quals = useQualifications();
 
   const visible = day ? all.filter((s) => dayKey(s.starts, s.zone) === day) : all;
@@ -54,7 +68,7 @@ export function Shifts() {
     const k = dayKey(s.starts, s.zone);
     byDay.set(k, [...(byDay.get(k) ?? []), s]);
   }
-  const filtered = event !== "" || department !== "" || day !== "";
+  const filtered = event !== "" || department !== "" || day !== "" || eligible;
   const set = (name: string, value: string) =>
     setParams(
       (p) => {
@@ -126,6 +140,14 @@ export function Shifts() {
           value={day}
           onChange={(e) => set("day", e.target.value)}
         />
+        <div className="sm:col-span-3">
+          <Check
+            name="eligible"
+            checked={eligible}
+            onChange={(e) => set("eligible", e.target.checked ? "1" : "")}
+            label={t("module.volunteers.filter.eligible")}
+          />
+        </div>
         {filtered ? (
           <div className="sm:col-span-3">
             <Button variant="secondary" onClick={() => setParams({}, { replace: true })}>
@@ -158,37 +180,44 @@ export function Shifts() {
           <h2 id={`day-${k}`} className="text-xl font-bold">
             {format.date(list[0]?.starts ?? "", list[0]?.zone)}
           </h2>
-          <ul className="flex flex-col gap-3">
+          <ul className="flex flex-col divide-y divide-border border-y border-border">
             {list.map((s) => {
-              const free = Math.max(0, s.slots - (s.booked ?? 0));
               const deptName = s.department_name || nameIn(departments.data, s.department);
-              const pos = s.position_name ?? "";
+              const details = [deptName, s.position_name ?? "", s.location ?? ""]
+                .filter(Boolean)
+                .join(" · ");
               return (
                 <li
                   key={s.id}
-                  className="flex flex-col gap-2 rounded-md border border-border bg-surface p-3"
+                  className="flex flex-col gap-1 py-2 md:grid md:grid-cols-[11rem_minmax(0,1fr)_minmax(0,1.2fr)_8rem_11rem] md:items-center md:gap-x-3"
                 >
-                  <h3 className="text-lg font-bold">
-                    <Link
-                      to={`/volunteers/shifts/${s.id}`}
-                      className="inline-flex min-h-11 items-center underline"
-                    >
-                      {s.label}
-                    </Link>
-                  </h3>
-                  <p className="text-muted">{[deptName, pos].filter(Boolean).join(" · ")}</p>
-                  <p>
-                    <ShiftWhen shift={s} />
-                  </p>
-                  {s.location ? <p>{s.location}</p> : null}
-                  <p className="font-semibold">
-                    {s.canceled_at
-                      ? t("module.volunteers.canceled")
-                      : free === 0
-                        ? t("module.volunteers.full")
-                        : t("module.volunteers.free", { free, slots: s.slots })}
-                  </p>
-                  <SignUpControl shift={s} qualifications={quals.data} />
+                  <div className="flex flex-wrap items-center gap-x-3 md:contents">
+                    <p className="font-semibold">
+                      <ShiftTimes shift={s} />
+                    </p>
+                    <h3 className="text-lg font-bold">
+                      <Link
+                        to={`/volunteers/shifts/${s.id}`}
+                        state={backTo("shifts", location)}
+                        className="inline-flex min-h-11 items-center underline"
+                      >
+                        {s.label}
+                      </Link>
+                    </h3>
+                  </div>
+                  <div className="flex flex-wrap gap-x-3 md:contents">
+                    <p className="min-w-0 text-muted">{details}</p>
+                    <p className="font-semibold">
+                      {s.canceled_at
+                        ? t("module.volunteers.canceled")
+                        : t("module.volunteers.fill", { booked: s.booked ?? 0, slots: s.slots })}
+                    </p>
+                  </div>
+                  {s.canceled_at ? null : (
+                    <div>
+                      <SignUpControl shift={s} qualifications={quals.data} short />
+                    </div>
+                  )}
                 </li>
               );
             })}

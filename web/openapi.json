@@ -443,6 +443,10 @@
             "description": "Absent until the person has a profile.",
             "type": "string"
           },
+          "protected": {
+            "description": "The session's account is shared (demo mode): its password, address and deletion cannot be changed. Absent when false, when signed out and outside demo mode.",
+            "type": "boolean"
+          },
           "signed_in": {
             "type": "boolean"
           },
@@ -1537,28 +1541,58 @@
             "description": "Rows by status.",
             "type": "object"
           },
-          "read_only": {
-            "description": "True when this copy runs no jobs.",
-            "type": "boolean"
-          },
-          "recent": {
+          "failed": {
+            "description": "Status failed, newest finished first, at most 50.",
             "items": {
               "$ref": "#/components/schemas/JobsRecord"
             },
             "type": "array"
+          },
+          "instance": {
+            "description": "The server that answered; a run by any other instance is marked on the screen.",
+            "type": "string"
+          },
+          "read_only": {
+            "description": "True when this copy runs no jobs.",
+            "type": "boolean"
           },
           "registered": {
             "items": {
               "$ref": "#/components/schemas/JobsRegistered"
             },
             "type": "array"
+          },
+          "retrying": {
+            "description": "Queued with a last error, soonest due first, at most 50.",
+            "items": {
+              "$ref": "#/components/schemas/JobsRecord"
+            },
+            "type": "array"
+          },
+          "running": {
+            "description": "Status running, earliest started first, at most 50.",
+            "items": {
+              "$ref": "#/components/schemas/JobsRecord"
+            },
+            "type": "array"
+          },
+          "waiting": {
+            "description": "Queued without a last error, soonest due first, at most 50.",
+            "items": {
+              "$ref": "#/components/schemas/JobsRecord"
+            },
+            "type": "array"
           }
         },
         "required": [
           "read_only",
+          "instance",
           "registered",
           "counts",
-          "recent"
+          "failed",
+          "running",
+          "retrying",
+          "waiting"
         ],
         "type": "object"
       },
@@ -1671,7 +1705,7 @@
             "type": "string"
           },
           "last_error": {
-            "description": "A short token such as connect, auth, timeout, smtp_4xx, rejected, no_address or expired.",
+            "description": "A short token such as connect, auth, timeout, smtp_4xx, rejected, no_address or expired. A skipped message carries no_address.",
             "type": "string"
           },
           "leased_until": {
@@ -1699,7 +1733,8 @@
               "queued",
               "sending",
               "sent",
-              "failed"
+              "failed",
+              "skipped"
             ],
             "type": "string"
           },
@@ -2217,6 +2252,10 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "first_prompt": {
+            "description": "Only on GET /me, and only when true: this call recorded the first-sign-in prompt for this session (the person has no playa name and was not yet prompted since signing in). The frame sends them to /people/me?first=1. Absent on every later read of the session, on a read-only copy, for the superuser and on every other route.",
+            "type": "boolean"
           },
           "person": {
             "$ref": "#/components/schemas/PeoplePerson"
@@ -6059,7 +6098,7 @@
             "description": "An error. The body is a Problem."
           }
         },
-        "summary": "The registered job names with each one's last run and next due time, the queue counts by status, and the most recent failed and waiting rows (at most 50). Works on a read-only copy. Needs jobs.read.",
+        "summary": "The registered job names with each one's last run and next due time, the queue counts by status, and four lists of rows (failed, running, waiting to retry, waiting), each at most 50 in its own order. Works on a read-only copy. Needs jobs.read.",
         "tags": [
           "jobs"
         ]
@@ -6234,7 +6273,7 @@
             "description": "An error. The body is a Problem."
           }
         },
-        "summary": "Counts by status, whether e-mail is configured, and the newest queued, sending and failed rows. Never an address, subject or body. Needs notify.outbox.manage.",
+        "summary": "Counts by status, whether e-mail is configured, and the newest queued, sending, failed and skipped rows. Never an address, subject or body. Needs notify.outbox.manage.",
         "tags": [
           "notify"
         ]
@@ -6293,7 +6332,7 @@
             "description": "An error. The body is a Problem."
           }
         },
-        "summary": "Delete a queued or failed message. 409 when it is being sent or was sent. Needs notify.outbox.manage.",
+        "summary": "Delete a queued or failed message. 409 when it is being sent, was sent or was skipped. Needs notify.outbox.manage.",
         "tags": [
           "notify"
         ]
@@ -6328,7 +6367,7 @@
             "description": "An error. The body is a Problem."
           }
         },
-        "summary": "Requeue a failed message that still holds its text. 409 when the message is not failed (code conflict) or its text has expired (code expired). Needs notify.outbox.manage.",
+        "summary": "Requeue a failed message that still holds its text. 409 when the message is not failed, a skipped one included (code conflict) or its text has expired (code expired). Needs notify.outbox.manage.",
         "tags": [
           "notify"
         ]
@@ -6710,7 +6749,7 @@
             "description": "An error. The body is a Problem."
           }
         },
-        "summary": "Your own profile, every field group, contacts, consents and the modules' sections. A person with no row yet gets an empty, incomplete profile (nothing is written). Read once per session by the frame.",
+        "summary": "Your own profile, every field group, contacts, consents and the modules' sections. A person with no row yet gets an empty, incomplete profile (nothing is written). Read by the frame at boot. On a writable copy, when you have no playa name and have not been prompted since you signed in, this call records the prompt and answers first_prompt true once; a later read of the same session, a named person, the superuser and a read-only copy answer without it.",
         "tags": [
           "people"
         ]
@@ -9364,6 +9403,15 @@
             }
           },
           {
+            "description": "true: only the shifts the caller can take now and the ones they already hold. The rest are dropped after the fetch, so a page may be short or empty with next set; keep following next.",
+            "in": "query",
+            "name": "eligible",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "description": "Rows per page, 1 to 500; default 100.",
             "in": "query",
             "name": "limit",
@@ -9406,7 +9454,7 @@
             "description": "An error. The body is a Problem."
           }
         },
-        "summary": "Shifts the caller may see, with booked, mine and eligibility, a page at a time (order starts; follow next). from or to alone is allowed. canceled=true or a past window needs shifts.manage/rosters.read. 400 malformed after.",
+        "summary": "Shifts the caller may see, with booked, mine and eligibility, a page at a time (order starts; follow next). from or to alone is allowed. canceled=true or a past window needs shifts.manage/rosters.read. eligible=true keeps the shifts the caller can take or holds. 400 malformed after, canceled or eligible.",
         "tags": [
           "volunteers"
         ]

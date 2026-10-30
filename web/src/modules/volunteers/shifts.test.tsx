@@ -65,7 +65,7 @@ describe("volunteers: Shifts", () => {
     const card = (await screen.findByRole("heading", { level: 3, name: "Morning dirt" })).closest(
       "li",
     )!;
-    expect(within(card).getByText("3 places free of 4")).toBeInTheDocument();
+    expect(within(card).getByText("1 of 4 booked")).toBeInTheDocument();
     expect(within(card).getByText(/Gate · Greeter/)).toBeInTheDocument();
     expect(within(card).getByRole("button", { name: /^Sign up/ })).toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: "My volunteering" }).length).toBeGreaterThan(0);
@@ -77,7 +77,7 @@ describe("volunteers: Shifts", () => {
       path: "/volunteers",
       routes: { [`GET ${V}/shifts`]: list(shift({ eligibility: { eligible: true } })) },
     });
-    expect(await screen.findByText("4 places free of 4")).toBeInTheDocument();
+    expect(await screen.findByText("0 of 4 booked")).toBeInTheDocument();
   });
 
   it("sign up posts, then shows Booked", async () => {
@@ -114,13 +114,119 @@ describe("volunteers: Shifts", () => {
         ),
       },
     });
-    expect(await screen.findByText("You need this qualification: First aid.")).toBeInTheDocument();
-    expect(screen.getByText("Only members of this department can sign up.")).toBeInTheDocument();
-    expect(screen.getByText("This shift is full.")).toBeInTheDocument();
-    expect(
-      screen.getByText("You're already booked on another shift at this time."),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("Needs First aid")).toBeInTheDocument();
+    expect(screen.getByText("Members only")).toBeInTheDocument();
+    expect(screen.getByText("Full")).toBeInTheDocument();
+    expect(screen.getByText("Overlaps a booking of yours")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Sign up/ })).not.toBeInTheDocument();
+    // the shift page keeps the sentence
+    expect(screen.queryByText("This shift is full.")).not.toBeInTheDocument();
+  });
+
+  it("rows show times under the day heading, say next day for a night shift, and one booked phrasing", async () => {
+    mount({
+      path: "/volunteers",
+      routes: {
+        [`GET ${V}/shifts`]: list(
+          shift({
+            id: "a",
+            label: "Late one",
+            starts: "2099-07-01T15:00:00Z",
+            ends: "2099-07-01T19:00:00Z",
+            location: "",
+          }),
+          shift({
+            id: "b",
+            label: "Night one",
+            starts: "2099-07-02T03:00:00Z",
+            ends: "2099-07-02T09:00:00Z",
+            booked: 4,
+          }),
+        ),
+      },
+    });
+    const late = (await screen.findByRole("heading", { level: 3, name: "Late one" })).closest(
+      "li",
+    )!;
+    expect(within(late).getByText(/^9:00 AM.* to 1:00 PM/)).toBeInTheDocument();
+    expect(within(late).queryByText(/2099/)).not.toBeInTheDocument();
+    expect(within(late).getByText("Gate · Greeter")).toBeInTheDocument();
+    const night = screen.getByRole("heading", { level: 3, name: "Night one" }).closest("li")!;
+    expect(within(night).getByText(/to .* next day$/)).toBeInTheDocument();
+    expect(within(night).getByText("4 of 4 booked")).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { level: 2 }).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("the shift page keeps the full sentence beside the list's short reason", async () => {
+    const full = shift({ booked: 4, eligibility: { reason: "full" } });
+    const { unmount } = mount({ path: "/volunteers", routes: { [`GET ${V}/shifts`]: list(full) } });
+    expect(await screen.findByText("Full")).toBeInTheDocument();
+    expect(screen.queryByText("This shift is full.")).not.toBeInTheDocument();
+    unmount();
+    mount({
+      path: `/volunteers/shifts/${SHIFT}`,
+      routes: { [`GET ${V}/shifts/${SHIFT}`]: () => json(full) },
+    });
+    expect(await screen.findByText("This shift is full.")).toBeInTheDocument();
+  });
+
+  it("opening a shift from a filtered list returns to the same filters", async () => {
+    const { router } = mount({
+      path: "/volunteers?eligible=1",
+      routes: {
+        [`GET ${V}/shifts`]: list(shift({ eligibility: { eligible: true } })),
+        [`GET ${V}/shifts/${SHIFT}`]: () => json(shift({ eligibility: { eligible: true } })),
+      },
+    });
+    await userEvent.click(await screen.findByRole("link", { name: "Morning dirt" }));
+    const back = await screen.findByRole("link", { name: "Back to shifts" });
+    expect(back).toHaveAttribute("href", "/volunteers?eligible=1");
+    expect(router()!.state.location.pathname).toBe(`/volunteers/shifts/${SHIFT}`);
+  });
+
+  it("Only shifts I can take sends eligible=true, keeps it in the URL and clears with the filters", async () => {
+    const { fetchMock, router } = mount({
+      path: "/volunteers",
+      routes: { [`GET ${V}/shifts`]: list(shift({ eligibility: { eligible: true } })) },
+    });
+    await screen.findByRole("heading", { level: 3, name: "Morning dirt" });
+    expect(queryOf(fetchMock, "GET", `${V}/shifts`)?.get("eligible")).toBeNull();
+    await userEvent.click(screen.getByLabelText("Only shifts I can take"));
+    await waitFor(() =>
+      expect(queryOf(fetchMock, "GET", `${V}/shifts`)?.get("eligible")).toBe("true"),
+    );
+    expect(router()!.state.location.search).toBe("?eligible=1");
+    await userEvent.click(screen.getAllByRole("button", { name: "Clear filters" })[0]!);
+    await waitFor(() => expect(router()!.state.location.search).toBe(""));
+    expect(screen.getByLabelText("Only shifts I can take")).not.toBeChecked();
+  });
+
+  it("the filter form starts open when eligible is set", async () => {
+    mount({ path: "/volunteers?eligible=1", routes: { [`GET ${V}/shifts`]: list() } });
+    expect(await screen.findByLabelText("Only shifts I can take")).toBeChecked();
+    expect(screen.getByRole("button", { name: "Filters" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+  });
+
+  it("an empty page with next shows Show more, not the empty state", async () => {
+    let calls = 0;
+    mount({
+      path: "/volunteers?eligible=1",
+      routes: {
+        [`GET ${V}/shifts`]: () => {
+          calls++;
+          return calls === 1 ? json({ items: [], next: "c1" }) : json({ items: [shift()] });
+        },
+      },
+    });
+    const more = await screen.findByRole("button", { name: "Show more" });
+    expect(screen.queryByText("No shifts to show yet.")).not.toBeInTheDocument();
+    await userEvent.click(more);
+    expect(
+      await screen.findByRole("heading", { level: 3, name: "Morning dirt" }),
+    ).toBeInTheDocument();
   });
 
   it("filters by event and department through the query, and by day in the browser", async () => {

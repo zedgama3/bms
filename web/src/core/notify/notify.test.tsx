@@ -88,7 +88,7 @@ const record = (over: Record<string, unknown> = {}) => ({
 
 const outbox = (over: Record<string, unknown> = {}) => ({
   configured: true,
-  counts: { queued: 2, sending: 0, sent: 40, failed: 1 },
+  counts: { queued: 2, sending: 0, sent: 40, failed: 1, skipped: 0 },
   recent: [record()],
   ...over,
 });
@@ -468,6 +468,31 @@ describe("/notify/outbox", () => {
     expect(screen.getByText("Couldn't reach the mail server")).toBeInTheDocument();
     expect(container.textContent).not.toMatch(/@/);
     await expectNoAxeViolations(container);
+  });
+
+  it("a skipped row says Skipped and why, in a calm style, with no Retry or Cancel", async () => {
+    const { container } = open({
+      [`GET ${O}`]: () =>
+        json(
+          outbox({
+            counts: { queued: 0, sending: 0, sent: 0, failed: 0, skipped: 3 },
+            recent: [record({ id: MSG2, status: "skipped", last_error: "no_address" })],
+          }),
+        ),
+    });
+    await screen.findByText(MSG2);
+    const row = screen.getByText(MSG2).closest("tr")!;
+    expect(within(row).getByText("Skipped")).toBeInTheDocument();
+    expect(within(row).getByText("No e-mail address")).toBeInTheDocument();
+    expect(within(row).queryByRole("button")).toBeNull();
+    expect(screen.getByText("Skipped", { selector: "dt" }).closest("div")).toHaveTextContent("3");
+    await expectNoAxeViolations(container);
+  });
+
+  it("in demo mode the status line says mail is captured, not that e-mail is set up", async () => {
+    open({ "GET /api/demo/": () => json({ enabled: true, password: "x", accounts: [] }) }, {});
+    expect(await screen.findByText("Mail is captured for the demo, not sent.")).toBeInTheDocument();
+    expect(screen.queryByText("E-mail is set up.")).toBeNull();
   });
 
   it("shows the recipient's playa name, or a fixed phrase when there is no person", async () => {

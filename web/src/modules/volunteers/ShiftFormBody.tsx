@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 import { ApiError, useReadOnly } from "@/api";
 import { useT } from "@/i18n";
 import {
@@ -17,6 +17,8 @@ import { vol } from "./calls";
 import { omitEmpty, text } from "./helpers";
 import { useEvents, usePositions } from "./queries";
 import { ReadOnlyNote } from "./ReadOnlyNote";
+import { carry } from "./back";
+import type { BackState } from "./back";
 import { ScreenError, useConflictMessage } from "./ScreenError";
 import { browserZone, fromLocalInput, toLocalInput, zoneNames } from "./time";
 import type { ShiftInput, ShiftSummary } from "./types";
@@ -29,6 +31,7 @@ export function ShiftFormBody({ department, shift }: { department: string; shift
   const toast = useToast();
   const client = useQueryClient();
   const navigate = useNavigate();
+  const location = useLocation();
   const { readOnly } = useReadOnly();
   const formRef = useRef<HTMLFormElement>(null);
   const act = useAction();
@@ -66,7 +69,14 @@ export function ShiftFormBody({ department, shift }: { department: string; shift
         : await vol.createShift(department, body);
       await client.invalidateQueries({ queryKey: ["volunteers"] });
       toast.show(t(shift ? "module.volunteers.form.saved" : "module.volunteers.form.created"));
-      void navigate(`/volunteers/shifts/${saved.id}`, { replace: true });
+      void navigate(`/volunteers/shifts/${saved.id}`, {
+        replace: true,
+        state: shift
+          ? carry(location)
+          : ({
+              back: { to: `/volunteers/departments/${department}?tab=shifts`, kind: "department" },
+            } satisfies BackState),
+      });
     });
   };
 
@@ -240,6 +250,7 @@ export function ShiftFormBody({ department, shift }: { department: string; shift
         </Button>
         <Link
           to={shift ? `/volunteers/shifts/${shift.id}` : `/volunteers/departments/${department}`}
+          {...(shift ? { state: carry(location) } : {})}
           className="inline-flex min-h-11 items-center underline"
         >
           {t("module.volunteers.cancel")}

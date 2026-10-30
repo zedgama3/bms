@@ -3,6 +3,6 @@ Vars: qualification, expires_on
 
 {{if .Recipient.PlayaName}}Hi {{.Recipient.PlayaName}},{{else}}Hi,{{end}}
 
-a {{term "lead"}} verified your {{.Vars.qualification}}. It now counts for the {{term "shift_plural"}} that need it.{{if .Vars.expires_on}} It is valid until {{.Vars.expires_on}}.{{end}}
+the {{term "lead"}} of your {{term "department"}} verified your {{.Vars.qualification}}. It now counts for the {{term "shift_plural"}} that need it.{{if .Vars.expires_on}} It is valid until {{.Vars.expires_on}}.{{end}}
 
 {{.Link}}

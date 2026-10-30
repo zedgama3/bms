@@ -237,12 +237,14 @@ const maxTermKeyBytes = 32
 // _plural_title]} and notify's {{term "<key>"}}. A language without an entry in Defaults
 // uses the "en" entry.
 type TermDecl struct {
-	Key      string           // [a-z][a-z0-9]*(_[a-z0-9]+)*, at most 32 bytes; not in CoreTerms
+	Key      string           // [a-z][a-z0-9]*(_[a-z0-9]+)*, at most 32 bytes; not in CoreTerms; not ending in _plural or _title (D58)
 	Defaults map[string]Forms // per language in Languages; "en" required, every form set
 }
 
 // Validate fails errs.Invalid joining one validate.FieldError per problem: key "format"
-// (not an ident, or over 32 bytes) or "reserved" (a CoreTerms name); defaults.<lang>
+// (not an ident, or over 32 bytes) or "reserved" (a CoreTerms name, or a key ending in
+// "_plural" or "_title", which would collide with the argument name of another term's form:
+// term_x_plural is a form of x, so x_plural cannot be a term, D58); defaults.<lang>
 // "unknown" for a language not in Languages; defaults.en "required" when "en" is missing;
 // defaults.<lang>.<form> "required", "too_long {max}", "control_chars" or "malformed" for
 // a form that is empty after trimming, over MaxTermBytes, with a control character or not
@@ -254,6 +256,8 @@ func (d TermDecl) Validate() error {
 		acc.Addf("key", codeFormat, "must be lower-case letters and digits in snake_case, starting with a letter, at most %d bytes", maxTermKeyBytes)
 	case slices.Contains(CoreTerms, d.Key):
 		acc.Addf("key", codeReserved, "is a core term; a word two parts need is declared once, in CoreTerms")
+	case strings.HasSuffix(d.Key, "_plural") || strings.HasSuffix(d.Key, "_title"):
+		acc.Addf("key", codeReserved, "must not end in _plural or _title, which name the forms of another term")
 	}
 	if _, ok := d.Defaults[fallbackLanguage]; !ok {
 		acc.Addf("defaults."+fallbackLanguage, codeRequired, "the %s defaults are required", fallbackLanguage)

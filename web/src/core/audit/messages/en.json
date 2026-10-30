@@ -52,5 +52,6 @@
   "core.audit.setting.retention.zero": "Kept forever",
   "module.audit.title": "Audit log",
   "module.audit.permission.search.title": "Search the audit log",
-  "module.audit.permission.export.title": "Export the record of who viewed a person's data"
+  "module.audit.permission.export.title": "Export the record of who viewed a person's data",
+  "module.audit.job.purge.title": "Delete audit entries past their retention"
 }

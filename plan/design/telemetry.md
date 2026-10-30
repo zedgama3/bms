@@ -1131,7 +1131,7 @@ One record at `warn`, message `client error`, attributes: `origin=client`,
 | `bms.events.setup` | counter, `{setup}` | `module` (the module name), `outcome` (a token: `ok` or the failure's kind) | `events` |
 | `bms.people.sections` | counter, `{section}` | `module` (the module name), `outcome` (a token: `ok` or the failure's kind) | `people` |
 | `bms.notify.enqueued` | counter, `{message}` | `owner` (the owner's name, a token) | `notify` (after commit) |
-| `bms.notify.delivered` | counter, `{message}` | `outcome` = `ok`, `retry`, `failed`, `rejected`, `no_address`, `no_smtp`, `read_only` | `notify` |
+| `bms.notify.delivered` | counter, `{message}` | `outcome` = `ok`, `retry`, `failed`, `rejected`, `skipped`, `no_smtp`, `read_only` (D58: `skipped` is a message with no address, reason `no_address` on the span; notify.md) | `notify` |
 | `bms.notify.outbox` | gauge, `{message}` | `status` = `queued`, `sending`, `sent`, `failed` | `notify` (after each tick) |
 | `bms.notify.purged` | counter, `{message}` | — | `notify` |
 | `bms.signals.published`, `bms.signals.delivered` | counter | `signal`/`job` (token), `module`, `outcome` (`delivered`: `ok`, `failed`, `deferred`, `read_only`, `panicked`; `published` has none) | `signals` (signals.md "Telemetry") |

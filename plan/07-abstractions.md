@@ -168,7 +168,7 @@ Rules (enforced by depguard and `make imports`):
   lookup and search, the person page with `people.person-page`, export and deletion across
   identity, authz and every module (`PersonData`) with deletion requests, the `export` and
   `delete` commands, the `people` routes and screens, signals
-  `people.person-created|deleted|deletion-requested`, `Directory.LegalNamesOf` (audited, `people.contacts.read`), and the contracts `contracts/personpage` and `contracts/membership` (D44), the installation-wide uniqueness and permanence of playa names (`NameKey`, `playa_name_key`).
+  `people.person-created|deleted|deletion-requested`, `Directory.LegalNamesOf` (audited, `people.contacts.read`), and the contracts `contracts/personpage` and `contracts/membership` (D44), the installation-wide uniqueness and permanence of playa names (`NameKey`, `playa_name_key`), the once-per-session first-sign-in prompt mark (`name_prompted_at`, D57).
 - **Doesn't do:** module-specific data about a person; the login address (`identity`); who may
   see a profile (`authz`); the person's own view of who read their data (`audit`, Later);
   department membership (a module contributes it through `people.membership`; `volunteers` first); retiring or approving names (Later).

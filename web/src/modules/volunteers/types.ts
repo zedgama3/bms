@@ -49,6 +49,8 @@ export interface ShiftQuery {
   /** Starts before this instant. */
   to?: string;
   canceled?: boolean;
+  /** Only the shifts the person can take or already holds (V4.3). */
+  eligible?: boolean;
 }
 
 /** The rows one page of a long list asks for; **Show more** appends the next (V1.2). */

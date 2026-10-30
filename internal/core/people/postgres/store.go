@@ -71,6 +71,7 @@ var (
 	sqlDeclineRequest    = mustSQL("decline_request.sql")
 	sqlDeleteRequests    = mustSQL("delete_requests_by_person.sql")
 	sqlExportPerson      = mustSQL("export_person.sql")
+	sqlMarkNamePrompted  = mustSQL("mark_name_prompted.sql")
 	sqlExportContacts    = mustSQL("export_contacts_by_person.sql")
 	sqlExportConsents    = mustSQL("export_consents_by_person.sql")
 	sqlExportRequests    = mustSQL("export_requests_by_person.sql")
@@ -234,6 +235,30 @@ func scanPerson(sc scanner) (rows.Person, error) {
 	return p, nil
 }
 
+// scanPersonExport reads P and the trailing name_prompted_at of export_person.sql (NULL is
+// the zero time).
+func scanPersonExport(sc scanner) (rows.Person, error) {
+	var (
+		p        rows.Person
+		id       [16]byte
+		email    *string
+		prompted *time.Time
+	)
+	if err := sc.Scan(&id, &p.PlayaName, &p.Pronouns, &p.Language, &p.LegalName, &p.Phone, &email,
+		&p.CreatedAt, &p.UpdatedAt, &prompted); err != nil {
+		return rows.Person{}, err //nolint:wrapcheck // queryAll wraps with db.Wrap
+	}
+	p.ID = model.PersonID(id)
+	if email != nil {
+		p.ContactEmail = *email
+	}
+	p.CreatedAt, p.UpdatedAt = p.CreatedAt.UTC(), p.UpdatedAt.UTC()
+	if prompted != nil {
+		p.NamePromptedAt = prompted.UTC()
+	}
+	return p, nil
+}
+
 // scanPersonKeyed reads P and the trailing playa_name_key of get_person_for_update.sql.
 func scanPersonKeyed(sc scanner) (rows.Person, error) {
 	var (
@@ -351,7 +376,32 @@ func (s *Store) GetForUpdate(ctx context.Context, id model.PersonID) (rows.Perso
 // ExportPerson returns the profile row for the export document. Fails errs.NotFound when
 // there is none.
 func (s *Store) ExportPerson(ctx context.Context, id model.PersonID) (rows.Person, error) {
-	return s.person(ctx, "people.postgres.ExportPerson", sqlExportPerson, [16]byte(id))
+	const op = "people.postgres.ExportPerson"
+	p, ok, err := queryOne(ctx, s.db, op, sqlExportPerson, scanPersonExport, [16]byte(id))
+	if err != nil {
+		return rows.Person{}, err
+	}
+	if !ok {
+		return rows.Person{}, notFound(op, "person")
+	}
+	return p, nil
+}
+
+// MarkNamePrompted records that person was asked for a playa name in the session issued at
+// issued, when that is due: the person has no playa name and name_prompted_at is NULL or
+// before issued (decisions 34, 35). It writes GREATEST(now, issued) and leaves updated_at
+// alone. It returns true when the row was updated; false means not due (named, or already
+// prompted this session) or no such row. The one statement decides under the row lock, so
+// concurrent calls of one session get one true. It must run in the Write transaction ctx
+// carries; on a read-only copy it fails errs.Unavailable wrapping db.ErrReadOnly, and with
+// db's kinds otherwise.
+func (s *Store) MarkNamePrompted(ctx context.Context, person model.PersonID, issued, now time.Time) (bool, error) {
+	const op = "people.postgres.MarkNamePrompted"
+	_, ok, err := queryOne(ctx, s.db, op, sqlMarkNamePrompted, idRow, [16]byte(person), issued.UTC(), now.UTC())
+	if err != nil {
+		return false, err
+	}
+	return ok, nil
 }
 
 func (s *Store) person(ctx context.Context, op, query string, args ...any) (rows.Person, error) {

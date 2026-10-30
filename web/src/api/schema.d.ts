@@ -722,7 +722,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The registered job names with each one's last run and next due time, the queue counts by status, and the most recent failed and waiting rows (at most 50). Works on a read-only copy. Needs jobs.read. */
+        /** The registered job names with each one's last run and next due time, the queue counts by status, and four lists of rows (failed, running, waiting to retry, waiting), each at most 50 in its own order. Works on a read-only copy. Needs jobs.read. */
         get: operations["jobsStatus"];
         put?: never;
         post?: never;
@@ -807,7 +807,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Counts by status, whether e-mail is configured, and the newest queued, sending and failed rows. Never an address, subject or body. Needs notify.outbox.manage. */
+        /** Counts by status, whether e-mail is configured, and the newest queued, sending, failed and skipped rows. Never an address, subject or body. Needs notify.outbox.manage. */
         get: operations["notifyOutbox"];
         put?: never;
         post?: never;
@@ -843,7 +843,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Delete a queued or failed message. 409 when it is being sent or was sent. Needs notify.outbox.manage. */
+        /** Delete a queued or failed message. 409 when it is being sent, was sent or was skipped. Needs notify.outbox.manage. */
         post: operations["notifyCancelMessage"];
         delete?: never;
         options?: never;
@@ -860,7 +860,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Requeue a failed message that still holds its text. 409 when the message is not failed (code conflict) or its text has expired (code expired). Needs notify.outbox.manage. */
+        /** Requeue a failed message that still holds its text. 409 when the message is not failed, a skipped one included (code conflict) or its text has expired (code expired). Needs notify.outbox.manage. */
         post: operations["notifyRetryMessage"];
         delete?: never;
         options?: never;
@@ -979,7 +979,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Your own profile, every field group, contacts, consents and the modules' sections. A person with no row yet gets an empty, incomplete profile (nothing is written). Read once per session by the frame. */
+        /** Your own profile, every field group, contacts, consents and the modules' sections. A person with no row yet gets an empty, incomplete profile (nothing is written). Read by the frame at boot. On a writable copy, when you have no playa name and have not been prompted since you signed in, this call records the prompt and answers first_prompt true once; a later read of the same session, a named person, the superuser and a read-only copy answer without it. */
         get: operations["peopleMe"];
         /** Change your own profile; absent or null fields are unchanged and an empty string clears one. 400 playa_name required, legal_name or phone required when the regional requires them, hidden for a field the regional turned off, has_account for contact_email, malformed, too_long, control_chars; 400 playa_name permanent when a name is already set and the new one has another key (the same name, or a respelling with the same key, is accepted); 409 (field playa_name, code taken) when another person already uses the name. */
         put: operations["peopleUpdateMe"];
@@ -1791,7 +1791,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Shifts the caller may see, with booked, mine and eligibility, a page at a time (order starts; follow next). from or to alone is allowed. canceled=true or a past window needs shifts.manage/rosters.read. 400 malformed after. */
+        /** Shifts the caller may see, with booked, mine and eligibility, a page at a time (order starts; follow next). from or to alone is allowed. canceled=true or a past window needs shifts.manage/rosters.read. eligible=true keeps the shifts the caller can take or holds. 400 malformed after, canceled or eligible. */
         get: operations["volunteersListShifts"];
         put?: never;
         post?: never;
@@ -2059,6 +2059,8 @@ export interface components {
             person_id?: components["schemas"]["ID"];
             /** @description Absent until the person has a profile. */
             playa_name?: string;
+            /** @description The session's account is shared (demo mode): its password, address and deletion cannot be changed. Absent when false, when signed out and outside demo mode. */
+            protected?: boolean;
             signed_in: boolean;
             /** @description Whether anyone may create an account; true also when signed out. */
             signup_open: boolean;
@@ -2403,10 +2405,19 @@ export interface components {
             counts: {
                 [key: string]: number;
             };
+            /** @description Status failed, newest finished first, at most 50. */
+            failed: components["schemas"]["JobsRecord"][];
+            /** @description The server that answered; a run by any other instance is marked on the screen. */
+            instance: string;
             /** @description True when this copy runs no jobs. */
             read_only: boolean;
-            recent: components["schemas"]["JobsRecord"][];
             registered: components["schemas"]["JobsRegistered"][];
+            /** @description Queued with a last error, soonest due first, at most 50. */
+            retrying: components["schemas"]["JobsRecord"][];
+            /** @description Status running, earliest started first, at most 50. */
+            running: components["schemas"]["JobsRecord"][];
+            /** @description Queued without a last error, soonest due first, at most 50. */
+            waiting: components["schemas"]["JobsRecord"][];
         };
         ModulesResponse: {
             modules: {
@@ -2446,7 +2457,7 @@ export interface components {
             /** Format: uuid */
             id: string;
             language: string;
-            /** @description A short token such as connect, auth, timeout, smtp_4xx, rejected, no_address or expired. */
+            /** @description A short token such as connect, auth, timeout, smtp_4xx, rejected, no_address or expired. A skipped message carries no_address. */
             last_error?: string;
             /** Format: date-time */
             leased_until?: string;
@@ -2461,7 +2472,7 @@ export interface components {
             /** Format: date-time */
             sent_at?: string;
             /** @enum {string} */
-            status: "queued" | "sending" | "sent" | "failed";
+            status: "queued" | "sending" | "sent" | "failed" | "skipped";
             template: string;
         };
         NotifyRendered: {
@@ -2601,6 +2612,8 @@ export interface components {
             contacts: components["schemas"]["PeopleContact"][];
             /** @description Which field groups were included: playa_name, pronouns, language, legal_name, phone, contact_email, email, emergency_contacts, consents. */
             fields: string[];
+            /** @description Only on GET /me, and only when true: this call recorded the first-sign-in prompt for this session (the person has no playa name and was not yet prompted since signing in). The frame sends them to /people/me?first=1. Absent on every later read of the session, on a read-only copy, for the superuser and on every other route. */
+            first_prompt?: boolean;
             person: components["schemas"]["PeoplePerson"];
             policy: components["schemas"]["PeoplePolicy"];
             sections: components["schemas"]["PeopleSection"][];
@@ -7384,6 +7397,8 @@ export interface operations {
                 from?: string;
                 to?: string;
                 canceled?: boolean;
+                /** @description true: only the shifts the caller can take now and the ones they already hold. The rest are dropped after the fetch, so a page may be short or empty with next set; keep following next. */
+                eligible?: boolean;
                 /** @description Rows per page, 1 to 500; default 100. */
                 limit?: number;
                 /** @description The next value of the previous page (opaque). Absent for the first page. 400 malformed when it is not one this list gave. */

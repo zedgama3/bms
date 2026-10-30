@@ -22,6 +22,18 @@ const meRoutes = (over: Record<string, (r: Request) => Response | Promise<Respon
 });
 
 describe("volunteers: My volunteering", () => {
+  it("a schedule entry returns to My volunteering", async () => {
+    mount({
+      path: "/volunteers/me",
+      routes: meRoutes({ [`GET ${V}/shifts/${SHIFT}`]: () => json(shift()) }),
+    });
+    await userEvent.click(await screen.findByRole("link", { name: "Morning dirt" }));
+    expect(await screen.findByRole("link", { name: "Back to My volunteering" })).toHaveAttribute(
+      "href",
+      "/volunteers/me",
+    );
+  });
+
   it("shows bookings, departments, qualifications and the listing switch; axe clean", async () => {
     const { container } = mount({
       path: "/volunteers/me",
@@ -66,7 +78,7 @@ describe("volunteers: My volunteering", () => {
     expect(screen.getByRole("button", { name: /^Leave/ })).toBeInTheDocument();
     expect(await screen.findByText("Verified")).toBeInTheDocument();
     expect(screen.getByText("Expired")).toBeInTheDocument();
-    expect(screen.getByText("Waiting for a lead to verify")).toBeInTheDocument();
+    expect(screen.getByText("Waiting for the lead to verify")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /^Open\s*Certificate: First aid/ }),
     ).toBeInTheDocument();
@@ -199,7 +211,7 @@ describe("volunteers: My volunteering", () => {
     });
     const link = await screen.findByRole("link", { name: "Morning dirt" });
     expect(link.closest("h3")).toHaveClass("line-through");
-    expect(screen.getByText("Removed by a lead")).toBeInTheDocument();
+    expect(screen.getByText("Removed by the lead")).toBeInTheDocument();
     expect(screen.getByText("Department archived")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Cancel booking/ })).not.toBeInTheDocument();
   });

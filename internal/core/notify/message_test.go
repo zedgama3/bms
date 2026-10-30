@@ -289,7 +289,7 @@ func TestLanguageValidate_Table(t *testing.T) {
 func TestStatus_StringAndParse_RoundTrip(t *testing.T) {
 	// The spec names a Status constant and the Sent counter struct both "Sent"; a Go package
 	// cannot declare both, so the sent status is reached through its text.
-	for _, name := range []string{"queued", "sending", "sent", "failed"} {
+	for _, name := range []string{"queued", "sending", "sent", "failed", "skipped"} {
 		s, err := notify.ParseStatus(name)
 		wantNoErr(t, err)
 		str := s.String()
@@ -308,7 +308,7 @@ func TestStatus_StringAndParse_RoundTrip(t *testing.T) {
 	if notify.Queued != 1 {
 		t.Fatalf("Queued = %d, the zero value must stay invalid", int(notify.Queued))
 	}
-	for _, bad := range []string{"", "nope", "QUEUED "} {
+	for _, bad := range []string{"", "nope", "QUEUED ", "skip", "Skipped"} {
 		_, err := notify.ParseStatus(bad)
 		wantKind(t, err, errs.Invalid)
 	}

@@ -37,9 +37,9 @@ func conflict(op, field, code, reason string) error {
 }
 
 // Status returns what is registered in this process with each name's last row and next due
-// slot, the queue counts, and the MaxRecent most recent Failed and Queued rows. Works on a
-// read-only copy. Needs jobs.read. Fails errs.Unauthenticated, errs.Permission and store
-// kinds.
+// slot, the queue counts, and the Failed, Running, Retrying and Waiting lists, each at most
+// MaxRecent rows in its own order, read in one snapshot. Works on a read-only copy. Needs
+// jobs.read. Fails errs.Unauthenticated, errs.Permission and store kinds.
 func (r *Runner) Status(ctx context.Context) (_ StatusView, err error) {
 	const op = "jobs.Runner.Status"
 	ctx, span := r.span(ctx, "status")
@@ -55,7 +55,7 @@ func (r *Runner) Status(ctx context.Context) (_ StatusView, err error) {
 	var (
 		last   map[string]rows.Job
 		counts map[string]int
-		recent []rows.Job
+		queue  rows.Queue
 	)
 	err = r.db.Transact(ctx, db.Read, func(ctx context.Context) error {
 		var err error
@@ -65,7 +65,7 @@ func (r *Runner) Status(ctx context.Context) (_ StatusView, err error) {
 		if counts, err = r.store.CountByStatus(ctx); err != nil {
 			return err //nolint:wrapcheck // wrapped below
 		}
-		recent, err = r.store.Recent(ctx, MaxRecent)
+		queue, err = r.store.Queue(ctx, MaxRecent)
 		return err //nolint:wrapcheck // wrapped below
 	})
 	if err != nil {
@@ -74,8 +74,8 @@ func (r *Runner) Status(ctx context.Context) (_ StatusView, err error) {
 
 	now := r.now()
 	view := StatusView{
-		ReadOnly: r.db.ReadOnly(), Registered: make([]Registered, 0, len(entries)),
-		Counts: make(map[Status]int, int(Canceled)), Recent: make([]Record, 0, len(recent)),
+		ReadOnly: r.db.ReadOnly(), Instance: r.instance, Registered: make([]Registered, 0, len(entries)),
+		Counts: make(map[Status]int, int(Canceled)),
 	}
 	for _, e := range entries {
 		reg := r.registeredOf(e)
@@ -94,12 +94,13 @@ func (r *Runner) Status(ctx context.Context) (_ StatusView, err error) {
 	for st := Queued; st <= Canceled; st++ {
 		view.Counts[st] = counts[st.String()]
 	}
-	for _, row := range recent {
-		rec, err := recordOf(row)
-		if err != nil {
+	for _, l := range []struct {
+		from []rows.Job
+		to   *[]Record
+	}{{queue.Failed, &view.Failed}, {queue.Running, &view.Running}, {queue.Retrying, &view.Retrying}, {queue.Waiting, &view.Waiting}} {
+		if *l.to, err = recordsOf(l.from); err != nil {
 			return StatusView{}, wrap(op, err)
 		}
-		view.Recent = append(view.Recent, rec)
 	}
 	return view, nil
 }
@@ -229,4 +230,17 @@ func (r *Runner) change(ctx context.Context, op string, id JobID, action audit.A
 		})
 	})
 	return wrap(op, err)
+}
+
+// recordsOf converts rows to records, never nil (the wire form is an array).
+func recordsOf(js []rows.Job) ([]Record, error) {
+	out := make([]Record, 0, len(js))
+	for _, row := range js {
+		rec, err := recordOf(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, rec)
+	}
+	return out, nil
 }

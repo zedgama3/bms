@@ -1,4 +1,4 @@
--- Store.Purge: delete up to $2 final rows (sent or failed) whose completion time is before
+-- Store.Purge: delete up to $2 final rows (sent, failed or skipped) whose completion time is before
 -- $1. Called by Run every PurgeInterval when notify.retention > 0, in a loop until fewer than
 -- the limit are deleted (notify.md "Purge"). A final row older than the retention
 -- (at least MinRetention = 7 days = MaxAge) is long past its expires_at, so it holds no text
@@ -12,7 +12,7 @@
 WITH picked AS (
     SELECT id
     FROM core.notify_message
-    WHERE status IN ('sent', 'failed')
+    WHERE status IN ('sent', 'failed', 'skipped')
       AND coalesce(sent_at, failed_at) < $1::timestamptz
     ORDER BY coalesce(sent_at, failed_at), id
     LIMIT $2::integer

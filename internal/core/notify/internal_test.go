@@ -448,3 +448,22 @@ func TestLogValue_RecordAndEnvelopeAreRedacted(t *testing.T) {
 		t.Fatalf("log lacks the ID: %s", out)
 	}
 }
+
+// TestStatus_SkippedParsesAndRoundTrips: the fifth status (D57) has a word, parses back and is
+// valid; the zero status and the one after Skipped are not.
+func TestStatus_SkippedParsesAndRoundTrips(t *testing.T) {
+	if got := Skipped.String(); got != "skipped" {
+		t.Fatalf("Skipped.String() = %q", got)
+	}
+	st, err := ParseStatus("skipped")
+	if err != nil || st != Skipped {
+		t.Fatalf("ParseStatus(skipped) = %v, %v", st, err)
+	}
+	if !Skipped.Valid() || Status(0).Valid() || (Skipped + 1).Valid() {
+		t.Error("Valid does not span exactly Queued..Skipped")
+	}
+	text, err := Skipped.MarshalText()
+	if err != nil || string(text) != "skipped" {
+		t.Errorf("MarshalText = %q, %v", text, err)
+	}
+}

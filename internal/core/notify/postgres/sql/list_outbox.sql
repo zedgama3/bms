@@ -1,5 +1,5 @@
 -- Store.ListOutbox: OutboxView.Recent, the admin's rows that are not sent (queued, sending,
--- failed), newest first, keyset-paged. Read-only; use Query. NEVER selects address, subject
+-- failed, skipped), newest first, keyset-paged. Read-only; use Query. NEVER selects address, subject
 -- or body: an admin sees IDs, names and tokens only (permission notify.outbox.manage).
 -- Args: $1 limit integer (notify.MaxOutboxList), $2 before_created_at timestamptz,
 -- $3 before_id uuid (the last row of the previous page; both NULL for the first page).

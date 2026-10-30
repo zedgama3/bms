@@ -14,6 +14,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/authz/authztest"
 	"github.com/zedgama3/bms/internal/core/db/dbtest"
+	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/notify"
 	"github.com/zedgama3/bms/internal/core/notify/notifytest"
 	"github.com/zedgama3/bms/internal/core/people/rows"
@@ -85,7 +86,7 @@ func newNoticeRig(t *testing.T, mods ...func(*Options)) *noticeRig {
 	o := Options{
 		DB: dbtest.NewFake(), Clock: clock.NewFake(time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)),
 		Logger: c.Logger(), Tracer: c.Tracer("people"), Audit: audittest.NewFake("people"), Signals: bus, Authz: az,
-		Actor: actor, Accounts: &wbAccounts{has: true}, Access: wbAccess{}, AuditCount: wbCounter{},
+		Actor: actor, Session: identity.SessionFrom, Accounts: &wbAccounts{has: true}, Access: wbAccess{}, AuditCount: wbCounter{},
 		Notify: nf, Holders: h,
 	}
 	for _, m := range mods {

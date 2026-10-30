@@ -120,6 +120,15 @@ func TestTermDecl_Validate_Table(t *testing.T) {
 		{"reserved event", decl("event"), "key", "reserved"},
 		{"reserved theme_camp", decl("theme_camp"), "key", "reserved"},
 		{"reserved lead", decl("lead"), "key", "reserved"},
+		{"reserved _plural suffix (D58)", decl("shift_plural"), "key", "reserved"},
+		{"reserved _title suffix (D58)", decl("shift_title"), "key", "reserved"},
+		{"reserved _plural_title (ends in _title)", decl("shift_plural_title"), "key", "reserved"},
+		{"reserved _singular_title is a form name", decl("shift_singular_title"), "key", "reserved"},
+		{"reserved suffix on a one-letter stem", decl("a_plural"), "key", "reserved"},
+		{"valid: plural is not _plural", decl("plural"), "", ""},
+		{"valid: title is not _title", decl("title"), "", ""},
+		{"valid: suffix in the middle", decl("shift_plural_count"), "", ""},
+		{"valid: a longer word", decl("shift_titles"), "", ""},
 		{"en missing", settings.TermDecl{Key: "shift", Defaults: map[string]settings.Forms{"es": forms("turno")}}, "defaults.en", ""},
 		{"defaults nil", settings.TermDecl{Key: "shift"}, "defaults.en", ""},
 		{"unknown language", settings.TermDecl{Key: "shift", Defaults: map[string]settings.Forms{"en": forms("shift"), "fr": forms("quart")}}, "defaults.fr", ""},
@@ -167,6 +176,11 @@ func TestAreaValidate_Terms_Table(t *testing.T) {
 	t.Run("reserved", func(t *testing.T) {
 		for _, term := range settings.CoreTerms {
 			wantField(t, termArea("volunteers", "shift", term).Validate(), "terms[1].key", "reserved")
+		}
+	})
+	t.Run("reserved suffixes (D58)", func(t *testing.T) {
+		for _, key := range []string{"shift_plural", "shift_title"} {
+			wantField(t, termArea("volunteers", "shift", key).Validate(), "terms[1].key", "reserved")
 		}
 	})
 	t.Run("a bad declaration is reported under its index", func(t *testing.T) {

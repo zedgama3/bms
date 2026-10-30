@@ -28,7 +28,7 @@ func withTerms(ts ...module.TermDecl) func(*module.Manifest) {
 }
 
 func TestManifestValidate_TermsWellFormed_Passes(t *testing.T) {
-	m := mf("alpha", withTerms(term("shift"), term("theme_camp_lead")))
+	m := mf("alpha", withTerms(term("shift"), term("theme_camp_lead"), term("plural"), term("title"), term("shift_titles")))
 	if err := m.Validate(); err != nil {
 		t.Fatalf("valid terms: %v", err)
 	}
@@ -55,6 +55,9 @@ func TestManifest_Terms_Invalid_Table(t *testing.T) {
 		{"reserved department", []module.TermDecl{term("department")}, "terms[0].key", "reserved"},
 		{"reserved event", []module.TermDecl{term("event")}, "terms[0].key", "reserved"},
 		{"reserved lead (promoted to core, D57)", []module.TermDecl{term("lead")}, "terms[0].key", "reserved"},
+		{"reserved _plural suffix (D58)", []module.TermDecl{term("shift_plural")}, "terms[0].key", "reserved"},
+		{"reserved _title suffix (D58)", []module.TermDecl{term("shift_title")}, "terms[0].key", "reserved"},
+		{"reserved suffix on a later entry", []module.TermDecl{term("shift"), term("position_plural")}, "terms[1].key", "reserved"},
 		{"reserved second entry", []module.TermDecl{term("shift"), term("participant")}, "terms[1].key", "reserved"},
 		{"duplicate in the manifest", []module.TermDecl{term("shift"), term("position"), term("shift")}, "terms[2].key", "duplicate"},
 		{"empty key", []module.TermDecl{term("")}, "terms[0].key", "format"},

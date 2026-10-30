@@ -7,6 +7,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/people"
 	"github.com/zedgama3/bms/internal/core/people/peopletest"
 	"github.com/zedgama3/bms/internal/lib/errs"
+	"github.com/zedgama3/bms/internal/lib/validate"
 	"github.com/zedgama3/bms/internal/model"
 )
 
@@ -71,4 +72,19 @@ func Example_fakeLegalNames() {
 	fmt.Println(len(names), names[dusty])
 	// Output:
 	// 1 Dusty Example
+}
+
+// The first-sign-in prompt needs the session's issue time, so people is built with the
+// session seam (app passes identity.SessionFrom); leaving it out is refused by name.
+func ExampleOptions_Validate_session() {
+	err := people.Options{}.Validate()
+	fmt.Println("invalid:", errs.Is(err, errs.Invalid))
+	for _, fe := range validate.Fields(err) {
+		if fe.Field == "people.session" {
+			fmt.Println(fe.Field, fe.Code)
+		}
+	}
+	// Output:
+	// invalid: true
+	// people.session required
 }

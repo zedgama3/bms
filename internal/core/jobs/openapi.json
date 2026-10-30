@@ -10,7 +10,7 @@
       "get": {
         "tags": ["jobs"],
         "operationId": "jobsStatus",
-        "summary": "The registered job names with each one's last run and next due time, the queue counts by status, and the most recent failed and waiting rows (at most 50). Works on a read-only copy. Needs jobs.read.",
+        "summary": "The registered job names with each one's last run and next due time, the queue counts by status, and four lists of rows (failed, running, waiting to retry, waiting), each at most 50 in its own order. Works on a read-only copy. Needs jobs.read.",
         "responses": {
           "200": {
             "description": "The status.",
@@ -117,16 +117,20 @@
       },
       "JobsStatus": {
         "type": "object",
-        "required": ["read_only", "registered", "counts", "recent"],
+        "required": ["read_only", "instance", "registered", "counts", "failed", "running", "retrying", "waiting"],
         "properties": {
           "read_only": {"type": "boolean", "description": "True when this copy runs no jobs."},
+          "instance": {"type": "string", "description": "The server that answered; a run by any other instance is marked on the screen."},
           "registered": {"type": "array", "items": {"$ref": "#/components/schemas/JobsRegistered"}},
           "counts": {
             "type": "object",
             "description": "Rows by status.",
             "additionalProperties": {"type": "integer"}
           },
-          "recent": {"type": "array", "items": {"$ref": "#/components/schemas/JobsRecord"}}
+          "failed": {"type": "array", "description": "Status failed, newest finished first, at most 50.", "items": {"$ref": "#/components/schemas/JobsRecord"}},
+          "running": {"type": "array", "description": "Status running, earliest started first, at most 50.", "items": {"$ref": "#/components/schemas/JobsRecord"}},
+          "retrying": {"type": "array", "description": "Queued with a last error, soonest due first, at most 50.", "items": {"$ref": "#/components/schemas/JobsRecord"}},
+          "waiting": {"type": "array", "description": "Queued without a last error, soonest due first, at most 50.", "items": {"$ref": "#/components/schemas/JobsRecord"}}
         }
       }
     }

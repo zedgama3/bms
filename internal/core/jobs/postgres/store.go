@@ -55,7 +55,7 @@ var (
 	sqlStatusOf    = mustSQL("get_job_status.sql")
 	sqlCounts      = mustSQL("count_jobs_by_status.sql")
 	sqlQueueStats  = mustSQL("queue_stats.sql")
-	sqlRecent      = mustSQL("list_recent_jobs.sql")
+	sqlQueue       = mustSQL("list_queue.sql")
 	sqlLastPerName = mustSQL("last_job_per_name.sql")
 	sqlPurge       = mustSQL("purge_jobs.sql")
 )
@@ -462,11 +462,40 @@ func scanJob(sc scanner, extra ...any) (rows.Job, error) {
 	return j, nil
 }
 
-// Recent returns the newest Failed rows and the Queued rows, newest first, at most limit.
-func (s *Store) Recent(ctx context.Context, limit int) ([]rows.Job, error) {
-	return queryAll(ctx, s.db, "jobs.postgres.Recent", sqlRecent, func(sc scanner) (rows.Job, error) {
-		return scanJob(sc, new(time.Time)) // the sort time, not used
+// Queue returns the Failed, Running, Retrying (queued with last_error) and Waiting (queued
+// without) rows, at most limit of each, each list in its own order (list_queue.sql).
+// Fails errs.Internal for a bucket the statement should not return, and store kinds.
+func (s *Store) Queue(ctx context.Context, limit int) (rows.Queue, error) {
+	const op = "jobs.postgres.Queue"
+	type bucketed struct {
+		job    rows.Job
+		bucket string
+	}
+	all, err := queryAll(ctx, s.db, op, sqlQueue, func(sc scanner) (bucketed, error) {
+		var b bucketed
+		var err error
+		b.job, err = scanJob(sc, &b.bucket)
+		return b, err
 	}, limit)
+	if err != nil {
+		return rows.Queue{}, err
+	}
+	var q rows.Queue
+	for _, b := range all {
+		switch b.bucket {
+		case "failed":
+			q.Failed = append(q.Failed, b.job)
+		case "running":
+			q.Running = append(q.Running, b.job)
+		case "retrying":
+			q.Retrying = append(q.Retrying, b.job)
+		case "waiting":
+			q.Waiting = append(q.Waiting, b.job)
+		default:
+			return rows.Queue{}, errs.E(op, errs.Internal, errors.New("the queue statement returned an unknown bucket"))
+		}
+	}
+	return q, nil
 }
 
 // LastPerName returns the newest row of each of names that has one, by name.

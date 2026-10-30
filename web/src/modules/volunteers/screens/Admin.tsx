@@ -10,7 +10,7 @@ import { LEAD_PERMISSIONS, P } from "../permissions";
 import { useDepartments } from "../queries";
 import { ScreenError } from "../ScreenError";
 
-/** `/volunteers/admin`: the departments the person leads (from the session's `p@D` entries and
+/** `/volunteers/admin`: the departments the person can manage or view (from the session's `p@D` entries and
  *  the department list), the waiting certificates and the org-wide catalogue. */
 export function Admin() {
   const t = useT();
@@ -51,8 +51,15 @@ export function Admin() {
       {mine.length > 0 ? (
         <section aria-labelledby="admin-departments" className="flex flex-col gap-3">
           <h2 id="admin-departments" className="text-xl font-bold">
-            {t("module.volunteers.admin.departments")}
+            {t(
+              led.site
+                ? "module.volunteers.admin.departments_all"
+                : "module.volunteers.admin.departments",
+            )}
           </h2>
+          {led.site ? (
+            <p className="text-muted">{t("module.volunteers.admin.departments_all_hint")}</p>
+          ) : null}
           <ul className="flex flex-col gap-2">
             {mine.map((d) => (
               <li key={d.id}>

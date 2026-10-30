@@ -2,7 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
-import { api, ApiError, useAction, useNames, useReadOnly, useSession } from "@/api";
+import { api, ApiError, useAction, useDemo, useNames, useReadOnly, useSession } from "@/api";
 import type { components } from "@/api";
 import { isMessageKey, useFormat, useT } from "@/i18n";
 import { Button, EmptyState, ErrorState, linkButtonClass, Loading, Table, useToast } from "@/ui";
@@ -18,10 +18,10 @@ import { useTemplateText } from "../useTemplateText";
 
 type Row = components["schemas"]["NotifyRecord"];
 
-const STATUSES = ["queued", "sending", "sent", "failed"] as const;
+const STATUSES = ["queued", "sending", "sent", "failed", "skipped"] as const;
 
 /** `/notify/outbox` (`notify.outbox.manage`): whether e-mail is set up, a connection check, the
- *  count of messages in each state, and the newest queued, sending and failed ones. A row shows
+ *  count of messages in each state, and the newest queued, sending, failed and skipped ones. A row shows
  *  its ID and tokens only: never an address, a subject or a body. */
 export function Outbox() {
   const t = useT();
@@ -29,6 +29,7 @@ export function Outbox() {
   const text = useTemplateText();
   const session = useSession();
   const toast = useToast();
+  const demo = useDemo();
   const client = useQueryClient();
   const { readOnly } = useReadOnly();
   const allowed = holdsSite(session, "notify.outbox.manage");
@@ -127,7 +128,12 @@ export function Outbox() {
     },
     {
       header: t("core.notify.outbox.col.status"),
-      cell: (r) => t(`core.notify.status.${r.status}`),
+      cell: (r) => (
+        // A skipped message is final and nobody's fault: calm, not the failed style.
+        <span className={r.status === "skipped" ? "text-muted" : undefined}>
+          {t(`core.notify.status.${r.status}`)}
+        </span>
+      ),
     },
     { header: t("core.notify.outbox.col.attempts"), cell: (r) => format.number(r.attempts) },
     {
@@ -201,18 +207,20 @@ export function Outbox() {
               {t("core.notify.outbox.status_title")}
             </h2>
             <p className="font-semibold">
-              {data.configured
-                ? t("core.notify.outbox.configured")
-                : t("core.notify.not_configured")}
+              {demo.enabled
+                ? t("core.notify.outbox.demo")
+                : data.configured
+                  ? t("core.notify.outbox.configured")
+                  : t("core.notify.not_configured")}
             </p>
-            {data.configured ? null : (
+            {data.configured || demo.enabled ? null : (
               <div>
                 <Link to="/settings/notify" className={linkButtonClass("secondary")}>
                   {t("core.notify.open_settings")}
                 </Link>
               </div>
             )}
-            <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <dl className="grid grid-cols-2 gap-3 sm:grid-cols-5">
               {STATUSES.map((s) => (
                 <div key={s} className="rounded-md border border-border p-3">
                   <dt className="text-sm text-muted">{t(`core.notify.status.${s}`)}</dt>
@@ -224,7 +232,7 @@ export function Outbox() {
               <Button
                 variant="secondary"
                 busy={check.busy}
-                disabled={!data.configured}
+                disabled={!data.configured && !demo.enabled}
                 onClick={runCheck}
               >
                 {t("core.notify.outbox.check")}

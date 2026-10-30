@@ -749,7 +749,7 @@
           "volunteers"
         ],
         "operationId": "volunteersListShifts",
-        "summary": "Shifts the caller may see, with booked, mine and eligibility, a page at a time (order starts; follow next). from or to alone is allowed. canceled=true or a past window needs shifts.manage/rosters.read. 400 malformed after.",
+        "summary": "Shifts the caller may see, with booked, mine and eligibility, a page at a time (order starts; follow next). from or to alone is allowed. canceled=true or a past window needs shifts.manage/rosters.read. eligible=true keeps the shifts the caller can take or holds. 400 malformed after, canceled or eligible.",
         "parameters": [
           {
             "name": "department",
@@ -797,6 +797,15 @@
             "name": "canceled",
             "in": "query",
             "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "eligible",
+            "in": "query",
+            "required": false,
+            "description": "true: only the shifts the caller can take now and the ones they already hold. The rest are dropped after the fetch, so a page may be short or empty with next set; keep following next.",
             "schema": {
               "type": "boolean"
             }

@@ -419,3 +419,23 @@ func TestRunnerEnqueue_RunID_ComesFromTheRunsContext(t *testing.T) {
 		})
 	}
 }
+
+// TestRecordsOf_EmptyIsNotNil: the four status lists are JSON arrays, never null.
+func TestRecordsOf_EmptyIsNotNil(t *testing.T) {
+	got, err := recordsOf(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil || len(got) != 0 {
+		t.Fatalf("recordsOf(nil) = %#v, want an empty non-nil slice", got)
+	}
+	b, err := json.Marshal(wireStatusOf(StatusView{Failed: got}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{`"failed":[]`, `"running":[]`, `"retrying":[]`, `"waiting":[]`} {
+		if !strings.Contains(string(b), k) {
+			t.Errorf("wire status %s lacks %s", b, k)
+		}
+	}
+}

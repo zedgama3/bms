@@ -15,6 +15,8 @@
 - **Amended 2026-10-20 (D44, owner approval of files and the jobs follow-ups):** `Deps.Files files.Store` (M4, scoped per module); `Route` gains `MaxBodyBytes` and `Timeout` (api.md decision 32); `moduletest.Conformance` supplies `filestest.NewFake(manifest.Name)` and scans its `Files()` and `Staged()` names, and the jobs leak rule also checks `Fake.Enqueued()` keys against the seed person markers (`jobs_key_not_person`). Proposed change 19.
 - **Accepted 2026-10-20 (owner, D40):** the implementation deviations marked "(implementation, 2026-10-19)" in this spec are accepted as written; no text changed.
 - **Amendment 2026-10-28 (approved, owner, D53, demo.md Proposed change 6):** `demo` joins the reserved core areas (`IsCoreArea`); `demo.seed` is a core extension point (defined by `core/demo`, listed in `Env.CoreExtensionPoints`); `moduletest.Conformance` gains the option `WithDemoSeed()` and the rule `demoseed_provider_valid`; F66.
+- **Amended 2026-10-30 (D58; settings Q-SET2):** a module term key may not end in `_plural` or `_title` (`terms[i].key` `reserved`, F67; `TermDecl.Validate` in settings).
+- **Amended 2026-10-30 (D58; jobs J-W1 Proposed change 16):** decision 8's derived keys gain `module.<name>.job.<ident>.title` for every job name the module registers in `Start` (checked by `TestMessageCatalogues_EnglishCoversJobs` in `internal/app`); `jobs.Decl` carries no title.
 - **Amendment 2026-10-30 (approved, owner, D57; module-volunteers Amendment V3, Proposed change 17):** `Manifest.Terms []TermDecl` (aliases `module.TermDecl`, `module.TermForms`); `Validate` runs each `TermDecl.Validate` and the duplicate and reserved checks under `terms[i]`; `ModuleSettings.Terms`; decision 8's derived keys gain `module.<name>.term.<key>` and its three forms; a module's messages and templates use only `CoreTerms` and its own `Terms` (enforced by an `app` test); F67.
 - **Amendment D1 (approved 2026-10-29, D56; demo.md Proposed change 18, applied 2026-10-29):** `demoseed_provider_valid` registers the request's event with dates (Thursday 10:00 to Monday 12:00, at least 21 days after the rig's clock, zone `UTC`) and calls the module's `Start` before `Provider.Seed` and `Stop` after, as `bms demo seed` does, so a provider may rely on what `Start` registered and carries no default-date rule of its own.
 - **Package:** `internal/core/module` (Go module `github.com/zedgama3/bms`), plus the test
@@ -1089,7 +1091,12 @@ None of its own. What this spec provides for screens elsewhere:
    `module.<name>.signal.<rest>.title`; `module.<name>.kept.<kind>`;
    `module.<name>.template.<ident>.title` for each `<ident>` in `Manifest.Templates` (so a
    module template's title on notify's templates screen is checked like a permission's;
-   hello.md amendment, approved 2026-10-20, D40). `web-shell.md` owns the
+   hello.md amendment, approved 2026-10-20, D40);
+   (D58) `module.<name>.job.<ident>.title` for every job name the module registers in
+   `Start` (`<name>.<ident>`; the Background work screen's title for the job, jobs decision
+   24; checked by `TestMessageCatalogues_EnglishCoversJobs` in `internal/app`, which learns
+   the names through `Start` under `db.None()` as `bms check` does; `jobs.Decl` carries no
+   title). `web-shell.md` owns the
    catalogue files and checks that `en` has every key the module's declarations imply
    (Proposed change 7). `Warning.Message` and error messages are English, like logs: they
    are for operators. Confirmed by the owner (2026-10-16).
@@ -1327,7 +1334,7 @@ Standard library (`context`, `encoding/json`, `errors`, `fmt`, `io/fs`, `log/slo
 | F64 (D44) | `Manifest.Validate` | a group offering `holders` whose `Permission` this module declares has a `Reaches` below its highest field level (levels from `privacy.GroupLevels(Views)`) | Invalid (`permissions[i].reaches` `too_low`) | raise `Reaches` | `TestManifestValidate_HoldersPermissionReachesTooLow_ReturnsInvalid` |
 | F65 (D44) | `Conformance/views_tagged`, `visibility_settings_declared` | a module sends a response type that `Views` does not list, or `Views` lists a type with no tags (and `WithoutViews()` not passed) | the rule fails | list and tag the type | `TestConformance_ViewsNotTagged_Fails` (the `untaggedView` fixture; the other fixtures pass `WithoutViews()`, since their routes answer with `http.NotFoundHandler` and no response type) |
 | F66 (D53) | `Conformance/demoseed_provider_valid` | `WithDemoSeed()` given but `demoseed.Point` is not in `ContributesTo`, the contribution is not a `demoseed.Provider`, or the provider creates nothing or returns `Permission` | the rule fails | fix the provider or its actors; a provider may rely on what `Start` registered (D56) | `TestConformance_DemoSeed_*` (one per branch) |
-| F67 (D57) | `Manifest.Validate` | a term key is in `CoreTerms`, duplicated in the manifest, malformed, or its `en` defaults lack a form | Invalid (`terms[i].key` `reserved`/`duplicate`/`format`; `terms[i].defaults.en.<form>` `required`) | fix the manifest | `TestManifest_Terms_Invalid_Table` |
+| F67 (D57, D58) | `Manifest.Validate` | a term key is in `CoreTerms`, ends in `_plural` or `_title` (D58: `reserved`, settings Q-SET2), duplicated in the manifest, malformed, or its `en` defaults lack a form | Invalid (`terms[i].key` `reserved`/`duplicate`/`format`; `terms[i].defaults.en.<form>` `required`) | fix the manifest | `TestManifest_Terms_Invalid_Table` |
 
 Members that cannot fail, and why: `Definer`, `Publisher`, `Permission.Module` (string
 split); the `String` methods (name or `Kind(<n>)`); `NewRegistry`, `Default` (allocation);

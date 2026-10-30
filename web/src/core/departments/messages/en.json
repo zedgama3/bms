@@ -45,7 +45,7 @@
   "core.departments.leadership.none": "No {term_lead_plural} are appointed yet.",
   "core.departments.leadership.list": "{term_lead_plural_title}",
   "core.departments.leadership.see_grants": "See roles here",
-  "core.departments.leadership.appoint": "Appoint a {term_lead}",
+  "core.departments.leadership.appoint": "Appoint {term_lead}",
   "module.departments.field.too_long": "Must be at most {max, plural, one {# character} other {# characters}}.",
   "module.departments.field.control_chars": "Use plain text only: no control characters.",
   "module.departments.field.taken": "Another {term_department} already has this name.",
@@ -53,7 +53,7 @@
   "module.departments.field.not_archived": "This {term_department} is not archived.",
   "module.departments.title": "{term_department_plural_title}",
   "module.departments.permission.manage.title": "Create, rename, archive and restore {term_department_plural}",
-  "module.departments.permission.details.manage.title": "Change a {term_department}'s description and mailbox",
+  "module.departments.permission.details.manage.title": "Change the {term_department}'s description and mailbox",
   "core.departments.leadership.unknown_person": "Unknown person",
   "core.departments.leadership.truncated": "This list is cut short. Use \"See roles here\" to see every grant."
 }

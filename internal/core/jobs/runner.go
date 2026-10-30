@@ -70,7 +70,8 @@ type store interface {
 	StatusOf(ctx context.Context, id rows.ID) (name, status string, err error)
 	CountByStatus(ctx context.Context) (map[string]int, error)
 	QueueStats(ctx context.Context, now time.Time) ([]rows.QueueStat, error)
-	Recent(ctx context.Context, limit int) ([]rows.Job, error)
+	// Queue returns the Failed, Running, Retrying and Waiting lists, at most limit of each.
+	Queue(ctx context.Context, limit int) (rows.Queue, error)
 	LastPerName(ctx context.Context, names []string) (map[string]rows.Job, error)
 	Purge(ctx context.Context, before time.Time, limit int) (int64, error)
 }

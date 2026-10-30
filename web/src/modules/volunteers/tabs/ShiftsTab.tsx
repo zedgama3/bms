@@ -4,6 +4,7 @@ import { Link } from "react-router";
 import { useReadOnly, useSession } from "@/api";
 import { useT } from "@/i18n";
 import { Button, controlClass, EmptyState, Field, linkButtonClass, Loading, useToast } from "@/ui";
+import type { BackState } from "../back";
 import { vol } from "../calls";
 import { FormDialog } from "../FormDialog";
 import { holdsAt, omitEmpty, text } from "../helpers";
@@ -19,6 +20,9 @@ import type { ShiftSummary } from "../types";
  *  event** (`shifts.manage`). */
 export function ShiftsTab({ department }: { department: string }) {
   const t = useT();
+  const back: BackState = {
+    back: { to: `/volunteers/departments/${department}?tab=shifts`, kind: "department" },
+  };
   const toast = useToast();
   const client = useQueryClient();
   const session = useSession();
@@ -108,6 +112,7 @@ export function ShiftsTab({ department }: { department: string }) {
               <h3 className="text-lg font-bold">
                 <Link
                   to={`/volunteers/shifts/${s.id}`}
+                  state={back}
                   className="inline-flex min-h-11 items-center underline"
                 >
                   {s.label}
@@ -123,7 +128,7 @@ export function ShiftsTab({ department }: { department: string }) {
               <p className="font-semibold">
                 {s.canceled_at
                   ? t("module.volunteers.canceled")
-                  : t("module.volunteers.tab.shifts.fill", {
+                  : t("module.volunteers.fill", {
                       booked: s.booked ?? 0,
                       slots: s.slots,
                     })}

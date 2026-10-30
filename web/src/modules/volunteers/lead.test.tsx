@@ -48,6 +48,9 @@ describe("volunteers: admin", () => {
       `/volunteers/departments/${DEPT}`,
     );
     expect(await screen.findByText("1 certificate is waiting for you.")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Departments you can manage or view" }),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Qualification catalogue" })).not.toBeInTheDocument();
     await expectNoAxeViolations(container);
   });
@@ -61,9 +64,13 @@ describe("volunteers: admin", () => {
       await screen.findByRole("link", { name: "Qualification catalogue" }),
     ).toBeInTheDocument();
     expect(await screen.findByRole("link", { name: "Gate" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "All departments" })).toBeInTheDocument();
+    expect(screen.getByText("You can manage or view every department.")).toBeInTheDocument();
     unmount();
     mount({ path: "/volunteers/admin", perms: ["volunteers.shifts.manage@other"] });
-    expect(await screen.findByText("You lead no department yet.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("No department you can manage or view yet."),
+    ).toBeInTheDocument();
   });
 
   it("without any lead permission: the forbidden state, and no admin nav entry", async () => {
@@ -564,7 +571,7 @@ describe("volunteers: the shift form", () => {
       routes: { [`GET ${V}/departments/${DEPT}/positions`]: () => json({}) },
     });
     expect(await screen.findByText(/has no positions yet/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Create a position" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "New position" })).toHaveAttribute(
       "href",
       `/volunteers/departments/${DEPT}?tab=positions`,
     );
@@ -595,6 +602,35 @@ describe("volunteers: the shift form", () => {
         event: EVENT,
       }),
     );
+  });
+
+  it("the Shifts tab, a new shift and an edited shift all return to the tab", async () => {
+    const tab = `/volunteers/departments/${DEPT}?tab=shifts`;
+    const routes = {
+      [`GET ${V}/shifts`]: () => json({ items: [shift()] }),
+      [`GET ${V}/shifts/${SHIFT}`]: () => json(shift({ event: EVENT })),
+      [`POST ${V}/departments/${DEPT}/shifts`]: () => json(shift(), { status: 201 }),
+      [`PUT ${V}/shifts/${SHIFT}`]: () => json(shift()),
+    };
+    // from the tab
+    const a = mount({ path: tab, perms: ALL, routes });
+    await userEvent.click(await screen.findByRole("link", { name: "Morning dirt" }));
+    expect(await screen.findByRole("link", { name: "Back to Gate" })).toHaveAttribute("href", tab);
+    // edit keeps the state through Edit and saving
+    await userEvent.click(await screen.findByRole("link", { name: "Edit shift" }));
+    await screen.findByLabelText(/^Starts/);
+    await userEvent.click(screen.getByRole("button", { name: "Save shift" }));
+    expect(await screen.findByRole("link", { name: "Back to Gate" })).toHaveAttribute("href", tab);
+    a.unmount();
+    // after creating
+    mount({ path: `/volunteers/departments/${DEPT}/shifts/new`, perms: ALL, routes });
+    await screen.findByRole("option", { name: "Greeter" });
+    await userEvent.selectOptions(screen.getByLabelText(/^Position/), POS);
+    await userEvent.type(screen.getByLabelText(/^Name of the shift/), "Morning dirt");
+    fireEvent.change(screen.getByLabelText(/^Starts/), { target: { value: "2099-07-01T09:00" } });
+    fireEvent.change(screen.getByLabelText(/^Ends/), { target: { value: "2099-07-01T13:00" } });
+    await userEvent.click(screen.getByRole("button", { name: "Create shift" }));
+    expect(await screen.findByRole("link", { name: "Back to Gate" })).toHaveAttribute("href", tab);
   });
 
   it("edit of an unknown shift: not found", async () => {

@@ -32,6 +32,7 @@ func TestNew_NilDependency_ReturnsInvalid(t *testing.T) {
 		{"people.signals", func(o *people.Options) { o.Signals = nil }},
 		{"people.authz", func(o *people.Options) { o.Authz = nil }},
 		{"people.actor", func(o *people.Options) { o.Actor = nil }},
+		{"people.session", func(o *people.Options) { o.Session = nil }},
 		{"people.accounts", func(o *people.Options) { o.Accounts = nil }},
 		{"people.access", func(o *people.Options) { o.Access = nil }},
 		{"people.audit_count", func(o *people.Options) { o.AuditCount = nil }},
@@ -55,7 +56,7 @@ func TestOptions_Validate_ReportsEveryProblemAtOnce(t *testing.T) {
 	wantKind(t, err, errs.Invalid)
 	for _, f := range []string{
 		"people.db", "people.clock", "people.logger", "people.tracer", "people.audit", "people.signals",
-		"people.authz", "people.actor", "people.accounts", "people.access", "people.audit_count",
+		"people.authz", "people.actor", "people.accounts", "people.access", "people.audit_count", "people.session",
 	} {
 		if !hasField(err, f, "") {
 			t.Errorf("no field error for %s", f)

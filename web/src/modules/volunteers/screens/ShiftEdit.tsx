@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "react-router";
+import { Link, useLocation, useParams } from "react-router";
 import { ApiError, useSession } from "@/api";
 import { useT } from "@/i18n";
 import { Loading } from "@/ui";
+import { carry } from "../back";
 import { vol } from "../calls";
 import { Forbidden } from "../Forbidden";
 import { holdsAt } from "../helpers";
@@ -15,6 +16,7 @@ export function ShiftEdit() {
   const t = useT();
   const session = useSession();
   const { shift: id = "" } = useParams();
+  const location = useLocation();
   const q = useQuery({
     queryKey: ["volunteers", "shift", id],
     queryFn: ({ signal }) => vol.shift(id, { signal }),
@@ -28,6 +30,7 @@ export function ShiftEdit() {
       <div>
         <Link
           to={`/volunteers/shifts/${id}`}
+          state={carry(location)}
           className="inline-flex min-h-11 items-center underline"
         >
           {t("module.volunteers.shift.back_to")}

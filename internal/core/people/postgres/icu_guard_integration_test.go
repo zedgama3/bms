@@ -128,7 +128,7 @@ func TestMigration0003_ICUDatabase_OnlyASCIINames_Applies(t *testing.T) {
 	if logs, err := migrateErr(t, pool); err != nil {
 		t.Fatalf("migration 0003 refused ASCII-only names on an ICU database: %v\n%s", err, logs)
 	}
-	if v := setVersion(t, pool); v != 3 {
-		t.Errorf("people version = %d, want 3", v)
+	if v := setVersion(t, pool); v != 4 {
+		t.Errorf("people version = %d, want 4 (all migrations applied, 0004 included)", v)
 	}
 }

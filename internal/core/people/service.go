@@ -32,6 +32,12 @@ import (
 // is NotFound.
 type store interface {
 	// Person.
+	// MarkNamePrompted records that the person was prompted for a playa name in the session
+	// issued at issued, if that is due (playa_name = '' and name_prompted_at NULL or before
+	// issued). It writes GREATEST(now, issued) and returns true when the row was updated. It
+	// runs inside the Write transaction ctx carries and fails Unavailable wrapping
+	// db.ErrReadOnly on a read-only copy (the caller maps that to "not prompted").
+	MarkNamePrompted(ctx context.Context, person model.PersonID, issued, now time.Time) (bool, error)
 	GetPerson(ctx context.Context, id model.PersonID) (rows.Person, error)
 	GetForUpdate(ctx context.Context, id model.PersonID) (rows.Person, error)
 	// InsertPerson inserts p; inserted is false (and nothing written) when the ID exists.
@@ -152,6 +158,10 @@ type Directory interface {
 	LegalNamesOf(ctx context.Context, ids []model.PersonID) (map[model.PersonID]string, error)
 }
 
+// SessionFunc reads the request's session from ctx without I/O (identity.SessionFrom). ok is
+// false when there is no session. Me reads IssuedAt from it (decision 34).
+type SessionFunc func(ctx context.Context) (identity.Session, bool)
+
 // Options builds the service. Audit and Signals are scoped to "people" by app.
 type Options struct {
 	DB         db.DB
@@ -163,6 +173,7 @@ type Options struct {
 	Signals    signals.Bus     // scoped "people": publishes the three, subscribes identity.account-created
 	Authz      authz.Authorizer
 	Actor      authz.ActorFunc // app: identity.PersonFrom + SessionFrom.Superuser
+	Session    SessionFunc     // app: identity.SessionFrom; Me reads IssuedAt for the first-sign-in prompt
 	Accounts   Accounts
 	Access     Access
 	AuditCount AuditCounter
@@ -175,7 +186,7 @@ type Options struct {
 
 // Validate fails errs.Invalid joining a validate.FieldError per nil dependency (fields
 // people.db, people.clock, people.logger, people.tracer, people.audit, people.signals,
-// people.authz, people.actor, people.accounts, people.access, people.audit_count).
+// people.authz, people.actor, people.session, people.accounts, people.access, people.audit_count).
 func (o Options) Validate() error {
 	v := validate.Errors{Op: "people.Options.Validate"}
 	for _, d := range []struct {
@@ -190,6 +201,7 @@ func (o Options) Validate() error {
 		{"people.signals", o.Signals == nil},
 		{"people.authz", o.Authz == nil},
 		{"people.actor", o.Actor == nil},
+		{"people.session", o.Session == nil},
 		{"people.accounts", o.Accounts == nil},
 		{"people.access", o.Access == nil},
 		{"people.audit_count", o.AuditCount == nil},
@@ -219,6 +231,7 @@ type Service struct {
 	signals    signals.Bus
 	authz      authz.Authorizer
 	actorFn    authz.ActorFunc
+	sessionFn  SessionFunc
 	accounts   Accounts
 	access     Access
 	auditCount AuditCounter
@@ -266,7 +279,7 @@ func newService(o Options, st store) (*Service, error) {
 	}
 	s := &Service{
 		store: st, db: o.DB, clock: o.Clock, logger: o.Logger, tracer: o.Tracer, audit: o.Audit,
-		signals: o.Signals, authz: o.Authz, actorFn: o.Actor, accounts: o.Accounts, access: o.Access,
+		signals: o.Signals, authz: o.Authz, actorFn: o.Actor, sessionFn: o.Session, accounts: o.Accounts, access: o.Access,
 		auditCount: o.AuditCount, policySrc: o.Policy, notify: o.Notify, holders: o.Holders, metrics: m, cooldown: newCooldown(),
 	}
 	if err := o.Signals.Subscribe(identity.SignalAccountCreated, s.handleAccountCreated); err != nil {

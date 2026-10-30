@@ -60,6 +60,7 @@ const (
 	Sending    = message.Sending
 	StatusSent = message.Sent
 	Failed     = message.Failed
+	Skipped    = message.Skipped
 )
 
 // ParseStatus is the inverse of Status.String. Fails errs.Invalid.
@@ -187,8 +188,8 @@ type OutboxView struct {
 type Sent struct {
 	Sent    int // delivered
 	Retried int // requeued with a backoff
-	Failed  int // final failures (rejected, no address, attempts exhausted)
-	Skipped int // left alone: SMTP is not configured
+	Failed  int // final failures (rejected, attempts exhausted)
+	Skipped int // rows ended Skipped (the recipient has no address), or, when SMTP is not configured, the queued rows left alone
 }
 
 // Route is the shape app converts to module.Route. Pattern is relative to /api/notify.
