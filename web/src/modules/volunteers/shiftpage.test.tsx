@@ -169,6 +169,15 @@ describe("volunteers: a shift", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("We couldn't find that.");
   });
 
+  it("a shift canceled for shift_canceled shows no message key after the banner", async () => {
+    mount({
+      path,
+      routes: one({ canceled_at: "2099-01-01T00:00:00Z", cancel_reason: "shift_canceled" }),
+    });
+    expect(await screen.findByText(/This shift was canceled\./)).toBeInTheDocument();
+    expect(screen.queryByText(/cancel_reason/)).not.toBeInTheDocument();
+  });
+
   it("a roster reader sees playa names linking to the profile, flags, and a legal name column only when present", async () => {
     const entries = [
       {

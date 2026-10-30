@@ -81,10 +81,10 @@ function DemoAccounts({
   const accountDescription = (a: DemoAccount): string => {
     const k = `core.demo.account.${a.key}.description`;
     if (!isMessageKey(k)) return "";
-    // A term whose module is off is not defined: the text comes back with its placeholder
-    // still in it, and then there is no description.
+    // A term whose module is off is not defined: the text can't be formatted and `t` returns
+    // the key, and then there is no description.
     const text = t(k);
-    return /\{term_\w+\}/.test(text) ? "" : text;
+    return text === k ? "" : text;
   };
 
   // The name must differ per row: an account the catalogue doesn't know is named by its address.

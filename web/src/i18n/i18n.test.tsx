@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   I18nProvider,
   isMessageKey,
+  resetFormatWarningsForTest,
   resetMissingWarningsForTest,
+  useRichT,
   makeFormat,
   useFormat,
   useLanguage,
@@ -120,6 +122,122 @@ describe("t()", () => {
     expect(screen.getByTestId("t")).toHaveTextContent("Home");
     act(() => screen.getByText("go").click());
     expect(screen.getByTestId("t")).toHaveTextContent("Inicio");
+  });
+});
+
+function R({ k }: { k: MessageKey }) {
+  const rich = useRichT();
+  return <p data-testid="r">{rich(k)}</p>;
+}
+
+describe("F24a: a message that cannot be formatted", () => {
+  beforeEach(() => {
+    resetFormatWarningsForTest();
+    addCatalogue("f", "en", {
+      "f.ok": "Sign up for a {term_event}",
+      "f.bad": "Sign up for a {term_x}",
+      "f.rich": "See <en>{term_x}</en>",
+      "f.rich_ok": "See <en>{term_event}</en>",
+    });
+  });
+
+  it("a missing argument falls back to the en text", () => {
+    addCatalogue("f", "es", { "f.ok": "Inscribe un {term_nope}" });
+    setLanguage("es");
+    mount(<T k={key("f.ok")} />);
+    expect(screen.getByTestId("t")).toHaveTextContent("Sign up for a event");
+  });
+
+  it("a message that cannot be formatted returns the key", () => {
+    mount(<T k={key("f.bad")} />);
+    expect(screen.getByTestId("t").textContent).toBe("f.bad");
+  });
+
+  it("a value containing braces is shown as given", () => {
+    mount(<T k={key("shell.home.welcome")} values={{ regional: "{term_x}" }} />);
+    expect(screen.getByTestId("t").textContent).toBe("Welcome to {term_x}");
+  });
+
+  it("no raw placeholder reaches the screen", () => {
+    const { container } = mount(
+      <>
+        <T k={key("f.bad")} />
+        <R k={key("f.rich")} />
+      </>,
+    );
+    expect(container.textContent).not.toContain("{term_");
+  });
+
+  it("the dev warning is given once per key", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mount(
+      <>
+        <T k={key("f.bad")} />
+        <T k={key("f.bad")} />
+      </>,
+    );
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]![0]).toContain("f.bad");
+    warn.mockRestore();
+  });
+
+  it("both es and en lacking an argument shows the key, warning once", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    addCatalogue("f", "es", { "f.bad": "Inscribe un {term_y}" });
+    setLanguage("es");
+    mount(<T k={key("f.bad")} />);
+    expect(screen.getByTestId("t").textContent).toBe("f.bad");
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]![0]).toContain("the key");
+    warn.mockRestore();
+  });
+
+  it("the same key warns again in a second language", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    configureLanguages(["en", "es", "fr"], "en");
+    mount(<T k={key("f.bad")} />);
+    act(() => setLanguage("es"));
+    addCatalogue("f", "es", { "f.bad": "Inscribe un {term_y}" });
+    act(() => setLanguage("fr"));
+    addCatalogue("f", "fr", { "f.bad": "Inscrire {term_y}" });
+    warn.mockClear();
+    resetFormatWarningsForTest();
+    const langs = ["en", "es", "en", "es"];
+    for (const l of langs) {
+      act(() => setLanguage(l));
+    }
+    expect(warn.mock.calls.length).toBe(2);
+    warn.mockRestore();
+  });
+
+  it("a language with no Intl locale data still formats a plain message", () => {
+    configureLanguages(["en", "zz"], "en");
+    addCatalogue("f", "zz", { "f.plain": "Zed text" });
+    addCatalogue("f", "en", { "f.plain": "Plain text" });
+    setLanguage("zz");
+    mount(<T k={key("f.plain")} />);
+    expect(screen.getByTestId("t").textContent).toBe("Zed text");
+  });
+
+  it("useRichT: a missing argument falls back to the en text", () => {
+    addCatalogue("f", "es", { "f.rich_ok": "Ver <en>{term_nope}</en>" });
+    setLanguage("es");
+    const { container } = mount(<R k={key("f.rich_ok")} />);
+    expect(container.textContent).toBe("See event");
+    expect(container.querySelector('span[lang="en"]')).not.toBeNull();
+  });
+
+  it("useRichT: a message that cannot be formatted returns the key, warned once", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mount(
+      <>
+        <R k={key("f.rich")} />
+        <R k={key("f.rich")} />
+      </>,
+    );
+    for (const el of screen.getAllByTestId("r")) expect(el.textContent).toBe("f.rich");
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
   });
 });
 

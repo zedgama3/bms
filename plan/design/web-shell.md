@@ -302,7 +302,7 @@ export function isMessageKey(s: string): s is MessageKey;
 
 /** Returns the message for key in the active language, with values interpolated and the
  *  regional's terms available as {term_event}, {term_department}, ... (decision 7).
- *  Falls back to `en`, then to the key itself (F23, F24). Never throws. Consumers: every
+ *  Falls back to `en`, then to the key itself, when a message is missing or cannot be formatted (F23, F24, F24a). Never throws. Consumers: every
  *  component; `messageFor` in error display. */
 export function useT(): (key: MessageKey, values?: Record<string, string | number | Date | boolean>) => string;
 
@@ -1052,6 +1052,7 @@ package) the `errs` kind. Tests are Vitest files and names unless marked Go or e
 | F22 | `NavEntry.label`, `t()` | a key not in any `en.json` | a `tsc` error (generated key types); cannot reach runtime | fix the key | `generate-messages.test.ts` "keys.d.ts lists every en key and nothing else" |
 | F23 | `t()` | key missing in the active language | the `en` text; one dev warning per key | translate it | `i18n.test.ts` "missing es key falls back to en" |
 | F24 | `t()` | key missing in `en` too (a catalogue edited by hand without regenerating) | the key literal, never English prose from elsewhere | regenerate | "missing en key returns the key" |
+| F24a | `t()`, `useRichT` | a message that cannot be formatted (a missing argument, for example a disabled module's term, or a malformed translation) | (1) in a non-`en` language, the `en` text formatted with the same values; (2) if that fails too, or in `en`, the key literal, as F24; (3) never a raw `{…}` placeholder; (4) one dev warning per key and language | declare the term in core, or don't use a module's term outside that module | "a missing argument falls back to the en text"; "a message that cannot be formatted returns the key"; "no raw placeholder reaches the screen"; "the dev warning is given once per key" |
 | F25 | `lang.ts` | `localStorage` throws (private mode, quota) | ignored; the choice lives in memory for the page | — | `lang.test.ts` "storage errors are ignored" |
 | F26 | `lang.ts` | stored tag not offered | ignored; the default language | — | "unknown stored tag is ignored" |
 | F27 | boot | `GET /api/modules` fails | the cannot-reach-server state (`network`) or the error state with ref; retry refetches | retry | `app.test.tsx` "modules failure shows retry state" |

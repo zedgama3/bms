@@ -69,6 +69,9 @@ export function ShiftPage() {
   const entries = roster.data?.entries ?? [];
   const showLegal = entries.some((e) => e.legal_name !== undefined && e.legal_name !== "");
   const reasonKey = `module.volunteers.cancel_reason.${s?.cancel_reason ?? ""}`;
+  // A reason whose message is intentionally empty (shift_canceled: the banner says it all)
+  // comes back from `t` as its key: show nothing then.
+  const reasonText = isMessageKey(reasonKey) && t(reasonKey) !== reasonKey ? t(reasonKey) : "";
 
   const columns: Column<RosterEntry>[] = [
     {
@@ -146,7 +149,7 @@ export function ShiftPage() {
           <h1 className="text-2xl font-bold">{s.label}</h1>
           {s.canceled_at ? (
             <Banner tone="warn">
-              {t("module.volunteers.shift.canceled")} {isMessageKey(reasonKey) ? t(reasonKey) : ""}
+              {t("module.volunteers.shift.canceled")} {reasonText}
             </Banner>
           ) : null}
           <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1">

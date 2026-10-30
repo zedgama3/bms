@@ -164,8 +164,8 @@ copy and can fork it. Features are modules.
   3. Done 2026-10-30: deploy to the public demo instance.
   - Still open, the owner's command: the local dev database is half-reset (the `authz` and `hello` version-2 rows in `core.schema_migration`); `make migrate` again, or `make down && make up`.
   - Still open: CI runs once the owner pushes the branch (not pushed).
-  - Still open: `bms check` prints "demo: on (state unknown: unavailable)" although the demo is seeded. This also happens locally, so it is a bug in check, not the deploy.
-  - Still open: a core message that uses a disabled module's term shows a raw `{term_…}` placeholder instead of falling back (`useT`, found in the D60 review).
+  - Fixed 2026-10-30 (commit 3671d42): `bms check` read the demo marker through a service built on the refusing database; it now reads the real pool.
+  - Fixed 2026-10-30: a message that cannot be formatted (for example a disabled module's term) now falls back to `en`, then to the key, never a raw placeholder (web-shell F24a).
   - Still open: the telemetry dashboards and alert rules (telemetry Proposed change 23) are not built.
   - Still open: packaging (container image, compose for operators) is next per D52.
 

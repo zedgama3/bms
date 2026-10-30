@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
-import { IntlProvider, useIntl } from "react-intl";
+import { createIntl, IntlProvider, useIntl } from "react-intl";
+import type { IntlShape } from "react-intl";
 import { catalogueVersion, mergedFor, subscribeCatalogues } from "./catalogue";
 import type { GeneratedKeys } from "./keys";
 import { getLanguage, getOffered, setLanguage, subscribeLanguage } from "./lang";
@@ -32,7 +33,7 @@ export function I18nProvider({ children }: { children: ReactNode }): ReactNode {
     [lang, loaded],
   );
   return (
-    <IntlProvider locale={lang} defaultLocale="en" messages={messages} onError={() => {}}>
+    <IntlProvider locale={lang} defaultLocale="en" messages={messages} onError={recordError}>
       {children}
     </IntlProvider>
   );
@@ -55,47 +56,116 @@ export function resetMissingWarningsForTest(): void {
   warned.clear();
 }
 
-/** Returns the message for key in the active language, with values interpolated and the
+// FormatJS does not throw for a missing argument or a malformed message: it reports to the
+// provider's `onError` and returns the raw source text. `formatMessage` is synchronous, so a
+// call clears this, formats, and checks it; any error recorded in between came from that call
+// (the nearest provider's `onError` is the only one it can reach), whatever StrictMode or
+// concurrent rendering does around it.
+let lastError: unknown = null;
+function recordError(err: unknown): void {
+  lastError = err;
+}
+
+const warnedFormat = new Set<string>();
+
+/** F24a: in development, one warning per key and language that cannot be formatted. */
+function warnFormat(lang: string, key: string, shown: "English" | "the key"): void {
+  if (!import.meta.env.DEV) return;
+  const id = `${lang}:${key}`;
+  if (warnedFormat.has(id)) return;
+  warnedFormat.add(id);
+  console.warn(`i18n: "${key}" cannot be formatted in ${lang}; showing ${shown}`);
+}
+
+/** Tests only. */
+export function resetFormatWarningsForTest(): void {
+  warnedFormat.clear();
+}
+
+type Formatted = ReactNode;
+
+/** Formats key; null when FormatJS reported any error or threw. */
+function tryFormat(
+  intl: IntlShape,
+  key: string,
+  values: Record<string, unknown>,
+): Formatted | null {
+  lastError = null;
+  try {
+    const out: Formatted = intl.formatMessage({ id: key }, values as never);
+    return lastError === null ? out : null;
+  } catch {
+    return null;
+  } finally {
+    lastError = null;
+  }
+}
+
+let enIntl: { messages: object; intl: IntlShape } | null = null;
+/** The `en` formatter, rebuilt only when the merged `en` catalogue object changes. */
+function englishIntl(): IntlShape {
+  const messages = mergedFor("en");
+  if (enIntl?.messages !== messages) {
+    enIntl = {
+      messages,
+      intl: createIntl({ locale: "en", messages, onError: recordError }),
+    };
+  }
+  return enIntl.intl;
+}
+
+/** F23/F24/F24a: the active language's text, else the `en` text with the same values, else the
+ *  key. Never throws. */
+function formatOrFallback(
+  intl: IntlShape,
+  key: string,
+  values: Record<string, unknown>,
+): Formatted {
+  warnMissing(intl.locale, key);
+  const out = tryFormat(intl, key, values);
+  if (out !== null) return out;
+  if (!Object.hasOwn(intl.messages, key)) return key; // F24: not a message at all
+  if (intl.locale !== "en") {
+    const fallback = tryFormat(englishIntl(), key, values);
+    if (fallback !== null) {
+      warnFormat(intl.locale, key, "English");
+      return fallback;
+    }
+  }
+  warnFormat(intl.locale, key, "the key");
+  return key;
+}
+
+/** Returns the message for key in the active language, with values interpolated (`Date` and
+ *  `boolean` values are only meaningful in `date`/`time`/`select` arguments) and the
  *  regional's terms available as {term_event}, ... Falls back to `en`, then to the key
- *  itself (F23, F24). Never throws. */
+ *  itself (F23, F24, F24a: a message that cannot be formatted, e.g. a missing argument).
+ *  Never throws. */
 export function useT(): Translate {
   const intl = useIntl();
   return useCallback(
     (key, values) => {
-      try {
-        warnMissing(intl.locale, key);
-        const out = intl.formatMessage(
-          { id: key },
-          { ...termsOf(intl.messages as Record<string, string>), ...values },
-        );
-        return typeof out === "string" ? out : String(out);
-      } catch {
-        return key;
-      }
+      const out = formatOrFallback(intl, key, {
+        ...termsOf(intl.messages as Record<string, string>),
+        ...values,
+      });
+      return typeof out === "string" ? out : key;
     },
     [intl],
   );
 }
 
 /** Like useT for a message with rich-text tags: `<en>{reason}</en>` becomes
- *  `<span lang="en">` (decision 2). Never throws. */
+ *  `<span lang="en">` (decision 2). Same fallbacks as useT. Never throws. */
 export function useRichT(): (key: MessageKey, values?: RichValues) => ReactNode {
   const intl = useIntl();
   return useCallback(
-    (key, values) => {
-      try {
-        return intl.formatMessage(
-          { id: key },
-          {
-            ...termsOf(intl.messages as Record<string, string>),
-            en: (chunks: ReactNode[]) => <span lang="en">{chunks}</span>,
-            ...values,
-          },
-        );
-      } catch {
-        return key;
-      }
-    },
+    (key, values) =>
+      formatOrFallback(intl, key, {
+        ...termsOf(intl.messages as Record<string, string>),
+        en: (chunks: ReactNode[]) => <span lang="en">{chunks}</span>,
+        ...values,
+      }),
     [intl],
   );
 }
