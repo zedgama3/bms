@@ -61,7 +61,16 @@ export function Password() {
           {t("core.accounts.password.title")}
         </h1>
         {restricted ? <Banner live={false}>{t("core.accounts.password.required")}</Banner> : null}
-        <form ref={formRef} onSubmit={submit} className="flex flex-col gap-4" noValidate>
+        <h2 id="password-change-title" className="text-xl font-bold">
+          {t("core.accounts.password.section")}
+        </h2>
+        <form
+          ref={formRef}
+          onSubmit={submit}
+          aria-labelledby="password-change-title"
+          className="flex flex-col gap-4"
+          noValidate
+        >
           <ErrorSummary error={change.error} formRef={formRef} />
           <PasswordField
             label={t("core.accounts.password.current")}

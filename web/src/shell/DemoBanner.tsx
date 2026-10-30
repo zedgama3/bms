@@ -9,6 +9,7 @@ import { Button, linkButtonClass, Table } from "@/ui";
 import type { Column } from "@/ui";
 
 const SIGN_IN_PATH = "/accounts/sign-in";
+const ADMIN_AT = "department-admin@";
 
 /** The demo notice (D53): on every screen while `useDemo().enabled`, never dismissible,
  *  `role="note"`. On the sign-in screen it also lists the shared accounts and the one shared
@@ -56,33 +57,33 @@ function DemoAccounts({
   const t = useT();
   const wide = useWide();
   const signIn = useDemoSignInState();
-  const roleText = (role: string): string => {
-    const [roleKey = role, dept] = role.split("@");
-    const titleKey = `core.access.role.${roleKey}.title`;
-    const base = isMessageKey(titleKey) ? t(titleKey) : t("shell.demo.role_unknown");
-    if (dept === undefined) return base;
-    const key = `core.demo.department.${dept}`;
-    return t("core.demo.role_at", { role: base, department: isMessageKey(key) ? t(key) : dept });
-  };
-  const accountLabel = (key: string): string => {
-    const k = `core.demo.account.${key}`;
-    return isMessageKey(k) ? t(k) : t("shell.demo.account_unknown");
+  // The one short label of an account (D57): `core.demo.account.<key>`; the lead's text takes
+  // `{departments}`, the departments of its `department-admin@<dept>` roles in order.
+  const departments = (a: DemoAccount): string =>
+    a.roles
+      .filter((r) => r.startsWith(ADMIN_AT))
+      .map((r) => {
+        const dept = r.slice(ADMIN_AT.length);
+        const k = `core.demo.department.${dept}`;
+        return isMessageKey(k) ? t(k) : dept;
+      })
+      .join(", ");
+  const known = (a: DemoAccount): boolean => isMessageKey(`core.demo.account.${a.key}`);
+  const accountLabel = (a: DemoAccount): string => {
+    const k = `core.demo.account.${a.key}`;
+    return isMessageKey(k)
+      ? t(k, { departments: departments(a) })
+      : t("shell.demo.account_unknown");
   };
 
   // The name must differ per row: an account the catalogue doesn't know is named by its address.
-  const signInName = (a: DemoAccount): string =>
-    isMessageKey(`core.demo.account.${a.key}`) ? accountLabel(a.key) : a.email;
+  const signInName = (a: DemoAccount): string => (known(a) ? accountLabel(a) : a.email);
 
   const columns: Column<DemoAccount>[] = [
-    { header: t("shell.demo.col.account"), rowHeader: true, cell: (a) => accountLabel(a.key) },
     {
-      header: t("shell.demo.col.role"),
-      cell: (a) =>
-        a.roles.length === 0 ? (
-          t("shell.demo.role_base")
-        ) : (
-          <span className="break-words">{a.roles.map(roleText).join(", ")}</span>
-        ),
+      header: t("shell.demo.col.account"),
+      rowHeader: true,
+      cell: (a) => <span className="break-words">{accountLabel(a)}</span>,
     },
     {
       header: t("shell.demo.col.email"),

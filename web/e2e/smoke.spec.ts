@@ -622,7 +622,7 @@ test.describe("accounts: sign up, sign in and change a password", () => {
     const { seen } = await mockIdentity(page);
     await page.route("**/api/accounts/session", (r) => r.fulfill({ json: me }));
     await page.goto("/accounts/password");
-    await expect(page.getByRole("heading", { level: 1, name: "Change password" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Account" })).toBeVisible();
     await page.getByLabel(/^Current password/).fill("old password 11");
     await page.getByLabel(/^New password/).fill("new password 22");
     if (isPhone) {

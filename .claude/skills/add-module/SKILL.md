@@ -154,6 +154,7 @@ The template to copy is the `hello` reference module (`plan/design/module-hello.
 - **Demo data** (D53): a module that wants data on the public demo adds `demo.go` with a `demoseed.Provider`, sets `ContributesTo: demoseed.Point`, returns the provider from `Contributions()`, and acts only through its own services as the demo accounts it is given (`req.Actors.As`), with invented data only; the provider may rely on `Start` having run (the conformance rule and `bms demo seed` start the module first) and on the event having dates; its conformance test passes `WithDemoSeed()`.
 - **Terminology comes from settings.** A regional that calls them "theme villages" instead of
   "theme camps" changes a setting, not code.
+  A word of the module's own that a regional may rename is declared in `Manifest.Terms` (`TermDecl{Key, Defaults}`, `en` defaults in Go, D57) with four catalogue keys `module.<name>.term.<key>`, `.plural`, `.title`, `.plural_title`; a message or template uses only core terms and its own.
 - **The module works with zero optional settings changed.** Defaults are sensible.
 - Turning the module off leaves its data in place and hides its routes and screens.
 

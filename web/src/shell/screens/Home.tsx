@@ -1,5 +1,6 @@
 import { Link } from "react-router";
 import { useT } from "@/i18n";
+import type { MessageKey } from "@/i18n";
 import { EmptyState, linkButtonClass } from "@/ui";
 import { useBoot } from "../boot";
 import { usePlayaName } from "../me";
@@ -17,7 +18,9 @@ export function Home() {
   const sets = useEnabledSets();
   const boot = useBoot();
   const playaName = usePlayaName();
-  const cards = navItems(sets, session).filter((i) => i.area === "main");
+  const items = navItems(sets, session);
+  const cards = items.filter((i) => i.area === "main");
+  const adminCards = items.filter((i) => i.area === "admin");
   // "Nothing is turned on" is about modules: the accounts area is always there.
   const anyEntries = sets.some((s) => s.kind === "module" && s.nav.some((n) => n.area === "main"));
 
@@ -42,20 +45,35 @@ export function Home() {
           <h2 id="home-cards" className="sr-only">
             {t("shell.home.cards")}
           </h2>
-          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {cards.map((c) => (
-              <li key={c.to}>
-                <Link
-                  to={c.to}
-                  className="flex min-h-11 items-center rounded-md border border-border bg-surface p-4 text-lg font-semibold"
-                >
-                  {t(c.label)}
-                </Link>
-              </li>
-            ))}
-          </ul>
+          <CardList items={cards} />
+        </section>
+      ) : null}
+      {adminCards.length > 0 ? (
+        <section aria-labelledby="home-admin" className="flex flex-col gap-3">
+          <h2 id="home-admin" className="text-xl font-bold">
+            {t("shell.home.admin.title")}
+          </h2>
+          <CardList items={adminCards} />
         </section>
       ) : null}
     </div>
+  );
+}
+
+function CardList({ items }: { items: readonly { to: string; label: MessageKey }[] }) {
+  const t = useT();
+  return (
+    <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {items.map((c) => (
+        <li key={c.to}>
+          <Link
+            to={c.to}
+            className="flex min-h-11 items-center rounded-md border border-border bg-surface p-4 text-lg font-semibold"
+          >
+            {t(c.label)}
+          </Link>
+        </li>
+      ))}
+    </ul>
   );
 }

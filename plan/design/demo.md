@@ -10,6 +10,7 @@
   api, web-shell, telemetry (names only; a parallel spec designs client telemetry)
   **Used by:** `app` (the part, the commands, the adapters), the project's public demo
   instance, every module that contributes seed data (volunteers first)
+- **Amendment 2026-10-30 (owner, D57):** the sign-in table shows one short label per account (built from a per-account catalogue key; the lead's departments joined), the password screen shows the protected-account notice up front with the form disabled, and in demo mode the notify outbox status says mail is captured; see the sign-in page, the password screen and Mail capture.
 - **Amendment D1 (raised 2026-10-28, Approved 2026-10-29, D56; Q-DEMO5: one lead for five departments): what the volunteers provider build found.** The `lead` holds `department-admin` at the five departments the demo gives volunteer data (Rangers, Gate, Greeters, Medical, DPW), not Rangers only; the pending self-upload is the participant's, not a walk-on's; the lead has no verified records and holds Khaki by a recorded self-waiver; DPW gets the "Inventory Crew" position; the conformance rule `demoseed_provider_valid` starts the module and gives the fake event dates, so a provider never invents dates; the walk-on bookings the table left open are fixed. Section "Amendment D1" before Open questions; the volunteers table changes are in `module-volunteers.md`, "Amendment D1 changes".
 
 ## Summary
@@ -29,7 +30,7 @@ Actors}`; `Actors{As(ctx, key) (context.Context, error)}`; `Result{Items}`; the 
 the six `Dept*` keys, `WalkOns = 12`, `WalkOnKey(n)`.
 
 **Exported (`demo`).** `Info{Enabled, Regional, Accounts []AccountInfo, Password}`,
-`AccountInfo{Key, Email, Roles}`; `Report{Steps []Step}`, `Step{Name, Items}`; `MailID`,
+`AccountInfo{Key, Email, Roles}` (the table's Role column shows one short label built from `Key`, not the roles, D57); `Report{Steps []Step}`, `Step{Name, Items}`; `MailID`,
 `Mail{ID, To, Subject, Body, CapturedAt}`, `MailQuery{Limit}`; seams `Accounts`, `Access`,
 `Addresses`, `Profiles`, `Departments`, `Events`, `Settings`, `Schema`, `Objects` (one to three methods
 each, filled by `app`); `Contributor{Module, Provider}`; `Options{Enabled, PublicURL, DB, Clock,
@@ -60,7 +61,7 @@ recreates one). 7 the automatic reset is an operator timer shipped disabled
 unless `demo.enabled`, and reset refuses without the marker row (`core.demo_state`) the seed
 writes first. 9 identity consults a `Guard`: a demo account cannot change or reset its password
 or address, be disabled, deleted or linked to a person (`Permission`, field `account`, code `protected`); anything
-else a tester breaks, the next reset repairs (owner, 2026-10-28). 10 demo never sends mail: the capture `Channel`
+else a tester breaks, the next reset repairs (owner, 2026-10-28); the password screen tells a protected account's holder up front and disables the form, the server refusal stays the backstop (D57); the sign-in table shows one short label per account (D57). 10 demo never sends mail: the capture `Channel`
 stores envelopes in `core.demo_mail` (newest `MaxMail`), shown on `/demo/mail` only to the
 signed-in account they were addressed to (login address; no one else's, no admin override, no
 permission, not audited: it is the viewer's own mail; owner, 2026-10-28); the sign-up form in
@@ -472,10 +473,7 @@ link targets. It links to `/demo/mail` ("Captured mail") when signed in.
 **The sign-in page.** On `/accounts/sign-in` the frame renders the banner expanded with the
 account table (in a `<details>` disclosure: collapsed below the `sm` breakpoint so the sign-in form stays near the top on a phone, open at `sm` and above; `shell.demo.accounts.title` "Try a demo account", columns Account, Role,
 E-mail, and a button per row; the shared password stated once above the table, as text, so a tester can sign in again by hand; `shell.demo.password`
-"Password for every demo account: {password}"; the button is `shell.demo.sign_in_as` "Sign in as {account}" with the row's account label, so its accessible name is unique per row; (owner, 2026-10-30) it replaces the earlier copy-password button; that button and its messages are gone). Role labels are catalogue keys
-`core.demo.account.<key>` (10 keys, `en` and `es`); a `@<dept>` suffix renders as "at {dept}"
-with `core.demo.department.<key>`. The lead's label `core.demo.account.lead` says the lead
-of the volunteer departments (the lead holds five, D1.1). Pressing a row's button fills the sign-in form's e-mail and password fields with that account's address and the shared password and submits the form through its normal path (its errors, its busy state and `returnTo` apply), so the tester is signed in as that account in one click (owner, 2026-10-30). Seam (as built): the banner calls `requestDemoSignIn(email)` (frame-private `@/api/internal`, ignored while busy; the request is `{id, email}`, never the password; only `core/accounts` may import the `@/api` names, by an eslint ban); the screen fills the password from `useDemo().password`; the Sign in column is hidden when that password is empty; the core sign-in screen reads `useDemoSignInState()` and reports `setDemoSignInBusy()` from `@/api`, fills its real inputs and calls `form.requestSubmit()`, and ignores any request id older than the one present at mount; detail in web-shell.md's demo amendment. Column heading key `shell.demo.col.signin` "Sign in". The accounts area itself is unchanged: the form is identity's and keeps its own fields and
+"Password for every demo account: {password}"; the button is `shell.demo.sign_in_as` "Sign in as {account}" with the row's account label, so its accessible name is unique per row; (owner, 2026-10-30) it replaces the earlier copy-password button; that button and its messages are gone). (D57) The Role column shows one short label per account, not the list of its roles' long titles, e.g. "Lead: Rangers, Gate, Greeters, Medical, DPW" (the department names in the regional's words), "Participant", "Newcomer (no profile yet)", "Volunteer coordinator". The label is built from one catalogue key per account, `core.demo.account.<key>` (10 keys, `en` and `es`); for the lead the key's text has a `{departments}` argument, the departments of the lead's `department-admin@<dept>` entries in `AccountInfo.Roles`, each named by `core.demo.department.<key>` and joined with ", " in `Roles` order (the lead holds five, D1.1); the other accounts' keys are plain text. The long role titles are no longer listed in the table. Pressing a row's button fills the sign-in form's e-mail and password fields with that account's address and the shared password and submits the form through its normal path (its errors, its busy state and `returnTo` apply), so the tester is signed in as that account in one click (owner, 2026-10-30). Seam (as built): the banner calls `requestDemoSignIn(email)` (frame-private `@/api/internal`, ignored while busy; the request is `{id, email}`, never the password; only `core/accounts` may import the `@/api` names, by an eslint ban); the screen fills the password from `useDemo().password`; the Sign in column is hidden when that password is empty; the core sign-in screen reads `useDemoSignInState()` and reports `setDemoSignInBusy()` from `@/api`, fills its real inputs and calls `form.requestSubmit()`, and ignores any request id older than the one present at mount; detail in web-shell.md's demo amendment. Column heading key `shell.demo.col.signin` "Sign in". The accounts area itself is unchanged: the form is identity's and keeps its own fields and
 rules; a tester may still type the address. Self sign-up stays per `accounts.signup` (the sign-up link is identity's). On the sign-up form
 in demo mode the frame renders a note (`shell.demo.signup_note`, "Use a made-up address, not
 your own. Mail the demo sends can be read only by the account it is sent to, but strangers see
@@ -489,9 +487,9 @@ yet. Mail the demo would send appears here instead of being delivered."); signed
 error with reference and retry. A note above the list (`core.demo.mail.note`): "Only mail sent to your own
 account's address appears here." Phone-first.
 
-**The password screen (accounts area, Proposed change 10).** A `403` with field `account` code
-`protected` shows `core.accounts.field.protected` ("This is a shared demo account. Its
-password and e-mail address can't be changed."). The account admin screen shows the same for
+**The password screen (accounts area, Proposed change 10).** (D57) A protected demo account sees the notice `core.accounts.field.protected` ("This is a shared demo account. Its
+password and e-mail address can't be changed.") above the form before typing anything, and the form's fields and button are disabled; nothing waits for a refusal. The server's refusal stays the backstop: a `403` with field `account` code
+`protected` (a stale page, a direct call) shows the same text. How the screen knows the account is protected is Q-DEMO6. The account admin screen shows the same for
 disable, and the people deletion screen for `Conflict protected`.
 
 ## Behavior
@@ -645,7 +643,7 @@ envelope (`To`, `Subject`, `Body`, `MessageID`) in its own short `Write` transac
 deletes rows beyond the newest `MaxMail`; records `bms.demo.mail_captured`; a malformed
 envelope (zero `To`, empty subject) is `Invalid` wrapping `notify.ErrRejected` so notify ends
 the row `rejected` instead of retrying; a store failure is `Unavailable` and notify retries.
-`Ping` answers nil (the outbox screen's "check connection" succeeds). `ListMail`: actor
+`Ping` answers nil (the outbox screen's "check connection" succeeds). (D57) In demo mode the notify outbox screen's status line says mail is captured for the demo (notify `core.notify.outbox.demo`, "Mail is captured for the demo, not sent"), not "E-mail is set up"; the screen reads `useDemo().enabled`. A message to a person with no address ends `Skipped` there (notify decision 6). `ListMail`: actor
 (`Unauthenticated` without one) → `Enabled` (`Unsupported` when off) → `Addresses.EmailOf(actor)`
 (`NotFound` → empty list) → load rows whose `to_address` equals that address
 (`WHERE lower(to_address) = $1`, the viewer's address lower-cased; there is no other filter and
@@ -719,6 +717,7 @@ is covered by the integration test, so a column rename breaks the build, not the
 | F42 | `bms demo <x>` | `BMS_DEMO_ENABLED` off, checked right after config load | — (usage-style) | exit 2, name the key; telemetry and the database untouched | `TestDemoCommand_Disabled_Exit2_NamesKey` |
 | F43 | `Reset` | `Schema.Migrate` fails | `demo.ErrMigrate` wrapping the migrator's kind | exit by the migrate command's mapping | `TestReset_MigrateFails_WrapsErrMigrate` |
 | F44 | files policy wiring | demo enabled but the demo service is missing | Unavailable (fail closed) | files answers it | `TestDemoPolicy_ServiceMissing_FailsClosed` |
+| F45a | password screen (web) | a protected demo account opens it (D57) | notice above the form, fields and button disabled | read the notice | `demo.test.tsx` "password screen shows the protected notice and disables the form" (and "a 403 protected still shows the notice") |
 | F45 | sign-in page (web) | a one-click "Sign in as" is refused or fails | the form's normal `ApiError` | the form shows its own error and clears its busy state; the tester may press another row or type | `demo.test.tsx` "sign in as failure shows the form's error" |
 
 ## Lock-in check
@@ -887,7 +886,9 @@ skill:** one clause: "the provider may rely on `Start` having run".
 
 ## Open questions
 
-**None open.** Q-DEMO5 (one lead for five departments) was answered by the owner on
+**Open (D57).** Q-DEMO6. How does the password screen know the account is protected? The demo answer's account list (`Info.Accounts`) holds each account's key and e-mail, but the session has no e-mail, and `Info` does no I/O so it cannot hold account IDs. Proposed: the session carries it: `SessionInfo.Protected bool` (`protected`), set by identity from its `Guard` when the session is read, so the screen needs no matching; the alternative is adding the e-mail to the session. Either is a change to identity.md and the session type, which is why it is not folded in yet.
+
+Q-DEMO5 (one lead for five departments) was answered by the owner on
 2026-10-29 and is folded into D1.1.
 
 **Answered (D53).** All four were answered by the owner on 2026-10-28 and are folded into the Summary's

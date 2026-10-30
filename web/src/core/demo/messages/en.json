@@ -1,8 +1,7 @@
 {
-  "core.demo.role_at": "{role} at {department}",
   "core.demo.account.participant": "Participant",
   "core.demo.account.newcomer": "Newcomer (no profile yet)",
-  "core.demo.account.lead": "Lead of the volunteer {term_department_plural}",
+  "core.demo.account.lead": "{term_lead_title}: {departments}",
   "core.demo.account.coordinator": "Volunteer coordinator",
   "core.demo.account.steward": "{term_department_title} steward",
   "core.demo.account.event-admin": "{term_event_title} admin",

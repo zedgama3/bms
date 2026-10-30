@@ -180,6 +180,7 @@ export interface GeneratedKeys {
   "core.accounts.password.new": true;
   "core.accounts.password.new_hint": true;
   "core.accounts.password.required": true;
+  "core.accounts.password.section": true;
   "core.accounts.password.show": true;
   "core.accounts.password.show_current": true;
   "core.accounts.password.show_new": true;
@@ -319,7 +320,6 @@ export interface GeneratedKeys {
   "core.demo.mail.refresh": true;
   "core.demo.mail.title": true;
   "core.demo.mail.to": true;
-  "core.demo.role_at": true;
   "core.departments.archived_badge": true;
   "core.departments.cancel": true;
   "core.departments.field.contact_email": true;
@@ -1330,6 +1330,7 @@ export interface GeneratedKeys {
   "module.volunteers.shift.department": true;
   "module.volunteers.shift.edit": true;
   "module.volunteers.shift.filled": true;
+  "module.volunteers.shift.keep": true;
   "module.volunteers.shift.keep_mine": true;
   "module.volunteers.shift.manage": true;
   "module.volunteers.shift.no_location": true;
@@ -1473,18 +1474,16 @@ export interface GeneratedKeys {
   "shell.demo.banner.title": true;
   "shell.demo.col.account": true;
   "shell.demo.col.email": true;
-  "shell.demo.col.role": true;
   "shell.demo.col.signin": true;
   "shell.demo.mail_link": true;
   "shell.demo.password": true;
-  "shell.demo.role_base": true;
-  "shell.demo.role_unknown": true;
   "shell.demo.sign_in_as": true;
   "shell.demo.signup_note": true;
   "shell.dismiss": true;
   "shell.file.chosen": true;
   "shell.footer.version": true;
   "shell.forbidden": true;
+  "shell.home.admin.title": true;
   "shell.home.cards": true;
   "shell.home.empty": true;
   "shell.home.hi": true;
@@ -1526,6 +1525,10 @@ export interface GeneratedKeys {
   "term.event.plural": true;
   "term.event.plural_title": true;
   "term.event.title": true;
+  "term.lead": true;
+  "term.lead.plural": true;
+  "term.lead.plural_title": true;
+  "term.lead.title": true;
   "term.participant": true;
   "term.participant.plural": true;
   "term.participant.plural_title": true;

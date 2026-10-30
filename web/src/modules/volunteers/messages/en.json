@@ -269,6 +269,7 @@
   "module.volunteers.shift.cancel_mine_confirm": "Cancel my booking",
   "module.volunteers.shift.cancel_mine_title": "Cancel your booking?",
   "module.volunteers.shift.keep_mine": "Keep my booking",
+  "module.volunteers.shift.keep": "Keep this shift",
   "module.volunteers.shift.cancel_title": "Cancel this shift?",
   "module.volunteers.shift.canceled": "This shift was canceled.",
   "module.volunteers.shift.canceled_done": "Shift canceled",

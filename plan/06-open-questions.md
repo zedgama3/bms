@@ -163,3 +163,11 @@ here before; it is recorded now.
       each department get its own lead account? One `lead` account may run five departments
       (Rangers, Gate, Greeters, Medical, DPW); owner: "This may be required at a small burn
       with few volunteers." → D56 (design/demo.md, Amendment D1)
+
+Answered 2026-10-30: the volunteers question Q-VOL12, raised by Amendment V3
+(design/module-volunteers.md). It was not listed here before; it is recorded now.
+
+- [x] **Q-VOL12:** Which words should a regional be able to rename in volunteers, and where does
+      "lead" live? Owner accepted the recommendation: `shift`, `position` and `qualification` are
+      regional terms declared by volunteers; `lead` is a core term; `volunteer`, `waiver`,
+      `roster` and `catalogue` are not added. → D57 (design/module-volunteers.md, Amendment V3)

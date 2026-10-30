@@ -262,6 +262,7 @@ export function ShiftPage() {
             title={t("module.volunteers.shift.cancel_title")}
             body={t("module.volunteers.shift.cancel_body", { label: s.label })}
             confirm={t("module.volunteers.shift.cancel_confirm")}
+            dismiss={t("module.volunteers.shift.keep")}
             returnFocus="main h1"
             onClose={() => setDialog(null)}
             onConfirm={async () => {

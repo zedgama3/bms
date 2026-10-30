@@ -211,7 +211,7 @@ describe("the frame and the profile (useMe)", () => {
       session: ident({ password_change_required: true }),
       routes: mine(),
     });
-    await screen.findByRole("heading", { name: "Change password" });
+    await screen.findByRole("heading", { level: 1, name: "Account" });
     expect(called(fetchMock, "GET", "/api/people/me")).toBe(0);
   });
 

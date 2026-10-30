@@ -15,7 +15,7 @@ import {
   useToast,
 } from "@/ui";
 import { focusSoon } from "./focus";
-import { instantToLocal, localToInstant } from "./helpers";
+import { instantToLocal, isOutsideDates, localToInstant } from "./helpers";
 import { ReadOnlyNote } from "./ReadOnlyNote";
 import { text } from "./text";
 import type { EventDetail, ScheduleItem } from "./types";
@@ -47,13 +47,7 @@ export function ScheduleSection({
   const act = useAction();
   const fieldErrors = useFieldErrors(act.error);
   const editable = canManage && !event.closed;
-  const evStart = Date.parse(event.dates.start);
-  const evEnd = Date.parse(event.dates.end);
-
-  const outside = (i: ScheduleItem) => {
-    const s = Date.parse(i.starts_at);
-    return s < evStart || s >= evEnd || (i.ends_at !== undefined && Date.parse(i.ends_at) > evEnd);
-  };
+  const outside = (i: ScheduleItem) => isOutsideDates(i, event.dates);
   const when = (i: ScheduleItem) =>
     i.ends_at
       ? t("core.events.schedule.window", {

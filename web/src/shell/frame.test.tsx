@@ -100,8 +100,35 @@ describe("home", () => {
     mountApp({ session: signedIn });
     expect(await screen.findByRole("heading", { name: "Hi, Dusty" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Modules" })).toHaveAttribute("href", "/admin/modules");
-    expect(screen.getByRole("navigation", { name: "Administration" })).toBeInTheDocument();
+    const nav = screen.getByRole("navigation", { name: "Administration" });
+    expect(within(nav).getByRole("link", { name: "Modules" })).toHaveAttribute(
+      "href",
+      "/admin/modules",
+    );
+  });
+
+  it("signed in: an Administration group of cards under the main cards (D57)", async () => {
+    mountApp({ session: signedIn });
+    await screen.findByRole("heading", { name: "Hi, Dusty" });
+    const main = within(screen.getByRole("main"));
+    const group = main.getByRole("region", { name: "Administration" });
+    expect(within(group).getByRole("heading", { level: 2, name: "Administration" })).toBeVisible();
+    expect(within(group).getByRole("link", { name: "Modules" })).toHaveAttribute(
+      "href",
+      "/admin/modules",
+    );
+    // The main cards come first; the admin entry is not among them.
+    const cards = main.getByRole("region", { name: "What you can do" });
+    expect(within(cards).queryByRole("link", { name: "Modules" })).not.toBeInTheDocument();
+    expect(cards.compareDocumentPosition(group) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("no admin entry: no Administration group and no heading (D57)", async () => {
+    mountApp({ session: { ...signedIn, permissions: [] } });
+    await screen.findByRole("heading", { name: "Hi, Dusty" });
+    const main = within(screen.getByRole("main"));
+    expect(main.queryByRole("heading", { name: "Administration" })).not.toBeInTheDocument();
+    expect(main.queryByRole("region", { name: "Administration" })).not.toBeInTheDocument();
   });
 
   it("empty: nothing turned on", async () => {

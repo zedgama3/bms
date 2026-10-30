@@ -25,7 +25,7 @@ copy and can fork it. Features are modules.
 ## Status
 
 - **Phase:** 1, first module (core M0–M4 done 2026-10-23)
-- **Last updated:** 2026-10-30
+- **Last updated:** 2026-10-30 (D57)
 - **Done 2026-10-16:**
   - Repo scaffolded: plan, agents, skills, lint rules, dev compose. Methodology carried over
     from Sojourn (D7).
@@ -129,6 +129,15 @@ copy and can fork it. Features are modules.
     "Inventory Crew"; an event without dates is Invalid (F175), no date fallback in the
     module; moduletest's `demoseed_provider_valid` gives the fake event dates and starts the
     module before Seed; walk-on bookings fixed as built.
+- **Owner's answers 2026-10-30 (D57):** the main session's recommendations accepted on every
+    open item after the demo walkthrough: `hello` disabled on the public demo (deploy setting);
+    Administration cards on home; notify marks no-address mail skipped (see D57 for the conflict
+    with notify F22, which still says failed); event-end schedule warning inclusive at the end
+    instant; first-sign-in prompt once per session, recorded server-side; cancel-shift dismiss
+    "Keep this shift"; jobs screen wording ("Background work", "Job") and its states; demo role
+    labels; the smaller UX items. Volunteers Amendment V3 approved (Q-VOL12 answered: `shift`,
+    `position`, `qualification` are volunteers' regional terms; `lead` is a core term).
+    The architect and spec-editor are designing the details of the UX items.
 - **Status update 2026-10-30 (not a decision):** demo mode (design/demo.md, D53, with Amendment
     D1 / D56) and telemetry Amendment T1 (client telemetry for the public demo, D54) are
     Implemented, marked by the main session (checks green; the reviews' must-fix findings fixed).

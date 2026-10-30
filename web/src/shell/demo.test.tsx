@@ -14,7 +14,11 @@ const DEMO = {
   password: "correct-horse-battery",
   accounts: [
     { key: "participant", email: "participant@demo.invalid", roles: [] },
-    { key: "lead", email: "lead@demo.invalid", roles: ["department-admin@rangers"] },
+    {
+      key: "lead",
+      email: "lead@demo.invalid",
+      roles: ["department-admin@rangers", "department-admin@gate", "department-admin@dpw"],
+    },
     { key: "steward", email: "steward@demo.invalid", roles: ["department-steward"] },
   ],
 };
@@ -68,9 +72,12 @@ describe("demo banner", () => {
     expect(code.querySelectorAll("wbr")).toHaveLength(1);
     expect(code.className).not.toMatch(/break-all/);
     expect(code.innerHTML).toMatch(/@<wbr>/);
-    expect(within(table).getByText("Administrator of a department at Rangers")).toBeInTheDocument();
+    // One short label per account (D57): the lead's departments are joined in role order.
+    expect(within(table).getByText("Lead: Rangers, Gate, DPW")).toBeInTheDocument();
+    expect(within(table).getByText("Participant")).toBeInTheDocument();
+    expect(within(table).getByText("Department steward")).toBeInTheDocument();
+    expect(within(table).queryByText(/Administrator of a department/)).toBeNull();
     expect(within(table).queryByText(/department-admin/)).toBeNull();
-    expect(within(table).getByText("Lead of the volunteer departments")).toBeInTheDocument();
     expect(screen.getAllByRole("note")).toHaveLength(1);
     await expectNoAxeViolations(container);
   });
@@ -87,7 +94,7 @@ describe("demo banner", () => {
       .map((b) => b.getAttribute("aria-label") ?? b.textContent);
     expect(names).toEqual([
       "Sign in as Participant",
-      "Sign in as Lead of the volunteer departments",
+      "Sign in as Lead: Rangers, Gate, DPW",
       "Sign in as Department steward",
     ]);
   });
@@ -117,7 +124,7 @@ describe("demo banner", () => {
       path: "/accounts/sign-in",
     });
     await userEvent.click(
-      await screen.findByRole("button", { name: "Sign in as Lead of the volunteer departments" }),
+      await screen.findByRole("button", { name: "Sign in as Lead: Rangers, Gate, DPW" }),
     );
     await waitFor(() =>
       expect(sent).toEqual({ email: "lead@demo.invalid", password: "correct-horse-battery" }),

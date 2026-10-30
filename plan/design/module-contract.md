@@ -15,6 +15,7 @@
 - **Amended 2026-10-20 (D44, owner approval of files and the jobs follow-ups):** `Deps.Files files.Store` (M4, scoped per module); `Route` gains `MaxBodyBytes` and `Timeout` (api.md decision 32); `moduletest.Conformance` supplies `filestest.NewFake(manifest.Name)` and scans its `Files()` and `Staged()` names, and the jobs leak rule also checks `Fake.Enqueued()` keys against the seed person markers (`jobs_key_not_person`). Proposed change 19.
 - **Accepted 2026-10-20 (owner, D40):** the implementation deviations marked "(implementation, 2026-10-19)" in this spec are accepted as written; no text changed.
 - **Amendment 2026-10-28 (approved, owner, D53, demo.md Proposed change 6):** `demo` joins the reserved core areas (`IsCoreArea`); `demo.seed` is a core extension point (defined by `core/demo`, listed in `Env.CoreExtensionPoints`); `moduletest.Conformance` gains the option `WithDemoSeed()` and the rule `demoseed_provider_valid`; F66.
+- **Amendment 2026-10-30 (approved, owner, D57; module-volunteers Amendment V3, Proposed change 17):** `Manifest.Terms []TermDecl` (aliases `module.TermDecl`, `module.TermForms`); `Validate` runs each `TermDecl.Validate` and the duplicate and reserved checks under `terms[i]`; `ModuleSettings.Terms`; decision 8's derived keys gain `module.<name>.term.<key>` and its three forms; a module's messages and templates use only `CoreTerms` and its own `Terms` (enforced by an `app` test); F67.
 - **Amendment D1 (approved 2026-10-29, D56; demo.md Proposed change 18, applied 2026-10-29):** `demoseed_provider_valid` registers the request's event with dates (Thursday 10:00 to Monday 12:00, at least 21 days after the rig's clock, zone `UTC`) and calls the module's `Start` before `Provider.Seed` and `Stop` after, as `bms demo seed` does, so a provider may rely on what `Start` registered and carries no default-date rule of its own.
 - **Package:** `internal/core/module` (Go module `github.com/zedgama3/bms`), plus the test
   helper package `internal/core/module/moduletest`. **UI:** none of its own; the admin
@@ -56,7 +57,7 @@ Exported names (package `module`):
   each has `Validate() error`; idents `[a-z][a-z0-9]*(-[a-z0-9]+)*`, at most 64 bytes.
 - `SettingKind = settings.Kind` (`SettingBool|Int|Duration|Text|Enum|Secret`, zero invalid; the `Secret` kind is sealed at rest, D39), `SettingDecl = settings.Decl{Key, Kind,
   Default, Options, Check func(string) error `json:"-"`}` (aliases; the types are `core/settings`'s because it cannot import `module`; setting keys are `[a-z][a-z0-9]*(_[a-z0-9]+)*`, at most 64 bytes, not the hyphenated ident).
-- `Manifest{Name, Migrations fs.FS, Views []any and Groups []privacy.Group (D44; `Validate` runs `privacy.Check`, and `privacy.GroupLevels` for F64; D46), Templates fs.FS (D39; files `<ident>.<lang>.tmpl`, notify names them `<name>.<ident>`), Permissions []authz.PermissionDecl, Settings, Publishes,
+- `Manifest{Name, Migrations fs.FS, Views []any and Groups []privacy.Group (D44; `Validate` runs `privacy.Check`, and `privacy.GroupLevels` for F64; D46), Templates fs.FS (D39; files `<ident>.<lang>.tmpl`, notify names them `<name>.<ident>`), Permissions []authz.PermissionDecl, Settings, Terms (D57; `[]TermDecl`, aliases of settings'), Publishes,
   Subscribes []signals.Name, Provides/Requires/Uses []Capability, Defines
   []ExtensionPointDecl, ContributesTo []ExtensionPoint}`; `Validate()` joins every problem.
 - `Factory func(ctx, Deps) (Module, error)`; `Module` = `PersonData` + `Start(ctx) error` +
@@ -255,6 +256,13 @@ const (
 // kind, options, default, a Secret with a Default or Options).
 type SettingDecl = settings.Decl
 
+// TermDecl and TermForms alias settings.TermDecl and settings.Forms (D57), as SettingDecl
+// aliases settings.Decl. Key grammar [a-z][a-z0-9]*(_[a-z0-9]+)*, at most 32 bytes.
+type (
+	TermDecl  = settings.TermDecl
+	TermForms = settings.Forms
+)
+
 // ---- Manifest ----
 
 // Manifest is everything the core needs to know about a module without building it. It
@@ -279,6 +287,12 @@ type Manifest struct {
 
 	// Settings this module declares. Keys are stored as "<Name>.<Key>" by settings.
 	Settings []SettingDecl
+
+	// Terms are the words this module lets a regional rename (D57, settings.md
+	// "module-declared terms"). Validate runs each TermDecl.Validate and fails duplicate or
+	// reserved (a settings.CoreTerms name) keys under terms[i]. One flat namespace across
+	// modules: a word two modules need is promoted to CoreTerms.
+	Terms []TermDecl
 
 	// Templates holds the module's notification templates (go:embed), files named
 	// <ident>.<lang>.tmpl with Subject:/Vars: headers; notify names them "<Name>.<ident>"
@@ -588,6 +602,7 @@ func (p *Plan) Settings() []ModuleSettings
 type ModuleSettings struct {
 	Module   string
 	Settings []SettingDecl
+	Terms    []TermDecl // D57: Plan.Settings() carries a module's terms to settings
 }
 
 // Graph returns the whole registry as data for `GET /api/admin/modules` and `bms check`:
@@ -1067,6 +1082,10 @@ None of its own. What this spec provides for screens elsewhere:
    `module.<name>.title` and `.description`; `module.<name>.permission.<rest>.title` and
    `.description` (`<rest>` is the permission name after `<name>.`);
    `module.<name>.setting.<key>.title`, `.description` and `.option.<opt>`;
+   (D57) `module.<name>.term.<key>`, `.plural`, `.title` and `.plural_title` for each declared
+   term (the shell's boot fallback; they must equal the manifest's `en` defaults, and a
+   module's messages and templates may name only `CoreTerms` and its own `Terms`, both
+   checked by one test in `internal/app`);
    `module.<name>.signal.<rest>.title`; `module.<name>.kept.<kind>`;
    `module.<name>.template.<ident>.title` for each `<ident>` in `Manifest.Templates` (so a
    module template's title on notify's templates screen is checked like a permission's;
@@ -1308,6 +1327,7 @@ Standard library (`context`, `encoding/json`, `errors`, `fmt`, `io/fs`, `log/slo
 | F64 (D44) | `Manifest.Validate` | a group offering `holders` whose `Permission` this module declares has a `Reaches` below its highest field level (levels from `privacy.GroupLevels(Views)`) | Invalid (`permissions[i].reaches` `too_low`) | raise `Reaches` | `TestManifestValidate_HoldersPermissionReachesTooLow_ReturnsInvalid` |
 | F65 (D44) | `Conformance/views_tagged`, `visibility_settings_declared` | a module sends a response type that `Views` does not list, or `Views` lists a type with no tags (and `WithoutViews()` not passed) | the rule fails | list and tag the type | `TestConformance_ViewsNotTagged_Fails` (the `untaggedView` fixture; the other fixtures pass `WithoutViews()`, since their routes answer with `http.NotFoundHandler` and no response type) |
 | F66 (D53) | `Conformance/demoseed_provider_valid` | `WithDemoSeed()` given but `demoseed.Point` is not in `ContributesTo`, the contribution is not a `demoseed.Provider`, or the provider creates nothing or returns `Permission` | the rule fails | fix the provider or its actors; a provider may rely on what `Start` registered (D56) | `TestConformance_DemoSeed_*` (one per branch) |
+| F67 (D57) | `Manifest.Validate` | a term key is in `CoreTerms`, duplicated in the manifest, malformed, or its `en` defaults lack a form | Invalid (`terms[i].key` `reserved`/`duplicate`/`format`; `terms[i].defaults.en.<form>` `required`) | fix the manifest | `TestManifest_Terms_Invalid_Table` |
 
 Members that cannot fail, and why: `Definer`, `Publisher`, `Permission.Module` (string
 split); the `String` methods (name or `Kind(<n>)`); `NewRegistry`, `Default` (allocation);

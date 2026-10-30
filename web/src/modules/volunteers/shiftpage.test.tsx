@@ -293,6 +293,8 @@ describe("volunteers: a shift", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: "Cancel shift" }));
     dialog = await screen.findByRole("dialog", { name: "Cancel this shift?" });
+    expect(within(dialog).getByRole("button", { name: "Keep this shift" })).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
     await userEvent.click(within(dialog).getByRole("button", { name: "Cancel shift" }));
     await waitFor(() => expect(seen(fetchMock, "POST", `${V}/shifts/${SHIFT}/cancel`)).toBe(true));
   });

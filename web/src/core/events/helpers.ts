@@ -75,3 +75,17 @@ export function localToInstant(local: string, zone: string): string {
   const second = asUtc - offset(first);
   return new Date(second).toISOString();
 }
+
+/** Whether a schedule item falls outside the event's dates (departments-events decision 10,
+ *  D57): a moment is outside before `start` or after `end`; a window when it starts before
+ *  `start` or ends after `end`. Exactly `end` is inside. Instants are RFC 3339 strings. */
+export function isOutsideDates(
+  item: { starts_at: string; ends_at?: string | undefined },
+  dates: { start: string; end: string },
+): boolean {
+  const start = Date.parse(dates.start);
+  const end = Date.parse(dates.end);
+  const s = Date.parse(item.starts_at);
+  if (s < start || s > end) return true;
+  return item.ends_at !== undefined && Date.parse(item.ends_at) > end;
+}

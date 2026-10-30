@@ -307,7 +307,7 @@ describe("/events/:event", () => {
     await expectNoAxeViolations(container);
   });
 
-  it("treats the event's dates as half-open [start, end) (model decision 10), and shows keys only to managers", async () => {
+  it("counts an item at exactly the end instant as inside (D57), and shows keys only to managers", async () => {
     const withKey = (permissions: string[]) =>
       mountApp({
         path: `/events/${E_NOW}`,
@@ -337,7 +337,7 @@ describe("/events/:event", () => {
       });
     const first = withKey([]);
     await screen.findByRole("heading", { level: 3, name: "Gate closes" });
-    expect(screen.getAllByText("Outside the event's dates.")).toHaveLength(2); // the end instant and "After"
+    expect(screen.getAllByText("Outside the event's dates.")).toHaveLength(1); // only "After"; the end instant is inside
     expect(screen.queryByText("Key:")).not.toBeInTheDocument();
     first.unmount();
     withKey(["events.manage"]);

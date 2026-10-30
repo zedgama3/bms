@@ -958,3 +958,40 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
   - moduletest's `demoseed_provider_valid` gives the fake event dates and starts the module
     before Seed.
   - Walk-on bookings are fixed as built.
+
+## D57. Owner accepted the recommendations after the demo walkthrough; volunteers Amendment V3 approved
+
+- **Status:** Accepted (2026-10-30), decided by the owner. The owner accepted the main session's
+  recommendations on every open item after the demo walkthrough.
+- **Hello on the public demo:** the reference module `hello` is disabled on the public demo with
+  `BMS_MODULES_DISABLED=hello`, a deploy setting.
+- **Administration cards on home:** home shows an "Administration" group of cards below the main
+  cards, one for each `area: "admin"` nav entry the person may see. This is a web-shell change.
+- **Mail to people with no address:** notify marks a message that can't be sent because the
+  recipient has no e-mail address (`no_address`) as **skipped**, not failed, using the existing
+  Skipped count. In demo mode the outbox status says mail is captured, not "E-mail is set up".
+- **Event end, schedule warning:** for the event schedule warning, an item exactly at the event's
+  end instant counts as inside the event. Items after the end, and windows ending after it, are
+  still flagged. Event dates stay half-open `[Start, End)` everywhere else.
+- **First-sign-in prompt:** shown once per session, with the server recording that the person was
+  prompted (no browser storage). The architect is designing the details.
+- **Cancel-shift dialog:** its dismiss button reads "Keep this shift".
+- **Background work (jobs) screen:**
+  - "Background work" for the area and "job" for one item;
+  - the column "Work" becomes "Job", and the two "That work…" strings change to match;
+  - a 403 follows the spec's error summary;
+  - waiting jobs are shown separately from failed ones;
+  - no IDs are shown (owner titles and job titles come from the catalogues).
+  The architect is designing the details.
+- **Demo role labels:** short labels in the demo sign-in table, for example "Lead: Rangers, Gate,
+  Greeters, Medical, DPW" and "Participant".
+- **Smaller UX items:**
+  - the password screen shows the protected-demo-account notice up front and disables the form;
+  - the "Account" nav label and the "Change password" page title are made consistent;
+  - "Back to shifts" returns a lead to the department view they came from;
+  - the long shift list is made more compact.
+  The architect and spec-editor are designing the details.
+- **Volunteers Amendment V3 ([design/module-volunteers.md](design/module-volunteers.md), "Amendment
+  V3"): approved, with the recommended answer to Q-VOL12.** `shift`, `position` and
+  `qualification` become regional words declared by the volunteers module, and `lead` is a core
+  word. Answers Q-VOL12 ([06-open-questions.md](06-open-questions.md)).

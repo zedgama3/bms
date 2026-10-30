@@ -6,6 +6,7 @@
 - **Amendment 2026-10-20 (approved, owner, D44; files Proposed change 6):** the logo, deferred by D39, lands with `files`: `Options.Files files.Store`, three routes under `/api/settings/logo`, `Public.Logo`, audit actions `settings.logo.changed|removed`, a logo field on `/settings`; decision 8 is superseded. See "Amendment 2026-10-20 (D44): the logo" before Open questions.
 - **Accepted 2026-10-20 (owner, D40):** the implementation deviations marked "(implementation, 2026-10-19/20)" in this spec are accepted as written; no text changed.
 - **Amendment 2026-10-21 (approved 2026-10-21, D47): the logo, designed over the built `files` area.** The D44 amendment named the routes; this one makes them implementable now that `files` and `privacy-tags` are Implemented: `Options.Files` (a lazy `files.Store` scoped `settings` from `app`), the fixed record `LogoRef`, three use cases `SetLogo`, `RemoveLogo`, `OpenLogo` behind `GET|PUT|DELETE /api/settings/logo`, the logo's file ID in the snapshot so `Public.Logo` and the `ETag` move together (decision 16), the cap `MaxLogoBytes` 2 MiB enforced by a counting reader before files' site-wide policy, `files.Brand` (PNG, JPEG, WebP; no SVG, decision 17), audit `settings.logo.changed|removed` with the revision lock serialising logo writes, read-only behaviour, no export or deletion (nothing personal), failure modes F37 to F54, the `/settings` logo field and the header's `<img>` (web-shell's). The record is "Amendment 2026-10-21: the logo over files" before Open questions. Four open questions (Q-LOGO1 to Q-LOGO4), answered (owner, 2026-10-21, D47) 2026-10-21 as recommended (D47); Proposed changes 14 to 19, applied 2026-10-21 (D47).
+- **Amendment 2026-10-30 (approved, owner, D57; module-volunteers Proposed change 16):** module-declared terms: `TermDecl`, `Area.Terms`, `CoreTerms` gains `lead`, `TermsFor`, `Public.Terms`, `Terms` and `SetTerms` cover every declared term, `TermDoc.Area`; F29 and F31 reworded, F29a to F29d; section "Amendment 2026-10-30" before Open questions.
 - **Package:** `internal/core/settings` (store in `internal/core/settings/postgres`, fake in
   `internal/core/settings/settingstest`)   **UI:** `web/src/core/settings/`
 - **Depends on specs:** lib-errs, lib-core, lib-secret, model, config, db, audit, authz,
@@ -39,23 +40,23 @@ process, or differs per process) is not here, and nothing here is read from the 
 - `Regional{Name, ContactEmail, PublicURL, Language, Timezone string; Languages []string}`;
   `Forms{Singular, Plural, SingularTitle, PluralTitle string}`; `Public{Regional;
   Theme bool; Logo string (D44; the logo's file ID from the snapshot, `""` when none); Terms map[string]map[string]string}`; `LogoResult{Revision, Logo string}`; `Document`, `AreaDoc`, `SettingDoc`,
-  `Changes{Values map[string]*string}`, `TermChanges{Terms map[string]FormChanges}`,
+  `TermDecl{Key string; Defaults map[string]Forms}` (+`Validate`; D57), `Changes{Values map[string]*string}`, `TermChanges{Terms map[string]FormChanges}`,
   `FormChanges{Singular, Plural, SingularTitle, PluralTitle *string}`, `Revision int64`.
 - `Options{DB, Clock, Logger, Tracer, Meter, Audit audit.Recorder (scoped "settings"), Authz
   authz.Authorizer, Actor authz.ActorFunc, Files files.Store (optional, D44; scoped `settings`, lazy from `app`; nil = the logo routes answer `Unsupported`), Areas []Area, SealingKey secret.Secret (optional),
   RefreshInterval (default 30 s, 1 s..10 m)}` (+`Validate`); `New(Options) (*Service, error)` (no I/O).
 - `*Service` (safe for concurrent use): `Scoped(area) (Reader, error)`; `Regional(ctx)`; `TermsFor(ctx, lang)
-  (map[string]Forms, error)`; `Public(ctx)`; `ThemeCSS(ctx) (string, error)`;
+  (map[string]Forms, error)` (every declared term, core and module, D57); `Public(ctx)`; `ThemeCSS(ctx) (string, error)`;
   `Document(ctx)`; `Set(ctx, Changes) (Revision, error)`; `Terms(ctx) (TermsDocument, error)`;
   `SetTerms(ctx, lang, TermChanges) (Revision, error)`;
   `Run(ctx) error` (the refresher, an `app` runnable); `Routes() []Route`; `OpenAPI() []byte`. The logo (D44, D47; D52(e): the stored upload name is always "logo"): `SetLogo(ctx, name string, body io.Reader) (LogoResult, error)`, `RemoveLogo(ctx) (LogoResult, error)`, `OpenLogo(ctx) (files.File, files.Content, error)`; routes `GET /logo` (public; `files.Serve`), `PUT /logo` (multipart field `file`, `settings.manage`), `DELETE /logo` (`settings.manage`); `Route` gains `MaxBodyBytes`, `Timeout` (`app` copies them); audit `settings.logo.changed|removed`.
-- Constants: `Languages = []string{"en", "es"}`; `CoreTerms = []string{"event", "department", "participant", "theme_camp"}`;
+- Constants: `Languages = []string{"en", "es"}`; `CoreTerms = []string{"event", "department", "participant", "theme_camp", "lead"}` (`lead` added D57);
   `MaxBatch = 200`, `MaxTextBytes = 4096`, `MaxNameBytes = 80`, `MaxURLBytes = 256`, `MaxTermBytes = 60`,
   `MinContrast = 4.5`, `MaxLogoBytes = 2 << 20`, `LogoRef = audit.Ref{Kind: files.LogoRecordKind, ID: sha256("settings.logo")[:16]}` (a `var`),
   `DefaultRefreshInterval = 30 * time.Second`, `PermissionRead = "settings.read"`, `PermissionManage = "settings.manage"`.
 - `settingstest.NewFake(area string, decls []Decl) *Fake` (a `Reader` answering the defaults; `Set(key, value)`, `SetSecret(key, secret)`; safe for concurrent use).
 
-**Key decisions.** 1 one text form per value, parsed by `Kind`, stored only when it differs from the default (a reset deletes the row). 2 the declaration types move from `module` to `settings` with aliases, as authz's and signals' did, because `settings` cannot import `core/module`. 3 (owner, 2026-10-19: the SMTP password lives in settings, sealed) a sixth kind, `Secret`: sealed at rest with AES-256-GCM under a key derived from `settings.sealing_key` (a generated field of the secrets file, config Proposed change 9), never returned by any route (`secret_set` only), read only by Go consumers. 4 one in-memory snapshot per process, loaded on first read, replaced after each local commit and by a 30 s revision poll (`core.setting_revision`), so a read is a map lookup and a replica follows the writer without LISTEN/NOTIFY (which a standby cannot receive). 5 a stored value that no longer parses after an upgrade yields the default and a warning, never an error. 6 the regional's own values (`regional.*`) are a core area declared here; only they are public. 7 (owner, 2026-10-19: four forms) terminology is data: four forms per term per language, defaults embedded here (`terms/<lang>.json`), overrides in `core.terminology`; the shell's `term.*` catalogue entries stay as the boot fallback and must equal the defaults (test). 8 (superseded 2026-10-20, D44) the logo was deferred to the `files` spec (owner, 2026-10-19); it now lives here, stored and served by `files` (`Options.Files`, `GET|PUT|DELETE /api/settings/logo`, `Public.Logo`, audit `settings.logo.changed|removed`, `MaxLogoBytes` 2 MiB; the amendment before Open questions). 9 (owner, 2026-10-19) colours are one brand colour per scheme, checked for 4.5:1 against the shipped background, served as `/api/settings/theme.css` (light inside `@media not (prefers-color-scheme: dark)`, dark inside `(prefers-color-scheme: dark)`, an unset scheme emits nothing; implementation, 2026-10-19). Duration `range` params are plain whole units (`1h`, `8760h`), not `1h0m0s`. 10 no signal on change: every consumer reads at use-case time from the snapshot; nothing downstream holds a copy. 11 no automatic retention keys per module: the module that runs the job declares its `<name>.retention*` keys when its spec has the job that enforces it (owner, 2026-10-19). 12 `regional` is a reserved area name. 13 values never appear in logs, audit entries, spans or error messages. 14 `settings.read` goes to `settings-admin` only; other admins see what they need on their own screens (owner, 2026-10-19). 15 (owner, 2026-10-20, D40) no early area check: an area `Check` runs only inside the `Set` transaction over stored values; `regional.public_url` is canonicalised (http/https, host required, no query/fragment/userinfo, trailing slashes removed); a `Check` cannot see whether a `Secret` is set and re-saving a `Secret` always counts as a change; the sealing and contrast tests are unit tests. 16 **a logo change is a settings write**: it runs under the revision row lock, bumps the revision and replaces the snapshot, and the snapshot carries the logo's file ID (read with `ByRecord(LogoRef)` at load), so `Public.Logo`, the `ETag` of `GET /public` and a replica's poll all follow the logo without a second mechanism; `GET /logo` itself reads `ByRecord` (exact, not the snapshot). 17 one logo for both colour schemes, PNG, JPEG or WebP (`files.Brand`), at most `MaxLogoBytes` (2 MiB, a bound, not a setting) enforced by a counting reader in the handler before files' site-wide `files.max_bytes`; no SVG (an XML document that can carry scripts, event handlers and external references; needs a sanitiser files does not have; owner, 2026-10-21, D47); no pixel-dimension check (the uploader holds `settings.manage`; a bomb would hurt only their own site's browsers; owner, 2026-10-21, D47); no dark-scheme logo and no favicon derived from the logo (owner, 2026-10-21, D47). 18 the write refuses a read-only copy after the permission check and before the body is read, so no object is staged for nothing; `RemoveLogo` with no logo is a no-op (no audit, no bump), as `Set` with unchanged values.
+**Key decisions.** 1 one text form per value, parsed by `Kind`, stored only when it differs from the default (a reset deletes the row). 2 the declaration types move from `module` to `settings` with aliases, as authz's and signals' did, because `settings` cannot import `core/module`. 3 (owner, 2026-10-19: the SMTP password lives in settings, sealed) a sixth kind, `Secret`: sealed at rest with AES-256-GCM under a key derived from `settings.sealing_key` (a generated field of the secrets file, config Proposed change 9), never returned by any route (`secret_set` only), read only by Go consumers. 4 one in-memory snapshot per process, loaded on first read, replaced after each local commit and by a 30 s revision poll (`core.setting_revision`), so a read is a map lookup and a replica follows the writer without LISTEN/NOTIFY (which a standby cannot receive). 5 a stored value that no longer parses after an upgrade yields the default and a warning, never an error. 6 the regional's own values (`regional.*`) are a core area declared here; only they are public. 7 (owner, 2026-10-19: four forms) terminology is data: four forms per term per language, defaults embedded here (`terms/<lang>.json`), overrides in `core.terminology`; the shell's `term.*` catalogue entries stay as the boot fallback and must equal the defaults (test). 8 (superseded 2026-10-20, D44) the logo was deferred to the `files` spec (owner, 2026-10-19); it now lives here, stored and served by `files` (`Options.Files`, `GET|PUT|DELETE /api/settings/logo`, `Public.Logo`, audit `settings.logo.changed|removed`, `MaxLogoBytes` 2 MiB; the amendment before Open questions). 9 (owner, 2026-10-19) colours are one brand colour per scheme, checked for 4.5:1 against the shipped background, served as `/api/settings/theme.css` (light inside `@media not (prefers-color-scheme: dark)`, dark inside `(prefers-color-scheme: dark)`, an unset scheme emits nothing; implementation, 2026-10-19). Duration `range` params are plain whole units (`1h`, `8760h`), not `1h0m0s`. 10 no signal on change: every consumer reads at use-case time from the snapshot; nothing downstream holds a copy. 11 no automatic retention keys per module: the module that runs the job declares its `<name>.retention*` keys when its spec has the job that enforces it (owner, 2026-10-19). 12 `regional` is a reserved area name. 13 values never appear in logs, audit entries, spans or error messages. 14 `settings.read` goes to `settings-admin` only; other admins see what they need on their own screens (owner, 2026-10-19). 15 (owner, 2026-10-20, D40) no early area check: an area `Check` runs only inside the `Set` transaction over stored values; `regional.public_url` is canonicalised (http/https, host required, no query/fragment/userinfo, trailing slashes removed); a `Check` cannot see whether a `Secret` is set and re-saving a `Secret` always counts as a change; the sealing and contrast tests are unit tests. 16 **a logo change is a settings write**: it runs under the revision row lock, bumps the revision and replaces the snapshot, and the snapshot carries the logo's file ID (read with `ByRecord(LogoRef)` at load), so `Public.Logo`, the `ETag` of `GET /public` and a replica's poll all follow the logo without a second mechanism; `GET /logo` itself reads `ByRecord` (exact, not the snapshot). 17 one logo for both colour schemes, PNG, JPEG or WebP (`files.Brand`), at most `MaxLogoBytes` (2 MiB, a bound, not a setting) enforced by a counting reader in the handler before files' site-wide `files.max_bytes`; no SVG (an XML document that can carry scripts, event handlers and external references; needs a sanitiser files does not have; owner, 2026-10-21, D47); no pixel-dimension check (the uploader holds `settings.manage`; a bomb would hurt only their own site's browsers; owner, 2026-10-21, D47); no dark-scheme logo and no favicon derived from the logo (owner, 2026-10-21, D47). 18 the write refuses a read-only copy after the permission check and before the body is read, so no object is staged for nothing; `RemoveLogo` with no logo is a no-op (no audit, no bump), as `Set` with unchanged values. 19 (owner, 2026-10-30, D57) a module or core area may declare terms (`Area.Terms []TermDecl`), one flat namespace: a key declared by two areas, or equal to a `CoreTerms` name, is `Invalid` at `New`, whose fix is promoting the word to `CoreTerms` (as `lead` was); a stored row of an undeclared term is kept and ignored.
 
 **Errs kinds callers handle.** Readers: `Invalid` (undeclared key, kind mismatch), `Unavailable`/`Timeout`/`Canceled` (first load), `Unsupported` (`Secret` with no sealing key), `Internal` (unsealing failed). Use cases: `Unauthenticated`, `Permission`, `Invalid` with field = the setting key and codes `unknown`, `malformed`, `one_of`, `range`, `too_long {max}`, `required`, `control_chars`, `url`, `contrast {ratio, min}`, `rejected` (a `Check`'s reason), `too_many {max}`; `Unsupported` (a secret without a sealing key); `Unavailable` wrapping `db.ErrReadOnly` on every write; `Run`: `Conflict` (started twice). The logo: `SetLogo`: `Unauthenticated`, `Permission`, `Unsupported` (no `Files`), `Unavailable` wrapping `db.ErrReadOnly` (before the body is read), `Invalid` with field `file` and codes `required`, `too_large {max}`, `type`, `malformed`, `Conflict quota {max}`, `Unavailable`, `Timeout`, `Canceled`, the recorder's kind; `RemoveLogo`: the same minus the file codes; `OpenLogo`: `Unsupported`, `NotFound` (no logo), `Unavailable` wrapping `objects.ErrMissing` (a copy without the bytes), `Unavailable`; the handler: `Invalid` wrapping `httpx.ErrUnsupportedMediaType` (not multipart). No sentinels.
 
@@ -180,6 +181,9 @@ type Area struct {
 	Name  string // a module name or a core area name; "regional" is this package's own
 	Core  bool
 	Decls []Decl
+	// Terms are the words this area lets a regional rename (D57). Keys are one flat
+	// namespace across areas and CoreTerms.
+	Terms []TermDecl
 	// Check is an optional cross-field rule over the area's effective values (every
 	// declared key, defaults filled in, bare keys). Pure. Field names it returns are bare
 	// keys and are prefixed with "<area>." by Set. Runs inside Set's Write transaction over
@@ -187,8 +191,22 @@ type Area struct {
 	Check func(values map[string]string) error `json:"-"`
 }
 
-// Validate fails errs.Invalid: name not an ident, a Decl invalid, duplicate keys.
+// Validate fails errs.Invalid: name not an ident, a Decl invalid, duplicate keys,
+// terms[i].key duplicate within the area or reserved (a CoreTerms name) (D57).
 func (a Area) Validate() error
+
+// TermDecl declares a word a regional may rename (D57). Key is the term's identity
+// everywhere: core.terminology.term, TermsDocument, the shell's {term_<key>[_plural|_title|
+// _plural_title]} and notify's {{term "<key>"}}.
+type TermDecl struct {
+	Key      string           // [a-z][a-z0-9]*(_[a-z0-9]+)*, at most 32 bytes; not in CoreTerms
+	Defaults map[string]Forms // per language in Languages; "en" required, every form set
+}
+
+// Validate fails errs.Invalid: key format or reserved; a language not in Languages; "en"
+// missing; a form empty after trimming, over MaxTermBytes, or with control characters.
+// Fields: key, defaults.<lang>, defaults.<lang>.<form>.
+func (d TermDecl) Validate() error
 
 // ---- Reading ----
 
@@ -273,6 +291,7 @@ type TermsDocument struct {
 	Terms     map[string]map[string]TermDoc  `json:"terms"` // lang -> term -> doc
 }
 type TermDoc struct {
+	Area     string      `json:"area"` // "core" for CoreTerms, else the declaring area's name (D57)
 	Default  Forms       `json:"default"`
 	Override FormChanges `json:"override"` // nil fields = not overridden
 }
@@ -341,7 +360,7 @@ func (s *Service) Scoped(area string) (Reader, error)
 // public and theme handlers, api (trusted origin, Later), authz (zone, Later).
 func (s *Service) Regional(ctx context.Context) (Regional, error)
 
-// TermsFor returns every core term in one language, overrides applied over the embedded
+// TermsFor returns every declared term (core and module, D57) in one language, overrides applied over the embedded
 // defaults (a language without a defaults file uses "en"). Consumers: notify, GET /public.
 // Fails errs.Invalid (lang not in Languages) and the snapshot's kinds.
 func (s *Service) TermsFor(ctx context.Context, lang string) (map[string]Forms, error)
@@ -458,7 +477,7 @@ CREATE TABLE core.setting_revision (
 INSERT INTO core.setting_revision (id, revision) VALUES (1, 1);
 CREATE TABLE core.terminology (
   lang       text NOT NULL,               -- one of Languages
-  term       text NOT NULL,               -- one of CoreTerms
+  term       text NOT NULL,               -- a core term or a declared term key (D57)
   form       text NOT NULL,               -- singular | plural | singular_title | plural_title
   value      text NOT NULL,
   updated_at timestamptz NOT NULL,
@@ -545,14 +564,12 @@ What notify's draft calls `site.name`, `site.public_url` and `site.default_langu
 `RetentionSource` seams are adapters `app` writes over `Scoped("notify")` and `Regional`,
 as for identity's and people's `PolicySource`.
 
-**Terminology.** Terms are `CoreTerms` (`event`, `department`, `participant`, `theme_camp`),
+**Terminology.** Terms are `CoreTerms` (`event`, `department`, `participant`, `theme_camp`, `lead`; `lead` added D57) and the terms areas declare (`Area.Terms`, D57),
 each with four forms per language in `Languages`. Defaults are embedded in
 `internal/core/settings/terms/<lang>.json` (`en` in M4; `es` when its catalogue lands);
 a language without a file uses `en`'s. The shell's `term.*` catalogue entries must equal the
 `en` defaults (test in `internal/app`, Proposed change 8). A form override is 1..`MaxTermBytes`
-bytes, trimmed, no control characters. A module that needs a word of its own declares it
-when its spec is written; the mechanism (a `Terms` field on the manifest) is a module-contract
-change then, not now.
+bytes, trimmed, no control characters. A module that needs a word of its own declares it in `Manifest.Terms` (module-contract, D57), with `en` defaults in Go; its fallback catalogue keys are `module.<name>.term.<key>[.plural|.title|.plural_title]`.
 
 **Constants that are not settings**, pinned by `TestConstants_Pinned`:
 
@@ -574,7 +591,7 @@ Core screen set `settings` (`web/src/core/settings/`, `kind: "core"`), nav entry
 | Screen | Who sees it | Actions | States |
 |---|---|---|---|
 | `/settings` (Regional) | `settings.read` | name, contact mailbox, public URL, language (select from `languages`), time zone (select from `Intl.supportedValuesOf("timeZone")`, first entry "browser's zone"), two colour fields with a live swatch and the computed contrast ratio; one **Save** (`PUT /values`); a **Logo** section under the form (its own `<section>`, its own requests, not part of Save: the preview, a `FileField` and **Upload** or **Replace**, **Remove logo** with a confirm `Dialog`; detail under "The logo field" below); links to Terminology and to each area | loading; error; forbidden (403 → `ErrorState` with the permission message; `manage` without `read` shows an explanatory `Banner` and no form); read-only copy (the shell's banner; Save answers `read_only` and the form keeps its edits; the logo controls are hidden, the preview stays) |
-| `/settings/terms` | `settings.read` | a language select; per term a card with four fields, the default as placeholder, a **Reset** per field; one **Save** per language (`PUT /terms/{lang}`) | as above; empty never (terms always exist) |
+| `/settings/terms` | `settings.read` | a language select; per term a card with four fields, the default as placeholder, a **Reset** per field; cards grouped by `TermDoc.Area`: the core's first, then one `<fieldset>` per module headed by `module.<name>.title` (D57); one **Save** per language (`PUT /terms/{lang}`) | as above; empty never (terms always exist) |
 | `/settings/:area` | `settings.read` | the area's settings as a form: a toggle (bool), a number, a duration (`DurationField`: number plus unit, sent as `h`/`m`/`s`), text, select (enum, labels from `.option.<opt>`), secret (`password` input showing "set" or "not set", a Replace and a Clear); a **Reset to default** per setting; one **Save** (`PUT /values` with only the changed keys) | loading; error; forbidden; an unknown area → not-found; a `stale` value shows a warning and the default |
 
 Each field's title and description come from the declaring area's catalogue (decision 8
@@ -854,9 +871,13 @@ and asserts it appears in no log, span or audit entry.
 | F26 | `Set`, `SetTerms` | `core.setting_revision` has no row | Internal | run `bms migrate`; the operator sees the reference | `TestSet_NoRevisionRow_ReturnsInternal` |
 | F27 | `Set`, `SetTerms` | the store fails otherwise | Unavailable, Timeout, Canceled (`db.Wrap`) | the use case fails | `TestSet_StoreFails_ReturnsKind` |
 | F28 | `SetTerms` | `lang` not in `Languages` | Invalid (`lang`, `one_of`) | show the field error | `TestSetTerms_UnknownLanguage_ReturnsInvalid` |
-| F29 | `SetTerms` | a term not in `CoreTerms`, or a reset naming an unknown form | Invalid (`terms.<term>` / `terms.<term>.reset`, `unknown`) | show the field error | `TestSetTerms_UnknownTerm_ReturnsInvalid` |
+| F29 | `SetTerms` | a term not declared (not in `CoreTerms` or any area's `Terms`, D57), or a reset naming an unknown form | Invalid (`terms.<term>` / `terms.<term>.reset`, `unknown`) | show the field error | `TestSetTerms_UnknownTerm_ReturnsInvalid` |
+| F29a | `New` (via `Options.Validate`) | a term key declared by two areas (D57) | Invalid (`areas[j].terms[i].key`, `duplicate`; the message names promotion to `CoreTerms`) | fix the manifests | `TestNew_DuplicateTermAcrossAreas_ReturnsInvalid` |
+| F29b | `TermDecl.Validate`, `Area.Validate` | key malformed, reserved, or duplicate in the area; unknown language; `en` missing; a form empty, too long or with control characters (D57) | Invalid (`terms[i].key` `format`/`reserved`/`duplicate`; `defaults.<lang>.<form>` `required`/`too_long {max}`/`control_chars`) | fix the declaration | `TestTermDecl_Validate_Table` |
+| F29c | `TermsFor`, `Public` | a module term with no override, or no entry in the language (D57) | — (the override, else the `en` default) | none | `TestTermsFor_ModuleTerm_DefaultsAndOverride` |
+| F29d | `Terms`, load | `Terms` lists only declared terms, with `Area`; a stored row of an undeclared term is ignored at load and kept (D57) | — | none | `TestTerms_ListsDeclaredModuleTermsWithArea`, `TestLoad_UndeclaredTermRow_IgnoredAndKept` |
 | F30 | `SetTerms` | a form empty after trimming, too long, or with control characters | Invalid (`terms.<term>.<form>`, `required` / `too_long {max}` / `control_chars`) | show the field errors | `TestSetTerms_FormShape_Table` |
-| F31 | `SetTerms` | no term in the batch, or more than `len(CoreTerms)` | Invalid (`terms`, `required` / `too_many`) | fix the request | `TestSetTerms_Empty_ReturnsInvalid` |
+| F31 | `SetTerms` | no term in the batch, or more than the number of declared terms (D57) | Invalid (`terms`, `required` / `too_many`) | fix the request | `TestSetTerms_Empty_ReturnsInvalid` |
 | F32 | `Run` | called while running | Conflict | fix the wiring | `TestRun_Twice_ReturnsConflict` |
 | F33 | `Run` | a poll or reload fails | none returned: logged once per minute, counted `failed`, old snapshot kept | nothing | `TestRun_PollFails_KeepsSnapshotAndWarnsOnce` |
 | F34 | `Run` | ctx ends | nil | nothing | `TestRun_ContextDone_ReturnsNil` |
@@ -932,6 +953,7 @@ store interface (D8), so a fork can swap it. Nothing here calls out of the proce
   Proposed change 8): a settings admin uploads a PNG, the header shows it with the regional's
   name as `alt`, replaces it (the `src` changes), removes it (the name is text again);
   `axe` passes on `/settings` with and without a logo.
+- **Module terms (D57):** the F29a to F29d tests, `TestSetTerms_UndeclaredModuleTerm_ReturnsInvalid`; the shell's `term.lead*` entries join the `terms/en.json` equality test.
 - **Catalogue tests (`internal/app`):** `core.regional.setting.<key>.title|description` for
   every `regional` key and `.option.<opt>` for `language`; the shell's `term.*` entries equal
   `terms/en.json`; every core area's declared keys have their catalogue titles.
@@ -983,6 +1005,10 @@ Raised by the architect after `files` (2026-10-20) and `privacy-tags` (2026-10-2
 **L8. Who owns the upload components.** `upload()` in `@/api`, `ui/FileField` and `ui/Attachments` are web-shell's (web-shell.md, "M4 files additions (D44)" and its Proposed change 8), not yet built; the logo field is `FileField`'s first consumer and needs no `Attachments`. Their one-sentence description is not enough to implement against, so Proposed change 15 drafts their contract (props, states, the client-side `maxBytes` check, the `fields`-first multipart order, the upload timeout) for web-shell.md; the frontend implementer builds them with the logo field.
 
 **L9. Wiring.** `Options.Files` is a lazy adapter from `app` (files is part 10, settings part 3), as `lazyAuthorizer` is; `settingsRoutes` copies `MaxBodyBytes` and `Timeout` to `module.Route` (Proposed change 14). The OpenAPI fragment gains the three routes and `LogoResult`; `SettingsPublic` gains `logo` (required, string).
+
+## Amendment 2026-10-30 (approved, owner, D57): module-declared terms
+
+From module-volunteers Amendment V3 (Proposed change 16), approved with Q-VOL12 answered as proposed. A word a module needs (volunteers: `shift`, `position`, `qualification`) is declared on its area as a `TermDecl` and renamed like `department`; one flat namespace, so a word two parts need is promoted to `CoreTerms` (`lead`: departments, volunteers, incidents and after-burn reports all say it). Storage needs no migration (`core.terminology.term` is `text`). Reads: `TermsFor` returns every declared term; `Public.Terms` flattens them, so a module term reaches every `t()` call and notify template. `TermDoc.Area` orders the Terminology screen. Failure modes F29, F29a to F29d, F31; tests under "Module terms".
 
 ## Open questions
 

@@ -1,6 +1,7 @@
 # app: the composition root
 
 - **Status:** Implemented (2026-10-17); Approved (2026-10-17)
+- **Amended 2026-10-30 (owner, D57; module-volunteers Amendment V3, Proposed change 19):** `settingsAreas` builds an area for a module that declares settings or terms; two catalogue tests (F44). See "Amendment 2026-10-30" before Open questions.
 - **Amended 2026-10-28 (D53, D54, owner approval of demo and telemetry T1):** the `demo` part (11) and the commands `demo seed|reset` (demo.md Proposed change 2), and the client-telemetry wiring (telemetry.md Proposed change 21: `web.ClientManifest`, `api.RouteTokens`, `intake.NewUsage`, the `usage counts:` lines); section "Amendment 2026-10-28" before Open questions; F38 to F43.
 - **Amended 2026-10-17 (owner):** `check` ignores a never-migrated disabled module and exits 2 without a session key; `openapi` prints indented JSON; `migrate` creates the data directory only when it writes the secrets file; the part-name check uses `module.IsCoreArea`; debug logging is announced (decision 18); reviewer-accepted implementation deviations are recorded ("Accepted deviations").
 - **Amended 2026-10-18 (owner approval of audit/identity):** core part order is audit 1, identity 2 (identity's `build` takes the audit recorder; audit needs nothing from identity at build time); the audit and identity rows of "How later core services plug in" are filled in (audit.md Proposed change 1, identity.md Proposed change 3).
@@ -69,6 +70,7 @@
 - D9 start order: config, telemetry, registry, database, signals, parts, modules, HTTP shell, `Set.Start`, runnables, `Listen`.
 - D10 stop order HTTP, runnables, signals, modules, database, telemetry within `http.shutdown_timeout`; HTTP gets `max(1s, 2*budget/3)`; every closer is called even after failure; shutdown ctx is `WithoutCancel`.
 - D11 `serve` starts on a read-only copy; `migrate` refuses one.
+- (D57) `settingsAreas` builds an area for a module that declares settings or terms; the catalogue tests check module terms (F44).
 - D12 later core services plug in as ordered parts with `declare`, `build`, `link`, `start`/`stop` (order: audit, identity, settings, authz, people, departments, events, jobs, notify, files, demo; D37, D53), not a registry. Settings' `Options.Files` is `lazyFilesStore{a}` (resolved on first use, D47), like `lazyAuthorizer`.
 - D13 end-to-end test runs the real assembly in process through `Main`, plus one subprocess signal test.
 - D14 `migrate` creates data dir and secrets file before touching the database, only when `cfg.Session.Key` is unset (a read-only filesystem with `BMS_SESSION_KEY` injected works), then reloads config.
@@ -1166,6 +1168,7 @@ Client telemetry (telemetry.md T1, Proposed change 21): after `web.FS()`, `app` 
 | F41 | `serve`, `check` | `web.ClientManifest` is `NotFound` or `Invalid` | warning (serve starts); `check` fails in a build with a UI | build the web bundle | `TestServe_ClientManifestMissing_WarnsAndStarts`, `TestCheck_ClientManifestMissing_Fails` |
 | F42 | `openapi` | builds `intake` and `Usage` | — | both with `Enabled: false` and empty lists | `TestOpenAPI_UsageBuiltDisabled` |
 | F43 | `check` | `telemetry.usage` on or off | — | prints `usage counts: on (<n> screens, <m> actions)` / `off` | `TestCheck_PrintsUsageCounts` |
+| F44 (D57) | `settingsAreas`; catalogue test | a module declares terms but no settings; a `module.<name>.term.<key>[.<form>]` entry is missing or differs from the manifest's `en` default; a module message or template names a term that is neither core nor its own | the module still gets an area (its terms appear on `/settings/terms`); the two catalogue failures are test failures, not runtime errors | fix `en.json` or the manifest | `TestSettingsAreas_TermsOnlyModule_HasArea`, `TestCatalogue_ModuleTerms_MatchManifestDefaults`, `TestCatalogue_TermsUsed_AreDeclared` |
 
 ## Accepted implementation deviations (demo and telemetry build, 2026-10-29)
 
@@ -1174,6 +1177,10 @@ Client telemetry (telemetry.md T1, Proposed change 21): after `web.FS()`, `app` 
 - `bms check` prints `client manifest: N screens, M actions`, or `client manifest: missing`, then the usage-counts line (F43). A missing manifest is `ExitFailure` only when the build has a UI (`missing (no UI is built)` otherwise).
 - `bms demo` has the usage `seed|reset`; `bms check` reads the marker through `demo.Service.State`.
 - `api.RouteTokens` (given to intake) excludes `/healthz` and `/readyz`.
+
+## Amendment 2026-10-30 (approved, owner, D57): areas for modules that declare terms
+
+From module-volunteers Amendment V3 (Proposed change 19). `settingsAreas` builds an area for a module that declares settings *or* terms (today a module with no settings has no area), carrying `Plan.Settings()`'s `Terms`. The catalogue test (`catalogue_test.go`) gains `TestCatalogue_ModuleTerms_MatchManifestDefaults` (the four `module.<name>.term.*` keys exist and equal the manifest's `en` defaults) and `TestCatalogue_TermsUsed_AreDeclared` (every `{term_<x>...}` in a module's `messages/en.json` and `{{term "<x>"}}` in its templates is in `CoreTerms` or that module's `Terms`).
 
 ## Open questions
 
