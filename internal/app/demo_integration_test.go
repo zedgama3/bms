@@ -739,3 +739,37 @@ func (f *demoFx) runSuperuserDocs(_ bool) (map[string]string, error) {
 var varying = regexp.MustCompile(`"(id|created_at|updated_at)":"[^"]*"`)
 
 func stripVarying(s string) string { return varying.ReplaceAllString(s, `"$1":""`) }
+
+// bms check reads the demo marker through the real pool, not through the services check
+// builds on a database that refuses every statement (which printed "state unknown:
+// unavailable" on a seeded instance).
+func TestDemoCheck_ReadsTheMarkerFromTheRealDatabase(t *testing.T) {
+	line := regexp.MustCompile(`(?m)^demo: .*$`)
+	demoLine := func(r result) string { return line.FindString(r.out) }
+
+	t.Run("not seeded", func(t *testing.T) {
+		f := newDemoFx(t, true, true)
+		r := f.run("check")
+		if got := demoLine(r); got != "demo: on (not seeded)" {
+			t.Errorf("demo line = %q, want %q:\n%s", got, "demo: on (not seeded)", r.out)
+		}
+	})
+	t.Run("seeded", func(t *testing.T) {
+		f := newDemoFx(t, true, true)
+		wantCode(t, f.run("demo", "seed"), app.ExitOK)
+		r := f.run("check")
+		got := demoLine(r)
+		if !regexp.MustCompile(`^demo: on \(seeded \d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ\)$`).MatchString(got) {
+			t.Errorf("demo line = %q, want demo: on (seeded <RFC3339>):\n%s", got, r.out)
+		}
+		if strings.Contains(r.out, "state unknown") {
+			t.Errorf("check could not read the marker:\n%s", r.out)
+		}
+	})
+	t.Run("demo off", func(t *testing.T) {
+		f := newDemoFx(t, true, false)
+		if got := demoLine(f.run("check")); got != "demo: off" {
+			t.Errorf("demo line = %q, want demo: off", got)
+		}
+	})
+}

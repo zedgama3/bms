@@ -13,6 +13,7 @@ import (
 	"github.com/zedgama3/bms/internal/contracts/demoseed"
 	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/demo"
+	demopg "github.com/zedgama3/bms/internal/core/demo/postgres"
 	"github.com/zedgama3/bms/internal/core/files"
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/module"
@@ -456,21 +457,28 @@ func (r *checkReport) demo(ctx context.Context, a *assembly) {
 		r.printf("demo: off\n")
 		return
 	}
-	if a.demo == nil {
-		r.printf("demo: on (state unknown: the modules did not resolve)\n")
+	if a.pool == nil {
+		r.printf("demo: on (state unknown: no database)\n")
+		return
+	}
+	// The services check built sit on a database that refuses every statement, so the marker
+	// is read through a store on the real pool, as the e-mail step does.
+	store, err := demopg.NewStore(a.pool)
+	if err != nil {
+		r.printf("demo: on (state unknown: %s)\n", errs.KindOf(err))
 		return
 	}
 	cctx, cancel := context.WithTimeout(ctx, checkTimeout)
 	defer cancel()
-	seeded, found, err := a.demo.State(cctx)
+	st, err := store.State(cctx)
 	switch {
+	case errs.Is(err, errs.NotFound): // no marker row: not seeded (Service.State maps it the same way)
+		r.printf("demo: on (not seeded)\n")
 	case err != nil:
 		r.printf("demo: on (state unknown: %s)\n", errs.KindOf(err))
-	case !found:
-		r.printf("demo: on (not seeded)\n")
-	case seeded.IsZero():
+	case st.SeededAt.IsZero():
 		r.printf("demo: on (seeding)\n")
 	default:
-		r.printf("demo: on (seeded %s)\n", seeded.UTC().Format(time.RFC3339))
+		r.printf("demo: on (seeded %s)\n", st.SeededAt.UTC().Format(time.RFC3339))
 	}
 }
