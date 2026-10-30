@@ -18,7 +18,7 @@
 
 - The principal (request-scoped: never stored, never copied into a job or a handler):
   - `Session{ID SessionID, Account model.AccountID, Person model.PersonID, Superuser, PasswordChangeRequired bool, IssuedAt, ExpiresAt time.Time}` (+`Validate`). `IssuedAt` is the server time at sign-in, fixed for the session's life; a new session carries a new one (D58).
-  - `SessionFrom(ctx) (Session, bool)`; `PersonFrom(ctx) (model.PersonID, bool)` (false with no session, a restricted session or inside `signals.InDelivery`); `WithSession(ctx, Session) context.Context` (tests and `app`'s end-to-end test only).
+  - `SessionFrom(ctx) (Session, bool)`; `PersonFrom(ctx) (model.PersonID, bool)` (false with no session, a restricted session or inside `signals.InDelivery`); `WithSession(ctx, Session) context.Context` (tests, `app`'s end-to-end test and `core/demo`'s seed through `Actors.As`, D53).
 - Values:
   - `Account{ID, Person, Email model.Email, Superuser, PasswordChangeRequired bool, DisabledAt, LastLoginAt, PasswordChangedAt, CreatedAt, UpdatedAt time.Time}` (+`Validate`, `LogValue` emitting IDs only).
   - `AccountQuery{Email model.Email, After Cursor, Limit int}`, `Cursor`, `AccountPage{Accounts, Next}`.
@@ -38,7 +38,7 @@
   - `Alerter{SuperuserSignedIn(ctx, model.PersonID) error}` (notify, M4 [one warn log line]).
   - `Notify notify.Notifier` (scoped `identity`, D39 [nil: the reset routes answer `Unsupported`]).
   - `Guard{Protected(ctx, AccountID) (bool, error)}` (demo mode, D53 [nil: nothing protected]); a protected account's password, address, disabling and deletion refuse `Permission` field `account` code `protected`.
-- `Options{DB, Clock, Logger, Tracer, Meter, Key secret.Secret, AllowPlaintext bool, Audit audit.Recorder, Signals signals.Bus, Policy, Permissions, PermissionLister, Names, Alerter, Notify notify.Notifier, Guard Guard}` (+`Validate`); `New(Options) (*Service, error)` (no I/O; works against `db.None()`).
+- `Options{DB, Clock, Logger, Tracer, Meter, Key secret.Secret, AllowPlaintext bool, Audit audit.Recorder, Signals signals.Bus, Policy, Permissions, Lister, Names, Alerter, Notify notify.Notifier, Guard Guard}` (+`Validate`); `New(Options) (*Service, error)` (no I/O; works against `db.None()`).
 - `*Service` (safe for concurrent use, nothing to close):
   - Sessions: `Authenticate(ctx, *http.Request) (context.Context, model.PersonID, error)` (= `api.Authenticator`); `SessionInfo(ctx) (SessionInfo, error)`; `SignUp(ctx, Credentials) (Issued, error)`; `SignIn(ctx, Credentials) (Issued, error)`; `SignOut(ctx) error`; `ChangePassword(ctx, PasswordChange) (Issued, error)`; `EndOtherSessions(ctx) (Issued, error)`.
   - Forgotten password (D39): `RequestPasswordReset(ctx, model.Email) error`; `CompletePasswordReset(ctx, token, newPassword string) error`.
@@ -674,7 +674,7 @@ type Route struct {
 	Handler http.Handler
 }
 
-// Routes returns the eleven routes (Summary, "Owns"). OpenAPI returns the embedded
+// Routes returns the thirteen routes (Summary, "Owns"). OpenAPI returns the embedded
 // fragment (schemas AccountsSession, AccountsCredentials, AccountsPasswordChange,
 // AccountsAccount, AccountsAccountPage, AccountsTemporaryPassword). Cannot fail.
 func (s *Service) Routes() []Route
@@ -880,7 +880,7 @@ Declared here, read through `PolicySource` (settings, M2); until then `DefaultPo
 | `accounts.login_failure_limit` | int | `10` | `3`..`100` (failures per submitted address per window) | settings admin |
 | `accounts.client_failure_limit` | int | `100` | `10`..`1000` (failures per client address per window; never below `login_failure_limit`) | settings admin |
 | `accounts.login_failure_window` | duration | `15m` | `1m`..`24h`; the window of the sign-in failure buckets and (D40, D41) of the password-reset request buckets alike | settings admin |
-| `accounts.password_reset_lifetime` | duration | `1h` | `10m`..`24h` (D39); declared, with `Policy.PasswordResetLifetime`, together with the forgotten-password flow when notify is built, not in the first settings round (implementation, 2026-10-19) | settings admin |
+| `accounts.password_reset_lifetime` | duration | `1h` | `10m`..`24h` (D39); declared in `identity.Settings` with `Policy.PasswordResetLifetime` (D39) | settings admin |
 | `accounts.password_reset_client_limit` | int | `20` | `5`..`1000` (reset requests per client address per `login_failure_window`; never below `password_reset_address_limit`) (D41) | settings admin |
 | `accounts.password_reset_address_limit` | int | `5` | `1`..`100` (reset requests per canonical submitted address per `login_failure_window`) (D41) | settings admin |
 | `accounts.password_reset_cooldown` | duration | `5m` | `0s`..`1h`; `0` turns the cooldown off; never above `password_reset_lifetime` (D41) | settings admin |

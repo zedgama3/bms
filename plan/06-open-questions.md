@@ -126,13 +126,13 @@ Answered 2026-10-22: the three questions raised by the volunteers amendment V1. 
 2026-10-23 as D49.
 
 - [x] **Q-VOL7:** May a lead waive a requirement for themself? Yes, allowed (against the
-      recommendation). → D49 (design/module-volunteers.md, Amendment V1)
+      recommendation). → D49 (design/history/module-volunteers.md, Amendment V1)
 - [x] **Q-VOL8:** Under `visibility_legal_name = self`, should a person see their own legal name
       on a roster without `people.contacts.read`? No. Everyone sees burn names. Burn names must
       also be unique among people volunteering for the same event, enforced when they register
       to volunteer for it. → D49 (uniqueness carried by people per D48)
 - [x] **Q-VOL9:** When a lead or the system cancels someone's booking, should it stay on their
-      schedule, marked, until the shift passes? Yes. → D49 (design/module-volunteers.md, Amendment V1)
+      schedule, marked, until the shift passes? Yes. → D49 (design/history/module-volunteers.md, Amendment V1)
 
 Answered 2026-10-22: two questions on burn names, for people amendment P1 (not yet drafted as
 a decision; nothing logged in 03-decisions.md).
@@ -148,13 +148,13 @@ a decision; nothing logged in 03-decisions.md).
       multiple-names nuance may be deferred. → Later (approval pipelines, multiple names);
       D48 (people amendment P1, approved 2026-10-23)
 
-Answered 2026-10-23: the jobs question raised by Amendment J1 (design/jobs.md) and the
+Answered 2026-10-23: the jobs question raised by Amendment J1 (design/history/jobs.md) and the
 volunteers Amendment V2. Q-JOBS14 was not listed here before; it is recorded now.
 
 - [x] **Q-JOBS14:** Does the latest request for a `(name, key)` win in every state? Yes: a
       queued row is moved, a final row is reopened as queued, and a running row holds the
       request and applies it when the run ends (including after a failed run).
-      → D50 (design/jobs.md, Amendment J1; design/module-volunteers.md, Amendment V2)
+      → D50 (design/history/jobs.md, Amendment J1; design/history/module-volunteers.md, Amendment V2)
 
 Answered 2026-10-29: the demo question raised by demo.md "Amendment D1". It was not listed
 here before; it is recorded now.
@@ -170,7 +170,7 @@ Answered 2026-10-30: the volunteers question Q-VOL12, raised by Amendment V3
 - [x] **Q-VOL12:** Which words should a regional be able to rename in volunteers, and where does
       "lead" live? Owner accepted the recommendation: `shift`, `position` and `qualification` are
       regional terms declared by volunteers; `lead` is a core term; `volunteer`, `waiver`,
-      `roster` and `catalogue` are not added. → D57 (design/module-volunteers.md, Amendment V3)
+      `roster` and `catalogue` are not added. → D57 (design/history/module-volunteers.md, Amendment V3)
 
 Answered 2026-10-30 (D58): the questions raised by the D57 amendments P-W1, J-W1 and V4, and
 two terms questions. None of them was listed here before; they are recorded now. The owner
@@ -178,19 +178,19 @@ accepted every recommendation.
 
 - [x] **Q-PEOPLE-9:** After a password change or "sign out everywhere else", is a still-nameless
       person prompted again? Yes: a new session starts and the person is prompted once more.
-      → D58 (design/people.md, Amendment P-W1)
+      → D58 (design/history/people.md, Amendment P-W1)
 - [x] **Q-PEOPLE-10:** Does the first-sign-in prompt stop for someone who keeps declining? No.
-      Once per session stays the rule. → D58 (design/people.md, Amendment P-W1)
+      Once per session stays the rule. → D58 (design/history/people.md, Amendment P-W1)
 - [x] **Q-JOBS15:** Are job keys hidden entirely, or is a link from a waiting row to its record
       shown? Hidden entirely for now; a link is a possible later addition. → D58
-      (design/jobs.md, Amendment J-W1)
+      (design/history/jobs.md, Amendment J-W1)
 - [x] **Q-JOBS16:** Which word names an instance on the Background work screen? "server".
-      → D58 (design/jobs.md, Amendment J-W1)
+      → D58 (design/history/jobs.md, Amendment J-W1)
 - [x] **Q-VOL13:** How does the volunteers admin page head its department list for someone whose
       permission is not "lead"? Site-wide holders see "All {departments}" with the note "You can
       manage or view every {department}."; department holders see "{Departments} you can manage
       or view"; the empty state reads "No {department} you can manage or view yet."
-      → D58 (design/module-volunteers.md, Amendment V4)
+      → D58 (design/history/module-volunteers.md, Amendment V4)
 - [x] **Q-DEMO6:** How does the password screen know an account is a protected demo account? The
       session answer carries `Protected` (bool), set from identity's Guard; the e-mail address is
       not added to the session. → D58 (design/demo.md)

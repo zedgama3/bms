@@ -10,9 +10,9 @@
   api, web-shell, telemetry (names only; a parallel spec designs client telemetry)
   **Used by:** `app` (the part, the commands, the adapters), the project's public demo
   instance, every module that contributes seed data (volunteers first)
-- **Amendment 2026-10-30 (owner, D58; Q-DEMO6 answered):** the session answer carries `Protected bool` (`protected`), set from identity's `Guard` (identity.md amendment 2026-10-30 (D58), `SessionInfo.Protected`); the password screen reads it to show the notice and disable the form; on a `Guard` error the session answer says `protected: false` and logs a warning, the server refusal staying the backstop (F46, identity F110).
+- **Amendment 2026-10-30 (owner, D58; Q-DEMO6 answered):** the session answer carries `Protected bool` (`protected`), set from identity's `Guard` (identity.md amendment 2026-10-30 (D58, in `plan/design/history/identity.md`), `SessionInfo.Protected`); the password screen reads it to show the notice and disable the form; on a `Guard` error the session answer says `protected: false` and logs a warning, the server refusal staying the backstop (F46, identity F110).
 - **Amendment 2026-10-30 (owner, D57):** the sign-in table shows one short label per account (built from a per-account catalogue key; the lead's departments joined), the password screen shows the protected-account notice up front with the form disabled, and in demo mode the notify outbox status says mail is captured; see the sign-in page, the password screen and Mail capture.
-- **Amendment D1 (raised 2026-10-28, Approved 2026-10-29, D56; Q-DEMO5: one lead for five departments): what the volunteers provider build found.** The `lead` holds `department-admin` at the five departments the demo gives volunteer data (Rangers, Gate, Greeters, Medical, DPW), not Rangers only; the pending self-upload is the participant's, not a walk-on's; the lead has no verified records and holds Khaki by a recorded self-waiver; DPW gets the "Inventory Crew" position; the conformance rule `demoseed_provider_valid` starts the module and gives the fake event dates, so a provider never invents dates; the walk-on bookings the table left open are fixed. Section "Amendment D1" before Open questions; the volunteers table changes are in `module-volunteers.md`, "Amendment D1 changes".
+- **Amendment D1 (raised 2026-10-28, Approved 2026-10-29, D56; Q-DEMO5: one lead for five departments): what the volunteers provider build found.** The `lead` holds `department-admin` at the five departments the demo gives volunteer data (Rangers, Gate, Greeters, Medical, DPW), not Rangers only; the pending self-upload is the participant's, not a walk-on's; the lead has no verified records and holds Khaki by a recorded self-waiver; DPW gets the "Inventory Crew" position; the conformance rule `demoseed_provider_valid` starts the module and gives the fake event dates, so a provider never invents dates; the walk-on bookings the table left open are fixed. Section "Amendment D1" before Open questions; the volunteers table changes are in `plan/design/history/module-volunteers.md`, "Amendment D1 changes".
 
 ## Summary
 
@@ -758,7 +758,7 @@ timer is a systemd unit; cron or a compose sidecar does the same (`docs/operatin
 - **Conformance.** Each contributing module's `moduletest.Conformance` gains the optional rule
   `demoseed_provider_valid` (`WithDemoSeed()`): the provider runs against the module's fakes
   with a `demotest.NewFakeActors()` and creates at least one record without a `Permission`
-  error (Proposed change 7, as superseded by `module-volunteers.md` "Amendment D1 changes").
+  error (Proposed change 7, as superseded by `plan/design/history/module-volunteers.md` "Amendment D1 changes").
   The rule registers the request's event with dates (as step 5 computes them from the rig's
   clock, zone `UTC`) and calls the module's `Start` before `Provider.Seed` and `Stop` after
   (D1.5, D1.6); a provider that finds an event without dates fails `Invalid`.
@@ -874,7 +874,7 @@ sends no mail.
 
 **What changes where.** Behavior step 4 (five grants), the `ActorLead` comment, the account
 list's lead label (web-shell `core.demo.account.lead`), Proposed change 7 (the volunteers
-table, superseded by `module-volunteers.md` "Amendment D1 changes"), the Test plan's
+table, superseded by `plan/design/history/module-volunteers.md` "Amendment D1 changes"), the Test plan's
 conformance bullet (dates and `Start`), `SeedVersion` stays 1 (the demo has not shipped).
 
 **Q-DEMO5 (owner, 2026-10-29, answered).** One `lead` account may run five departments (a
@@ -948,7 +948,7 @@ sign-up form tells testers to use a made-up address.
 6. (applied 2026-10-28, module-contract.md (F66)) **`module-contract.md`.** `demo` joins the reserved core areas (`IsCoreArea`); `demo.seed`
    is a core extension point; `moduletest.Conformance` gains the option `WithDemoSeed()` and
    the rule `demoseed_provider_valid` (Test plan).
-7. (applied 2026-10-28, module-volunteers.md amendment (F171 to F174); the table is superseded by `module-volunteers.md` "Amendment D1 changes", 2026-10-29) **`module-volunteers.md`.** `ContributesTo` gains `demoseed.Point`; `Contributions()`
+7. (applied 2026-10-28, module-volunteers.md amendment (F171 to F174); the table is superseded by `plan/design/history/module-volunteers.md` "Amendment D1 changes", 2026-10-29) **`module-volunteers.md`.** `ContributesTo` gains `demoseed.Point`; `Contributions()`
    returns a `demoseed.Provider` (`demo.go`) that, as `lead`: creates the qualifications
    "Ranger training" (Rangers, 365-day validity), "ICS-100" (org-wide, no expiry), "First
    aid" (Medical, 730 days), "Over 18" (org-wide, no expiry); the positions Dirt Ranger

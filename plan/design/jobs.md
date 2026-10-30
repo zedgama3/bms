@@ -94,8 +94,8 @@ A handler that re-enqueues its own key from inside its run (volunteers' reminder
 
 **Open questions:** Q-JOBS1 to Q-JOBS7 below (the screen in M4, the give-up policy, notify's tick staying put, daily schedules Later, `DoneTTL` a constant, the audit actor through `InJob`, no new config keys); Q-JOBS8 to Q-JOBS13 (from the review: `Retry` while a row of the name is open, a run past its fence, `bms check` and a failing `Start`, counting a reclaim, the fake's clock, no person ID in a dedupe key).
 Q-JOBS14 (the latest request for a key wins, in place of "a running or final row makes the request a no-op").
-All fourteen are settled (D43, D44; Q-JOBS14 D50).
-**Proposed changes elsewhere:** 11, listed at the end, all applied 2026-10-20 (D43, D44); 13 and 14 (J1) applied 2026-10-23 (D50).
+All sixteen are settled (D43, D44; Q-JOBS14 D50; Q-JOBS15 and Q-JOBS16 D58); the questions and answers are in `plan/design/history/jobs.md`.
+**Proposed changes elsewhere:** 14 in this spec (1 to 12 applied 2026-10-20, D43, D44; 13 and 14 (J1) applied 2026-10-23, D50); 15 to 19 (J-W1, applied 2026-10-30, D58) are in `plan/design/history/jobs.md`.
 
 ## Purpose
 
@@ -1001,7 +1001,7 @@ None. Every question is answered and folded into the text above; the questions, 
 
 ## Proposed changes elsewhere
 
-Status as of 2026-10-20: all eleven are applied (owner, D43; the tenth and eleventh D44). A twelfth (from files.md, D44) is applied below. Two more (13, 14, from Amendment J1) are applied below (2026-10-23, D50).
+Status as of 2026-10-20: all eleven are applied (owner, D43; the tenth and eleventh D44). A twelfth (from files.md, D44) is applied below. Two more (13, 14, from Amendment J1, `plan/design/history/jobs.md`) are applied below (2026-10-23, D50).
 
 Items 15 to 19 (Amendment J-W1; applied 2026-10-30, D58) are recorded with the J-W1 narrative in `plan/design/history/jobs.md` (section W1.12). References to W1.x in this spec point there.
 

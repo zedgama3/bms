@@ -24,7 +24,7 @@ type Route struct {
 	Handler http.Handler
 }
 
-// Routes returns the eleven routes of the accounts set. Handlers are thin: parse, call the
+// Routes returns the thirteen routes of the accounts set. Handlers are thin: parse, call the
 // service, set the cookie, httpx.Fail on error. Cannot fail.
 func (s *Service) Routes() []Route {
 	return []Route{

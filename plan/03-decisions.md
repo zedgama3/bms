@@ -723,7 +723,7 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
 
 - **Status:** Accepted (2026-10-21), decided by the owner. The owner answered "Approved with
   recommendations", so each answer below is approved with the recommendation shown.
-- **privacy-tags Amendment A1 ([design/privacy-tags.md](design/privacy-tags.md), "Amendment A1"):
+- **privacy-tags Amendment A1 ([design/history/privacy-tags.md](design/history/privacy-tags.md), "Amendment A1"):
   approved as drafted.**
 - **`people.contacts.read` for `department-admin` ([design/people.md](design/people.md)):**
   - `department-admin` keeps `people.contacts.read` by default, as seeded per D44.
@@ -743,7 +743,7 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
 ## D46. privacy-tags Amendment A2 approved, with module-hello's changes and Proposed changes 10–13
 
 - **Status:** Accepted (2026-10-21), decided by the owner. The owner answered "Approved".
-- **privacy-tags Amendment A2 ([design/privacy-tags.md](design/privacy-tags.md), "Amendment A2"):
+- **privacy-tags Amendment A2 ([design/history/privacy-tags.md](design/history/privacy-tags.md), "Amendment A2"):
   approved as drafted,** including module-hello's A2 changes and Proposed changes 10–13
   (module-contract, people, module-volunteers, web-shell and go-conventions).
 - **Omit rule:** every non-public field, grouped or not, gets an omit rule per kind:
@@ -758,7 +758,7 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
 
 - **Status:** Accepted (2026-10-21), decided by the owner. The owner answered "approved with
   recommendations", so each answer below is approved with the recommendation shown.
-- **Settings logo amendment ([design/settings.md](design/settings.md), "Amendment 2026-10-21:
+- **Settings logo amendment ([design/history/settings.md](design/history/settings.md), "Amendment 2026-10-21:
   the logo over files"): approved**, points L1–L9, with its Proposed changes 14–19.
 - **Q-LOGO1:** no SVG logos now. A sanitised SVG kind comes later.
 - **Q-LOGO2:** no dark-scheme logo now. One logo, with a transparent-background hint. A
@@ -793,7 +793,7 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
 ## D49. volunteers Amendment V1 approved
 
 - **Status:** Accepted (2026-10-23), decided by the owner. The owner's answer: "V1 approved."
-  [design/module-volunteers.md](design/module-volunteers.md), "Amendment V1", is approved as
+  [design/history/module-volunteers.md](design/history/module-volunteers.md), "Amendment V1", is approved as
   the record in that spec stands; its choices are summarised here, and the spec's record is
   the detail.
 - **Choices in V1:**
@@ -819,8 +819,8 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
 
 - **Status:** Accepted (2026-10-23), decided by the owner. The owner's answer: "Proceed with all
   six. Approved with your recommendations."
-- [design/jobs.md](design/jobs.md), "Amendment J1", and
-  [design/module-volunteers.md](design/module-volunteers.md), "Amendment V2", are approved.
+- [design/history/jobs.md](design/history/jobs.md), "Amendment J1", and
+  [design/history/module-volunteers.md](design/history/module-volunteers.md), "Amendment V2", are approved.
 - **Q-JOBS14, answered yes:** the latest request for a `(name, key)` wins in every state.
   - A queued row is moved.
   - A final row (`done`, `failed`, `canceled`) is reopened as a fresh queued row.
@@ -916,7 +916,7 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
 
 ## D54. telemetry Amendment T1 approved, with its open questions answered
 
-- **Status:** Accepted (2026-10-28), decided by the owner. [design/telemetry.md](design/telemetry.md),
+- **Status:** Accepted (2026-10-28), decided by the owner. [design/history/telemetry.md](design/history/telemetry.md),
   "Amendment T1" (client telemetry for the public demo), is Approved.
 - **Context:** the owner: "It is important that we get telemetry that can help us identify
   issues that clients are having, even if they don't report them."
@@ -946,7 +946,7 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
 
 - **Status:** Accepted (2026-10-29), decided by the owner. The owner approved demo Amendment D1
   as recommended: [design/demo.md](design/demo.md) "Amendment D1" and
-  [design/module-volunteers.md](design/module-volunteers.md) "Amendment D1 changes".
+  [design/history/module-volunteers.md](design/history/module-volunteers.md) "Amendment D1 changes".
 - **Q-DEMO5, answered:** one `lead` demo account may run five departments (Rangers, Gate,
   Greeters, Medical, DPW). Owner's words: "One lead account may run five departments. This may
   be required at a small burn with few volunteers."
@@ -991,7 +991,7 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
   - "Back to shifts" returns a lead to the department view they came from;
   - the long shift list is made more compact.
   The architect and spec-editor are designing the details.
-- **Volunteers Amendment V3 ([design/module-volunteers.md](design/module-volunteers.md), "Amendment
+- **Volunteers Amendment V3 ([design/history/module-volunteers.md](design/history/module-volunteers.md), "Amendment
   V3"): approved, with the recommended answer to Q-VOL12.** `shift`, `position` and
   `qualification` become regional words declared by the volunteers module, and `lead` is a core
   word. Answers Q-VOL12 ([06-open-questions.md](06-open-questions.md)).
@@ -1001,10 +1001,10 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
 - **Status:** Accepted (2026-10-30), decided by the owner. The owner accepted every
   recommendation the main session put to them.
 - **Amendments approved:**
-  - [design/people.md](design/people.md), "Amendment P-W1": the first-sign-in prompt, once per
+  - [design/history/people.md](design/history/people.md), "Amendment P-W1": the first-sign-in prompt, once per
     session, recorded by the server.
-  - [design/jobs.md](design/jobs.md), "Amendment J-W1": the Background work screen for people.
-  - [design/module-volunteers.md](design/module-volunteers.md), "Amendment V4": shift
+  - [design/history/jobs.md](design/history/jobs.md), "Amendment J-W1": the Background work screen for people.
+  - [design/history/module-volunteers.md](design/history/module-volunteers.md), "Amendment V4": shift
     navigation and a compact shift list.
 - **Answers:**
   - **Q-PEOPLE-9:** a password change or "sign out everywhere else" starts a new session, so a

@@ -84,7 +84,7 @@ QueryTimeout)`, `Migrate` excepted; 17 `Migrate` takes a session advisory lock, 
 18 missing `core.schema_migration` means nothing applied; 19 `TempDB` is a database not a
 schema; 20 PostgreSQL 16 minimum (owner, 2026-10-16); 21 `TxMode` is a package function
 that reports the ctx's transaction whoever began it, ended or not, so `audit` can refuse to
-spool inside one (D36 (e); approved D37). The server encoding must be UTF-8 (people Amendment P1, 2026-10-23; people `0003` checks it itself, `Open` does not yet).
+spool inside one (D36 (e); approved D37). The server encoding must be UTF-8 (people Amendment P1 in `plan/design/history/people.md`, 2026-10-23; people `0003` checks it itself, `Open` does not yet).
 
 Errs kinds and sentinels callers handle: `Invalid` (bad options/URL/credentials/old server,
 FK/not-null/check/data errors, malformed migrations), `Conflict` (unique violation with
