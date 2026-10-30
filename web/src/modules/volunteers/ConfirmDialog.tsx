@@ -18,6 +18,7 @@ export function ConfirmDialog({
   confirm,
   variant = "danger",
   returnFocus,
+  dismiss,
   onClose,
   onConfirm,
 }: {
@@ -28,6 +29,9 @@ export function ConfirmDialog({
   variant?: ButtonVariant;
   /** A selector for where focus goes after the action succeeds, when the opener is gone. */
   returnFocus?: string;
+  /** The label of the button that leaves things as they are (default "Cancel"); give one when
+   *  the action itself is a cancellation, so "Cancel" cannot mean either. */
+  dismiss?: string;
   onClose: () => void;
   onConfirm: () => Promise<void>;
 }) {
@@ -77,7 +81,7 @@ export function ConfirmDialog({
             {confirm}
           </Button>
           <Button variant="secondary" onClick={onClose}>
-            {t("module.volunteers.cancel")}
+            {dismiss ?? t("module.volunteers.cancel")}
           </Button>
         </div>
       </form>

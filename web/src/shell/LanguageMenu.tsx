@@ -1,7 +1,6 @@
 import { useId } from "react";
 import { api, isAbort, useReadOnly, useSetMe, useSession } from "@/api";
-import { useLanguage, useT } from "@/i18n";
-import type { MessageKey } from "@/i18n";
+import { languageName, useLanguage, useT } from "@/i18n";
 import { useToast } from "@/ui";
 
 /** The language choice (decision 7). With one language on offer there is nothing to choose
@@ -37,16 +36,10 @@ export function LanguageMenu() {
       >
         {offered.map((tag) => (
           <option key={tag} value={tag} lang={tag}>
-            {nameOf(t, tag)}
+            {languageName(tag)}
           </option>
         ))}
       </select>
     </div>
   );
-}
-
-function nameOf(t: ReturnType<typeof useT>, tag: string): string {
-  const key = `shell.language.${tag}`;
-  const name = t(key as MessageKey);
-  return name === key ? tag : name;
 }

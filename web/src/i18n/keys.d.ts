@@ -698,6 +698,7 @@ export interface GeneratedKeys {
   "core.people.data.title": true;
   "core.people.data.withdraw": true;
   "core.people.data.withdrawn": true;
+  "core.people.me.continue": true;
   "core.people.me.empty": true;
   "core.people.me.first": true;
   "core.people.me.roles": true;
@@ -977,8 +978,16 @@ export interface GeneratedKeys {
   "module.access.permission.roles.read.title": true;
   "module.access.permission.rules.manage.title": true;
   "module.access.title": true;
+  "module.accounts.permission.manage.title": true;
+  "module.accounts.permission.read.title": true;
+  "module.accounts.title": true;
   "module.audit.field.mismatch": true;
   "module.audit.field.range": true;
+  "module.audit.permission.export.title": true;
+  "module.audit.permission.search.title": true;
+  "module.audit.title": true;
+  "module.core.permission.modules.read.title": true;
+  "module.core.title": true;
   "module.departments.field.archived": true;
   "module.departments.field.control_chars": true;
   "module.departments.field.not_archived": true;
@@ -1015,6 +1024,9 @@ export interface GeneratedKeys {
   "module.hello.signal.greeted.title": true;
   "module.hello.template.greeted.title": true;
   "module.hello.title": true;
+  "module.jobs.permission.manage.title": true;
+  "module.jobs.permission.read.title": true;
+  "module.jobs.title": true;
   "module.notify.field.parse": true;
   "module.notify.permission.outbox.manage.title": true;
   "module.notify.permission.templates.manage.title": true;
@@ -1040,6 +1052,9 @@ export interface GeneratedKeys {
   "module.people.title": true;
   "module.settings.field.unknown": true;
   "module.settings.field.url": true;
+  "module.settings.permission.manage.title": true;
+  "module.settings.permission.read.title": true;
+  "module.settings.title": true;
   "module.volunteers.access.members": true;
   "module.volunteers.access.open": true;
   "module.volunteers.admin.catalogue": true;
@@ -1315,6 +1330,7 @@ export interface GeneratedKeys {
   "module.volunteers.shift.department": true;
   "module.volunteers.shift.edit": true;
   "module.volunteers.shift.filled": true;
+  "module.volunteers.shift.keep_mine": true;
   "module.volunteers.shift.manage": true;
   "module.volunteers.shift.no_location": true;
   "module.volunteers.shift.position": true;
@@ -1476,7 +1492,6 @@ export interface GeneratedKeys {
   "shell.home.title": true;
   "shell.home.welcome": true;
   "shell.language": true;
-  "shell.language.en": true;
   "shell.language.unsaved": true;
   "shell.loading": true;
   "shell.menu": true;

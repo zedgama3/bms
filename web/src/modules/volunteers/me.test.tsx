@@ -118,6 +118,8 @@ describe("volunteers: My volunteering", () => {
     });
     await userEvent.click(await screen.findByRole("button", { name: /^Cancel booking/ }));
     const dialog = await screen.findByRole("dialog", { name: "Cancel your booking?" });
+    expect(within(dialog).getByRole("button", { name: "Keep my booking" })).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "Cancel" })).toBeNull();
     await userEvent.click(within(dialog).getByRole("button", { name: "Cancel my booking" }));
     // the stale row stays visible, so the failure must be said beside it
     const alert = await screen.findByRole("alert");

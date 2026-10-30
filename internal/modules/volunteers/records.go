@@ -209,7 +209,7 @@ func (s *Service) afterVerified(ctx context.Context, rec vol.Record, q vol.Quali
 	}
 	vars := map[string]string{"qualification": q.Name}
 	if !rec.ExpiresOn.IsZero() {
-		vars["expires_on"] = rec.ExpiresOn.String()
+		vars["expires_on"] = rec.ExpiresOn.Long()
 	}
 	return s.send(ctx, notify.Message{
 		Template: TemplateQualificationVerified, To: []model.PersonID{rec.Person},

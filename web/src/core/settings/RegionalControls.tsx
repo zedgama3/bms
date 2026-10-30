@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { isMessageKey, useFormat, useT } from "@/i18n";
+import { languageName, useFormat, useT } from "@/i18n";
 import { controlClass, Field } from "@/ui";
 import {
   contrastRatio,
@@ -136,7 +136,6 @@ export const regionalControls: Readonly<Record<string, ControlRenderer>> = {
 };
 
 function LanguageSelect({ c }: { c: Parameters<ControlRenderer>[0] }) {
-  const t = useT();
   return (
     <Field label={c.label} name={c.name} hint={c.hint} error={c.error}>
       {(control) => (
@@ -146,14 +145,11 @@ function LanguageSelect({ c }: { c: Parameters<ControlRenderer>[0] }) {
           value={c.value}
           onChange={(e) => c.setValue(e.target.value)}
         >
-          {(c.setting.options ?? []).map((tag) => {
-            const key = `shell.language.${tag}`;
-            return (
-              <option key={tag} value={tag} lang={tag}>
-                {isMessageKey(key) ? t(key) : tag}
-              </option>
-            );
-          })}
+          {(c.setting.options ?? []).map((tag) => (
+            <option key={tag} value={tag} lang={tag}>
+              {languageName(tag)}
+            </option>
+          ))}
         </select>
       )}
     </Field>

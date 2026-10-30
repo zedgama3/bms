@@ -61,5 +61,8 @@
   "core.jobs.error.panic": "The job crashed",
   "core.jobs.error.no_handler": "This copy has no code for this job",
   "core.jobs.error.lost_lease": "The job lost its place to another copy",
-  "core.jobs.error.gave_up": "The job kept failing and was given up on"
+  "core.jobs.error.gave_up": "The job kept failing and was given up on",
+  "module.jobs.title": "Background work",
+  "module.jobs.permission.read.title": "See background work and its recent runs",
+  "module.jobs.permission.manage.title": "Run, retry and cancel background work"
 }

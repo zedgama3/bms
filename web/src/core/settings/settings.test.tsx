@@ -175,6 +175,10 @@ describe("/settings (regional)", () => {
     expect(screen.getByLabelText("Web address")).toHaveAttribute("type", "url");
     const lang = screen.getByLabelText("Default language");
     expect(within(lang).getByRole("option", { name: "English" })).toBeInTheDocument();
+    // each language is named in itself, and the default line says the name, not the code
+    expect(within(lang).getByRole("option", { name: "Español" })).toBeInTheDocument();
+    expect(screen.getByText("Default: English")).toBeInTheDocument();
+    expect(within(lang).queryByRole("option", { name: "es" })).toBeNull();
     const zone = screen.getByLabelText("Time zone");
     expect(within(zone).getAllByRole("option")[0]).toHaveTextContent("The browser's own time zone");
     expect(screen.getByLabelText("Brand colour")).toHaveValue("#0b5cad");

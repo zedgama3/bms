@@ -145,7 +145,7 @@ export function ScheduleSection({
             <li key={i.id} className="rounded-md border border-border bg-surface p-4">
               <h3 className="break-words text-lg font-bold">{i.label}</h3>
               <p>{when(i)}</p>
-              {i.key ? (
+              {canManage && i.key ? (
                 <p className="text-sm text-muted">
                   {t("core.events.schedule.key")} <code>{i.key}</code>
                 </p>

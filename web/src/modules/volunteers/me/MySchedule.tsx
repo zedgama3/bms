@@ -145,6 +145,7 @@ export function MySchedule() {
         title={t("module.volunteers.shift.cancel_mine_title")}
         body={t("module.volunteers.shift.cancel_mine_body", { label: target?.shift.label ?? "" })}
         confirm={t("module.volunteers.shift.cancel_mine_confirm")}
+        dismiss={t("module.volunteers.shift.keep_mine")}
         returnFocus="#me-schedule"
         onClose={() => setTarget(null)}
         onConfirm={async () => {

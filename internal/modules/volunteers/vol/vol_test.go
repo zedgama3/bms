@@ -264,3 +264,22 @@ func TestRecordInput_Validate_Table(t *testing.T) {
 		})
 	}
 }
+
+func TestDate_Long_Table(t *testing.T) {
+	cases := []struct {
+		name string
+		in   vol.Date
+		want string
+	}{
+		{"zero", vol.Date{}, ""},
+		{"end of August", vol.Date{Year: 2028, Month: time.August, Day: 31}, "31 August 2028"},
+		{"single digit day has no padding", vol.Date{Year: 2027, Month: time.March, Day: 5}, "5 March 2027"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.in.Long(); got != tc.want {
+				t.Errorf("Long() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

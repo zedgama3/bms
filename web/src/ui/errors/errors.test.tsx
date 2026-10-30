@@ -106,6 +106,36 @@ describe("showsRef (decision 9)", () => {
   });
 });
 
+describe("a conflict in a form's summary", () => {
+  const conflict = (field: string, code: string) =>
+    err({
+      status: 409,
+      code: "conflict",
+      ref: "1A2B-3C4D",
+      fields: [{ field, code, reason: "x" }],
+    });
+  it("on an input of the form points at the field: no reload advice, no reference", () => {
+    // the error arrives after the form is mounted, as it does after a failed submit
+    const { rerender } = renderUi(<Form error={null} />);
+    rerender(<Form error={conflict("start", "taken")} />);
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("Check the fields below.");
+    expect(alert).not.toHaveTextContent(/Reload/);
+    expect(alert).not.toHaveTextContent("1A2B-3C4D");
+  });
+  it("on a field with no input (a state clash) keeps the clash sentence and the reference", () => {
+    renderUi(<Form error={conflict("status", "not_open")} />);
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("That change clashes with another one. Reload and try again.");
+    expect(alert).toHaveTextContent("1A2B-3C4D");
+  });
+  it("ErrorState and showsRef are unchanged for a conflict with fields", () => {
+    expect(showsRef(conflict("start", "taken"))).toBe(true);
+    renderUi(<ErrorState error={conflict("start", "taken")} />);
+    expect(screen.getByText(/Reload and try again/)).toBeInTheDocument();
+  });
+});
+
 describe("ErrorState", () => {
   it("shows the sentence, the reference line and a retry button", async () => {
     const onRetry = vi.fn();

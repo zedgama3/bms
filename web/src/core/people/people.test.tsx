@@ -147,6 +147,54 @@ describe("the frame and the profile (useMe)", () => {
     expect(router()!.state.location.pathname).toBe("/");
   });
 
+  it("keeps the page the person was going to: a deep link is offered after the prompt", async () => {
+    const { router } = mountApp({
+      path: "/people",
+      session: ident({ playa_name: "" }),
+      routes: mine(profile({}, { playa_name: "" })),
+    });
+    await waitFor(() => expect(router()!.state.location.search).toBe("?first=1"));
+    const skip = await screen.findByRole("link", { name: "Continue to where you were going" });
+    expect(skip).toHaveAttribute("href", "/people");
+    await userEvent.click(skip);
+    await waitFor(() => expect(router()!.state.location.pathname).toBe("/people"));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(router()!.state.location.pathname).toBe("/people"); // asked once, not again
+  });
+
+  it.each([["//evil"], ["/\\evil"], ["https://x"], [42], ["/"]])(
+    "ignores an unsafe or useless return target %j",
+    async (next) => {
+      const { router } = mountApp({
+        path: "/people/me?first=1",
+        session: ident({ playa_name: "" }),
+        routes: mine(profile({}, { playa_name: "" })),
+      });
+      await screen.findByText(/Tell us your playa name/);
+      await router()!.navigate("/people/me?first=1", { state: { next }, replace: true });
+      await screen.findByText(/Tell us your playa name/);
+      expect(screen.queryByRole("link", { name: "Continue to where you were going" })).toBeNull();
+    },
+  );
+
+  it("saving the first-sign-in prompt stays on the profile and still offers the way on", async () => {
+    const { router } = mountApp({
+      path: "/people",
+      session: ident({ playa_name: "" }),
+      routes: mine(profile({}, { playa_name: "" }), {
+        "PUT /api/people/me": () => json(profile({}, { playa_name: "Newbie" })),
+      }),
+    });
+    const name = await screen.findByLabelText(/^Playa name/);
+    await userEvent.type(name, "Newbie");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(router()!.state.location.search).toBe(""));
+    expect(router()!.state.location.pathname).toBe("/people/me");
+    expect(
+      await screen.findByRole("link", { name: "Continue to where you were going" }),
+    ).toHaveAttribute("href", "/people");
+  });
+
   it("does not send the break-glass superuser to the prompt", async () => {
     const { router } = mountApp({
       session: ident({ playa_name: "", superuser: true }),
@@ -341,6 +389,9 @@ describe("/people/me", () => {
     expect(
       screen.getAllByText("Someone here already uses this playa name. Choose another.").length,
     ).toBeGreaterThan(0);
+    const summary = await screen.findByRole("alert");
+    expect(summary).toHaveTextContent("Check the fields below.");
+    expect(summary).not.toHaveTextContent(/Reload/);
   });
 
   it("a stale permanent answer is worded under the field", async () => {

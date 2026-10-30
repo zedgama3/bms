@@ -81,10 +81,10 @@ func (s *Service) Sections(ctx context.Context, people []model.PersonID) (_ map[
 			var items []personpage.Item
 			if len(shown[p]) > 0 {
 				items = append(items, personpage.Item{
-					Label: "module.volunteers.section.summary.departments", Value: strings.Join(shown[p], ", "),
+					Label: "module.volunteers.section.departments", Value: strings.Join(shown[p], ", "),
 				})
 			}
-			upcoming := personpage.Item{Label: "module.volunteers.section.summary.upcoming", Value: strconv.Itoa(n)}
+			upcoming := personpage.Item{Label: "module.volunteers.section.upcoming", Value: strconv.Itoa(n)}
 			if p == actor {
 				upcoming.Href = "/volunteers/me"
 			}

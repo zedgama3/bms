@@ -63,6 +63,11 @@ describe("demo banner", () => {
     const rows = within(table).getAllByRole("row");
     expect(rows).toHaveLength(1 + DEMO.accounts.length);
     expect(within(table).getByText("lead@demo.invalid")).toBeInTheDocument();
+    // an address may break only after the @, never mid-word
+    const code = within(table).getByText("lead@demo.invalid");
+    expect(code.querySelectorAll("wbr")).toHaveLength(1);
+    expect(code.className).not.toMatch(/break-all/);
+    expect(code.innerHTML).toMatch(/@<wbr>/);
     expect(within(table).getByText("Administrator of a department at Rangers")).toBeInTheDocument();
     expect(within(table).queryByText(/department-admin/)).toBeNull();
     expect(within(table).getByText("Lead of the volunteer departments")).toBeInTheDocument();

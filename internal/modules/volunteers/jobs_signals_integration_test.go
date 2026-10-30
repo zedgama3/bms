@@ -305,6 +305,9 @@ func TestExpiryScan_NotifiesOnceInsideTheWindow(t *testing.T) {
 			t.Errorf("Vars lack %q: %v", k, m.Vars)
 		}
 	}
+	if want := w.recSoon.ExpiresOn.Long(); want == "" || m.Vars["expires_on"] != want {
+		t.Errorf("expires_on = %q, want the record's long date %q", m.Vars["expires_on"], want)
+	}
 	if m.Vars["days"] != "10" {
 		t.Errorf("days = %q, want 10", m.Vars["days"])
 	}

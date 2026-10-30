@@ -161,7 +161,7 @@ func (s *Service) noticeExpiring(ctx context.Context, r vol.ExpiringRecord, toda
 		err := s.notify.Send(ctx, notify.Message{
 			Template: TemplateQualificationExpiring, To: []model.PersonID{r.Person}, Key: "expiring:" + r.ID.String(),
 			Vars: map[string]string{
-				"qualification": r.QualificationName, "expires_on": r.ExpiresOn.String(), "days": strconv.Itoa(left),
+				"qualification": r.QualificationName, "expires_on": r.ExpiresOn.Long(), "days": strconv.Itoa(left),
 			},
 			Link: "/volunteers/me",
 		})

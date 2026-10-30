@@ -307,6 +307,44 @@ describe("/events/:event", () => {
     await expectNoAxeViolations(container);
   });
 
+  it("treats the event's dates as half-open [start, end) (model decision 10), and shows keys only to managers", async () => {
+    const withKey = (permissions: string[]) =>
+      mountApp({
+        path: `/events/${E_NOW}`,
+        session: ident(permissions),
+        routes: base({
+          [`GET /api/events/${E_NOW}`]: () =>
+            json({
+              ...NOW,
+              schedule: [
+                item({
+                  id: "i-end",
+                  key: "gate-close",
+                  label: "Gate closes",
+                  starts_at: NOW.dates.end,
+                  ends_at: undefined,
+                }),
+                item({
+                  id: "i-late",
+                  key: "late",
+                  label: "After",
+                  starts_at: iso(day + 1000),
+                  ends_at: undefined,
+                }),
+              ],
+            }),
+        }),
+      });
+    const first = withKey([]);
+    await screen.findByRole("heading", { level: 3, name: "Gate closes" });
+    expect(screen.getAllByText("Outside the event's dates.")).toHaveLength(2); // the end instant and "After"
+    expect(screen.queryByText("Key:")).not.toBeInTheDocument();
+    first.unmount();
+    withKey(["events.manage"]);
+    await screen.findByRole("heading", { level: 3, name: "Gate closes" });
+    expect(screen.getAllByText("Key:")).toHaveLength(2);
+  });
+
   it("adds a schedule item read in the event's zone", async () => {
     const { fetchMock } = mountApp({
       path: `/events/${E_NOW}`,

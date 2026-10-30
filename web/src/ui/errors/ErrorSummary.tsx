@@ -44,6 +44,12 @@ export function ErrorSummary({
   }, [error, untranslated]);
   const entries = useMemo(() => Object.entries(fieldMessages), [fieldMessages]);
   if (!error) return null;
+  // A 409 whose fields all sit on inputs of this form is a refusal the person fixes in place
+  // (a playa name that is `taken`): point at the fields, no reload advice. A conflict on a
+  // field with no input here (a request's status) is a state clash and keeps its sentence.
+  // eslint-disable-next-line react-hooks/refs -- the form is mounted before an error can exist
+  const fixable = error.code === "conflict" && entries.some(([f]) => inputFor(formRef.current, f));
+  const sentence = message ?? (fixable ? t("error.invalid") : messageFor(t, error));
   return (
     <div
       ref={box}
@@ -53,7 +59,7 @@ export function ErrorSummary({
     >
       <p className="flex items-start gap-2 font-semibold text-danger">
         <TriangleAlert aria-hidden="true" className="mt-1 size-5 shrink-0" />
-        <span>{message ?? messageFor(t, error)}</span>
+        <span>{sentence}</span>
       </p>
       {entries.length > 0 ? (
         <ul className="list-disc ps-5">
@@ -89,7 +95,7 @@ export function ErrorSummary({
           })}
         </ul>
       ) : null}
-      {showsRef(error) && error.ref ? <ReferenceLine reference={error.ref} /> : null}
+      {showsRef(error) && !fixable && error.ref ? <ReferenceLine reference={error.ref} /> : null}
     </div>
   );
 }

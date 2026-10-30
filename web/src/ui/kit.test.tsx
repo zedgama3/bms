@@ -127,6 +127,11 @@ describe("Banner, EmptyState, Table", () => {
       />,
     );
     expect(screen.getByRole("table", { name: "Things" })).toBeInTheDocument();
+    // The table is display: block on a phone, so the caption must not stay table-caption there
+    // (it would shrink to one letter a line); it is a caption again from 640 px.
+    const caption = container.querySelector("caption");
+    expect(caption).toHaveClass("block", "sm:table-caption");
+    expect(caption).not.toHaveClass("table-caption");
     expect(container.querySelectorAll('td[data-label="Count"]')).toHaveLength(2);
     expect(container.querySelectorAll('th[scope="row"][data-label="Name"]')).toHaveLength(2);
     await expectNoAxeViolations(container);

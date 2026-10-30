@@ -23,7 +23,7 @@ export function Table<Row>({
 }) {
   return (
     <table role="table" className="block w-full border-collapse sm:table">
-      <caption className="mb-2 text-start font-semibold">{caption}</caption>
+      <caption className="mb-2 block text-start sm:table-caption font-semibold">{caption}</caption>
       {/* Hidden on a phone (display: none): each cell repeats its header as a visible label, so
           a screen reader hears it once. Roles are explicit because display: block drops the
           native table semantics in some browsers. */}

@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router";
 import { api, ApiError, useAction, useReadOnly } from "@/api";
-import { isMessageKey, useLanguage, useT } from "@/i18n";
+import { languageName, useLanguage, useT } from "@/i18n";
 import {
   Banner,
   Button,
@@ -84,14 +84,11 @@ export function Terms() {
               value={lang}
               onChange={(e) => setChosen(e.target.value)}
             >
-              {languages.map((tag) => {
-                const key = `shell.language.${tag}`;
-                return (
-                  <option key={tag} value={tag} lang={tag}>
-                    {isMessageKey(key) ? t(key) : tag}
-                  </option>
-                );
-              })}
+              {languages.map((tag) => (
+                <option key={tag} value={tag} lang={tag}>
+                  {languageName(tag)}
+                </option>
+              ))}
             </select>
           )}
         </Field>
@@ -175,8 +172,7 @@ function TermsForm({
     });
   };
 
-  const langKey = `shell.language.${lang}`;
-  const langName = isMessageKey(langKey) ? t(langKey) : lang;
+  const langName = languageName(lang);
   const readOnlyId = "settings-terms-readonly";
   return (
     <form ref={formRef} onSubmit={submit} className="flex flex-col gap-5" noValidate>

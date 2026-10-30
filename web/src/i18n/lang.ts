@@ -65,3 +65,15 @@ export function resetLanguageForTest(): void {
   current = "en";
   listeners.clear();
 }
+
+/** A language's name in that language ("Español" for `es`), capitalised for a list. Falls back
+ *  to the tag when the browser has no name for it or rejects the tag. */
+export function languageName(tag: string): string {
+  try {
+    const name = new Intl.DisplayNames([tag], { type: "language" }).of(tag);
+    if (!name || name === tag) return tag;
+    return name.charAt(0).toLocaleUpperCase(tag) + name.slice(1);
+  } catch {
+    return tag;
+  }
+}

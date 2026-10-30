@@ -1,7 +1,7 @@
 import { useId, useState } from "react";
 import type { ReactNode } from "react";
 import { TriangleAlert } from "lucide-react";
-import { useT } from "@/i18n";
+import { languageName, useT } from "@/i18n";
 import { Button, Check, controlClass, Field, FieldMessageText } from "@/ui";
 import type { FieldMessage } from "@/ui";
 import { DurationInput } from "./DurationInput";
@@ -158,7 +158,12 @@ export function SettingRow({
             s.default === "true" ? t("core.settings.row.bool_on") : t("core.settings.row.bool_off"),
         });
       case "enum":
-        return t("core.settings.row.default", { value: text.option(area, s, s.default) });
+        return t("core.settings.row.default", {
+          value:
+            s.key === "regional.language"
+              ? languageName(s.default)
+              : text.option(area, s, s.default),
+        });
       case "duration": {
         const d = parseDuration(s.default);
         if (d.n === "0") {

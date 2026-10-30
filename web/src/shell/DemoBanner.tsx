@@ -1,4 +1,4 @@
-import { useId, useSyncExternalStore } from "react";
+import { Fragment, useId, useSyncExternalStore } from "react";
 import { Info } from "lucide-react";
 import { Link, useLocation } from "react-router";
 import { useDemo, useDemoSignInState, useSession } from "@/api";
@@ -87,8 +87,18 @@ function DemoAccounts({
     {
       header: t("shell.demo.col.email"),
       cell: (a) => (
-        <code translate="no" className="select-all break-all">
-          {a.email}
+        <code translate="no" className="select-all break-words">
+          {/* One line where there is room; where there is not, break only after the @. */}
+          {a.email.split("@").map((part, i) => (
+            <Fragment key={i}>
+              {i > 0 ? (
+                <>
+                  @<wbr />
+                </>
+              ) : null}
+              {part}
+            </Fragment>
+          ))}
         </code>
       ),
     },

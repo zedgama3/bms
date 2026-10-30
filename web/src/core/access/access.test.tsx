@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { expectNoAxeViolations } from "@/test/axe";
 import { mountApp } from "@/test/app";
+import { isMessageKey } from "@/i18n";
 import { json, noContent, problem } from "@/test/fakeFetch";
 
 const ME = "7d2c2f0e-0000-4000-8000-000000000001";
@@ -1192,5 +1193,27 @@ describe("review fixes", () => {
       routes: base({ "GET /api/access/grants": () => json({ grants: [] }) }),
     });
     expect(await screen.findByText("You don't hold any roles.")).toBeInTheDocument();
+  });
+});
+
+describe("permission labels", () => {
+  it("every core permission and area has a title in the catalogue", async () => {
+    mountApp({ session: ident([]) }); // loads the catalogues
+    await screen.findByRole("heading", { level: 1 });
+    const keys = [
+      "accounts.manage",
+      "accounts.read",
+      "audit.export",
+      "audit.search",
+      "core.modules.read",
+      "jobs.manage",
+      "jobs.read",
+      "settings.manage",
+      "settings.read",
+    ].flatMap((p) => {
+      const [area = "", ...rest] = p.split(".");
+      return [`module.${area}.permission.${rest.join(".")}.title`, `module.${area}.title`];
+    });
+    for (const k of keys) expect(isMessageKey(k), k).toBe(true);
   });
 });

@@ -6,9 +6,16 @@ import { useSession } from "./session";
 
 const MY_PROFILE = "/people/me";
 
-/** The person the playa-name prompt already ran for. Memory only: a fresh page load (sign-out
- *  leaves the page) asks again, and so does a new sign-in after a 401 (it resets below). */
+/** The person the playa-name prompt already ran for. Memory only (web-shell decision 11 and
+ *  "Data": nothing but the language tag is stored): a fresh page load asks again, and so does a
+ *  new sign-in after a 401 (it resets below). The prompt never blocks and keeps the page the
+ *  person was going to (router state `next`), so a reload costs one tap, not the target. */
 let promptedFor = "";
+
+/** Where the person was going when the prompt interrupted (router state on the prompt). */
+export interface FirstPromptState {
+  next?: string;
+}
 
 /** The name the header and the home page show: the profile's (fresh after a save), else the
  *  session's, else "" (the neutral label). */
@@ -29,7 +36,7 @@ export function useMeEffects(): void {
   const me = useMe();
   const { set } = useLanguage();
   const navigate = useNavigate();
-  const { pathname } = useLocation();
+  const { pathname, search, hash } = useLocation();
   const languageFor = useRef("");
 
   const personId = session.signedIn ? session.personId : "";
@@ -56,6 +63,12 @@ export function useMeEffects(): void {
     if (!unnamed || superuser || personId === "" || promptedFor === personId) return;
     promptedFor = personId;
     if (pathname === MY_PROFILE) return;
-    void navigate(`${MY_PROFILE}?first=1`, { replace: true });
-  }, [unnamed, superuser, personId, pathname, navigate]);
+    const state: FirstPromptState = { next: `${pathname}${search}${hash}` };
+    void navigate(`${MY_PROFILE}?first=1`, { replace: true, state });
+  }, [unnamed, superuser, personId, pathname, search, hash, navigate]);
+}
+
+/** Tests only: forget that the prompt ran. */
+export function resetPromptForTest(): void {
+  promptedFor = "";
 }

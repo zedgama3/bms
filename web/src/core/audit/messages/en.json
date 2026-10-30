@@ -49,5 +49,8 @@
   "core.audit.setting.self_view.option.viewed": "That and when their records were viewed",
   "core.audit.setting.self_view.option.fields": "That, and which parts were viewed",
   "core.audit.setting.self_view.option.titles": "All of that, and the role or position of the viewer",
-  "core.audit.setting.retention.zero": "Kept forever"
+  "core.audit.setting.retention.zero": "Kept forever",
+  "module.audit.title": "Audit log",
+  "module.audit.permission.search.title": "Search the audit log",
+  "module.audit.permission.export.title": "Export the record of who viewed a person's data"
 }

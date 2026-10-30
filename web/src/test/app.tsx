@@ -10,6 +10,7 @@ import { moduleSets } from "@/modules";
 import type { ScreenSet } from "@/registry/types";
 import { App } from "@/shell/App";
 import shellEn from "@/shell/messages/en.json";
+import { resetPromptForTest } from "@/shell/me";
 import { resetPublicForTest } from "@/shell/publicDoc";
 import { resetRegionalForTest } from "@/shell/regional";
 import { setSession, SIGNED_OUT } from "@/shell/session";
@@ -31,6 +32,7 @@ export interface Mount {
 }
 
 export function mountApp(opts: Mount = {}) {
+  resetPromptForTest();
   setSession(SIGNED_OUT);
   setReadOnly(false);
   resetRegionalForTest();

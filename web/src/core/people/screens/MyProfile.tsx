@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate, useSearchParams } from "react-router";
-import { ApiError, useMe, useSetMe } from "@/api";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
+import { ApiError, safeReturnTo, useMe, useSetMe } from "@/api";
 import { useT } from "@/i18n";
 import { Banner, EmptyState, Loading } from "@/ui";
 import { ConsentsSection } from "../ConsentsSection";
@@ -9,6 +9,14 @@ import { ProfileForm } from "../ProfileForm";
 import { ScreenError } from "../ScreenError";
 import { SectionsView } from "../SectionsView";
 import { YourData } from "../YourData";
+
+/** The page the person was going to when the frame sent them here (router state `next`), only
+ *  when it is a path on this site. */
+function nextPath(state: unknown): string {
+  const next = (state as { next?: unknown } | null)?.next;
+  const safe = typeof next === "string" ? safeReturnTo(next) : "/";
+  return safe === "/" ? "" : safe;
+}
 
 /** `/people/me`: the person's own profile. `?first=1` is the first-sign-in prompt for a playa
  *  name (the frame sends a session with none here once; the person may leave). */
@@ -19,6 +27,8 @@ export function MyProfile() {
   const client = useQueryClient();
   const navigate = useNavigate();
   const [params] = useSearchParams();
+  const location = useLocation();
+  const next = nextPath(location.state);
   const first = params.get("first") === "1";
   const error = me.error instanceof ApiError ? me.error : null;
   const profile = me.data;
@@ -46,6 +56,13 @@ export function MyProfile() {
       ) : empty ? (
         <EmptyState>{t("core.people.me.empty")}</EmptyState>
       ) : null}
+      {next ? (
+        <p>
+          <Link to={next} replace className="inline-flex min-h-11 items-center underline">
+            {t("core.people.me.continue")}
+          </Link>
+        </p>
+      ) : null}
 
       <section aria-labelledby="about-h" className="flex flex-col gap-3">
         <h2 id="about-h" className="text-xl font-bold">
@@ -58,7 +75,8 @@ export function MyProfile() {
           focusPlayaName={first}
           onSaved={(saved) => {
             setMe(saved);
-            if (first) void navigate("/people/me", { replace: true });
+            if (first)
+              void navigate("/people/me", { replace: true, state: location.state as unknown });
           }}
         />
       </section>

@@ -124,5 +124,8 @@
   "core.accounts.setting.password_reset_cooldown.description": "After a reset e-mail is sent, further requests for that account send nothing until this long has passed; the earlier link keeps working. 0 turns the pause off. Up to 1 hour, and never longer than the link lifetime above.",
   "core.identity.title": "Accounts",
   "core.identity.template.password-reset.title": "Password-reset link",
-  "core.identity.template.superuser-signed-in.title": "Superuser sign-in alert"
+  "core.identity.template.superuser-signed-in.title": "Superuser sign-in alert",
+  "module.accounts.title": "Accounts",
+  "module.accounts.permission.read.title": "See accounts",
+  "module.accounts.permission.manage.title": "Disable and enable accounts, and set temporary passwords"
 }

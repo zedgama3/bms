@@ -63,6 +63,16 @@ func (d Date) String() string {
 	return fmt.Sprintf("%04d-%02d-%02d", d.Year, int(d.Month), d.Day)
 }
 
+// Long returns the date for a person to read in an e-mail, with the English month name:
+// "31 August 2028", or "" for the zero Date. It matches the day-month-year order of the
+// shift times in notices. Cannot fail.
+func (d Date) Long() string {
+	if d.IsZero() {
+		return ""
+	}
+	return d.Time(time.UTC).Format("2 January 2006")
+}
+
 // Validate fails errs.Invalid (field "date", code "malformed") for an impossible date. The
 // zero Date is valid.
 func (d Date) Validate() error {

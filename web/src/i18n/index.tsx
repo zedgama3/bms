@@ -4,6 +4,7 @@ import { IntlProvider, useIntl } from "react-intl";
 import { catalogueVersion, mergedFor, subscribeCatalogues } from "./catalogue";
 import type { GeneratedKeys } from "./keys";
 import { getLanguage, getOffered, setLanguage, subscribeLanguage } from "./lang";
+export { languageName } from "./lang";
 import { termsOf } from "./terms";
 
 /** Every key in web/src/shell/messages/en.json and every set's messages/en.json, as a union

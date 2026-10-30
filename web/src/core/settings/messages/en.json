@@ -100,5 +100,8 @@
   "core.settings.logo.remove_yes": "Remove",
   "core.settings.logo.cancel": "Cancel",
   "core.settings.logo.removed": "Logo removed",
-  "core.settings.logo.unsupported": "This installation can't store a logo."
+  "core.settings.logo.unsupported": "This installation can't store a logo.",
+  "module.settings.title": "Settings",
+  "module.settings.permission.read.title": "See settings and terminology",
+  "module.settings.permission.manage.title": "Change settings and terminology"
 }

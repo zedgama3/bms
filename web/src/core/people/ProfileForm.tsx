@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useAction, useReadOnly, useSession } from "@/api";
-import { isMessageKey, useLanguage, useT } from "@/i18n";
+import { languageName, useLanguage, useT } from "@/i18n";
 import { Button, controlClass, Dialog, ErrorSummary, Field, useFieldErrors, useToast } from "@/ui";
 import { ReadOnlyNote } from "./ReadOnlyNote";
 import { profileApi } from "./profileApi";
@@ -151,14 +151,11 @@ export function ProfileForm({
                 className={controlClass}
                 defaultValue={person.language || currentLanguage}
               >
-                {offered.map((tag) => {
-                  const key = `shell.language.${tag}`;
-                  return (
-                    <option key={tag} value={tag} lang={tag}>
-                      {isMessageKey(key) ? t(key) : tag}
-                    </option>
-                  );
-                })}
+                {offered.map((tag) => (
+                  <option key={tag} value={tag} lang={tag}>
+                    {languageName(tag)}
+                  </option>
+                ))}
               </select>
             )}
           </Field>
