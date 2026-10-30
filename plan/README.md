@@ -25,7 +25,7 @@ copy and can fork it. Features are modules.
 ## Status
 
 - **Phase:** 1, first module (core M0–M4 done 2026-10-23)
-- **Last updated:** 2026-10-30 (D60)
+- **Last updated:** 2026-10-30
 - **Done 2026-10-16:**
   - Repo scaffolded: plan, agents, skills, lint rules, dev compose. Methodology carried over
     from Sojourn (D7).
@@ -161,12 +161,13 @@ copy and can fork it. Features are modules.
 - **Next steps (current, 2026-10-30, D53–D56):**
   1. Done 2026-10-30: build the demo spec (design/demo.md) and telemetry Amendment T1.
   2. Run the app locally for the owner.
-  3. Deploy to the public demo instance.
+  3. Done 2026-10-30: deploy to the public demo instance.
   - Still open, the owner's command: the local dev database is half-reset (the `authz` and `hello` version-2 rows in `core.schema_migration`); `make migrate` again, or `make down && make up`.
   - Still open: CI runs once the owner pushes the branch (not pushed).
-  - Still open, the owner's command: the local dev database is half-reset (the `authz` and
-    `hello` version-2 rows in `core.schema_migration`); `make migrate` again, or `make down && make up`.
-  - Still open: CI runs once the owner pushes the branch (not pushed).
+  - Still open: `bms check` prints "demo: on (state unknown: unavailable)" although the demo is seeded. This also happens locally, so it is a bug in check, not the deploy.
+  - Still open: a core message that uses a disabled module's term shows a raw `{term_…}` placeholder instead of falling back (`useT`, found in the D60 review).
+  - Still open: the telemetry dashboards and alert rules (telemetry Proposed change 23) are not built.
+  - Still open: packaging (container image, compose for operators) is next per D52.
 
 - **Next steps before D53–D55 (history, kept as written, 2026-10-28):**
   1. Build the D52 follow-ups.
