@@ -1,7 +1,8 @@
-import { useId, useState, useSyncExternalStore } from "react";
+import { useId, useSyncExternalStore } from "react";
 import { Info } from "lucide-react";
 import { Link, useLocation } from "react-router";
-import { useDemo, useSession } from "@/api";
+import { useDemo, useDemoSignInState, useSession } from "@/api";
+import { requestDemoSignIn } from "@/api/internal";
 import type { DemoAccount } from "@/api";
 import { isMessageKey, useT } from "@/i18n";
 import { Button, linkButtonClass, Table } from "@/ui";
@@ -54,16 +55,7 @@ function DemoAccounts({
 }) {
   const t = useT();
   const wide = useWide();
-  const [copied, setCopied] = useState<"" | "ok" | "failed">("");
-  const canCopy =
-    typeof navigator !== "undefined" && typeof navigator.clipboard?.writeText === "function";
-  const copy = () => {
-    navigator.clipboard.writeText(password).then(
-      () => setCopied("ok"),
-      () => setCopied("failed"),
-    );
-  };
-
+  const signIn = useDemoSignInState();
   const roleText = (role: string): string => {
     const [roleKey = role, dept] = role.split("@");
     const titleKey = `core.access.role.${roleKey}.title`;
@@ -76,6 +68,10 @@ function DemoAccounts({
     const k = `core.demo.account.${key}`;
     return isMessageKey(k) ? t(k) : t("shell.demo.account_unknown");
   };
+
+  // The name must differ per row: an account the catalogue doesn't know is named by its address.
+  const signInName = (a: DemoAccount): string =>
+    isMessageKey(`core.demo.account.${a.key}`) ? accountLabel(a.key) : a.email;
 
   const columns: Column<DemoAccount>[] = [
     { header: t("shell.demo.col.account"), rowHeader: true, cell: (a) => accountLabel(a.key) },
@@ -97,22 +93,21 @@ function DemoAccounts({
       ),
     },
   ];
+  // Without a password to fill in there is nothing for the button to do.
+  if (password !== "")
+    columns.push({
+      header: t("shell.demo.col.signin"),
+      cell: (a) => (
+        <Button variant="secondary" busy={signIn.busy} onClick={() => requestDemoSignIn(a.email)}>
+          {t("shell.demo.sign_in_as", { account: signInName(a) })}
+        </Button>
+      ),
+    });
 
   const parts = (
     <>
       {password !== "" ? (
-        <div className="flex flex-wrap items-center gap-3">
-          <p className="min-w-0 break-words">{t("shell.demo.password", { password })}</p>
-          {canCopy ? (
-            <Button variant="secondary" onClick={copy}>
-              {t("shell.demo.password_copy")}
-            </Button>
-          ) : null}
-          <span role="status" className="sr-only">
-            {copied === "ok" ? t("shell.demo.password_copied") : ""}
-          </span>
-          {copied === "failed" ? <p role="alert">{t("shell.demo.password_copy_failed")}</p> : null}
-        </div>
+        <p className="min-w-0 break-words">{t("shell.demo.password", { password })}</p>
       ) : null}
       {accounts.length > 0 ? (
         <Table

@@ -1458,13 +1458,12 @@ export interface GeneratedKeys {
   "shell.demo.col.account": true;
   "shell.demo.col.email": true;
   "shell.demo.col.role": true;
+  "shell.demo.col.signin": true;
   "shell.demo.mail_link": true;
   "shell.demo.password": true;
-  "shell.demo.password_copied": true;
-  "shell.demo.password_copy": true;
-  "shell.demo.password_copy_failed": true;
   "shell.demo.role_base": true;
   "shell.demo.role_unknown": true;
+  "shell.demo.sign_in_as": true;
   "shell.demo.signup_note": true;
   "shell.dismiss": true;
   "shell.file.chosen": true;

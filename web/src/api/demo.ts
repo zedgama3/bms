@@ -42,6 +42,38 @@ export const demoStore = createStore<DemoState>(DEMO_OFF);
  *  to show) until the boot read answers, and whenever the read fails. */
 export const useDemo = demoStore.use;
 
+/** The frame's seam between the demo banner (shell) and the sign-in screen (core/accounts), which
+ *  may not import each other: the banner asks for a sign-in as one shared account, the screen
+ *  fills its own form (the password comes from `useDemo()`, so the seam carries no
+ *  credential) and submits it, and reports whether it is busy. Memory only. `id` is a counter so the same account twice is two
+ *  requests. */
+export interface DemoSignInRequest {
+  id: number;
+  email: string;
+}
+
+interface DemoSignInState {
+  request: DemoSignInRequest | null;
+  busy: boolean;
+}
+
+const signInStore = createStore<DemoSignInState>({ request: null, busy: false });
+
+/** Frame-private: ask the sign-in form to sign in as this account. Ignored while it is busy. */
+export function requestDemoSignIn(email: string): void {
+  const s = signInStore.get();
+  if (s.busy) return;
+  signInStore.set({ ...s, request: { id: (s.request?.id ?? 0) + 1, email } });
+}
+
+/** The latest request and whether the sign-in form is submitting. */
+export const useDemoSignInState = signInStore.use;
+
+/** The sign-in screen reports its busy state so the banner's buttons can show it. */
+export function setDemoSignInBusy(busy: boolean): void {
+  signInStore.set({ ...signInStore.get(), busy });
+}
+
 /** A usable account row: a bad demo answer must never crash the frame that renders it. */
 function isAccount(a: unknown): a is DemoAccount {
   if (typeof a !== "object" || a === null) return false;

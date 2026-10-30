@@ -157,13 +157,12 @@
   "shell.demo.col.account": "Account",
   "shell.demo.col.role": "Role",
   "shell.demo.col.email": "E-mail",
+  "shell.demo.col.signin": "Sign in",
+  "shell.demo.sign_in_as": "Sign in as {account}",
   "shell.demo.role_unknown": "A custom role",
   "shell.demo.account_unknown": "Demo account",
   "shell.demo.role_base": "Everyone's starting role only",
   "shell.demo.password": "Password for every demo account: {password}",
-  "shell.demo.password_copy": "Copy password",
-  "shell.demo.password_copied": "Password copied",
-  "shell.demo.password_copy_failed": "Couldn't copy the password. Select it and copy it by hand.",
   "shell.demo.mail_link": "Captured mail",
   "shell.demo.signup_note": "Use a made-up address, not your own. Mail the demo sends can be read only by the account it is sent to, but strangers see everything else you enter."
 }

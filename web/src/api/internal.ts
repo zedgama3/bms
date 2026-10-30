@@ -24,4 +24,4 @@ export {
 } from "./session";
 export { getReadOnly, setReadOnlyState } from "./readonly";
 export { publicStore, DEFAULT_PUBLIC } from "./public";
-export { demoStateOf, demoStore, DEMO_OFF } from "./demo";
+export { demoStateOf, demoStore, DEMO_OFF, requestDemoSignIn } from "./demo";

@@ -45,9 +45,15 @@ const meBan = {
   importNames: ["useMe", "useSetMe"],
   message: "Only core/people (and the frame) read the own profile.",
 };
-const sessionOnlyAccounts = { ...setImportBan, paths: [sessionBan, meBan] };
+// The demo banner's sign-in seam (the frame asks, the accounts form answers).
+const demoSignInBan = {
+  name: "@/api",
+  importNames: ["setDemoSignInBusy", "useDemoSignInState"],
+  message: "Only core/accounts (the sign-in form) takes the demo banner's sign-in requests.",
+};
+const sessionOnlyAccounts = { ...setImportBan, paths: [sessionBan, meBan, demoSignInBan] };
 const accountsBan = { ...setImportBan, paths: [meBan] };
-const peopleBan = { ...setImportBan, paths: [sessionBan] };
+const peopleBan = { ...setImportBan, paths: [sessionBan, demoSignInBan] };
 
 const restrictedGlobals = [
   "fetch",

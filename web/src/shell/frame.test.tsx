@@ -2,6 +2,8 @@ import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import { expectNoAxeViolations } from "@/test/axe";
+import { coreSets } from "@/core";
+import { moduleSets } from "@/modules";
 import { mountApp } from "@/test/app";
 import { json, problem } from "@/test/fakeFetch";
 import { setReadOnly } from "./readonly";
@@ -168,6 +170,30 @@ describe("navigation", () => {
     await waitFor(() => expect(h1).toHaveFocus());
     await waitFor(() => expect(document.title).toBe("Hello · BMS"));
     expect(screen.getAllByRole("status").some((s) => s.textContent === "Hello")).toBe(true);
+  });
+
+  it("a long bar keeps every label whole: links are nowrap from md and the lists wrap by item", async () => {
+    const permissions: string[] = [];
+    for (const set of [...coreSets, ...moduleSets])
+      for (const n of set.nav) if (typeof n.access === "object") permissions.push(...n.access);
+    mountApp({ session: { ...signedIn, permissions } });
+    await screen.findByRole("heading", { level: 1 });
+    const links = [
+      ...within(screen.getByRole("navigation", { name: "Main" })).getAllByRole("link"),
+      ...within(screen.getByRole("navigation", { name: "Administration" })).getAllByRole("link"),
+    ];
+    expect(links.length).toBeGreaterThanOrEqual(11);
+    for (const a of links)
+      expect(a.className, a.textContent ?? "").toContain("md:whitespace-nowrap");
+    for (const nav of screen.getAllByRole("navigation")) {
+      expect(nav.querySelector("ul")?.className).toContain("md:flex-wrap");
+    }
+    // the person block is not squeezed: it is its own non-shrinking item on wide screens
+    const signOut = screen.getByRole("button", { name: "Sign out" });
+    expect(signOut.className).toContain("whitespace-nowrap");
+    expect(signOut.className).toContain("shrink-0");
+    // ...while the name may wrap between words
+    expect(screen.getByText("Dusty").className).toContain("min-w-0");
   });
 
   it("the mobile menu button toggles aria-expanded and closes on navigation", async () => {

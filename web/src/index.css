@@ -65,7 +65,10 @@
 }
 
 html {
-  scroll-padding-top: 5rem; /* a focused element is never hidden under the sticky header (2.4.11) */
+  scroll-padding-top: var(
+    --header-h,
+    5rem
+  ); /* a focused element is never hidden under the sticky header (2.4.11) */
   -webkit-text-size-adjust: 100%;
 }
 

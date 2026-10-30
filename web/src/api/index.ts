@@ -25,7 +25,7 @@ export type {
   TimeRange,
 } from "./errors";
 export type { paths, components } from "./schema";
-export { useDemo } from "./demo";
+export { setDemoSignInBusy, useDemo, useDemoSignInState } from "./demo";
 export type { DemoAccount, DemoInfo, DemoMail, DemoState } from "./demo";
 export { useReadOnly } from "./readonly";
 export type { ReadOnlyState } from "./readonly";

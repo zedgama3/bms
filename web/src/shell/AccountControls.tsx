@@ -39,9 +39,16 @@ export function AccountControls() {
     boot.leave("/");
   };
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <span className="font-semibold">{playaName || t("shell.account.anonymous")}</span>
-      <Button variant="secondary" busy={busy} onClick={() => void signOut()}>
+    <div className="flex flex-wrap items-center gap-2 md:flex-nowrap">
+      <span className="min-w-0 break-words font-semibold">
+        {playaName || t("shell.account.anonymous")}
+      </span>
+      <Button
+        variant="secondary"
+        busy={busy}
+        className="shrink-0 whitespace-nowrap"
+        onClick={() => void signOut()}
+      >
         {t("shell.signout")}
       </Button>
     </div>

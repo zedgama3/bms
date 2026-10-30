@@ -428,6 +428,68 @@ test.describe("/admin/modules (signed in, mocked at the network)", () => {
   }
 });
 
+const LONG_NAME =
+  "Sparkle Pony of the Deep Playa Who Brings Pickles to Every Burn Since Two Thousand Nine";
+
+test.describe("the wide navigation bar", () => {
+  test("a long list of entries wraps whole items, never inside a word", async ({ page }, info) => {
+    only("default");
+    test.skip(info.project.name !== "desktop", "the horizontal bar is the wide layout");
+    const permissions = [
+      "core.modules.read",
+      "accounts.read",
+      "audit.search",
+      "jobs.read",
+      "settings.read",
+      "events.manage",
+      "access.roles.read",
+      "access.grants.read",
+      "people.directory.read",
+      "people.data.delete",
+      "notify.templates.manage",
+      "notify.outbox.manage",
+    ];
+    await page.route("**/api/accounts/session", (r) =>
+      r.fulfill({
+        json: {
+          signed_in: true,
+          person_id: "7d2c2f0e-0000-4000-8000-000000000001",
+          playa_name: LONG_NAME,
+          superuser: false,
+          permissions,
+        },
+      }),
+    );
+    await mockMe(page, LONG_NAME);
+    for (const width of [768, 1024, 1280]) {
+      await page.setViewportSize({ width, height: 860 });
+      await page.goto("/");
+      const links = page.locator("header nav a");
+      await expect(links.first()).toBeVisible();
+      expect(await links.count()).toBeGreaterThanOrEqual(10);
+      const heights = await links.evaluateAll((els) =>
+        els.map((e) => ({
+          text: e.textContent ?? "",
+          // one line of text: the link is its 44 px minimum, not taller
+          height: Math.round(e.getBoundingClientRect().height),
+        })),
+      );
+      for (const h of heights) expect(h.height, `${h.text} at ${width}px`).toBeLessThanOrEqual(48);
+      const person = await page
+        .getByRole("button", { name: "Sign out" })
+        .evaluate((b) => Math.round(b.getBoundingClientRect().height));
+      expect(person).toBeLessThanOrEqual(48);
+      await noHorizontalScroll(page);
+      // a focused element is not hidden under the sticky header (2.4.11)
+      const { pad, header } = await page.evaluate(() => ({
+        pad: parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop),
+        header: document.querySelector("header")?.getBoundingClientRect().height ?? 0,
+      }));
+      expect(pad, `scroll-padding-top at ${width}px`).toBeGreaterThanOrEqual(header);
+    }
+  });
+});
+
 // ---- accounts (identity.md "UI"): the server is mocked at the network, as for /admin/modules ----
 
 const ME = "0b6f1c3e-0000-4000-8000-000000000002";

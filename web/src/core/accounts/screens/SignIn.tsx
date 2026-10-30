@@ -1,7 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router";
-import { api, refreshSession, safeReturnTo, setSessionEnded, useAction, useSession } from "@/api";
+import {
+  api,
+  refreshSession,
+  safeReturnTo,
+  setDemoSignInBusy,
+  setSessionEnded,
+  useAction,
+  useDemo,
+  useDemoSignInState,
+  useSession,
+} from "@/api";
 import { useT } from "@/i18n";
 import { Banner, Button, ErrorSummary, linkButtonClass, useFieldErrors, useToast } from "@/ui";
 import { Field } from "@/ui";
@@ -43,6 +53,29 @@ export function SignIn() {
         { replace: true, state: null },
       );
   }, [flagged, navigate, location.pathname, location.search]);
+
+  // The demo banner's "Sign in as ..." buttons (the frame's seam): fill this form's own fields
+  // and submit it, so errors, busy state and returnTo are the form's. A request that arrives
+  // while a sign-in is running is dropped (the banner's buttons are disabled then, too).
+  const demoRequest = useDemoSignInState().request;
+  const demoPassword = useDemo().password;
+  const handled = useRef(demoRequest?.id ?? 0);
+  useEffect(() => {
+    setDemoSignInBusy(action.busy);
+    return () => setDemoSignInBusy(false);
+  }, [action.busy]);
+  useEffect(() => {
+    const form = formRef.current;
+    if (!demoRequest || demoRequest.id === handled.current || !form) return;
+    handled.current = demoRequest.id;
+    if (action.busy) return;
+    const email = form.elements.namedItem("email");
+    const password = form.elements.namedItem("password");
+    if (!(email instanceof HTMLInputElement) || !(password instanceof HTMLInputElement)) return;
+    email.value = demoRequest.email;
+    password.value = demoPassword;
+    form.requestSubmit();
+  }, [demoRequest, demoPassword, action.busy]);
 
   if (session.signedIn) return <Navigate to={returnTo} replace />;
 

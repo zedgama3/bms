@@ -471,12 +471,12 @@ link targets. It links to `/demo/mail` ("Captured mail") when signed in.
 
 **The sign-in page.** On `/accounts/sign-in` the frame renders the banner expanded with the
 account table (in a `<details>` disclosure: collapsed below the `sm` breakpoint so the sign-in form stays near the top on a phone, open at `sm` and above; `shell.demo.accounts.title` "Try a demo account", columns Account, Role,
-E-mail; the shared password once above the table with a copy button; `shell.demo.password`
-"Password for every demo account: {password}"). Role labels are catalogue keys
+E-mail, and a button per row; the shared password stated once above the table, as text, so a tester can sign in again by hand; `shell.demo.password`
+"Password for every demo account: {password}"; the button is `shell.demo.sign_in_as` "Sign in as {account}" with the row's account label, so its accessible name is unique per row; (owner, 2026-10-30) it replaces the earlier copy-password button; that button and its messages are gone). Role labels are catalogue keys
 `core.demo.account.<key>` (10 keys, `en` and `es`); a `@<dept>` suffix renders as "at {dept}"
 with `core.demo.department.<key>`. The lead's label `core.demo.account.lead` says the lead
-of the volunteer departments (the lead holds five, D1.1). The accounts area itself is unchanged: the tester types or
-pastes the address. Self sign-up stays per `accounts.signup` (the sign-up link is identity's). On the sign-up form
+of the volunteer departments (the lead holds five, D1.1). Pressing a row's button fills the sign-in form's e-mail and password fields with that account's address and the shared password and submits the form through its normal path (its errors, its busy state and `returnTo` apply), so the tester is signed in as that account in one click (owner, 2026-10-30). Seam (as built): the banner calls `requestDemoSignIn(email)` (frame-private `@/api/internal`, ignored while busy; the request is `{id, email}`, never the password; only `core/accounts` may import the `@/api` names, by an eslint ban); the screen fills the password from `useDemo().password`; the Sign in column is hidden when that password is empty; the core sign-in screen reads `useDemoSignInState()` and reports `setDemoSignInBusy()` from `@/api`, fills its real inputs and calls `form.requestSubmit()`, and ignores any request id older than the one present at mount; detail in web-shell.md's demo amendment. Column heading key `shell.demo.col.signin` "Sign in". The accounts area itself is unchanged: the form is identity's and keeps its own fields and
+rules; a tester may still type the address. Self sign-up stays per `accounts.signup` (the sign-up link is identity's). On the sign-up form
 in demo mode the frame renders a note (`shell.demo.signup_note`, "Use a made-up address, not
 your own. Mail the demo sends can be read only by the account it is sent to, but strangers see
 everything else you enter.") above the e-mail field.
@@ -719,6 +719,7 @@ is covered by the integration test, so a column rename breaks the build, not the
 | F42 | `bms demo <x>` | `BMS_DEMO_ENABLED` off, checked right after config load | — (usage-style) | exit 2, name the key; telemetry and the database untouched | `TestDemoCommand_Disabled_Exit2_NamesKey` |
 | F43 | `Reset` | `Schema.Migrate` fails | `demo.ErrMigrate` wrapping the migrator's kind | exit by the migrate command's mapping | `TestReset_MigrateFails_WrapsErrMigrate` |
 | F44 | files policy wiring | demo enabled but the demo service is missing | Unavailable (fail closed) | files answers it | `TestDemoPolicy_ServiceMissing_FailsClosed` |
+| F45 | sign-in page (web) | a one-click "Sign in as" is refused or fails | the form's normal `ApiError` | the form shows its own error and clears its busy state; the tester may press another row or type | `demo.test.tsx` "sign in as failure shows the form's error" |
 
 ## Lock-in check
 
@@ -758,7 +759,10 @@ timer is a systemd unit; cron or a compose sidecar does the same (`docs/operatin
   The rule registers the request's event with dates (as step 5 computes them from the rig's
   clock, zone `UTC`) and calls the module's `Start` before `Provider.Seed` and `Stop` after
   (D1.5, D1.6); a provider that finds an event without dates fails `Invalid`.
-- **Web.** The banner renders on every route and on the sign-in page with the table; axe
+- **Web.** The banner renders on every route and on the sign-in page with the table; each
+  row's "Sign in as {account}" button has a unique accessible name and, pressed, fills the form
+  and submits it (`demo.test.tsx` "sign in as fills the form and signs in", "sign in as keeps
+  returnTo", "sign in as failure shows the form's error"); axe
   passes at 320 px; the mail screen's five states; `useDemo` failure hides the banner and
   reports.
 
@@ -766,6 +770,7 @@ timer is a systemd unit; cron or a compose sidecar does the same (`docs/operatin
 
 Verified against the code and accepted:
 
+- Only the `en` catalogue exists; there is no `es` yet (the "`en` and `es`" above is the target, not the build).
 - `Options.Instance string`: the marker's instance name, `demo` when empty (a valid ident otherwise, else `Invalid`).
 - `Service.State(ctx) (seededAt time.Time, found bool, err error)`: the marker for `bms check`; `found` is false when there is no row.
 - The command's usage is `seed|reset` (`bms demo seed|reset`).
@@ -967,7 +972,7 @@ sign-up form tells testers to use a made-up address.
 10. (applied 2026-10-28, web-shell.md amendment (F40 to F52)) **`web-shell.md`.** `useDemo()` in `@/api` over `GET /api/demo` read at boot;
     `DemoBanner` in the frame (every screen; expanded with the account table on
     `/accounts/sign-in`); keys `shell.demo.banner.title|body`, `shell.demo.accounts.title`,
-    `shell.demo.password`, `shell.demo.mail_link`, `shell.demo.signup_note` (Q-DEMO2: use a made-up address), `core.demo.mail.note`; `core.demo.*` keys for the ten account
+    `shell.demo.password`, `shell.demo.sign_in_as` (added 2026-10-30), `shell.demo.mail_link`, `shell.demo.signup_note` (Q-DEMO2: use a made-up address), `core.demo.mail.note`; `core.demo.*` keys for the ten account
     labels, the six department labels and the mail screen; `web/src/core/demo/` as a core
     area with `/demo/mail`; the accounts area's `field.protected` message; the people
     deletion screen's `Conflict protected` message.
