@@ -62,7 +62,7 @@ recreates one). 7 the automatic reset is an operator timer shipped disabled
 unless `demo.enabled`, and reset refuses without the marker row (`core.demo_state`) the seed
 writes first. 9 identity consults a `Guard`: a demo account cannot change or reset its password
 or address, be disabled, deleted or linked to a person (`Permission`, field `account`, code `protected`); anything
-else a tester breaks, the next reset repairs (owner, 2026-10-28); the password screen tells a protected account's holder up front and disables the form, the server refusal stays the backstop (D57), and it knows from `SessionInfo.Protected`, which identity sets from this `Guard` (Q-DEMO6, D58); the sign-in table shows one short label per account (D57). 10 demo never sends mail: the capture `Channel`
+else a tester breaks, the next reset repairs (owner, 2026-10-28); the password screen tells a protected account's holder up front and disables the form, the server refusal stays the backstop (D57), and it knows from `SessionInfo.Protected`, which identity sets from this `Guard` (Q-DEMO6, D58); the sign-in table shows one short label per account (D57), with an optional one-line description under it (D60). 10 demo never sends mail: the capture `Channel`
 stores envelopes in `core.demo_mail` (newest `MaxMail`), shown on `/demo/mail` only to the
 signed-in account they were addressed to (login address; no one else's, no admin override, no
 permission, not audited: it is the viewer's own mail; owner, 2026-10-28); the sign-up form in
@@ -475,6 +475,7 @@ link targets. It links to `/demo/mail` ("Captured mail") when signed in.
 account table (in a `<details>` disclosure: collapsed below the `sm` breakpoint so the sign-in form stays near the top on a phone, open at `sm` and above; `shell.demo.accounts.title` "Try a demo account", columns Account, Role,
 E-mail, and a button per row; the shared password stated once above the table, as text, so a tester can sign in again by hand; `shell.demo.password`
 "Password for every demo account: {password}"; the button is `shell.demo.sign_in_as` "Sign in as {account}" with the row's account label, so its accessible name is unique per row; (owner, 2026-10-30) it replaces the earlier copy-password button; that button and its messages are gone). (D57) The Role column shows one short label per account, not the list of its roles' long titles, e.g. "Lead: Rangers, Gate, Greeters, Medical, DPW" (the department names in the regional's words), "Participant", "Newcomer (no profile yet)", "Volunteer coordinator".
+(D60) Under the short label, the row header shows one concise line describing that account's responsibilities and duties, from the optional key `core.demo.account.<key>.description` (`en`), in the regional's words (`{term_*}` arguments, no article before a term), about 15 words or fewer. An account with no description key shows none, with no fallback. A description whose terms are not all available (for example, a module's term while that module is off) is omitted rather than shown with a placeholder. The description is part of the row header cell, so it is announced with the row; the "Sign in as {account}" button's accessible name is unchanged.
 The label is built from one catalogue key per account, `core.demo.account.<key>` (10 keys, `en` and `es`); for the lead the key's text has a `{departments}` argument, the departments of the lead's `department-admin@<dept>` entries in `AccountInfo.Roles`, each named by `core.demo.department.<key>` and joined with ", " in `Roles` order (the lead holds five, D1.1); the other accounts' keys are plain text. The long role titles are no longer listed in the table. Pressing a row's button fills the sign-in form's e-mail and password fields with that account's address and the shared password and submits the form through its normal path (its errors, its busy state and `returnTo` apply), so the tester is signed in as that account in one click (owner, 2026-10-30).
 Seam (as built): the banner calls `requestDemoSignIn(email)` (frame-private `@/api/internal`, ignored while busy; the request is `{id, email}`, never the password; only `core/accounts` may import the `@/api` names, by an eslint ban); the screen fills the password from `useDemo().password`; the Sign in column is hidden when that password is empty; the core sign-in screen reads `useDemoSignInState()` and reports `setDemoSignInBusy()` from `@/api`, fills its real inputs and calls `form.requestSubmit()`, and ignores any request id older than the one present at mount; detail in web-shell.md's demo amendment. Column heading key `shell.demo.col.signin` "Sign in". The accounts area itself is unchanged: the form is identity's and keeps its own fields and
 rules; a tester may still type the address. Self sign-up stays per `accounts.signup` (the sign-up link is identity's). On the sign-up form
@@ -766,7 +767,12 @@ timer is a systemd unit; cron or a compose sidecar does the same (`docs/operatin
   row's "Sign in as {account}" button has a unique accessible name and, pressed, fills the form
   and submits it (`demo.test.tsx` "sign in as fills the form and signs in", "sign in as keeps
   returnTo", "sign in as failure shows the form's error"); axe
-  passes at 320 px; the mail screen's five states; `useDemo` failure hides the banner and
+  passes at 320 px; (D60) the description renders in the row header under the label, is absent
+  when the account has no description key, and leaves the button's accessible name unchanged
+  (`demo.test.tsx` "row header shows the account description", "no description key shows none",
+  "sign in as button name ignores the description"); with volunteers disabled, the descriptions
+  that use volunteers terms are omitted and no `{term_` placeholder renders, and a regional's
+  term override shows in a description; the mail screen's five states; `useDemo` failure hides the banner and
   reports.
 
 ## Accepted implementation deviations (demo build, 2026-10-29)

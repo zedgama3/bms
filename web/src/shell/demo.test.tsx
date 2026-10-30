@@ -115,6 +115,116 @@ describe("demo banner", () => {
     ]);
   });
 
+  it("row header shows the account description", async () => {
+    mountApp({
+      routes: { "GET /api/demo/": () => json(DEMO) },
+      modules: [
+        { name: "hello", enabled: true },
+        { name: "volunteers", enabled: true },
+      ],
+      path: "/accounts/sign-in",
+    });
+    const table = await screen.findByRole("table", { name: "Demo accounts" });
+    const header = within(table).getByRole("rowheader", { name: /^Participant/ });
+    const label = within(header).getByText("Participant");
+    const text = within(header).getByText(/^A volunteer with a profile\./);
+    expect(label.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(text).toHaveTextContent("Signs up for shifts and keeps");
+    expect(text.className).toMatch(/text-sm/);
+    expect(text.className).toMatch(/text-muted/);
+    const steward = within(table).getByRole("rowheader", { name: /^Department steward/ });
+    expect(steward).toHaveTextContent("Creates and archives departments and appoints their leads.");
+    expect(within(table).getByRole("rowheader", { name: /^Lead:/ })).toHaveTextContent(
+      "Runs their departments: builds shifts",
+    );
+    expect(table.textContent).not.toMatch(/\{term_/);
+  });
+
+  it("no description key shows none", async () => {
+    mountApp({
+      routes: {
+        "GET /api/demo/": () =>
+          json({
+            ...DEMO,
+            accounts: [{ key: "mystery", email: "mystery@demo.invalid", roles: [] }],
+          }),
+      },
+      path: "/accounts/sign-in",
+    });
+    const table = await screen.findByRole("table", { name: "Demo accounts" });
+    const [, row] = within(table).getAllByRole("row");
+    const header = within(row!).getByRole("rowheader");
+    expect(header.querySelectorAll("span")).toHaveLength(1);
+    expect(
+      within(row!).getByRole("button", { name: "Sign in as mystery@demo.invalid" }),
+    ).toBeInTheDocument();
+  });
+
+  it("sign in as button name ignores the description", async () => {
+    mountApp({ routes: { "GET /api/demo/": () => json(DEMO) }, path: "/accounts/sign-in" });
+    const button = await screen.findByRole("button", { name: "Sign in as Participant" });
+    expect(button).not.toHaveTextContent(/volunteer with a profile/);
+  });
+
+  it("with volunteers off, descriptions that need its terms show none", async () => {
+    mountApp({
+      routes: {
+        "GET /api/demo/": () =>
+          json({
+            ...DEMO,
+            accounts: [
+              ...DEMO.accounts,
+              { key: "coordinator", email: "coordinator@demo.invalid", roles: [] },
+            ],
+          }),
+      },
+      path: "/accounts/sign-in",
+    });
+    const table = await screen.findByRole("table", { name: "Demo accounts" });
+    await within(table).findByRole("rowheader", { name: /^Department steward/ });
+    expect(within(table).getByRole("rowheader", { name: /^Department steward/ })).toHaveTextContent(
+      "Creates and archives departments",
+    );
+    expect(within(table).getByRole("rowheader", { name: /^Participant$/ })).toBeInTheDocument();
+    expect(within(table).getByRole("rowheader", { name: /^Lead: / })).not.toHaveTextContent(
+      "Runs their",
+    );
+    expect(within(table).getByRole("rowheader", { name: /^Volunteer coordinator$/ })).toBeVisible();
+    expect(table.textContent).not.toContain("{term_");
+  });
+
+  it("a regional's own words show in the description", async () => {
+    mountApp({
+      routes: {
+        "GET /api/demo/": () => json(DEMO),
+        "GET /api/settings/public": () =>
+          json({
+            name: "Dust Bowl",
+            logo: "",
+            contact_email: "",
+            language: "en",
+            languages: ["en"],
+            public_url: "",
+            theme: false,
+            timezone: "",
+            terms: {
+              en: {
+                term_department_plural: "crews",
+                term_lead_plural: "captains",
+              },
+            },
+          }),
+      },
+      path: "/accounts/sign-in",
+    });
+    const table = await screen.findByRole("table", { name: "Demo accounts" });
+    await waitFor(() =>
+      expect(within(table).getByRole("rowheader", { name: /steward/i })).toHaveTextContent(
+        "Creates and archives crews and appoints their captains.",
+      ),
+    );
+  });
+
   /** A server where the session turns signed-in after the sign-in POST. */
   function signInRoutes(onPost: (body: unknown) => void, fail = false) {
     let signedIn = false;

@@ -25,7 +25,7 @@ copy and can fork it. Features are modules.
 ## Status
 
 - **Phase:** 1, first module (core M0–M4 done 2026-10-23)
-- **Last updated:** 2026-10-30 (D59)
+- **Last updated:** 2026-10-30 (D60)
 - **Done 2026-10-16:**
   - Repo scaffolded: plan, agents, skills, lint rules, dev compose. Methodology carried over
     from Sojourn (D7).
@@ -150,6 +150,11 @@ copy and can fork it. Features are modules.
     not split for now; large test files split when next worked on; `03-decisions.md` split by
     milestone past about 100 KB; e2e smoke spec split per area; dev database
     `bms_pre_notify0002_20261030` dropped.
+- **Owner's answer 2026-10-30 (D60):** each demo account shows a short description of its
+    duties under its short label on the demo accounts table, from `core.demo.account.<key>.description`
+    (about 15 words or fewer, in the regional's words); an account without one shows none; the
+    "Sign in as {account}" button name is unchanged. Applies to design/demo.md (spec not yet
+    amended).
 - **Status update 2026-10-30 (not a decision):** demo mode (design/demo.md, D53, with Amendment
     D1 / D56) and telemetry Amendment T1 (client telemetry for the public demo, D54) are
     Implemented, marked by the main session (checks green; the reviews' must-fix findings fixed).

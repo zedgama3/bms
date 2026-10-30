@@ -77,6 +77,16 @@ function DemoAccounts({
     return t(k, { departments: list, has_departments: list === "" ? "no" : "yes" });
   };
 
+  // One line saying what the account is for (owner, 2026-10-30); none when the catalogue has none.
+  const accountDescription = (a: DemoAccount): string => {
+    const k = `core.demo.account.${a.key}.description`;
+    if (!isMessageKey(k)) return "";
+    // A term whose module is off is not defined: the text comes back with its placeholder
+    // still in it, and then there is no description.
+    const text = t(k);
+    return /\{term_\w+\}/.test(text) ? "" : text;
+  };
+
   // The name must differ per row: an account the catalogue doesn't know is named by its address.
   const signInName = (a: DemoAccount): string => (known(a) ? accountLabel(a) : a.email);
 
@@ -84,7 +94,17 @@ function DemoAccounts({
     {
       header: t("shell.demo.col.account"),
       rowHeader: true,
-      cell: (a) => <span className="break-words">{accountLabel(a)}</span>,
+      cell: (a) => {
+        const text = accountDescription(a);
+        return (
+          <>
+            <span className="break-words">{accountLabel(a)}</span>
+            {text === "" ? null : (
+              <span className="mt-1 block break-words text-sm font-normal text-muted">{text}</span>
+            )}
+          </>
+        );
+      },
     },
     {
       header: t("shell.demo.col.email"),

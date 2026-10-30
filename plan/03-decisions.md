@@ -1055,3 +1055,14 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
 - **Decision log size:** `plan/03-decisions.md` is split by milestone once it passes about 100 KB.
 - **E2E smoke spec:** split into one file per area (commit 75c6d3a).
 - **Dev database:** the renamed dev database `bms_pre_notify0002_20261030` was dropped.
+
+## D60. Each demo account shows a short description of its duties
+
+- **Status:** Accepted (2026-10-30), decided by the owner after reviewing the local demo.
+- On the demo panel's accounts table, each account's row header shows, under its short label
+  (D57), one concise line saying what that account is responsible for and can do.
+- The text comes from the catalogue key `core.demo.account.<key>.description`, in the
+  regional's words (`{term_*}`), at about 15 words or fewer.
+- An account without a description shows none.
+- The "Sign in as {account}" button's accessible name is unchanged.
+- Applies to [design/demo.md](design/demo.md), UI.
