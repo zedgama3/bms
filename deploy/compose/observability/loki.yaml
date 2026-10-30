@@ -1,0 +1,43 @@
+# Single-process Loki for development: the image's default local config, plus retention.
+# Logs are kept 30 days (telemetry.md decision 18): log records can hold person IDs and are
+# not covered by per-person export or deletion, so a bounded retention is what makes that a
+# true privacy statement. Traces (Tempo) are kept 30 days and metrics (Prometheus) 1 year.
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+# Retention is applied by the compactor; without retention_enabled the period is ignored.
+compactor:
+  working_directory: /loki/compactor
+  retention_enabled: true
+  delete_request_store: filesystem
+
+limits_config:
+  retention_period: 720h
+
+# Development stack: no usage reports to the vendor.
+analytics:
+  reporting_enabled: false

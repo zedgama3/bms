@@ -107,7 +107,7 @@
 - (T1) `web.ClientManifest()` (screen and action allowlists), `api.RouteTokens` (route allowlist), api mounting `POST /api/client-events` and recording `bms.api.errors`.
 
 **Pending proposed changes:**
-- Item 23 (Amendment T1: dashboards, alert rules) waits for its target; item 24 (`docs/telemetry.md`) is applied 2026-10-30; item 9 is pending for Loki retention and alert rules (its `docs/operating.md` part applied 2026-10-30); item 6 applied for `jobs.md` 2026-10-20 (D43); all others applied.
+- Item 23 (Amendment T1: dashboards, alert rules) is applied 2026-10-30; item 24 (`docs/telemetry.md`) is applied 2026-10-30; item 9 is applied (Loki retention 30 days in the compose stack and the alert rules, 2026-10-30; its `docs/operating.md` part applied 2026-10-30); item 6 applied for `jobs.md` 2026-10-20 (D43); all others applied.
 
 ## Purpose
 
@@ -1709,8 +1709,8 @@ target to be written and are carried by this list until then.
    `otel\.Tracer`, `otel\.Meter` everywhere (globals are not used).
 9. **`deploy/compose/.env.example`, `deploy/compose/observability/*`, `docs/operating.md`**
    (`.env.example`, Tempo's `block_retention: 720h` and Prometheus's
-   `--storage.tsdb.retention.time=1y` applied 2026-10-16; `docs/operating.md` and `docs/telemetry.md` applied 2026-10-30; still pending: Loki retention needs a
-   Loki config file the compose stack does not yet carry, and the alert rules wait for the production example): add a commented `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`
+   `--storage.tsdb.retention.time=1y` applied 2026-10-16; `docs/operating.md` and `docs/telemetry.md` applied 2026-10-30; Loki retention (`deploy/compose/observability/loki.yaml`, 720h) and the alert rules (`deploy/observability/alerts/bms.rules.yaml`) applied 2026-10-30
+   ): add a commented `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`
    with a note that only `http/protobuf` is supported and that `OTEL_EXPORTER_OTLP_HEADERS`
    is a credential; set retention in Loki (30 d), Tempo (30 d) and Prometheus (1 y) per
    decision 18 and say so; add D20's alert rules (error rate, client-error spikes, slow
@@ -1831,7 +1831,7 @@ target to be written and are carried by this list until then.
     with its test), doc "count screen views, declared actions and Web Vitals by screen
     template, never by person; see docs/telemetry.md"; `app` copies it (item 21). "Not
     responsible for" is unchanged: `OTEL_*` stays here in telemetry.
-23. (pending: target not written (deploy/observability)) **`deploy/observability/` (new), `deploy/compose/docker-compose.yml`,
+23. (applied 2026-10-30; dashboards use data-source variables rather than resolved UIDs, and real metric names where the sketch differed: see deploy/observability/README.md) **`deploy/observability/` (new), `deploy/compose/docker-compose.yml`,
     `deploy/compose/observability/*`**: add `deploy/observability/grafana/dashboards/*.json`
     (the six dashboards of T1.8), `deploy/observability/grafana/provisioning/dashboards.yaml`,
     `deploy/observability/alerts/bms.rules.yaml` (the rules of T1.8); the compose stack mounts

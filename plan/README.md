@@ -166,7 +166,9 @@ copy and can fork it. Features are modules.
   - Still open: CI runs once the owner pushes the branch (not pushed).
   - Fixed 2026-10-30 (commit 3671d42): `bms check` read the demo marker through a service built on the refusing database; it now reads the real pool.
   - Fixed 2026-10-30: a message that cannot be formatted (for example a disabled module's term) now falls back to `en`, then to the key, never a raw placeholder (web-shell F24a).
-  - Still open: the telemetry dashboards and alert rules (telemetry Proposed change 23) are not built.
+  - Done 2026-10-30: the six telemetry dashboards and 14 alert rules (deploy/observability/, telemetry Proposed change 23). Alerts have no notification route yet (no Alertmanager on the observability stack): the owner chooses where they go.
+  - Still open: `bms_jobs_runs_total` carries the job name in `job`, which overwrites Prometheus's reserved `job` label; rename the attribute (for example `job_name`) and regroup the jobs panels and `BmsJobFailures`.
+  - Still open: about every 15 minutes a metrics export fails with `EOF` (probably an idle keep-alive connection closed by the collector); the next export succeeds, but `BmsTelemetryExportFailing` will fire (info).
   - Still open: packaging (container image, compose for operators) is next per D52.
 
 - **Next steps before D53–D55 (history, kept as written, 2026-10-28):**

@@ -1,0 +1,204 @@
+# Alert rules for bms (telemetry.md T1.8), in Prometheus rule format. Prometheus
+# (rule_files), Mimir's ruler (mimirtool rules load) and Grafana Alloy all load this file.
+#
+# Every threshold is a shipped example value, marked "THRESHOLD" with its meaning: tune it
+# for your installation. Severities: page (wake someone), warn (look today), info (look when
+# convenient). Rules aggregate by instance, so one file serves several bms copies.
+#
+# Known quirk: bms_jobs_runs_total carries the job name (for example "audit.purge") in the
+# label "job", which overwrites Prometheus's own job (service) label on those series. The job
+# rule below reads it as it is; its alerts carry job=<job name>.
+groups:
+  - name: bms
+    rules:
+      # THRESHOLD: 0.01 = 1 % of responses are 5xx.
+      - alert: BmsServerErrorRate
+        expr: |
+          sum by (instance) (rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m]))
+            / sum by (instance) (rate(http_server_request_duration_seconds_count[5m]))
+            > 0.01
+        for: 10m
+        labels:
+          severity: page
+        annotations:
+          summary: "bms {{ $labels.instance }}: more than 1 % of responses are 5xx"
+          description: "{{ $value | humanizePercentage }} of HTTP responses were server errors over the last 5 minutes, for 10 minutes. See the bms / API dashboard."
+
+      # THRESHOLD: 2 = p95 request duration in seconds.
+      - alert: BmsSlowRequests
+        expr: |
+          histogram_quantile(0.95, sum by (instance, le) (rate(http_server_request_duration_seconds_bucket[5m])))
+            > 2
+        for: 10m
+        labels:
+          severity: warn
+        annotations:
+          summary: "bms {{ $labels.instance }}: p95 request time above 2 s"
+          description: "The 95th percentile request duration is {{ $value | humanizeDuration }}. See the bms / API dashboard for the slow routes."
+
+      # THRESHOLD: 10 = accepted client error reports per minute.
+      # THRESHOLD: 5 = multiple of the instance's own 1 h average rate.
+      # THRESHOLD: 1 = floor (reports per minute) under which the 5x test is ignored, so a
+      #             single report on a quiet copy does not count as a spike.
+      - alert: BmsClientErrorSpike
+        expr: |
+          (sum by (instance) (rate(bms_client_errors_accepted_total[5m])) * 60 > 10)
+          or
+          (
+            sum by (instance) (rate(bms_client_errors_accepted_total[5m]))
+              > 5 * sum by (instance) (rate(bms_client_errors_accepted_total[1h]))
+            and
+            sum by (instance) (rate(bms_client_errors_accepted_total[5m])) * 60 > 1
+          )
+        for: 10m
+        labels:
+          severity: warn
+        annotations:
+          summary: "bms {{ $labels.instance }}: browsers are reporting many errors"
+          description: "Client error reports are above 10 a minute or 5 times their hourly average. See the bms / Client dashboard by screen and kind."
+
+      # THRESHOLD: 0 = any chunk-load failure in 15 minutes.
+      - alert: BmsChunkLoadFailures
+        expr: |
+          sum by (instance) (increase(bms_client_errors_accepted_total{kind="chunk"}[15m])) > 0
+        labels:
+          severity: warn
+        annotations:
+          summary: "bms {{ $labels.instance }}: browsers failed to load app code"
+          description: "{{ $value | humanize }} chunk-load failures in 15 minutes. A deploy probably left stale tabs open, or an asset is missing. See Chunk-load failures by app version on the bms / Client dashboard."
+
+      # THRESHOLD: 4 = LCP p75 in seconds (poor).
+      # THRESHOLD: 0.5 = INP p75 in seconds (poor).
+      # THRESHOLD: 20 = samples per screen in the hour before a screen is judged.
+      - alert: BmsWebVitalsPoor
+        expr: |
+          label_replace(
+            histogram_quantile(0.75, sum by (instance, screen, le) (rate(bms_client_lcp_seconds_bucket[1h]))) > 4
+              and on (instance, screen) sum by (instance, screen) (increase(bms_client_lcp_seconds_count[1h])) >= 20,
+            "vital", "lcp", "", "")
+          or
+          label_replace(
+            histogram_quantile(0.75, sum by (instance, screen, le) (rate(bms_client_inp_seconds_bucket[1h]))) > 0.5
+              and on (instance, screen) sum by (instance, screen) (increase(bms_client_inp_seconds_count[1h])) >= 20,
+            "vital", "inp", "", "")
+        for: 1h
+        labels:
+          severity: info
+        annotations:
+          summary: "bms {{ $labels.instance }}: poor {{ $labels.vital }} on {{ $labels.screen }}"
+          description: "The 75th percentile {{ $labels.vital }} on {{ $labels.screen }} is {{ $value | humanize }} s over the last hour. See the bms / Client dashboard."
+
+      # THRESHOLD: 1 = internal, unavailable or timeout errors per minute on one route.
+      - alert: BmsAPIErrorsByRoute
+        expr: |
+          sum by (instance, http_route) (rate(bms_api_errors_total{code=~"internal|unavailable|timeout"}[5m])) * 60
+            > 1
+        for: 15m
+        labels:
+          severity: warn
+        annotations:
+          summary: "bms {{ $labels.instance }}: {{ $labels.http_route }} is failing"
+          description: "{{ $value | humanize }} internal, unavailable or timeout errors a minute on {{ $labels.http_route }}. See the bms / API dashboard."
+
+      # THRESHOLD: 0 = any failed, panicked, lost-lease or no-handler run in 15 minutes.
+      - alert: BmsJobFailures
+        expr: |
+          sum by (instance, job, outcome) (increase(bms_jobs_runs_total{outcome=~"failed|panicked|lost_lease|no_handler"}[15m]))
+            > 0
+        for: 15m
+        labels:
+          severity: warn
+        annotations:
+          summary: "bms {{ $labels.instance }}: job {{ $labels.job }} is {{ $labels.outcome }}"
+          description: "Job {{ $labels.job }} ended {{ $labels.outcome }} {{ $value | humanize }} times in 15 minutes. See the bms / Jobs and notifications dashboard."
+
+      # THRESHOLD: 0 = any failed, rejected or no-SMTP delivery in 30 minutes.
+      - alert: BmsNotifyDeliveryFailing
+        expr: |
+          sum by (instance, outcome) (increase(bms_notify_delivered_total{outcome=~"failed|rejected|no_smtp"}[30m]))
+            > 0
+        for: 30m
+        labels:
+          severity: warn
+        annotations:
+          summary: "bms {{ $labels.instance }}: notifications are not being delivered ({{ $labels.outcome }})"
+          description: "{{ $value | humanize }} deliveries ended {{ $labels.outcome }} in 30 minutes. Check the SMTP settings and the bms / Jobs and notifications dashboard."
+
+      # THRESHOLD: 0 = callers waiting for a database connection.
+      - alert: BmsDBPoolSaturated
+        expr: |
+          max by (instance) (db_client_connection_pending_requests) > 0
+        for: 5m
+        labels:
+          severity: warn
+        annotations:
+          summary: "bms {{ $labels.instance }}: requests are waiting for a database connection"
+          description: "{{ $value | humanize }} callers are waiting for a pool connection. See the bms / Database dashboard."
+
+      # THRESHOLD: 0.5 = p95 of one database operation in seconds.
+      # Tempo's span metrics carry service, not instance: this rule is per service and operation.
+      - alert: BmsSlowQueries
+        expr: |
+          histogram_quantile(0.95, sum by (service, span_name, le) (rate(traces_spanmetrics_latency_bucket{service="bms", span_name=~"db[.].*"}[15m])))
+            > 0.5
+        for: 15m
+        labels:
+          severity: warn
+        annotations:
+          summary: "bms: {{ $labels.span_name }} statements are slow"
+          description: "The 95th percentile of {{ $labels.span_name }} is {{ $value | humanizeDuration }}. See Slowest statements on the bms / Database dashboard."
+
+      # THRESHOLD: 0 = any failed OTLP export in 15 minutes.
+      - alert: BmsTelemetryExportFailing
+        expr: |
+          sum by (instance, signal) (increase(bms_telemetry_export_failures_total[15m])) > 0
+        for: 15m
+        labels:
+          severity: info
+        annotations:
+          summary: "bms {{ $labels.instance }}: {{ $labels.signal }} export is failing"
+          description: "{{ $value | humanize }} {{ $labels.signal }} exports failed in 15 minutes. Check the collector bms sends OTLP to."
+
+      # THRESHOLD: 100 = reports or events refused for rate in 15 minutes.
+      - alert: BmsIntakeRateLimited
+        expr: |
+          label_replace(
+            sum by (instance) (increase(bms_client_errors_rejected_total{reason="rate_limited"}[15m])) > 100,
+            "intake", "errors", "", "")
+          or
+          label_replace(
+            sum by (instance) (increase(bms_client_events_rejected_total{reason="rate_limited"}[15m])) > 100,
+            "intake", "events", "", "")
+        for: 15m
+        labels:
+          severity: info
+        annotations:
+          summary: "bms {{ $labels.instance }}: the client {{ $labels.intake }} intake is rate-limiting"
+          description: "{{ $value | humanize }} client {{ $labels.intake }} were refused for rate in 15 minutes: abuse, or a page reporting in a loop. See Rate-limited intake on the bms / API dashboard."
+
+      # THRESHOLD: 0 = any telemetry policy violation.
+      - alert: BmsPolicyViolations
+        expr: |
+          sum by (instance, signal, rule) (increase(bms_telemetry_policy_violations_total[15m])) > 0
+        labels:
+          severity: page
+        annotations:
+          summary: "bms {{ $labels.instance }}: telemetry policy violation ({{ $labels.signal }}, {{ $labels.rule }})"
+          description: "bms wrote telemetry that breaks its privacy policy: a privacy bug reached production. The record was still written; the warning log \"telemetry policy violation\" names the attribute key so it can be found and the retained data reviewed."
+
+      # THRESHOLD: 5m = window with no request-duration samples.
+      # Fires when no instance sends samples, or when an instance seen in the last day stops.
+      - alert: BmsNoTraffic
+        expr: |
+          absent_over_time(http_server_request_duration_seconds_count[5m])
+          or
+          (
+            count by (instance) (last_over_time(http_server_request_duration_seconds_count[1d]))
+              unless count by (instance) (last_over_time(http_server_request_duration_seconds_count[5m]))
+          )
+        for: 30m
+        labels:
+          severity: page
+        annotations:
+          summary: "bms {{ $labels.instance }}: no request metrics for 30 minutes"
+          description: "No http.server.request.duration samples have arrived: bms is down or unreachable, or its OTLP export is broken."

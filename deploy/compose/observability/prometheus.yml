@@ -1,0 +1,9 @@
+# Prometheus for development. It scrapes nothing: Alloy and Tempo's metrics generator
+# remote-write into it (--web.enable-remote-write-receiver). It evaluates the shared bms
+# alert rules, mounted from deploy/observability/alerts/. There is no Alertmanager in the
+# development stack: firing alerts show on Prometheus's Alerts page (:9090/alerts).
+global:
+  evaluation_interval: 30s
+
+rule_files:
+  - /etc/prometheus/rules/*.yaml

@@ -7,7 +7,8 @@
 #   make observe                                         # + Grafana, Loki, Tempo, Prometheus, Alloy
 #
 # Observability: point bms at OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 and open
-# Grafana on :3000 (no login in development).
+# Grafana on :3000 (no login in development). The bms dashboards and alert rules come from
+# deploy/observability/; retention is 30 days for logs and traces, 1 year for metrics.
 #
 # Integration tests (go test -tags integration) read the BMS_TEST_* variables in .env.example.
 name: bms-dev
@@ -103,7 +104,8 @@ services:
   loki:
     profiles: [observability]
     image: grafana/loki:3.7.8
-    command: ["-config.file=/etc/loki/local-config.yaml"]
+    command: ["-config.file=/etc/loki/loki.yaml"]
+    volumes: ["./observability/loki.yaml:/etc/loki/loki.yaml:ro"]  # logs kept 30 days
     ports: ["${LOKI_PORT:-3100}:3100"]
 
   tempo:
@@ -121,6 +123,10 @@ services:
       - --web.enable-remote-write-receiver
       - --enable-feature=exemplar-storage
       - --storage.tsdb.retention.time=1y  # telemetry.md decision 18
+    # The bms alert rules are shared with other installations: deploy/observability/alerts/.
+    volumes:
+      - "./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro"
+      - "../observability/alerts:/etc/prometheus/rules:ro"
     ports: ["${PROMETHEUS_PORT:-9090}:9090"]
 
   grafana:
@@ -130,7 +136,12 @@ services:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
       GF_AUTH_DISABLE_LOGIN_FORM: "true"
-    volumes: ["./observability/grafana/datasources.yaml:/etc/grafana/provisioning/datasources/bms.yaml:ro"]
+    # The dashboards and their provider are shared with other installations:
+    # deploy/observability/grafana/ (see deploy/observability/README.md).
+    volumes:
+      - "./observability/grafana/datasources.yaml:/etc/grafana/provisioning/datasources/bms.yaml:ro"
+      - "../observability/grafana/provisioning/dashboards.yaml:/etc/grafana/provisioning/dashboards/bms.yaml:ro"
+      - "../observability/grafana/dashboards:/etc/grafana/dashboards/bms:ro"
     ports: ["${GRAFANA_PORT:-3000}:3000"]
     depends_on: [loki, tempo, prometheus]
 

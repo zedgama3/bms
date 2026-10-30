@@ -1,0 +1,21 @@
+# Grafana dashboard provider for the bms dashboards. Copy it into Grafana's
+# provisioning/dashboards/ directory, and the dashboards/*.json files into options.path.
+#
+# The development compose stack (deploy/compose/docker-compose.yml) mounts this file as
+# /etc/grafana/provisioning/dashboards/bms.yaml and deploy/observability/grafana/dashboards/
+# as /etc/grafana/dashboards/bms, the path below.
+#
+# The dashboards pick their data sources through variables (prometheus, loki, tempo), so
+# they work with whatever data-source UIDs the installation provisions.
+apiVersion: 1
+
+providers:
+  - name: bms
+    folder: bms
+    type: file
+    disableDeletion: false
+    allowUiUpdates: false
+    updateIntervalSeconds: 60
+    options:
+      path: /etc/grafana/dashboards/bms
+      foldersFromFilesStructure: false
