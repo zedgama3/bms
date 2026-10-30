@@ -1,12 +1,6 @@
 # api: the HTTP shell
 
 - **Status:** Implemented (2026-10-17); Approved (2026-10-17)
-- **Amended 2026-10-17 (owner):** decisions 19 and 24 reworded, decisions 28 to 30 added (mapper span error carries only op and kind below 500; cookie guard refuses `bms_session_dev` unless `AllowPlaintext`; port 0 in tests, CSP on every UI-handler response, status 499 for a gone client; accepted implementation deviations).
-- **Amended 2026-10-18 (owner approval of audit/identity):** `httpx.ErrRateLimited` is added to `lib/httpx` (identity and intake both use it): the mapper answers `429 rate_limited` with `Retry-After: 60` for anything wrapping it, and `intake.ErrRateLimited` is, or wraps, it; `Authenticator` is implemented by identity as in Proposed change 9 (identity.md Proposed change 1).
-- **Amended 2026-10-18 (owner approval of authz/people):** the mapper emits `fields` (from `validate.FieldError`) for a `409 conflict` as it does for `400 invalid`, so a duplicate can name its field (sign-up's `taken` names `email`; identity.md F15); `authz.Allow` satisfies `PermissionChecker` and refuses the actor inside `signals.InDelivery`; the declaration of `core.modules.read` gains `StarterRoles: authz.SiteAdminRoles` (authz.md Proposed change 6, Proposed change 10 applied).
-- **Amended 2026-10-18 (M2 build, accepted deviations):** `api.Permissions` and the exported `core.modules.read` declaration (`StarterRoles: authz.SiteAdminRoles`) are in the exported surface (app.md, "Accepted implementation deviations (M2 build, 2026-10-18)"). A record of what was built, not a design change.
-- **Amendment 2026-10-19 (approved, owner, 2026-10-20, D40):** Proposed change 15 settled for M4: decision 12's `no-store` stays on every mounted `/api/` route, a handler never sets `Cache-Control`, and `ETag`/`304` are allowed with it (the settings public routes); `Options.PublicOrigin` waits, its shape fixed over `regional.public_url`. F58, F59. See "Amendment 2026-10-19 (approved, owner, 2026-10-20, D40): Proposed change 15 settled for M4" before Open questions.
-- **Amendment 2026-10-28 (approved, owner, D53 and D54; demo.md Proposed change 11, telemetry.md Proposed change 19):** `Options.NoIndex` (`X-Robots-Tag: noindex, nofollow` on every UI-handler response); `POST /api/client-events` (`AccessPublic`) over `Options.Usage *intake.Usage`; `bms.api.errors{http.request.method, http.route, code}`; `RouteTokens`; section "Amendment 2026-10-28" before Open questions; F63 to F72.
 - **Package:** `internal/api` (Go module `github.com/zedgama3/bms`), plus the foundation
   helper package `internal/lib/httpx` that this spec owns (decision 2): the wire form of an
   error, the kind-to-status table, and the three calls a handler makes (`ReadJSON`,
@@ -69,7 +63,7 @@
 - D9 direct peer that is neither loopback nor trusted gets `403 misdirected` (not 421), health routes exempt, log per /24 or /64 prefix per hour (max 1,000 prefixes).
 - D10 span opened per route after routing, named `<METHOD> <route token>`; method normalised to 7 known or `_OTHER` (span `HTTP <token>`); `{$}` rendered as `/`; unmatched route token `/{unmatched}`; no span for `/healthz`, `/readyz`.
 - D11 OpenAPI 3.1 JSON assembled from per-set fragments; routes and fragments must agree at `New`; a set with routes must have a fragment.
-- D12 serves the web UI: `/assets/` immutable year cache, `index.html` no-cache for app paths, CSP on every `text/html`, `no-store` on `/api/`.
+- D12 serves the web UI: `/assets/` immutable year cache, `index.html` no-cache for app paths, CSP on every `text/html`, `no-store` on `/api/`; a handler never sets `Cache-Control`, and `ETag`/`304` are allowed with `no-store` (D40).
 - D13 unknown JSON fields ignored.
 - D14 permissioned shell route with nil checker answers 403.
 - D15/D27 `GET /api/modules` public, names and enabled only (owner 2026-10-17); graph and schema versions behind `core.modules.read`.
@@ -91,15 +85,31 @@
 - D32 a route may raise its own body cap and timeout: `module.Route.MaxBodyBytes` (at most 1 GiB) and `Timeout` (at most 10 minutes), zero = the shell's `MaxBodyBytes` and `RequestTimeout`; the pipeline applies them after dispatch to `MaxBytesReader`, the ctx deadline and the connection's read and write deadlines, and a value above a ceiling is `Invalid` at `New` (F61; files.md Proposed change 1, owner 2026-10-20, D44).
 - D33 an upload route's OpenAPI fragment documents a `multipart/form-data` request body and a content route a binary response (`image/*`, `application/pdf`), so the generated client types them (files.md, D44).
 
-**Errors callers handle:** `Options.Validate`/`New`: `Invalid` (fields `http.addr`, `http.request_timeout`, `http.max_body_bytes`, `http.trusted_proxies`, `api.*`), `Conflict` (pattern or schema-name clash), `Invalid` for route/fragment mismatch or bad route token; `Listen`: `Unavailable` (in use), `Invalid`, `Conflict`; `Serve`: `Internal` (no Listen), `Unavailable`; `Shutdown`: `Timeout`/`Canceled` (late handlers may still run). `ReadJSON`: `Invalid` (wrapping `ErrUnsupportedMediaType` for 415; field `body` or JSON path), `*http.MaxBytesError` returned unchanged (413), `Timeout`, `Canceled`, `Internal` (bad dst). `WriteJSON`: `Internal` (unencodable), `Canceled` (write failed). Mapper checks sentinels before kind: `db.ErrReadOnly`, `intake.ErrRateLimited` (429, `Retry-After: 60`), `httpx.ErrUnsupportedMediaType`, `*http.MaxBytesError`. `Unavailable` adds `Retry-After: 5`.
+**Errors callers handle:**
+- `Options.Validate`/`New`: `Invalid` (fields `http.addr`, `http.request_timeout`, `http.max_body_bytes`, `http.trusted_proxies`, `api.*`; route/fragment mismatch; bad route token; a route cap above its ceiling, F61), `Conflict` (pattern or schema-name clash).
+- `Listen`: `Unavailable` (in use), `Invalid`, `Conflict`. `Serve`: `Internal` (no Listen), `Unavailable`. `Shutdown`: `Timeout`/`Canceled` (late handlers may still run).
+- `ReadJSON`: `Invalid` (wrapping `ErrUnsupportedMediaType` for 415; field `body` or JSON path), `*http.MaxBytesError` returned unchanged (413), `Timeout`, `Canceled`, `Internal` (bad dst). `WriteJSON`: `Internal` (unencodable), `Canceled` (write failed).
+- The mapper checks sentinels before kind: `db.ErrReadOnly`, `intake.ErrRateLimited` (429, `Retry-After: 60`), `httpx.ErrUnsupportedMediaType`, `*http.MaxBytesError`. `Unavailable` adds `Retry-After: 5`.
 
-**Owns:** config consumed (via `Options`): `http.addr`, `http.request_timeout`, `http.max_body_bytes`, `http.trusted_proxies`, `http.allow_plaintext`. Permission `core.modules.read` (scope site, reaches internal; declared here, registered by `app`). No settings, signals, tables. Metrics `http.server.request.duration` (s; method, route, status) and `bms.api.errors{http.request.method, http.route, code}` (counter, `{response}`, D54). Span attrs `http.request.method`, `http.route`, `http.response.status_code`, `person_id`, `duration_ms`. Headers: nosniff, Referrer-Policy (`no-referrer` on the password-reset page document, D40), X-Frame-Options, Permissions-Policy, COOP/CORP, HSTS, `X-Trace-Id`, `X-Read-Only`. `POST /api/client-errors` answers 202/400/413/415/429 over `intake.Accept` (64 KiB cap). Constants (not keys): ReadHeaderTimeout 10s, IdleTimeout 120s, MaxHeaderBytes 64 KiB.
+**Owns:**
+- Config consumed (via `Options`): `http.addr`, `http.request_timeout`, `http.max_body_bytes`, `http.trusted_proxies`, `http.allow_plaintext`.
+- Permission `core.modules.read` (scope site, reaches internal; declared here, registered by `app`; `StarterRoles: authz.SiteAdminRoles`). `api.Permissions` is part of the exported surface (app.md).
+- No settings, signals, tables. Constants (not keys): ReadHeaderTimeout 10s, IdleTimeout 120s, MaxHeaderBytes 64 KiB.
+- Metrics `http.server.request.duration` (s; method, route, status) and `bms.api.errors{http.request.method, http.route, code}` (counter, `{response}`, D54).
+- Span attrs `http.request.method`, `http.route`, `http.response.status_code`, `person_id`, `duration_ms`.
+- Headers: nosniff, Referrer-Policy (`no-referrer` on the password-reset page document, D40), X-Frame-Options, Permissions-Policy, COOP/CORP, HSTS, `X-Trace-Id`, `X-Read-Only`, `X-Robots-Tag` (with `NoIndex`, D53).
+- `POST /api/client-errors` answers 202/400/413/415/429 over `intake.Accept` (64 KiB cap). `POST /api/client-events` answers 202/400/413/415/429/501 over `Usage.Accept`, never reading the session's person (D54).
+- `Options.PublicOrigin` is deferred; its shape is fixed under Interface (D40).
 
-**Expects of dependencies:** telemetry (`Tracer.Start` with `WithParentFrom`, `RefFrom`, `TraceIDFrom`, token grammar admitting `_OTHER` and the `<METHOD> <route>` span form, `intake`); module-contract (`Route.Access`, `ModuleRoutes`, `Graph`, `RouteProvider` must also provide an OpenAPI fragment); db (`Ping`, `ReadOnly`, `ErrReadOnly`, `Status`, `Close` tolerant of late callers); identity (Authenticator, cookie rules); authz (PermissionChecker); lib-core (`validate.FieldError.Code/Params`, applied in spec, implementation follow-up needed); app (shutdown order and sub-deadline).
+**Expects of dependencies:**
+- telemetry: `Tracer.Start` with `WithParentFrom`, `RefFrom`, `TraceIDFrom`, the token grammar admitting `_OTHER` and the `<METHOD> <route>` span form, `intake` (and `intake.Usage`, `EventBatch`, `EventSubmission`, `ErrRateLimited`).
+- module-contract: `Route.Access`, `ModuleRoutes`, `Graph`; a `RouteProvider` must also provide an OpenAPI fragment.
+- db: `Ping`, `ReadOnly`, `ErrReadOnly`, `Status`, `Close` tolerant of late callers. identity: Authenticator, cookie rules. authz: PermissionChecker.
+- lib-core: `validate.FieldError.Code/Params` (applied in spec; implementation follow-up needed). app: shutdown order and sub-deadline.
 
 **Pending proposed changes:** items 10 (authz), 15 (settings: trusted origins and Host allowlist; settled 2026-10-20, D40, with `PublicOrigin` deferred), and the front-end examples and `docs/operating.md` half of 14 wait on targets not yet written; the rest are applied.
 
-**M2 build (2026-10-18).** `api.Permissions` and the exported `core.modules.read` declaration with `StarterRoles: authz.SiteAdminRoles` are part of the exported surface (see app.md).
+**Amendments:** folded into the text; narratives in `plan/design/history/api.md`.
 
 ## Purpose
 
@@ -122,7 +132,8 @@ Expose the core's and the modules' routes over HTTP with one request pipeline.
   error reference, and write one log record per error response (decision 4).
 - Serve the shell's own endpoints at absolute paths: `/healthz`, `/readyz`,
   `GET /api/modules`, `GET /api/admin/modules`, `POST /api/client-errors`,
-  `GET /api/openapi.json` (decision 20 on why they are not under `/api/core/`).
+  `POST /api/client-events` (D54), `GET /api/openapi.json` (decision 20 on why they are
+  not under `/api/core/`).
 - **Assemble** the OpenAPI document from the api's base fragment and every route set's
   fragment, check at start-up that routes and fragments agree, and serve it (decision 11).
 - Serve the built **web shell** (`Options.UI`): hashed assets cached for a year, everything
@@ -162,7 +173,7 @@ Expose the core's and the modules' routes over HTTP with one request pipeline.
 | Router | Mount route sets under `/api/<name>/`, exactly, with a JSON 404 and 405 from one fallback. | `net/http.ServeMux` (Go 1.22 patterns); no method-less patterns besides `/api/`; conflicts across sets fail `New`. |
 | Pipeline | Run every request through the same chain, outer layers before routing, inner layers per route. | Decisions 4–10; the order is in "The middleware chain"; the address derivation is in "Client address and scheme, step by step". |
 | Mapper | Turn the error a handler handed over into a status, a problem body, a span error and one log record. | The shell's `httpx.Failer`; recognises the four sentinels. |
-| Shell routes | `/healthz`, `/readyz`, `GET /api/modules`, `GET /api/admin/modules`, `POST /api/client-errors`, `GET /api/openapi.json`. | The api's own route set, named `core` for OpenAPI and uniqueness, mounted at absolute patterns and exempt from the `/api/<name>/` rule (decision 20). |
+| Shell routes | `/healthz`, `/readyz`, `GET /api/modules`, `GET /api/admin/modules`, `POST /api/client-errors`, `POST /api/client-events`, `GET /api/openapi.json`. | The api's own route set, named `core` for OpenAPI and uniqueness, mounted at absolute patterns and exempt from the `/api/<name>/` rule (decision 20). |
 | OpenAPI assembly | Merge the base fragment and every set's fragment into one 3.1 document; prove routes and fragments agree. | Decision 11; checked in `New`. |
 | Static UI | Serve the built web shell with the right caching and headers, and `index.html` for every app path. | Decision 12. |
 | `Server` | Listen, serve, drain and stop, for `app`. | `New` → `Listen` → `Serve` → `Shutdown`. |
@@ -488,7 +499,28 @@ func (s *Server) Serve() error
 // and 11). Idempotent: a second call returns nil. Before Listen it marks the server
 // closed and returns nil. Consumer: app, first in the shutdown order.
 func (s *Server) Shutdown(ctx context.Context) error
+
+// RouteTokens returns the route tokens the tracing middleware names spans with (`{$}` as
+// `/`, the shell's own routes included), for app to hand to intake (telemetry.md T1.5).
+// Cannot fail; pure; excludes /healthz and /readyz, which have no span (D54).
+func RouteTokens(routes []module.ModuleRoutes) []string
 ```
+
+**Deferred: `Options.PublicOrigin` (D40; not M4).** The shape is fixed now so no spec waits on it:
+
+```go
+// PublicOrigin returns the regional's public URL (settings regional.public_url) or ""
+// when unset. Optional; nil or "" is today's behaviour (the front end preserves Host,
+// Proposed change 14). Read per request: a change needs no restart. app fills it over
+// settings.Regional. The shell derives the origin (scheme://host[:port]) from it for
+// decision 6 (one more trusted origin) and for the Host allowlist (the origin's host plus
+// loopback and the bind address; a request whose Host is not listed is 404 with no body).
+PublicOrigin func(ctx context.Context) (string, error)
+```
+
+- A seam error is treated as `""` for that request and logged at warn once per minute (the settings snapshot cannot fail after its first load, so this is a start-up window) (F59).
+- There is no configuration fallback: `config` owns no public URL (D18), so `regional.public_url` is the only source.
+- Why wait: nothing in M4 needs it (the front end preserves `Host`; notify reads `Regional` itself for its links). Proposed change 15 is applied when a regional needs a front end that rewrites `Host`, or with `files`, whichever comes first.
 
 ### Who needs each member
 
@@ -509,6 +541,7 @@ func (s *Server) Shutdown(ctx context.Context) error
 | `Handler` | tests (`httptest.NewServer`, `httptest.NewRecorder`); `app` | — | — |
 | `OpenAPI` | `GET /api/openapi.json`; `bms check`; the web shell's client generation (build time) | — | one JSON document |
 | `Listen`, `Serve`, `Shutdown` | `app` | — | bound; serving; drained |
+| `RouteTokens` | `app` (hands the tokens to `intake`) | — | the span-name tokens of every mounted route |
 
 ## Types
 
@@ -530,6 +563,7 @@ the codes, `ErrUnsupportedMediaType`, `Failer`. Uses `module.Route`, `module.Acc
 | `GET /api/modules` | public | `{"modules":[{"name":"hello","enabled":true}, ...]}`: every compiled-in module's name and whether it is enabled, nothing else (decision 15) |
 | `GET /api/admin/modules` | signed in, `core.modules.read` | the api-owned type below, lower-case keys: `{"version":"<Version>","graph":{"modules":[...],"edges":[...],"warnings":[...]},"schema":[{"set":"hello","built":1,"applied":1,"current":true}, ...]}`; a set's `current` is `Status.Err == nil`; the error text is not sent (it is in `bms check`). The `graph` half is marshalled once in `New` (F52) |
 | `POST /api/client-errors` | public | `202` no body; `400` problem with fields; `415`; `429` with `Retry-After: 60` (telemetry Proposed change 3) |
+| `POST /api/client-events` | public, sessionless | `202` no body; `400` problem with `events[i].<field>` errors; `413`; `415`; `429` with `Retry-After: 60` and code `rate_limited`; `501 unsupported` when usage counting is off (D54; see "Client events, `NoIndex`, the error counter and `RouteTokens`") |
 | `GET /api/openapi.json` | public | the assembled document, `application/json`, `ETag` (SHA-256 of the bytes), `Cache-Control: no-cache` |
 | any `/api/` path the mux would redirect (unclean: `//`, `.`, `..` segments; or a path missing a trailing slash a route has) | — | `404 not_found` as JSON; never `ServeMux`'s `301` (decision 3) |
 | `GET /{path...}` (not `/api/`, `/healthz`, `/readyz`) | public | a file from `Options.UI`, or `index.html` (decision 12); `404` problem when `UI` is nil |
@@ -595,13 +629,13 @@ and where it goes (privacy-data; telemetry.md "Data" holds the retention rules):
 
 | Field | Where it goes | Level | Why | Retention |
 |---|---|---|---|---|
-| client address (derived, decision 8) | the request ctx only (`httpx.ClientAddrFrom`); `intake.Submission.From` (memory bucket, never logged); the login rate limit (`identity`) | personal | rate limits | gone when the request ends |
+| client address (derived, decision 8) | the request ctx only (`httpx.ClientAddrFrom`); `intake.Submission.From` and `EventSubmission.From` (memory bucket, never logged); the login rate limit (`identity`) | personal | rate limits | gone when the request ends |
 | peer network prefix (`/24`, `/64`) of a misdirected request | one warn log line per prefix per hour, for at most 1,000 prefixes; beyond that one aggregate line per minute with a count (decision 9) | internal (a network, not a device) | an operator fixes `trusted_proxies` | the collector's |
 | `person_id` | the request span and the per-error log record | internal (opaque ID) | whose request failed | the collector's |
 | `http.request.method` (normalised, decision 10), `http.route` (pattern), status, `duration_ms`, `error.kind`, `op`, `error_ref`, `trace_id` | span, histogram (method, route, status only), the per-error log record | not about a person | find and count failures | the collector's |
 | `error.message` (`telemetry.Text`: scrubbed, capped) | the per-error log record of a 5xx only | not about a person once scrubbed; never for a 4xx, whose messages may restate input | a maintainer reads what broke without opening a trace | the collector's |
 | `stack` | the log record of a recovered panic, capped by the telemetry handler | not about a person | fix the bug | the collector's |
-| `User-Agent` | passed to `intake.Accept` only, capped there | internal | browser-specific crashes (telemetry decision 17) | the collector's |
+| `User-Agent` | passed to `intake.Accept` and `Usage.Accept` only, capped there | internal | browser-specific crashes (telemetry decision 17) | the collector's |
 
 Never emitted by this package: query strings, request or response bodies, headers other
 than the method and the route pattern, cookies, session tokens, `Authorization`, the full
@@ -611,7 +645,9 @@ or SQL (lib-errs Proposed change 1).
 
 API responses are sent with `Cache-Control: no-store` (except `/api/openapi.json` and
 `/api/modules`, decision 12), so a shared cache or the browser's disk never keeps a body
-that may hold personal data.
+that may hold personal data. A handler never sets `Cache-Control` (the shell sets it before
+the handler runs; a handler that overwrites it is a review finding, F58); `ETag` and `304` are
+allowed with `no-store` (D40).
 
 ## Permissions
 
@@ -620,6 +656,7 @@ that may hold personal data.
 | `GET /api/admin/modules` | `core.modules.read` (`PermissionModulesRead`, scope site, reaches internal) | site | every site-admin starter role (09 §4; module-contract "Permissions") | checked through `Options.Permissions.Allow`; nil checker → 403 (decision 14) |
 | `GET /api/modules` | none (public) | — | anyone | enabled names only (decision 15) |
 | `POST /api/client-errors` | none (public) | — | anyone | protected by intake's limits and the 64 KiB cap (telemetry decision 9) |
+| `POST /api/client-events` | none (public) | — | anyone | protected by intake's rate limit and the 64 KiB cap; the session's person is never read (D54) |
 | `GET /api/openapi.json`, `/healthz`, `/readyz`, the UI files | none (public) | — | anyone | nothing personal in them |
 | every mounted route | its `module.Route.Access` decides whether a session is required; the permission is the service's (09 ground rules) | — | — | the shell never checks a module's permission |
 
@@ -650,7 +687,7 @@ the package, pinned by tests, with the reason each is not a key:
 | `WriteTimeout` | `RequestTimeout + 15 s` | a backstop behind the ctx deadline, sized so that two 5 s signal deliveries after a commit near the deadline still get their response written (decision 18); `files.md` revisits it for downloads |
 | `MaxHeaderBytes` | 64 KiB | `net/http`'s default would allow 1 MiB of headers |
 | readiness ping deadline; readiness cache | 2 s; 1 s | a probe must answer fast; `db.Ping` refreshes the read-only state in the same round trip; concurrent probes share one `Ping` and its result is reused for 1 s (decision 22) |
-| intake body cap | 64 KiB | telemetry Proposed change 3 |
+| intake body cap (client-errors and client-events) | 64 KiB | telemetry Proposed change 3; D54 |
 | HSTS | `Strict-Transport-Security: max-age=31536000`, exactly; no `includeSubDomains`, no `preload` (decision 26) | one year is the common value; a regional that controls every subdomain adds `includeSubDomains` at the front end |
 | misdirected-request log rate; tracked prefixes | once per peer prefix per hour; at most 1,000 prefixes, then one aggregate line per minute | enough to notice, not enough to flood, and bounded memory under a scan |
 | untrusted-forwarded-header warning | once per process | a same-host front end that is not in `trusted_proxies` (decision 9) |
@@ -904,7 +941,14 @@ None of its own. What this spec provides for `web-shell.md`:
     (`/index.html`, `/`): a policy that depends on the URL is a bypass. Every `/api/`
     response carries `Cache-Control: no-store`, except `/api/openapi.json` (`no-cache`
     with an `ETag`) and `/api/modules` (`no-cache`), which hold nothing personal. With
-    `UI` nil (a headless build or a test) non-API paths are `404`.
+    `UI` nil (a headless build or a test) non-API paths are `404`. **No mounted route is
+    exempted, and a handler never sets `Cache-Control`** (D40, F58): the shell sets it before
+    the handler runs, and a handler that overwrites it is a review finding. `ETag` and `304`
+    are allowed with `no-store`: a validator lets a client that keeps the tag itself (the web
+    shell, in memory) revalidate, and tells a cache nothing it may store; the cost is one
+    small fetch of each of `/api/settings/public` and `/api/settings/theme.css` per boot. A
+    route-level "cacheable" declaration (`module.Route.Cache`) is not added until a route
+    needs it; `files`, which will serve large bodies, is the candidate and may propose it.
 13. **Unknown JSON fields are ignored.** telemetry decision 11 set it for intake ("an
     older server accepts a newer shell"); the same rule everywhere lets the web shell
     ship a field before the server reads it. A handler that must reject unknown fields
@@ -960,8 +1004,8 @@ None of its own. What this spec provides for `web-shell.md`:
 19. **Every response to a routed request carries `X-Trace-Id`** (reworded 2026-10-17: the `/api/` chain, from step 9; not UI files, `/healthz`, `/readyz`, the misdirected 403 or errors before routing). telemetry decision 2 allowed it; it makes a
     `curl` session traceable without reading a body, and the ID is not a secret.
 20. **The shell's own routes are mounted at absolute paths and are exempt from the
-    `/api/<name>/` rule.** `/api/modules`, `/api/admin/modules`, `/api/client-errors` and
-    `/api/openapi.json` are what module-contract, telemetry (its Proposed change 3 and a
+    `/api/<name>/` rule.** `/api/modules`, `/api/admin/modules`, `/api/client-errors`, `/api/client-events`
+    (D54) and `/api/openapi.json` are what module-contract, telemetry (its Proposed change 3 and a
     pinned span-name test) and the web shell already name; moving them under
     `/api/core/` would buy uniformity and cost three Approved specs a change. The set is
     named `core` for OpenAPI tags and set-name uniqueness only; nothing is mounted at
@@ -1050,6 +1094,9 @@ None of its own. What this spec provides for `web-shell.md`:
     the base context from `context.Background()`; a field's `UnmarshalJSON` or
     `UnmarshalText` failure is reported on `body.<path>` with code `malformed` and no
     echoed input; `Shutdown` closes a listener that `Serve` never took.
+31. **The mapper emits `fields` for a `409 conflict`** that carries `validate.FieldError`s, as for `400 invalid`, so a duplicate names its field (sign-up's `taken` names `email`; identity.md F15) (owner, 2026-10-18).
+32. **A route may raise its own body cap and timeout:** `module.Route.MaxBodyBytes` (at most 1 GiB) and `Timeout` (at most 10 minutes); zero means the shell's `MaxBodyBytes` and `RequestTimeout`. The pipeline applies them after dispatch to `MaxBytesReader`, the ctx deadline and the connection's read and write deadlines, and a value above a ceiling is `Invalid` at `New` (F61, F62; files.md Proposed change 1, owner, 2026-10-20, D44).
+33. **An upload route's OpenAPI fragment documents a `multipart/form-data` request body and a content route a binary response** (`image/*`, `application/pdf`), so the generated client types them (files.md, D44).
 
 ### The middleware chain
 
@@ -1165,6 +1212,7 @@ this derivation is logged; the warning in step 1 names no address.
    a 4xx without one) with `error_ref`, `trace_id`, `error.kind`, `op` (the outermost
    `errs.Error.Op`), `http.route`, `http.request.method`, `status`, `person_id`, and
    for a 5xx `error.message` as `telemetry.Text(err.Error())`.
+6. Count `bms.api.errors{http.request.method, http.route, code}` (counter, `{response}`) once, `code` being the problem code chosen in step 2 (a kind name or a shell code); `/healthz` and `/readyz` are excluded, as for the histogram (D54, F71).
 
 ### Codes
 
@@ -1193,8 +1241,8 @@ this derivation is logged; the warning in step 1 names no address.
 1. `opts.Validate()` (F9, including the zero-bit prefix); log the plaintext warning when
    `AllowPlaintext` (F35, not an error) and the loopback-bind warning of decision 9
    (F55, not an error); create the histogram `http.server.request.duration` (unit `s`;
-   F18).
-2. Build the shell's own route set (`core`): the four `/api/` routes above at their
+   F18); create the counter `bms.api.errors` (unit `{response}`, D54).
+2. Build the shell's own route set (`core`): the five `/api/` routes above at their
    absolute patterns (decision 20) with their fragment.
 3. For each set in `Routes`: the set name must be a module name (`[a-z][a-z0-9]{1,31}`),
    unique, and not `core`, `modules` or `admin` (F10); each route must validate (F11;
@@ -1226,6 +1274,17 @@ this derivation is logged; the warning in step 1 names no address.
    charset=utf-8`.
 4. Whatever the branch, a response whose `Content-Type` is `text/html` gets the CSP
    (decision 12), so `/`, `/index.html` and an app path all carry it.
+5. With `Options.NoIndex` set, every UI-handler response (D29's set: `index.html`, assets, 404 and 405 bodies) carries `X-Robots-Tag: noindex, nofollow`; `/api/` JSON never does (D53, F63, F64). `app` sets it in demo mode only.
+
+### Client events, `NoIndex`, the error counter and `RouteTokens` (D53, D54)
+
+- **`POST /api/client-events`** is mounted as `AccessPublic` beside `/api/client-errors` (decision 20).
+  - The handler decodes under the 64 KiB `http.MaxBytesReader` into `intake.EventBatch` (unknown fields ignored).
+  - It calls `Usage.Accept` with `EventSubmission{From: the derived client address, UserAgent, Batch}` and **never the session's person**: the handler does not read the session for this route, and its request log, when any, carries no `person_id` (F69).
+  - Answers: 202 with no body (F70); 400 with field errors (F65); 413 and 415 (F66); 429 with `Retry-After: 60` and code `rate_limited` when `errors.Is(err, intake.ErrRateLimited)`, checked before the kind (F67); 501 `unsupported` when `Usage` is nil or the kind is `Unsupported`, i.e. usage counting is off (F68).
+  - The span is the normal request span. The shell routes' OpenAPI fragment documents the route with the `Event` schema and these response codes.
+- **`bms.api.errors`** is recorded by the mapper ("The mapper, step by step", step 6).
+- **`RouteTokens`** is described under Interface; it excludes `/healthz` and `/readyz` (F72).
 
 ### Concurrency and lifecycle
 
@@ -1326,6 +1385,21 @@ library (`bytes`, `context`, `encoding/json`, `errors`, `fmt`, `io`, `mime`, `ne
 | F55 | `New` | `Addr` is loopback and `TrustedProxies` is non-empty but contains no loopback address | none: one warn log at start | list `127.0.0.1/32` or bind the interface the front end reaches | `TestNew_LoopbackBindWithoutLoopbackProxy_WarnsOnce` |
 | F56 | pipeline | a loopback peer that is not trusted sends `X-Forwarded-For` | none: the headers are ignored (client = `127.0.0.1`, scheme `http`); one warn per process, no address in it | set `trusted_proxies=127.0.0.1/32` | `TestPipeline_UntrustedLoopbackForwardedHeader_WarnsOnce` |
 | F57 | pipeline | more than 1,000 distinct untrusted peer prefixes within an hour | none: the first 1,000 get their own line; the rest one aggregate warn line per minute with counts | fix the network path; look for a scan | `TestPipeline_UntrustedPeer_PrefixCapAggregates` (fake clock: 1,001 prefixes → 1,000 lines + 1 aggregate; more within the minute → nothing; advance a minute → one line with the count) |
+| F58 | pipeline | a mounted route answers with `ETag` (the settings public routes) | none: the response carries `Cache-Control: no-store` and the `ETag`; a matching `If-None-Match` gets `304`, also with `no-store`; a handler's own `Cache-Control` never reaches the client on `/api/` | nothing | `TestPipeline_MountedRouteWithETag_KeepsNoStore` (a fake route set in api's tests; `app`'s e2e repeats it on `GET /api/settings/public` and `/theme.css` once settings is built) |
+| F59 | pipeline (lands with `PublicOrigin`) | the seam fails | none: treated as unset for the request; one warn per minute, no URL in it | fix settings | `TestPipeline_PublicOriginFails_TreatedAsUnset` |
+| F60 (D40) | UI handler | a document request for `/accounts/password-reset` (with or without `?token=`) | none: the `text/html` response carries `Referrer-Policy: no-referrer`; any other document path keeps `strict-origin-when-cross-origin` | nothing | `TestUIHandler_PasswordResetPage_NoReferrer` (and `..._OtherPath_KeepsDefault`) |
+| F61 (D44) | `New` | a route's `MaxBodyBytes` above 1 GiB or `Timeout` above 10 minutes (or negative) | Invalid (`api.routes[i].max_body_bytes` / `.timeout`) | fix the route | `TestNew_RouteCapAboveCeiling_ReturnsInvalid` |
+| F62 (D44) | pipeline | a route with `Timeout` or `MaxBodyBytes` above the shell's | the route's own limits apply; a body over the route's cap is `413 payload_too_large` | nothing | `TestPipeline_RouteCapRaised_AppliesRouteLimits` |
+| F63 | UI handler | `NoIndex` true | — | every response carries `X-Robots-Tag: noindex, nofollow` | `TestUI_NoIndex_SetsRobotsHeader` |
+| F64 | UI handler | `NoIndex` false | — | no such header; `/api/` never has it | `TestUI_NoIndexOff_NoHeader` |
+| F65 | `POST /api/client-events` | `Usage.Accept` fails `Invalid` | Invalid | 400 with `events[i].<field>` errors | `TestClientEvents_Invalid_Returns400` |
+| F66 | `POST /api/client-events` | body over 64 KiB; wrong content type | Invalid | 413; 415 | `TestClientEvents_TooLarge_413`, `TestClientEvents_WrongContentType_415` |
+| F67 | `POST /api/client-events` | `errors.Is(err, intake.ErrRateLimited)` | Unavailable | 429, `Retry-After: 60`, `rate_limited` | `TestClientEvents_RateLimited_429` |
+| F68 | `POST /api/client-events` | usage off, or `Options.Usage` nil | Unsupported | 501 `unsupported` | `TestClientEvents_Off_501`, `TestClientEvents_NilUsage_501` |
+| F69 | `POST /api/client-events` | a signed-in request | — | the person is never read or logged | `TestClientEvents_NeverReadsSession` |
+| F70 | `POST /api/client-events` | accepted | — | 202, no body | `TestClientEvents_Accepted_202` |
+| F71 | error mapper | any error response | — | `bms.api.errors{method, route, code}` counted; `/healthz` and `/readyz` excluded | `TestMapper_CountsErrorsByCode` |
+| F72 | `RouteTokens` | routes mounted | — | tokens equal the span names | `TestRouteTokens_MatchSpanNames` |
 
 Members that cannot fail, and why: `httpx.StatusOf` (a table with a default); `Fail`
 (every input becomes a response; a nil error becomes a 500 and a test pins it); the ctx
@@ -1367,7 +1441,7 @@ bodies, query strings, cookies and `User-Agent`, asserted absent with
   `mux.ServeHTTP`, not the probe); `TestNew_TrailingSlashIsExact` (`/` becomes
   `/api/alpha/{$}`; `/api/alpha/x` is 404; `/api/alpha` is 404, not 301);
   `TestNew_WildcardAllowed` (`{path...}`); `TestNew_CoreSetMountsLikeAModule`;
-  `TestNew_ShellSetAbsolute` (the four `/api/` routes answer at their absolute paths and
+  `TestNew_ShellSetAbsolute` (the five `/api/` routes answer at their absolute paths and
   nothing answers under `/api/core/`); `TestNew_EmptyRoutes_ServesShellOnly`;
   `TestRouter_HeadServedThroughGet`; F10–F13, F41, F42, F48.
 - Pipeline: `TestPipeline_Order` (a recording handler sees the address, scheme, the ctx
@@ -1422,6 +1496,8 @@ bodies, query strings, cookies and `User-Agent`, asserted absent with
   and its response has `Connection: close`); `TestServe_AfterShutdown_ReturnsNil`;
   F19–F24.
 - `TestSpanName_EveryMountedRoute_NoViolation` across every mounted route (F48).
+- Cache and route limits (D40, D44): F58 (`app`'s e2e repeats it on `GET /api/settings/public` and `/theme.css` once settings is built), F61, F62; F59 lands with `PublicOrigin`; F60 in the UI tests.
+- Client events, `NoIndex`, the error counter and `RouteTokens` (D53, D54): F63–F72.
 - The only wall-clock-bounded test is `TestPipeline_SlowBody_ReadDeadlineEnds504`
   (F28), through the unexported `testRequestTimeout` hook in an internal test file; every
   other timing uses `clock.NewFake`.
@@ -1438,64 +1514,9 @@ through `New` → `Listen` → `Serve` with a real `db.Pool`, `telemetry.New` an
 are the contract this spec enforces on modules, and the `hello` module is the reference
 that passes them.
 
-## Amendment 2026-10-19 (approved, owner, 2026-10-20, D40): Proposed change 15 settled for M4
+## Amendments
 
-Two questions settings.md's Proposed change 9 left with this spec, answered with the smallest design (settings.md's amendment of the same date carries the same decisions from its side).
-
-**1. `Cache-Control` on `/api/settings/public` and `/api/settings/theme.css`.** Decision 12 stands unchanged: every `/api/` response carries `no-store` except the shell's own `/api/openapi.json` and `/api/modules`; no mounted route is exempted, and **a handler never sets `Cache-Control`**: the shell sets it before the handler runs, a handler that overwrites it is a review finding, and F58 pins the two routes that were tempted. `ETag` and `304` are allowed with `no-store`: a validator lets a client that keeps the tag itself (the web shell, in memory) revalidate, and tells a cache nothing it may store. The cost is one small fetch of each per boot. A route-level "cacheable" declaration (`module.Route.Cache`) is not added until a route needs it; `files`, which will serve large bodies, is the candidate and may propose it.
-
-**2. `Options.PublicOrigin`.** Waits; not M4. Its shape is fixed now so no spec waits on it:
-
-```go
-// PublicOrigin returns the regional's public URL (settings regional.public_url) or ""
-// when unset. Optional; nil or "" is today's behaviour (the front end preserves Host,
-// Proposed change 14). Read per request: a change needs no restart. app fills it over
-// settings.Regional. The shell derives the origin (scheme://host[:port]) from it for
-// decision 6 (one more trusted origin) and for the Host allowlist (the origin's host plus
-// loopback and the bind address; a request whose Host is not listed is 404 with no body).
-PublicOrigin func(ctx context.Context) (string, error)
-```
-
-A seam error is treated as `""` for that request and logged at warn once per minute (the settings snapshot cannot fail after its first load, so this is a start-up window). There is no configuration fallback: `config` owns no public URL (D18), so `regional.public_url` is the only source. Why wait: nothing in M4 needs it (the front end preserves `Host`; notify reads `Regional` itself for its links).
-
-### Failure modes (added)
-
-| # | Method | Condition | errs kind | Caller is expected to | Test |
-|---|---|---|---|---|---|
-| F58 | pipeline | a mounted route answers with `ETag` (the settings public routes) | none: the response carries `Cache-Control: no-store` and the `ETag`; a matching `If-None-Match` gets `304`, also with `no-store`; a handler's own `Cache-Control` never reaches the client on `/api/` | nothing | `TestPipeline_MountedRouteWithETag_KeepsNoStore` (a fake route set in api's tests; `app`'s e2e repeats it on `GET /api/settings/public` and `/theme.css` once settings is built) |
-| F59 | pipeline (lands with `PublicOrigin`) | the seam fails | none: treated as unset for the request; one warn per minute, no URL in it | fix settings | `TestPipeline_PublicOriginFails_TreatedAsUnset` |
-| F60 (D40) | UI handler | a document request for `/accounts/password-reset` (with or without `?token=`) | none: the `text/html` response carries `Referrer-Policy: no-referrer`; any other document path keeps `strict-origin-when-cross-origin` | nothing | `TestUIHandler_PasswordResetPage_NoReferrer` (and `..._OtherPath_KeepsDefault`) |
-| F61 (D44) | `New` | a route's `MaxBodyBytes` above 1 GiB or `Timeout` above 10 minutes (or negative) | Invalid (`api.routes[i].max_body_bytes` / `.timeout`) | fix the route | `TestNew_RouteCapAboveCeiling_ReturnsInvalid` |
-| F62 (D44) | pipeline | a route with `Timeout` or `MaxBodyBytes` above the shell's | the route's own limits apply; a body over the route's cap is `413 payload_too_large` | nothing | `TestPipeline_RouteCapRaised_AppliesRouteLimits` |
-
-Proposed change 15 now reads: deferred, shape settled above; it is applied when a regional needs a front end that rewrites `Host`, or with `files`, whichever comes first.
-
-## Amendment 2026-10-28 (approved, owner, D53 and D54): `NoIndex`, `client-events`, `bms.api.errors`, `RouteTokens`
-
-**`Options.NoIndex` (D53).** When set, every UI-handler response (D29's set) carries `X-Robots-Tag: noindex, nofollow`; `/api/` JSON does not. `app` sets it in demo mode only.
-
-**`POST /api/client-events` (D54).** Mounted as `AccessPublic` beside `/api/client-errors` (decision 20's shell-route list grows by one). The handler decodes under the 64 KiB `http.MaxBytesReader` into `intake.EventBatch` (unknown fields ignored), calls `Usage.Accept` with `EventSubmission{From: the derived client address, UserAgent, Batch}` and **never the session's person** (the handler does not read the session for this route; its request log, when any, carries no `person_id`). It answers 202 with no body, 400 with field errors, 413, 415, 429 with `Retry-After: 60` and code `rate_limited` when `errors.Is(err, intake.ErrRateLimited)` (checked before the kind), and 501 `unsupported` when `Usage` is nil or the kind is `Unsupported` (usage counting off). The span is the normal request span.
-
-**`bms.api.errors` (D54).** The error mapper records `bms.api.errors{http.request.method, http.route, code}` (counter, `{response}`) for every error response it writes, `code` being the problem code it chose (a kind name or a shell code); `/healthz` and `/readyz` are excluded as for the histogram.
-
-**`RouteTokens` (D54).** `func RouteTokens(routes []module.ModuleRoutes) []string` returns the route tokens the tracing middleware names spans with (`{$}` as `/`, the shell's own routes included), for `app` to hand to `intake` (telemetry.md T1.5). It cannot fail and is pure.
-
-**OpenAPI.** The shell routes' fragment documents `/api/client-events` with the `Event` schema and the response codes above.
-
-### Failure modes (added)
-
-| # | Method | Condition | errs kind | Caller is expected to | Test |
-|---|---|---|---|---|---|
-| F63 | UI handler | `NoIndex` true | — | every response carries `X-Robots-Tag: noindex, nofollow` | `TestUI_NoIndex_SetsRobotsHeader` |
-| F64 | UI handler | `NoIndex` false | — | no such header; `/api/` never has it | `TestUI_NoIndexOff_NoHeader` |
-| F65 | `POST /api/client-events` | `Usage.Accept` fails `Invalid` | Invalid | 400 with `events[i].<field>` errors | `TestClientEvents_Invalid_Returns400` |
-| F66 | `POST /api/client-events` | body over 64 KiB; wrong content type | Invalid | 413; 415 | `TestClientEvents_TooLarge_413`, `TestClientEvents_WrongContentType_415` |
-| F67 | `POST /api/client-events` | `errors.Is(err, intake.ErrRateLimited)` | Unavailable | 429, `Retry-After: 60`, `rate_limited` | `TestClientEvents_RateLimited_429` |
-| F68 | `POST /api/client-events` | usage off, or `Options.Usage` nil | Unsupported | 501 `unsupported` | `TestClientEvents_Off_501`, `TestClientEvents_NilUsage_501` |
-| F69 | `POST /api/client-events` | a signed-in request | — | the person is never read or logged | `TestClientEvents_NeverReadsSession` |
-| F70 | `POST /api/client-events` | accepted | — | 202, no body | `TestClientEvents_Accepted_202` |
-| F71 | error mapper | any error response | — | `bms.api.errors{method, route, code}` counted; `/healthz` and `/readyz` excluded | `TestMapper_CountsErrorsByCode` |
-| F72 | `RouteTokens` | routes mounted | — | tokens equal the span names | `TestRouteTokens_MatchSpanNames` |
+The 2026-10-19 amendment (D40: `Cache-Control`, `PublicOrigin`) and the 2026-10-28 amendment (D53 and D54: `NoIndex`, `client-events`, `bms.api.errors`, `RouteTokens`) are folded into the text above, as are the header notes of the 2026-10-17 to 2026-10-19 amendments. Their narratives, the reasons for each choice and the superseded wording are in `plan/design/history/api.md`.
 
 ## Accepted implementation deviations (demo and telemetry build, 2026-10-29)
 
@@ -1655,7 +1676,8 @@ this list until then. Item 17 needs nothing.
     ScopeSite, Reaches: SensitivityInternal}`), granted to every site-admin starter role
     by default; refuse to treat a session value as the actor when
     `signals.InDelivery(ctx)` is true.
-11. **`plan/design/app.md` (row 18)** (applied 2026-10-17, by app.md's Proposed change 7: the HTTP sub-deadline is `max(1 s, 2 x shutdown_timeout / 3)`; the order is HTTP, runnables, `signals.Close`, `Set.Stop`, `db.Close`, `telemetry.Close`; there is no drain delay in M0, app.md decision 17, and if one is added later `api` gains `Server.BeginDrain()` so the health routes answer `503` while the listener stays open; `core.modules.read` is registered through `authz`'s part with `corePerms`; `bms check` prints the operation count; the `deliver:hello.greeted` assertion runs in app's e2e test once `module-hello.md` defines the write route): build `api.Options` from `config.HTTP` (all but
+11. **`plan/design/app.md` (row 18)** (applied 2026-10-17, by app.md's Proposed change 7: the HTTP sub-deadline is `max(1 s, 2 x shutdown_timeout / 3)`; the order is HTTP, runnables, `signals.Close`, `Set.Stop`, `db.Close`, `telemetry.Close`; there is no drain delay in M0, app.md decision 17, and if one is added later `api` gains `Server.BeginDrain()` so the health routes answer `503` while the listener stays open;
+    `core.modules.read` is registered through `authz`'s part with `corePerms`; `bms check` prints the operation count; the `deliver:hello.greeted` assertion runs in app's e2e test once `module-hello.md` defines the write route): build `api.Options` from `config.HTTP` (all but
     `ShutdownTimeout`), `tel.Logger().With("component","api")`, `tel.Tracer("api")`,
     `tel.Meter("api")`, `clock.Real()`, the build version, `Set.Routes()` plus one
     `module.ModuleRoutes` per core package with routes (`accounts`, `people`, ... as their
@@ -1674,7 +1696,8 @@ this list until then. Item 17 needs nothing.
     `api.PermissionModulesRead` with `authz`; `bms check` prints the OpenAPI operation
     count; the `hello` integration test asserts a request's `deliver:hello.greeted` span
     is a descendant of its request span.
-12. **`plan/design/web-shell.md` (row 17)** (applied 2026-10-17; decision 25's `reason` fallback stands, shown inside the shell's translated `field.unknown` wrapper with the untranslated code reported; the reference is additionally hidden for `unauthenticated`, `read_only` and the client's `network` code, web-shell.md decision 9; no CSP change requested; note that the shell calls `GET /api/modules` and `GET /api/accounts/session` in parallel at boot, so neither may depend on the other): mirror `httpx.Problem` and the codes in
+12.
+    **`plan/design/web-shell.md` (row 17)** (applied 2026-10-17; decision 25's `reason` fallback stands, shown inside the shell's translated `field.unknown` wrapper with the untranslated code reported; the reference is additionally hidden for `unauthenticated`, `read_only` and the client's `network` code, web-shell.md decision 9; no CSP change requested; note that the shell calls `GET /api/modules` and `GET /api/accounts/session` in parallel at boot, so neither may depend on the other): mirror `httpx.Problem` and the codes in
     TypeScript; translate `code` through keys `error.<code>` and, for `invalid`, map
     `fields[].field` to inputs and translate `fields[].code` with `fields[].params`
     (keys `field.<code>`), showing `reason` for an unknown code (decision 25); show `ref` per
@@ -1708,7 +1731,8 @@ this list until then. Item 17 needs nothing.
     host is not in trusted_proxies"; note that bms sends HSTS as `max-age=31536000` only
     and that a regional controlling every subdomain adds `includeSubDomains` (and
     `preload`) at the front end (decision 26).
-15. **`plan/design/settings.md` (row 15)** (settled 2026-10-19 in "Amendment 2026-10-19 (approved, owner, 2026-10-20, D40): Proposed change 15 settled for M4": `no-store` stays with the `ETag`, handlers never set `Cache-Control`; `PublicOrigin`'s shape is fixed and it waits for a regional that needs it or for `files`. Earlier note: still pending after the settings spec was approved 2026-10-19, D39: settings.md Proposed change 9 records that the trusted origin and the `Host` allowlist must come from a per-request read, since settings change without a restart, so this change will add `Options.PublicOrigin func(ctx) (string, error)` (a seam `app` fills over `settings.Regional`) when it is designed; it also asks which of two things holds for `GET /api/settings/public` and `/api/settings/theme.css`, which want `ETag` and `304` under the `/api/` `no-store` rule of decision 12: that a handler may set `Cache-Control` and `ETag` on its own response, or that those two paths are exempted like `/api/openapi.json` and `/api/modules`; the owner has not chosen): when the public URL exists (D18), `app` passes
+15. **`plan/design/settings.md` (row 15)** (settled 2026-10-19, D40; the narrative is in `plan/design/history/api.md`, "Amendment 2026-10-19": `no-store` stays with the `ETag`, handlers never set `Cache-Control`; `PublicOrigin`'s shape is fixed and it waits for a regional that needs it or for `files`.
+    Earlier note: still pending after the settings spec was approved 2026-10-19, D39: settings.md Proposed change 9 records that the trusted origin and the `Host` allowlist must come from a per-request read, since settings change without a restart, so this change will add `Options.PublicOrigin func(ctx) (string, error)` (a seam `app` fills over `settings.Regional`) when it is designed; it also asks which of two things holds for `GET /api/settings/public` and `/api/settings/theme.css`, which want `ETag` and `304` under the `/api/` `no-store` rule of decision 12: that a handler may set `Cache-Control` and `ETag` on its own response, or that those two paths are exempted like `/api/openapi.json` and `/api/modules`; the owner has not chosen): when the public URL exists (D18), `app` passes
     its origin to `api` as a trusted origin for cross-origin protection, so a front end
     that rewrites `Host` still works; until then the `Host`-preserving rule in 14 holds.
     This adds `Options.TrustedOrigins []string` to this spec at that time, and with it a

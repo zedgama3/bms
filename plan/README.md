@@ -25,7 +25,7 @@ copy and can fork it. Features are modules.
 ## Status
 
 - **Phase:** 1, first module (core M0–M4 done 2026-10-23)
-- **Last updated:** 2026-10-30 (D58)
+- **Last updated:** 2026-10-30 (D59)
 - **Done 2026-10-16:**
   - Repo scaffolded: plan, agents, skills, lint rules, dev compose. Methodology carried over
     from Sojourn (D7).
@@ -144,6 +144,12 @@ copy and can fork it. Features are modules.
     Questions answered: Q-PEOPLE-9, Q-PEOPLE-10, Q-JOBS15, Q-JOBS16, Q-VOL13, Q-DEMO6, Q-SET,
     Q-SET2 (06-open-questions.md). Also recorded: skipped mail keeps its end instant in
     `failed_at`; the terms order; the e-mail article wording.
+- **Owner's answers 2026-10-30 (D59):** the main session's recommendations accepted on keeping
+    specs and tests readable by agents: amendments folded into spec main sections once
+    Implemented (history in `design/history/`); plan lines under 2000 characters; module-volunteers
+    not split for now; large test files split when next worked on; `03-decisions.md` split by
+    milestone past about 100 KB; e2e smoke spec split per area; dev database
+    `bms_pre_notify0002_20261030` dropped.
 - **Status update 2026-10-30 (not a decision):** demo mode (design/demo.md, D53, with Amendment
     D1 / D56) and telemetry Amendment T1 (client telemetry for the public demo, D54) are
     Implemented, marked by the main session (checks green; the reviews' must-fix findings fixed).

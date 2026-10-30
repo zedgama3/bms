@@ -1,47 +1,129 @@
 # Identity
 
 - **Status:** Implemented (2026-10-18); Approved (2026-10-18; owner approved every recommended answer)
-- **Amended 2026-10-18 (owner approval of authz/people):** Proposed changes 6 and 7 applied: `EmailOf` and `LinkAccount` added, `DeletePerson` refuses a superuser account, the accounts admin screen links to the profile, the starter role `account-admin` holds `accounts.read` and `accounts.manage` (`StarterRoles`); the sign-up `taken` conflict reaches the browser as `fields` (api D31; F15 and the UI note); the per-client-address limiter default is about 100 failures per 15 minutes while the per-account bucket stays at 10 (new `ClientFailureLimit`, decision 12); the two deviations marked pending (ChangePassword sharing the sign-in buckets, IPv6 keyed by /64) are accepted.
-- **Amended 2026-10-18 (M1 build, accepted deviations):** implementation deviations recorded in Behavior, "Accepted implementation deviations (M1 build, 2026-10-18)"; `(*Service).CreateSuperuser` added to the Interface; the store interface and the dev-cookie and restricted-session wording corrected to what was built.
-- **Amended 2026-10-18 (M2 build, accepted deviations):** `LinkAccount` Conflict codes and the store method `SetPerson` recorded in Behavior, "Accepted implementation deviations (M2 build, 2026-10-18)".
-- **Amended 2026-10-19 (D39, owner approval of settings and notify):** the forgotten-password flow (notify Proposed change 1) is specified in full in "Amendment 2026-10-19 (D39): the forgotten-password flow" (before Open questions); `Policy` gains `PasswordResetLifetime`, identity exports `Settings` and `CheckSettings`, and Proposed changes 8 and 9 are applied.
-- **Amendment 2026-10-19 (approved, owner, 2026-10-20, D40):** closes the D39 amendment's "Needs a decision" (paragraph removed): `RequestPasswordReset` asks `Notify.Configured` before the account lookup and answers `Unsupported` for every address alike when e-mail is off (notify.md amendment of the same date); F71 and F72 replaced, F91 added. See "Amendment 2026-10-19 (approved, owner, 2026-10-20, D40): reset requests are uniform when e-mail is off".
-- **Amended 2026-10-20 (owner, D40; Q-RESET-RATE, Q-RESET-LIFE, Q-WEB-REVIEW):** reset requests have their own limiter buckets (per client address, per submitted address; not sign-in's) and a per-account cooldown between reset e-mails (a request inside it answers the same `202` and sends nothing); the reset e-mail gets the lifetime as `lifetime_minutes` (a number) and each language's template words the unit; the password-reset page's document response carries `Referrer-Policy: no-referrer` (api.md step 4, F60); the reset `Message` passes `TTL: PasswordResetLifetime` (notify amendment). The numbers were marked "proposed" until the owner confirmed them as defaults of settings (D41, next bullet).
-- **Accepted 2026-10-20 (owner, D40):** the implementation deviations marked "(implementation, 2026-10-19)" in the forgotten-password amendment are accepted as written.
-- **Amended 2026-10-20 (approved, owner, 2026-10-20, D43; D41 refines Q-RESET-RATE; ranges as recommended, the cooldown may be `0` = off, no Spanish `es.json` yet):** the reset limits D40 built as constants (`ResetClientLimit`, `ResetAddressLimit`, `PasswordResetCooldown`) become regional settings with the same defaults ("Make it a setting. The defaults are good."): `accounts.password_reset_client_limit` (20), `accounts.password_reset_address_limit` (5), `accounts.password_reset_cooldown` (5m; `0` turns it off); `Policy` gains the three fields, `Settings` declares eleven keys, `CheckSettings` gains two cross-field rules; the constants are removed. Decision 22 is no longer "proposed" and its Open question is closed. See "Amendment 2026-10-20 (D41): the reset limits are settings" (before Open questions).
-- **Amendment 2026-10-30 (owner, D58; demo Q-DEMO6, people P-W1 Proposed change 27):** `SessionInfo` gains `Protected bool` (`protected`, `omitempty`), set from `Options.Guard` when the session is read, so the password screen shows the shared-account notice and disables its form without matching an e-mail address; on a `Guard` error `SessionInfo` answers `protected: false` and logs a warning, and the server's refusal stays the backstop (F110); `people` reads `Session.IssuedAt` through `SessionFrom` for its once-per-session prompt, so `IssuedAt` stays the server time at sign-in, fixed for the session's life, and a new session carries a new one (no interface change). See "Amendment 2026-10-30 (D58)" before Open questions.
-- **Amendment 2026-10-30 (owner, D57):** the `/accounts/password` page is titled "Account" (it holds "Change password" and "Sign out everywhere else"), matching its nav label; in demo mode a protected account sees the shared-account notice before typing and the form is disabled (demo.md; how the screen knows is demo.md Q-DEMO6).
-- **Amendment 2026-10-28 (approved, owner, D53, demo.md Proposed change 3):** `EnsureAccount` (writer-only bootstrap), `Options.Guard` and the `Guard` seam, `WithSession` doc; section "Amendment 2026-10-28" before Open questions; F99 to F109 (D56 review: `LinkAccount` guarded).
 - **Package:** `internal/core/identity` (service, `Authenticator`, tokens, handlers), `internal/core/identity/account` (the record type), `internal/core/identity/postgres` (store, `sql/`, `migrations/`)   **UI:** `web/src/core/accounts/`
-- **Depends on specs:** `model`, `lib-errs`, `lib-core`, `lib-secret`, `config` (through `app`), `db`, `signals`, `settings` (`Decl`, D39), `notify` (`Notifier`, D39), `telemetry`, `api` (the `Authenticator` seam, `httpx`, the cookie rules), `audit` (Approved; the `Recorder`), `web-shell`, `app`   **Used by:** `api` (`Authenticator`), `app` (part 2, after audit; the `create-superuser` command, the audit actor closure), `audit` (`ActorFunc`, through `app`), every module and core service that needs the actor (`PersonFrom`), `web-shell` (the session endpoint, the sign-in flow), later `authz` (the actor and the superuser flag), `people` (`identity.account-created`, export and deletion; `Session.IssuedAt` through `SessionFrom` for the once-per-session first-sign-in prompt, people decision 34, D58: it must stay the server time at sign-in, fixed for the session's life, and a new session after a password change or "sign out everywhere else" carries a new one), `settings` (`PolicySource`), `notify` (`Alerter`)
+- **Depends on specs:** `model`, `lib-errs`, `lib-core`, `lib-secret`, `config` (through `app`), `db`, `signals`, `settings` (`Decl`, D39), `notify` (`Notifier`, D39), `telemetry`, `api` (the `Authenticator` seam, `httpx`, the cookie rules), `audit` (Approved; the `Recorder`), `web-shell`, `app`
+- **Used by:** `api` (`Authenticator`), `app` (part 2, after audit; the `create-superuser` command, the audit actor closure), `audit` (`ActorFunc`, through `app`), every module and core service that needs the actor (`PersonFrom`), `web-shell` (the session endpoint, the sign-in flow), later `authz` (the actor and the superuser flag), `people` (`identity.account-created`, export and deletion;
+  `Session.IssuedAt` through `SessionFrom` for the once-per-session first-sign-in prompt, people decision 34, D58: it must stay the server time at sign-in, fixed for the session's life, and a new session after a password change or "sign out everywhere else" carries a new one), `settings` (`PolicySource`), `notify` (`Alerter`)
 
 ## Summary
 
-**Purpose.** Say who is making a request: local accounts keyed by e-mail address (D21), Argon2id passwords, signed session tokens in a cookie that are checked without a database write, the per-request `Authenticator` the api shell calls, and the break-glass superuser created only by command (D23). Package `internal/core/identity`; imports `model`, `lib` (`errs`, `clock`, `validate`, `secret`, `httpx`), `core/db`, `core/audit`, `core/signals`, `core/telemetry`, `core/authz` (leaf types only). Never `core/module`, `api`, `app`, `config` or a module. `authz` and `audit` never import identity: they receive the actor through a closure `app` writes over `SessionFrom` (decision 6).
+**Purpose.** Say who is making a request: local accounts keyed by e-mail address (D21), Argon2id passwords, signed session tokens in a cookie that are checked without a database write, the per-request `Authenticator` the api shell calls, and the break-glass superuser created only by command (D23).
+
+**Package and imports.** Package `internal/core/identity`; imports `model`, `lib` (`errs`, `clock`, `validate`, `secret`, `httpx`), `core/db`, `core/audit`, `core/signals`, `core/telemetry`, `core/notify` (`Notifier`, D39), `core/settings` (`Decl`, D39), `core/authz` (leaf types only). Never `core/module`, `api`, `app`, `config` or a module. `authz` and `audit` never import identity: they receive the actor through a closure `app` writes over `SessionFrom` (decision 6).
 
 **Names.** `identity` is the package, the core part, the migration set and the audit area (what it is); `accounts` is the route set (`/api/accounts/`), the permission prefix, the settings prefix and the screen set (what people see).
 
 **Exported (`identity`).**
-- `Session{ID SessionID, Account model.AccountID, Person model.PersonID, Superuser, PasswordChangeRequired bool, IssuedAt, ExpiresAt time.Time}` (+`Validate`); `SessionFrom(ctx) (Session, bool)`; `PersonFrom(ctx) (model.PersonID, bool)` (false with no session, a restricted session or inside `signals.InDelivery`); `WithSession(ctx, Session) context.Context` (tests and `app`'s end-to-end test only). The session value is request-scoped: never stored, never copied into a job or a handler.
-- `Account{ID, Person, Email model.Email, Superuser, PasswordChangeRequired bool, DisabledAt, LastLoginAt, PasswordChangedAt, CreatedAt, UpdatedAt time.Time}` (+`Validate`, `LogValue` emitting IDs only); `AccountQuery{Email model.Email, After Cursor, Limit int}`, `Cursor`, `AccountPage{Accounts, Next}`; `Credentials{Email model.Email, Password string}`; `PasswordChange{Current, New string}`; `SessionInfo{SignedIn, PersonID, AccountID, PlayaName, Superuser, PasswordChangeRequired bool, ExpiresAt, SignupOpen bool, Permissions []string, Protected bool}` (the wire shape of `GET /session`); `Issued{Session, token}` (returned by the use cases that start a session; the handlers turn it into the cookie); `SuperuserResult{Account model.AccountID, Person model.PersonID, Created bool, Password secret.Secret}`.
-- `Policy{SignupMode, SessionLifetime, SuperuserSessionLifetime, PasswordMinLength, LoginFailureLimit, ClientFailureLimit, LoginFailureWindow, PasswordResetLifetime, PasswordResetClientLimit, PasswordResetAddressLimit, PasswordResetCooldown}` (+`Validate`), `DefaultPolicy()`, `SignupOpen|SignupInvitation`; `Settings []settings.Decl` (the eleven `accounts.*` keys with their ranges as `Check`s) and `CheckSettings(map[string]string) error` (the cross-field rules `client_failure_limit >= login_failure_limit`, `password_reset_client_limit >= password_reset_address_limit`, `password_reset_cooldown <= password_reset_lifetime`; D41); `PolicySource` is implemented by `app` over a scoped settings `Reader` (D39).
-- Seams (interfaces identity declares, filled later by `app`; nil means the M1 behaviour in brackets): `PolicySource{Policy(ctx) (Policy, error)}` (settings, M2 [`DefaultPolicy`]); `PermissionChecker{Allow(ctx, authz.Permission) error}` (authz, M2 [deny; the superuser is allowed before the seam is asked]); `PermissionLister{PermissionsOf(ctx, model.PersonID) ([]string, error)}` (authz, M2 [empty]); `NameSource{PlayaNameOf(ctx, model.PersonID) (string, error)}` (people, M2 [""]); `Alerter{SuperuserSignedIn(ctx, model.PersonID) error}` (notify, M4 [one warn log line]); `Notify notify.Notifier` (scoped `identity`, D39 [nil: the reset routes answer `Unsupported`]).
+
+- The principal (request-scoped: never stored, never copied into a job or a handler):
+  - `Session{ID SessionID, Account model.AccountID, Person model.PersonID, Superuser, PasswordChangeRequired bool, IssuedAt, ExpiresAt time.Time}` (+`Validate`). `IssuedAt` is the server time at sign-in, fixed for the session's life; a new session carries a new one (D58).
+  - `SessionFrom(ctx) (Session, bool)`; `PersonFrom(ctx) (model.PersonID, bool)` (false with no session, a restricted session or inside `signals.InDelivery`); `WithSession(ctx, Session) context.Context` (tests and `app`'s end-to-end test only).
+- Values:
+  - `Account{ID, Person, Email model.Email, Superuser, PasswordChangeRequired bool, DisabledAt, LastLoginAt, PasswordChangedAt, CreatedAt, UpdatedAt time.Time}` (+`Validate`, `LogValue` emitting IDs only).
+  - `AccountQuery{Email model.Email, After Cursor, Limit int}`, `Cursor`, `AccountPage{Accounts, Next}`.
+  - `Credentials{Email model.Email, Password string}`; `PasswordChange{Current, New string}`.
+  - `SessionInfo{SignedIn, PersonID, AccountID, PlayaName, Superuser, PasswordChangeRequired bool, ExpiresAt, SignupOpen bool, Permissions []string, Protected bool}` (the wire shape of `GET /session`; `Protected` is `protected`, `omitempty`, D58).
+  - `Issued{Session, token}` (returned by the use cases that start a session; the handlers turn it into the cookie).
+  - `SuperuserResult{Account model.AccountID, Person model.PersonID, Created bool, Password secret.Secret}`; `AccountResult{Account, Person, Created}` (D53).
+- Policy and settings:
+  - `Policy{SignupMode, SessionLifetime, SuperuserSessionLifetime, PasswordMinLength, LoginFailureLimit, ClientFailureLimit, LoginFailureWindow, PasswordResetLifetime, PasswordResetClientLimit, PasswordResetAddressLimit, PasswordResetCooldown}` (+`Validate`), `DefaultPolicy()`, `SignupOpen|SignupInvitation`.
+  - `Settings []settings.Decl` (the eleven `accounts.*` keys with their ranges as `Check`s) and `CheckSettings(map[string]string) error` (the cross-field rules `client_failure_limit >= login_failure_limit`, `password_reset_client_limit >= password_reset_address_limit`, `password_reset_cooldown <= password_reset_lifetime`; D41).
+  - `PolicySource` is implemented by `app` over a scoped settings `Reader` (D39).
+- Seams (interfaces identity declares, filled later by `app`; nil means the M1 behaviour in brackets):
+  - `PolicySource{Policy(ctx) (Policy, error)}` (settings, M2 [`DefaultPolicy`]).
+  - `PermissionChecker{Allow(ctx, authz.Permission) error}` (authz, M2 [deny; the superuser is allowed before the seam is asked]).
+  - `PermissionLister{PermissionsOf(ctx, model.PersonID) ([]string, error)}` (authz, M2 [empty]).
+  - `NameSource{PlayaNameOf(ctx, model.PersonID) (string, error)}` (people, M2 [""]).
+  - `Alerter{SuperuserSignedIn(ctx, model.PersonID) error}` (notify, M4 [one warn log line]).
+  - `Notify notify.Notifier` (scoped `identity`, D39 [nil: the reset routes answer `Unsupported`]).
+  - `Guard{Protected(ctx, AccountID) (bool, error)}` (demo mode, D53 [nil: nothing protected]); a protected account's password, address, disabling and deletion refuse `Permission` field `account` code `protected`.
 - `Options{DB, Clock, Logger, Tracer, Meter, Key secret.Secret, AllowPlaintext bool, Audit audit.Recorder, Signals signals.Bus, Policy, Permissions, PermissionLister, Names, Alerter, Notify notify.Notifier, Guard Guard}` (+`Validate`); `New(Options) (*Service, error)` (no I/O; works against `db.None()`).
-- `*Service` (safe for concurrent use, nothing to close): `Authenticate(ctx, *http.Request) (context.Context, model.PersonID, error)` (= `api.Authenticator`); `SessionInfo(ctx) (SessionInfo, error)`; `SignUp(ctx, Credentials) (Issued, error)`; `SignIn(ctx, Credentials) (Issued, error)`; `SignOut(ctx) error`; `ChangePassword(ctx, PasswordChange) (Issued, error)`; `EndOtherSessions(ctx) (Issued, error)`; `ListAccounts(ctx, AccountQuery) (AccountPage, error)`; `GetAccount(ctx, model.AccountID) (Account, error)`; `DisableAccount(ctx, model.AccountID) error`; `EnableAccount(ctx, model.AccountID) error`; `SetTemporaryPassword(ctx, model.AccountID) (secret.Secret, error)`; `RequestPasswordReset(ctx, model.Email) error`; `CompletePasswordReset(ctx, token, newPassword string) error` (D39); `EnsureSuperuser(ctx, model.Email) (SuperuserResult, error)`; `CreateSuperuser(ctx, out io.Writer, email string) error` (app's command; prints the spec's lines, never the address); `ExportPerson(ctx, model.PersonID) (json.RawMessage, error)`; `DeletePerson(ctx, model.PersonID) (int, error)` (`Permission` for a superuser account); `EmailOf(ctx, model.PersonID) (model.Email, error)`; `LinkAccount(ctx, model.Email, model.PersonID) (model.AccountID, model.PersonID, error)`; `Routes() []Route`; `OpenAPI() []byte`. `Route{Method, Pattern string, Public bool, Handler http.Handler}` (`app` converts to `module.Route`, as for audit). From 2026-10-28 (D53): `EnsureAccount(ctx, Credentials) (AccountResult{Account, Person, Created}, error)` (writer-only, no actor, for commands) and the `Guard{Protected(ctx, AccountID) (bool, error)}` seam (nil = nothing protected; a protected account's password, address, disabling and deletion refuse `Permission` field `account` code `protected`).
+- `*Service` (safe for concurrent use, nothing to close):
+  - Sessions: `Authenticate(ctx, *http.Request) (context.Context, model.PersonID, error)` (= `api.Authenticator`); `SessionInfo(ctx) (SessionInfo, error)`; `SignUp(ctx, Credentials) (Issued, error)`; `SignIn(ctx, Credentials) (Issued, error)`; `SignOut(ctx) error`; `ChangePassword(ctx, PasswordChange) (Issued, error)`; `EndOtherSessions(ctx) (Issued, error)`.
+  - Forgotten password (D39): `RequestPasswordReset(ctx, model.Email) error`; `CompletePasswordReset(ctx, token, newPassword string) error`.
+  - Account admin: `ListAccounts(ctx, AccountQuery) (AccountPage, error)`; `GetAccount(ctx, model.AccountID) (Account, error)`; `DisableAccount(ctx, model.AccountID) error`; `EnableAccount(ctx, model.AccountID) error`; `SetTemporaryPassword(ctx, model.AccountID) (secret.Secret, error)`.
+  - Commands: `EnsureSuperuser(ctx, model.Email) (SuperuserResult, error)`; `CreateSuperuser(ctx, out io.Writer, email string) error` (app's command; prints the spec's lines, never the address); `EnsureAccount(ctx, Credentials) (AccountResult, error)` (writer-only, no actor, for commands; D53).
+  - For `people`: `ExportPerson(ctx, model.PersonID) (json.RawMessage, error)`; `DeletePerson(ctx, model.PersonID) (int, error)` (`Permission` for a superuser account); `EmailOf(ctx, model.PersonID) (model.Email, error)`; `LinkAccount(ctx, model.Email, model.PersonID) (model.AccountID, model.PersonID, error)`.
+  - `Routes() []Route`; `OpenAPI() []byte`. `Route{Method, Pattern string, Public bool, Handler http.Handler}` (`app` converts to `module.Route`, as for audit).
 - Constants: `CookieName = "__Host-bms_session"`, `DevCookieName = "bms_session_dev"`, `TokenVersion = 1`, `MaxPasswordBytes = 256`, `PasswordMinLengthFloor = 12`, `GeneratedPasswordLength = 24`, `HashConcurrency = 4`, `MaxTrackedKeys = 10000`, `MaxPageSize = 100`, `DefaultPageSize = 50`, `ClockSkew = 5 * time.Minute`, `PasswordResetTokenBytes = 32` (D39).
-- `PermissionAccountsRead = "accounts.read"`, `PermissionAccountsManage = "accounts.manage"` (both `ScopeSite`, reach `personal`); `Permissions []authz.PermissionDecl`. `SignalAccountCreated = "identity.account-created"` (payload `account`, `person`). Audit actions `identity.login`, `identity.login-failed`, `identity.logout`, `identity.account.created`, `.read`, `.disabled`, `.enabled`, `.deleted`, `identity.account.linked`, `identity.password.changed`, `identity.password.temporary-set`, `identity.password.reset-requested`, `identity.password.reset`, `identity.sessions.ended`, `identity.superuser.created`, `identity.superuser.reset`, `identity.superuser.login`. Settings `accounts.signup`, `accounts.session_lifetime`, `accounts.superuser_session_lifetime`, `accounts.password_min_length`, `accounts.login_failure_limit`, `accounts.client_failure_limit`, `accounts.login_failure_window`, `accounts.password_reset_lifetime`, `accounts.password_reset_client_limit`, `accounts.password_reset_address_limit`, `accounts.password_reset_cooldown` (D41). Templates `Templates fs.FS` (`identity.password-reset`, `identity.superuser-signed-in`; `en`, `es`). `postgres.Migrations fs.FS`; `Set = db.Set{Name: "identity", Schema: "core"}`. Command `bms create-superuser <email>`.
+- Declarations:
+  - `PermissionAccountsRead = "accounts.read"`, `PermissionAccountsManage = "accounts.manage"` (both `ScopeSite`, reach `personal`); `Permissions []authz.PermissionDecl`.
+  - `SignalAccountCreated = "identity.account-created"` (payload `account`, `person`).
+  - Audit actions `identity.login`, `identity.login-failed`, `identity.logout`, `identity.account.created`, `.read`, `.disabled`, `.enabled`, `.deleted`, `identity.account.linked`, `identity.password.changed`, `identity.password.temporary-set`, `identity.password.reset-requested`, `identity.password.reset`, `identity.sessions.ended`, `identity.superuser.created`, `identity.superuser.reset`, `identity.superuser.login`.
+  - Settings `accounts.signup`, `accounts.session_lifetime`, `accounts.superuser_session_lifetime`, `accounts.password_min_length`, `accounts.login_failure_limit`, `accounts.client_failure_limit`, `accounts.login_failure_window`, `accounts.password_reset_lifetime`, `accounts.password_reset_client_limit`, `accounts.password_reset_address_limit`, `accounts.password_reset_cooldown` (D41).
+  - Templates `Templates fs.FS` (`identity.password-reset`, `identity.superuser-signed-in`; `en`, `es`).
+  - `postgres.Migrations fs.FS`; `Set = db.Set{Name: "identity", Schema: "core"}`. Command `bms create-superuser <email>`.
 
-**Key decisions.** 1 one account table, no provider table yet: providers (OIDC, trusted header) are a later column and a later spec, not a code path now. 2 the token is stateless (HMAC-SHA256 over version, account, session ID, generation, issued, expires; key from HKDF over `Session.Key`); every authenticated request reads one account row (state, never a write), so sessions work on a read-only copy, and revocation is the per-account `session_generation` (09 §2). 3 no sliding renewal: fixed lifetime (30 days; superuser 1 hour), a new token on every password change and "sign out everywhere else"; listing a person's other sessions is Later, best effort (it needs a row per session, which a read-only copy cannot write) (owner, 2026-10-18). 4 the login error never says whether the address exists: unknown address and disabled account both answer `Unauthenticated`, a dummy hash is verified when nothing matched, and the limiter keys on the submitted address, not on whether an account exists; a disabled account with the right password gets the same 401 as a wrong one, and the `Denied` audit entry lets an admin see it (owner, 2026-10-18). 5 Argon2id in PHC string form (m=19456 KiB, t=2, p=1), at most `HashConcurrency` hashes at once; parameters live in the hash so they can be raised with rehash-on-login. 6 `authz` and `audit` get the actor from `app` closures over `SessionFrom`, never by importing identity (no import cycle through `core/authz`'s leaf types). 7 the superuser is an account with `superuser = true`: created or reset by `bms create-superuser <email>` with a generated password printed once, never promoted from a participant account (`Conflict`); several superuser accounts are allowed, each created by its own command and listed on the accounts screen (owner, 2026-10-18); never changed through the API (`Permission`), short sessions, `identity.superuser.login` plus an alert, allowed before any permission seam is asked. 8 identity mints the `PersonID` at sign-up and publishes `identity.account-created {account, person}`; the profile is `people`'s (M2); M1 sign-up asks for e-mail and password only; the header shows a neutral label until the person fills in their profile in M2 (owner, 2026-10-18). 9 a restricted session (`password_change_required`) is signed in to identity's own routes only: `Authenticate` returns the zero person, so every other signed-in route answers 401 and the shell sends the person to the password screen. 10 sign-out clears the cookie before it records `identity.logout`, so a failed audit write still leaves the browser signed out while the response is the audit error; this is an explicit exception to audit decision 3 ("no audit, no action"), recorded in both specs (owner, 2026-10-18). 11 disable, enable and `create-superuser` are idempotent. 12 rate limits are in memory per process, two buckets (client address; submitted canonical address), bounded by `MaxTrackedKeys`, answering `Unavailable` wrapping `httpx.ErrRateLimited` (shared sentinel, Proposed change 1); by default about 100 failures per fifteen minutes per client address (`ClientFailureLimit`: many people share one address at a venue) and ten per fifteen minutes per submitted address (`LoginFailureLimit`), in memory per process, so an on-site and an off-site copy count separately (owner, 2026-10-18; the client-address default raised the same day). 13 the common-password list is embedded (SecLists top 100 000, MIT), checked exactly; a regional cannot change it in M1 (owner, 2026-10-18). 14 regional policy (sign-up mode, lifetimes, minimum length, limits) is the `Policy` read through `PolicySource`, defaults in M1. 15 sign-up answers `409` with field `email` code `taken` (no e-mail verification exists yet; rate-limited per address; revisit with e-mail verification in M4) (owner, 2026-10-18). 16 the e-mail is stored as entered and unique on `lower(email)` (model.md decision 11). 17 identity owns the login address (one row, one uniqueness rule); `people` shows and edits it through an identity method (`ChangeEmail`, M4, with confirmation) and holds a contact address only for people without an account (owner, 2026-10-18). 18 temporary passwords ship in M1 (one method, one button): without e-mail reset until M4 they are the only way to help a locked-out participant (owner, 2026-10-18). 19 (D39) forgotten password is an e-mailed single-use link: `RequestPasswordReset` answers the same whatever the address, `CompletePasswordReset` redeems the token and ends every session; the token is 32 random bytes and only its SHA-256 is stored. 20 no automatic sign-in after a reset: no cookie is set from a public route, and the person is sent to the sign-in page (owner, 2026-10-19). 21 a reset token lasts 1 hour by default (`accounts.password_reset_lifetime`, 10 minutes to 24 hours), is single use, and only the newest token for an account is valid (owner, 2026-10-19). 22 (owner, 2026-10-20, D40; figures and settings D41) reset requests are limited apart from sign-in: own per-client-address and per-submitted-address buckets (`Policy.PasswordResetClientLimit` 20, `Policy.PasswordResetAddressLimit` 5 per `LoginFailureWindow`) and a per-account cooldown (`Policy.PasswordResetCooldown` 5 minutes; `0` turns it off) inside which a request answers the same `202` and sends nothing; the three are regional settings (`accounts.password_reset_client_limit|address_limit|cooldown`) read at use-case time like the sign-in limits, sharing `accounts.login_failure_window`; `ChangePassword` still shares sign-in's buckets (D36(i)); the e-mail receives `lifetime_minutes`, and the template words the unit. The ranges, the cooldown allowed to be `0` and no Spanish catalogue yet are approved (owner, 2026-10-20, D43).
+**Key decisions.**
 
-**Errs kinds callers handle.** `Authenticate`: `(ctx, zero, nil)` for no session; `Unauthenticated` for a malformed, expired, revoked, disabled or unknown session; store kinds (`Unavailable`, `Timeout`, `Canceled`) otherwise; never a nil ctx. `SignIn`: `Invalid` (body), `Unavailable` wrapping `httpx.ErrRateLimited` (429), `Unauthenticated` (wrong, unknown or disabled), `Unavailable` (store or audit), `Timeout`/`Canceled`. `SignUp`: `Unsupported` (invitation mode), `Invalid` (field codes `required`, `malformed`, `too_short`, `too_long`, `common`), `Conflict` (field `email`, code `taken`, emitted as `fields` by the api mapper), `Unavailable` wrapping `db.ErrReadOnly`, limiter 429. `ChangePassword`/`EndOtherSessions`/`SignOut`: `Unauthenticated`, `Invalid` (`current_password` code `incorrect`), `Unavailable` wrapping `db.ErrReadOnly` (not for sign-out). Admin methods: `Unauthenticated`, `Permission` (no permission; the superuser as target), `NotFound` (unknown ID), `Invalid` (query, cursor, own account: field `account` code `self`), `Unavailable` wrapping `db.ErrReadOnly`. `EnsureSuperuser`: `Invalid` (address), `Conflict` (address belongs to a participant account), `Unavailable` wrapping `db.ErrReadOnly`. `ExportPerson`/`DeletePerson`: `Invalid` (zero ID), `Permission` (`DeletePerson` of a superuser account), store kinds. `EmailOf`: `NotFound`. `LinkAccount`: `NotFound` (`email` `unknown`), `Conflict` (`superuser`, `has_account`). `RequestPasswordReset`: `Invalid` (`email`: `required`, `malformed`), `Unavailable` wrapping `httpx.ErrRateLimited`, `Unsupported` (no `Notify`), `Unavailable` (store, audit, `Notify.Send` other than `Unsupported`), `Unavailable` wrapping `db.ErrReadOnly`; nil for an unknown, disabled or superuser address. `CompletePasswordReset`: `Invalid` (`token`: `invalid`, `expired`; `new_password`: `too_short`, `too_long`, `common`), `Unavailable` wrapping `db.ErrReadOnly`, store and audit kinds. `New`/`Options.Validate`: `Invalid` with fields `identity.db`, `identity.clock`, `identity.logger`, `identity.tracer`, `identity.audit`, `identity.signals`, `session.key`. No sentinels of its own.
+1. One account table, no provider table yet: providers (OIDC, trusted header) are a later column and a later spec, not a code path now.
+2. The token is stateless (HMAC-SHA256 over version, account, session ID, generation, issued, expires; key from HKDF over `Session.Key`); every authenticated request reads one account row (state, never a write), so sessions work on a read-only copy, and revocation is the per-account `session_generation` (09 §2).
+3. No sliding renewal: fixed lifetime (30 days; superuser 1 hour), a new token on every password change and "sign out everywhere else"; listing a person's other sessions is Later, best effort (it needs a row per session, which a read-only copy cannot write) (owner, 2026-10-18).
+4. The login error never says whether the address exists: unknown address and disabled account both answer `Unauthenticated`, a dummy hash is verified when nothing matched, and the limiter keys on the submitted address, not on whether an account exists; a disabled account with the right password gets the same 401 as a wrong one, and the `Denied` audit entry lets an admin see it (owner, 2026-10-18).
+5. Argon2id in PHC string form (m=19456 KiB, t=2, p=1), at most `HashConcurrency` hashes at once; parameters live in the hash so they can be raised with rehash-on-login.
+6. `authz` and `audit` get the actor from `app` closures over `SessionFrom`, never by importing identity (no import cycle through `core/authz`'s leaf types).
+7. The superuser is an account with `superuser = true`: created or reset by `bms create-superuser <email>` with a generated password printed once, never promoted from a participant account (`Conflict`); several superuser accounts are allowed, each created by its own command and listed on the accounts screen (owner, 2026-10-18); never changed through the API (`Permission`), short sessions, `identity.superuser.login` plus an alert, allowed before any permission seam is asked.
+8. Identity mints the `PersonID` at sign-up and publishes `identity.account-created {account, person}`; the profile is `people`'s (M2); M1 sign-up asks for e-mail and password only; the header shows a neutral label until the person fills in their profile in M2 (owner, 2026-10-18).
+9. A restricted session (`password_change_required`) is signed in to identity's own routes only: `Authenticate` returns the zero person, so every other signed-in route answers 401 and the shell sends the person to the password screen.
+10. Sign-out clears the cookie before it records `identity.logout`, so a failed audit write still leaves the browser signed out while the response is the audit error; this is an explicit exception to audit decision 3 ("no audit, no action"), recorded in both specs (owner, 2026-10-18).
+11. Disable, enable and `create-superuser` are idempotent.
+12. Rate limits are in memory per process, two buckets (client address; submitted canonical address), bounded by `MaxTrackedKeys`, answering `Unavailable` wrapping `httpx.ErrRateLimited` (shared sentinel, Proposed change 1);
+    by default about 100 failures per fifteen minutes per client address (`ClientFailureLimit`: many people share one address at a venue) and ten per fifteen minutes per submitted address (`LoginFailureLimit`), in memory per process, so an on-site and an off-site copy count separately (owner, 2026-10-18; the client-address default raised the same day).
+13. The common-password list is embedded (SecLists top 100 000, MIT), checked exactly; a regional cannot change it in M1 (owner, 2026-10-18).
+14. Regional policy (sign-up mode, lifetimes, minimum length, limits) is the `Policy` read through `PolicySource`, defaults in M1.
+15. Sign-up answers `409` with field `email` code `taken` (no e-mail verification exists yet; rate-limited per address; revisit with e-mail verification in M4) (owner, 2026-10-18).
+16. The e-mail is stored as entered and unique on `lower(email)` (model.md decision 11).
+17. Identity owns the login address (one row, one uniqueness rule); `people` shows and edits it through an identity method (`ChangeEmail`, M4, with confirmation) and holds a contact address only for people without an account (owner, 2026-10-18).
+18. Temporary passwords ship in M1 (one method, one button): without e-mail reset until M4 they are the only way to help a locked-out participant (owner, 2026-10-18).
+19. (D39) forgotten password is an e-mailed single-use link: `RequestPasswordReset` answers the same whatever the address, `CompletePasswordReset` redeems the token and ends every session; the token is 32 random bytes and only its SHA-256 is stored.
+20. No automatic sign-in after a reset: no cookie is set from a public route, and the person is sent to the sign-in page (owner, 2026-10-19).
+21. A reset token lasts 1 hour by default (`accounts.password_reset_lifetime`, 10 minutes to 24 hours), is single use, and only the newest token for an account is valid (owner, 2026-10-19).
+22. (owner, 2026-10-20, D40; figures and settings D41) reset requests are limited apart from sign-in: own per-client-address and per-submitted-address buckets (`Policy.PasswordResetClientLimit` 20, `Policy.PasswordResetAddressLimit` 5 per `LoginFailureWindow`) and a per-account cooldown (`Policy.PasswordResetCooldown` 5 minutes; `0` turns it off) inside which a request answers the same `202` and sends nothing;
+    the three are regional settings (`accounts.password_reset_client_limit|address_limit|cooldown`) read at use-case time like the sign-in limits, sharing `accounts.login_failure_window`; `ChangePassword` still shares sign-in's buckets (D36(i)); the e-mail receives `lifetime_minutes`, and the template words the unit.
+    The ranges, the cooldown allowed to be `0` and no Spanish catalogue yet are approved (owner, 2026-10-20, D43).
 
-**Owns.** Tables `core.account` (`email` personal, `password_hash` sensitive-credential, `last_login_at` and `disabled_at` personal; rows live until the person is deleted) and `core.password_reset` (`token_hash` sensitive-credential; D39). Permissions `accounts.read`, `accounts.manage`. Signal `identity.account-created`. Settings `accounts.*` (eleven keys above; defaults until `settings`). Route set `accounts`: `GET /session`, `POST /sign-up`, `POST /sign-in`, `POST /sign-out`, `POST /password` (public; the principal is checked inside), `POST /sessions/end-others`, `GET /` (list), `GET /{account}`, `POST /{account}/disable`, `POST /{account}/enable`, `POST /{account}/temporary-password`, and (D39, public) `POST /password-reset`, `POST /password-reset/complete`. Screens `/accounts/password-reset` (with and without `?token=`), `/accounts/sign-in`, `/accounts/sign-up`, `/accounts/password`, `/accounts/admin`, `/accounts/admin/:account`; message keys `core.accounts.*`. Spans `identity.<use-case>`; metrics `bms.identity.logins{outcome}`, `bms.identity.sessions_rejected{reason}`, `bms.identity.rate_limited{bucket}`. Command `create-superuser`. The cookie: `Secure; HttpOnly; SameSite=Lax; Path=/`, `Max-Age` = lifetime, `__Host-` name; `bms_session_dev` without `Secure` only under api decision 24; never both on one response.
+**Errs kinds callers handle.**
 
-**Expects of dependencies.** `api`: calls `Authenticate` on every routed request, 401 on signed-in routes when the person is zero, `httpx.ClientAddrFrom`/`SchemeFrom`, the cookie guard, `httpx.ErrRateLimited` mapped to 429 (Proposed change 1). `audit`: a `Recorder` scoped to `identity` at build time (audit built before identity, audit.md Proposed change 1), `Record` outside any `Read` transaction, the spool on a read-only copy, an explicit `Actor` honoured. `db`: `Transact`, `AfterCommit`, `Wrap`, `ErrReadOnly`, `*Error.Constraint`, `Set`, `dbtest`. `signals`: a `Bus` scoped to `identity`, `InDelivery`. `config` through `app`: `Session.Key`, `HTTP.AllowPlaintext`. `model`: `AccountID`, `PersonID`, `Email` (`ParseEmail`, `Canonical`, `LogValue`). `app`: part 2 as in app.md's table, the command, the actor closures for audit (M1) and authz (M2), the `accounts` route set, the end-to-end test. `web-shell`: the session store, the `401` rule, `/sign-in` as a redirect to `/accounts/sign-in` (Proposed change 2).
+- `Authenticate`: `(ctx, zero, nil)` for no session; `Unauthenticated` for a malformed, expired, revoked, disabled or unknown session; store kinds (`Unavailable`, `Timeout`, `Canceled`) otherwise; never a nil ctx.
+- `SignIn`: `Invalid` (body), `Unavailable` wrapping `httpx.ErrRateLimited` (429), `Unauthenticated` (wrong, unknown or disabled), `Unavailable` (store or audit), `Timeout`/`Canceled`.
+- `SignUp`: `Unsupported` (invitation mode), `Invalid` (field codes `required`, `malformed`, `too_short`, `too_long`, `common`), `Conflict` (field `email`, code `taken`, emitted as `fields` by the api mapper), `Unavailable` wrapping `db.ErrReadOnly`, limiter 429.
+- `ChangePassword`/`EndOtherSessions`/`SignOut`: `Unauthenticated`, `Invalid` (`current_password` code `incorrect`), `Unavailable` wrapping `db.ErrReadOnly` (not for sign-out). Admin methods: `Unauthenticated`, `Permission` (no permission; the superuser as target), `NotFound` (unknown ID), `Invalid` (query, cursor, own account: field `account` code `self`), `Unavailable` wrapping `db.ErrReadOnly`.
+- `EnsureSuperuser`: `Invalid` (address), `Conflict` (address belongs to a participant account), `Unavailable` wrapping `db.ErrReadOnly`.
+- `ExportPerson`/`DeletePerson`: `Invalid` (zero ID), `Permission` (`DeletePerson` of a superuser account), store kinds.
+- `EmailOf`: `NotFound`.
+- `LinkAccount`: `NotFound` (`email` `unknown`), `Conflict` (`superuser`, `has_account`).
+- `RequestPasswordReset`: `Invalid` (`email`: `required`, `malformed`), `Unavailable` wrapping `httpx.ErrRateLimited`, `Unsupported` (no `Notify`), `Unavailable` (store, audit, `Notify.Send` other than `Unsupported`), `Unavailable` wrapping `db.ErrReadOnly`; nil for an unknown, disabled or superuser address.
+- `CompletePasswordReset`: `Invalid` (`token`: `invalid`, `expired`; `new_password`: `too_short`, `too_long`, `common`), `Unavailable` wrapping `db.ErrReadOnly`, store and audit kinds.
+- `New`/`Options.Validate`: `Invalid` with fields `identity.db`, `identity.clock`, `identity.logger`, `identity.tracer`, `identity.audit`, `identity.signals`, `session.key`.
+- No sentinels of its own.
 
-**Open questions:** none; the nine are settled as decisions 8, 7, 15, 17, 3, 4, 13, 18 and 12 (owner, 2026-10-18); the reset-flow questions as decisions 20 and 21 (owner, 2026-10-19, D39); the reset figures as decision 22 (owner, 2026-10-20, D41); the D41 ranges, the cooldown allowed to be `0` (off) and no Spanish `es.json` yet as decision 22 (owner, 2026-10-20, D43). **Proposed changes elsewhere:** 21, listed at the end (status there). **Settled 2026-10-20 (D40):** `RequestPasswordReset` asks `Notify.Configured` before the account lookup; e-mail off answers `Unsupported` for every address alike (F71, F72, F91); reset requests use their own limiter buckets and a per-account cooldown (decision 22; F70, F92, F93). **Settled 2026-10-20 (D41):** the reset limits and the cooldown are settings with D40's figures as defaults (F94 to F98).
+**Owns.**
 
-**M2 build deviations (2026-10-18).** `LinkAccount` Conflict codes are `superuser` (field `email`) and `has_account` (field `person`); the store gains `SetPerson` (`set_account_person.sql`).
+- Tables `core.account` (`email` personal, `password_hash` sensitive-credential, `last_login_at` and `disabled_at` personal; rows live until the person is deleted) and `core.password_reset` (`token_hash` sensitive-credential; D39).
+- Permissions `accounts.read`, `accounts.manage`.
+- Signal `identity.account-created`.
+- Settings `accounts.*` (eleven keys above; defaults until `settings`).
+- Route set `accounts`: `GET /session`, `POST /sign-up`, `POST /sign-in`, `POST /sign-out`, `POST /password` (public; the principal is checked inside), `POST /sessions/end-others`, `GET /` (list), `GET /{account}`, `POST /{account}/disable`, `POST /{account}/enable`, `POST /{account}/temporary-password`, and (D39, public) `POST /password-reset`, `POST /password-reset/complete`.
+- Screens `/accounts/password-reset` (with and without `?token=`), `/accounts/sign-in`, `/accounts/sign-up`, `/accounts/password`, `/accounts/admin`, `/accounts/admin/:account`; message keys `core.accounts.*`.
+- Spans `identity.<use-case>`; metrics `bms.identity.logins{outcome}`, `bms.identity.sessions_rejected{reason}`, `bms.identity.rate_limited{bucket}`.
+- Command `create-superuser`.
+- The cookie: `Secure; HttpOnly; SameSite=Lax; Path=/`, `Max-Age` = lifetime, `__Host-` name; `bms_session_dev` without `Secure` only under api decision 24; never both on one response.
+
+**Expects of dependencies.**
+
+- `api`: calls `Authenticate` on every routed request, 401 on signed-in routes when the person is zero, `httpx.ClientAddrFrom`/`SchemeFrom`, the cookie guard, `httpx.ErrRateLimited` mapped to 429 (Proposed change 1).
+- `audit`: a `Recorder` scoped to `identity` at build time (audit built before identity, audit.md Proposed change 1), `Record` outside any `Read` transaction, the spool on a read-only copy, an explicit `Actor` honoured.
+- `db`: `Transact`, `AfterCommit`, `Wrap`, `ErrReadOnly`, `*Error.Constraint`, `Set`, `dbtest`.
+- `signals`: a `Bus` scoped to `identity`, `InDelivery`.
+- `config` through `app`: `Session.Key`, `HTTP.AllowPlaintext`.
+- `model`: `AccountID`, `PersonID`, `Email` (`ParseEmail`, `Canonical`, `LogValue`).
+- `app`: part 2 as in app.md's table, the command, the actor closures for audit (M1) and authz (M2), the `accounts` route set, the end-to-end test.
+- `web-shell`: the session store, the `401` rule, `/sign-in` as a redirect to `/accounts/sign-in` (Proposed change 2).
+
+**Open questions:** none; all are settled and folded in (decisions 3, 4, 7, 8, 12, 13, 15, 17, 18, 20, 21, 22). The record is in `plan/design/history/identity.md`.
+
+**Proposed changes elsewhere:** 21, listed at the end (status there).
 
 ## Purpose
 
@@ -58,6 +140,8 @@ Say who is making a request.
 - The signal `identity.account-created`, so `people` (M2) can create the person's profile row.
 - The forgotten-password flow (D39): the single-use reset token, `RequestPasswordReset`, `CompletePasswordReset` and their two screens.
 - Export and deletion of what identity holds about a person (the account row), for `people`'s per-person export and deletion.
+- A writer-only bootstrap of an account for commands, `EnsureAccount` (D53).
+- Refusing changes to a protected (shared) account when `Guard` says so, and telling the password screen through `SessionInfo.Protected` (D53, D58).
 - The screens: sign in, sign up, the Account page (change password, with "sign out everywhere else"; D57), and the account admin's list and detail screens.
 
 ## Not responsible for
@@ -76,15 +160,17 @@ Say who is making a request.
 | Settings storage and the admin screen for `accounts.*` | `settings` (M4); `app` implements `PolicySource` over a scoped `Reader` |
 | Retention of the audit trail of logins | `audit` |
 | The read-only banner, the superuser banner, the `401` redirect | `web-shell` |
+| Which accounts are shared (protected) | demo mode (demo.md), through `app`; identity only asks `Guard` (D53) |
 
 ## Sub-abstractions
 
 | Name | Purpose (one line) | Notes |
 |---|---|---|
-| Accounts | Keep one account per person with its state. | `SignUp`, `ListAccounts`, `GetAccount`, `DisableAccount`, `EnableAccount`, `SetTemporaryPassword`, `ExportPerson`, `DeletePerson`; the table |
+| Accounts | Keep one account per person with its state. | `SignUp`, `EnsureAccount`, `ListAccounts`, `GetAccount`, `DisableAccount`, `EnableAccount`, `SetTemporaryPassword`, `ExportPerson`, `DeletePerson`; the table |
 | Passwords | Decide whether a password is acceptable, hash it and verify it. | `password.go`: policy check, Argon2id, the embedded list, the hash semaphore, the dummy hash |
 | Sessions | Turn a valid login into a token and a token into a principal, without writing. | `token.go` (sign, verify), `cookie.go` (read, write, clear), `Authenticate`, `SignIn`, `SignOut`, `ChangePassword`, `EndOtherSessions`, `SessionFrom`, `PersonFrom` |
 | Login limiter | Slow down guessing by address and by submitted address. | `limiter.go`: two bounded maps for sign-in, and (D40) a second pair of the same type for password-reset requests, a fake-clock-friendly sweep on access; the limits and the window are arguments of each `reserve`, read from the `Policy` by the use case (D41), never held by the limiter |
+| Password reset | Let a person who forgot their password set a new one by an e-mailed single-use link (D39). | `RequestPasswordReset`, `CompletePasswordReset`, `core.password_reset`, the two reset screens |
 | Superuser | Create or reset the break-glass account by command and mark its sessions. | `EnsureSuperuser`, the `create-superuser` command (in `app`), the short lifetime, the alert |
 | Accounts screens | Let a person sign in, sign up and change their password, and an account admin manage accounts, on a phone. | `web/src/core/accounts/` |
 
@@ -94,8 +180,8 @@ Say who is making a request.
 package identity // internal/core/identity
 //
 // Imports: model; lib/errs, lib/clock, lib/validate, lib/secret, lib/httpx; core/db;
-// core/audit; core/signals; core/telemetry; core/authz (Permission, PermissionDecl: leaf
-// types). Never core/module, api, app, config or a module. Neither authz nor audit may
+// core/audit; core/signals; core/telemetry; core/notify (Notifier); core/settings (Decl);
+// core/authz (Permission, PermissionDecl: leaf types). Never core/module, api, app, config or a module. Neither authz nor audit may
 // import identity (decision 6).
 
 const (
@@ -110,10 +196,9 @@ const (
 	MaxPageSize            = 100
 	DefaultPageSize        = 50
 	ClockSkew              = 5 * time.Minute // a token issued further in the future is malformed
+	PasswordResetTokenBytes = 32 // random bytes in a reset token (D39); only its SHA-256 is stored
 	// The password-reset limits and cooldown are Policy fields (D41), not constants: see
 	// PasswordResetClientLimit, PasswordResetAddressLimit and PasswordResetCooldown below.
-	// The constants ResetClientLimit, ResetAddressLimit and PasswordResetCooldown of D40 are
-	// removed, as LoginFailureLimit has no constant either: a default lives in DefaultPolicy.
 )
 
 // ---- The principal ----
@@ -132,6 +217,9 @@ type Session struct {
 	Person                 model.PersonID
 	Superuser              bool // D23: the audit log marks it; authz allows everything
 	PasswordChangeRequired bool // a temporary password: only identity's own routes see a person (decision 9)
+	// IssuedAt is the server time at sign-in, fixed for the session's life; a new session
+	// (after a password change or "sign out everywhere else") carries a new one. people
+	// reads it through SessionFrom for its once-per-session prompt (D58).
 	IssuedAt, ExpiresAt    time.Time
 }
 
@@ -226,6 +314,13 @@ type Issued struct {
 	token   string
 }
 
+// AccountResult is what EnsureAccount reports (D53).
+type AccountResult struct {
+	Account model.AccountID
+	Person  model.PersonID
+	Created bool // false: the address existed and its password was reset
+}
+
 // SuperuserResult is what create-superuser prints from.
 type SuperuserResult struct {
 	Account  model.AccountID
@@ -263,7 +358,12 @@ func DefaultPolicy() Policy
 // Validate fails errs.Invalid with a validate.FieldError per key out of its range (field =
 // the full key, code range), every violation reported at once. Dependent ranges: the two
 // client limits are never below their per-address limit; the reset cooldown never exceeds
-// the reset lifetime (D41).
+// the reset lifetime (D41). The ranges, each a validate.Range (code range, params min and max):
+//   accounts.password_reset_lifetime       10m..24h (D39)
+//   accounts.password_reset_address_limit  1..100
+//   accounts.password_reset_client_limit   min(max(5, PasswordResetAddressLimit), 1000)..1000
+//   accounts.password_reset_cooldown       0..min(1h, PasswordResetLifetime)
+// (the cooldown's upper bound is never below 10m because PasswordResetLifetime's own floor is 10m).
 func (p Policy) Validate() error
 
 // PolicySource returns the current policy. settings implements it (M2); nil means
@@ -301,6 +401,40 @@ type Alerter interface {
 	SuperuserSignedIn(ctx context.Context, person model.PersonID) error
 }
 
+// Guard says which accounts are shared and must stay usable by everyone (D53, demo mode
+// only). A nil Options.Guard protects nothing. An error from Protected fails a guarded
+// use case closed, except SessionInfo (F110, D58); see Behavior.
+type Guard interface {
+	Protected(ctx context.Context, a model.AccountID) (bool, error)
+}
+
+// ---- Settings and templates ----
+
+// Settings declares the eleven accounts.* keys for the settings core area "accounts"
+// (module-contract style Decl; the Settings table below has each key's default and range).
+// The three reset limits follow password_reset_lifetime, in this order (D41):
+//   {Key: "password_reset_client_limit",  Kind: settings.Int,      Default: "20", Check: intRange(..., 5, 1000)}
+//   {Key: "password_reset_address_limit", Kind: settings.Int,      Default: "5",  Check: intRange(..., 1, 100)}
+//   {Key: "password_reset_cooldown",      Kind: settings.Duration, Default: "5m", Check: durationRange(..., 0, time.Hour)}
+// Each Check is intRange or durationRange over the same bounds as Policy.Validate
+// (TestSettings_Checks_AgreeWithPolicyValidate). Pure.
+var Settings []settings.Decl
+
+// CheckSettings is the area's cross-field Check over the effective values (bare keys); all
+// violations are joined (validate.Errors), each reported by the bare key of the value that
+// must move. Pure. A value that does not parse is still the per-key Check's to report; the
+// rule that needs it is skipped. The rules:
+//   client_failure_limit >= login_failure_limit
+//   password_reset_client_limit >= password_reset_address_limit (D41)
+//       ("password_reset_client_limit", code range, min = the address limit, max = 1000)
+//   password_reset_cooldown <= password_reset_lifetime (D41)
+//       ("password_reset_cooldown", code range, min = "0s", max = the lifetime)
+func CheckSettings(values map[string]string) error
+
+// Templates holds password-reset.{en,es}.tmpl and superuser-signed-in.{en,es}.tmpl
+// (owner "identity"; app registers it with notify, notify.md Behavior).
+var Templates fs.FS
+
 // ---- The service ----
 
 type Options struct {
@@ -318,6 +452,7 @@ type Options struct {
 	Lister         PermissionLister
 	Names          NameSource
 	Alerter        Alerter
+	Notify         notify.Notifier // scoped to "identity" (D39); nil means no reset: both reset routes answer Unsupported
 	Guard          Guard // optional; nil protects nothing (D53, demo mode only)
 }
 
@@ -423,6 +558,61 @@ func (s *Service) EnableAccount(ctx context.Context, id model.AccountID) error
 // (crypto/rand, F43). Consumer: POST /{account}/temporary-password.
 func (s *Service) SetTemporaryPassword(ctx context.Context, id model.AccountID) (secret.Secret, error)
 
+// RequestPasswordReset asks for a reset link for the account with this address.
+// Consumers: POST /api/accounts/password-reset. No session, no permission. Order:
+//  1. email.Validate (Invalid: email required / malformed);
+//  2. the reset limiter's two buckets (client address, canonical submitted address),
+//     separate from sign-in's failure buckets (a flood of reset requests never blocks
+//     sign-in, and failed sign-ins never block a reset), limits
+//     Policy.PasswordResetClientLimit and Policy.PasswordResetAddressLimit per
+//     Policy.LoginFailureWindow (D41: read from the policy on this request, as SignIn
+//     reads its limits), each request counted once whatever the outcome; at the limit:
+//     Unavailable wrapping httpx.ErrRateLimited (D40);
+//  3. Notify == nil, or Notify.Configured(ctx) is false: Unsupported, before the account
+//     lookup and for every address alike; a Configured error fails with its kind, also
+//     before the lookup (F91);
+//  4. verify one dummy hash, for every address alike, before the lookup (implementation, 2026-10-19);
+//     then the account lookup; unknown, disabled or superuser (D23: command only): an
+//     audit entry (Outcome Denied) is recorded, nothing is sent, nil returned;
+//  5. otherwise, in one Write transaction (the account row locked first, so two requests
+//     cannot both pass the cooldown): read the newest core.password_reset.created_at for
+//     the account, used or not; if Policy.PasswordResetCooldown is positive and the row
+//     is later than now - Policy.PasswordResetCooldown, record the entry (Outcome Denied,
+//     Reason "cooldown"), send nothing, commit nothing else and return nil (the same 202,
+//     so nothing is revealed; D40); a cooldown of 0 skips this test (D41); otherwise purge the
+//     account's expired and used tokens,
+//     delete its earlier tokens (only the newest is valid), mint PasswordResetTokenBytes
+//     random bytes (base64url, no padding), insert sha256(token) with
+//     expires_at = now + Policy.PasswordResetLifetime, Notify.Send(identity.password-reset,
+//     To: the account's person, Key: "password-reset:" + reset row id,
+//     TTL: Policy.PasswordResetLifetime (notify amendment: the queued text expires with
+//     the token), Link: "/accounts/password-reset?token=<token>",
+//     Vars{"lifetime_minutes": "<N>"}) (D40: a bare whole number of minutes, no unit),
+//     Record identity.password.reset-requested (Subject: the account's person).
+//     If Send answers Invalid or NotFound (for example a missing person row), the request
+//     answers silently (nil, nothing committed) with one warn line (implementation, 2026-10-19).
+//     The lifetime is formatted as whole minutes ("60"); each language's template words
+//     the unit ("{{.Vars.lifetime_minutes}} minutes", "... minutos"), so Spanish and
+//     English plurals and word order are the template's business, not the code's.
+// Returns nil in every non-error case; the handler answers 202 with no body. The body
+// of the request is {email} (implementation, 2026-10-19).
+func (s *Service) RequestPasswordReset(ctx context.Context, email model.Email) error
+
+// CompletePasswordReset redeems a token and sets a new password. Consumers:
+// POST /api/accounts/password-reset/complete. No session. Hashes the token and finds the
+// row; missing, used or disabled account: Invalid (token: invalid); expired: Invalid
+// (token: expired). The new password is checked as ChangePassword checks it (min length,
+// MaxPasswordBytes, common list). The body is {token, new_password} (implementation, 2026-10-19). Order (implementation, 2026-10-19):
+// a non-locking lookup and the validity checks; hash the new password outside any
+// transaction; then one Write transaction that locks the account first, marks the token
+// used (the `used_at IS NULL` guard decides a race), then sets password_hash and
+// password_changed_at, clears password_change_required, bumps session_generation (every
+// session ends) and Records identity.password.reset. Locking the account first avoids a
+// lock-order deadlock with RequestPasswordReset. No session is issued and no
+// cookie is set (decision 20). The handler answers 204; the shell goes to the sign-in page
+// with a "password changed" notice.
+func (s *Service) CompletePasswordReset(ctx context.Context, token, newPassword string) error
+
 // EnsureSuperuser is the create-superuser command's use case (ActorOperator, D23). Validates
 // email (F44). In one Write transaction: no account at that canonical address: insert
 // {superuser: true, person: NewID}, publish identity.account-created, record
@@ -436,6 +626,17 @@ func (s *Service) EnsureSuperuser(ctx context.Context, email model.Email) (Super
 // CreateSuperuser is what app's create-superuser command calls: it parses email, runs
 // EnsureSuperuser and writes the spec's output lines to out. It never prints the address.
 func (s *Service) CreateSuperuser(ctx context.Context, out io.Writer, email string) error
+
+// EnsureAccount is the writer-only bootstrap for commands (the sibling of CreateSuperuser):
+// no actor, no permission check, no sign-up mode check, no limiter (D53). The password is
+// validated as SignUp validates it (length, common-password list). It creates the account
+// and publishes SignalAccountCreated, or, when the address exists and is not a superuser,
+// sets the password, enables the account and bumps session_generation. Audited
+// identity.account.created or identity.password.changed with ActorOperator. Fails Invalid
+// (password), Conflict (code superuser) for a superuser address, Unavailable wrapping
+// db.ErrReadOnly on a read-only copy, store kinds. Not guarded: it is how the seed sets the
+// demo password. Consumer: core/demo's seed through app.
+func (s *Service) EnsureAccount(ctx context.Context, c Credentials) (AccountResult, error)
 
 // ExportPerson returns {"account": {...}} (Account without the hash) or {"account": null}
 // when the person has none. people (M2/M4) calls it through app. Fails Invalid for a zero
@@ -553,6 +754,23 @@ type store interface {
 	TouchLogin(ctx context.Context, id model.AccountID, at time.Time) error
 	Rehash(ctx context.Context, id model.AccountID, newHash, oldHash secret.Secret) error
 	Superuser(ctx context.Context, id model.AccountID, person model.PersonID, e model.Email, hash secret.Secret, at time.Time) (account.Superuser, error)
+
+	// LinkAccount (M2): SetPerson, set_account_person.sql, moves an account to another person.
+
+	// Forgotten-password flow (D39, D40; migration 0002):
+	// ReplaceResetToken purges used and expired rows of that account, deletes its other rows
+	// and inserts; one statement set inside the caller's transaction.
+	ReplaceResetToken(ctx context.Context, account model.AccountID, hash []byte, expires time.Time) (id uuid.UUID, err error)
+	// ResetByHash: NotFound when absent.
+	ResetByHash(ctx context.Context, hash []byte) (ResetRow, error)
+	// CompleteReset sets the password and the revocation and marks used_at; NotFound if the
+	// row was already used, so two concurrent redemptions cannot both win.
+	CompleteReset(ctx context.Context, id uuid.UUID, account model.AccountID, passwordHash string, now time.Time) error
+	// ResetState locks the account row and returns {NewestAt, Disabled, Superuser}: the
+	// newest reset row's created_at (zero when none) and the account's flags read under the
+	// lock, so an account disabled after the lookup is denied without a send. A separate
+	// call because the cooldown check runs before ReplaceResetToken deletes anything (D40).
+	ResetState(ctx context.Context, account model.AccountID) (account.ResetState, error)
 }
 ```
 
@@ -564,21 +782,23 @@ func NewStore(d db.DB) (*Store, error) // Invalid for nil
 
 ### The token
 
-Bytes, before encoding: `version(1) | account_id(16) | session_id(16) | generation(4, big-endian uint32) | issued_at(8, unix seconds, big-endian int64) | expires_at(8) | mac(32)`; 85 bytes; the cookie value is the unpadded base64url form (114 characters). `mac = HMAC-SHA256(k, bytes[0:53])` with `k = HKDF-SHA256(ikm = Session.Key bytes, salt = nil, info = "bms identity session v1", length 32)`. Verification: exact length, version `1`, constant-time MAC compare, `issued_at <= now + ClockSkew`, `expires_at > now`; then the account's `State`: not disabled, `Generation == generation`. Nothing in the token is secret except the MAC; nothing in it is personal (IDs and times). Changing `Session.Key` invalidates every session (config decision 7).
+Bytes, before encoding: `version(1) | account_id(16) | session_id(16) | generation(4, big-endian uint32) | issued_at(8, unix seconds, big-endian int64) | expires_at(8) | mac(32)`; 85 bytes; the cookie value is the unpadded base64url form (114 characters). `mac = HMAC-SHA256(k, bytes[0:53])` with `k = HKDF-SHA256(ikm = Session.Key bytes, salt = nil, info = "bms identity session v1", length 32)`.
+Verification: exact length, version `1`, constant-time MAC compare, `issued_at <= now + ClockSkew`, `expires_at > now`; then the account's `State`: not disabled, `Generation == generation`. Nothing in the token is secret except the MAC; nothing in it is personal (IDs and times). Changing `Session.Key` invalidates every session (config decision 7).
 
 ### The cookie
 
-`Set-Cookie: __Host-bms_session=<token>; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=<lifetime seconds>`. Under api decision 24 (AllowPlaintext and `httpx.SchemeFrom` is `http`) the handler writes `bms_session_dev` with the same attributes but `Secure`, and never both. Clearing uses the same name and attributes with `Max-Age=0`. Reading prefers `__Host-bms_session`; `bms_session_dev` is read only when `AllowPlaintext` is set and `httpx.SchemeFrom` is `http`. The handlers call `httpx.Fail` for every error and write nothing else themselves; `Issued.token` never appears in a log, span, error or body.
+`Set-Cookie: __Host-bms_session=<token>; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=<lifetime seconds>`. Under api decision 24 (AllowPlaintext and `httpx.SchemeFrom` is `http`) the handler writes `bms_session_dev` with the same attributes but `Secure`, and never both. Clearing uses the same name and attributes with `Max-Age=0`.
+Reading prefers `__Host-bms_session`; `bms_session_dev` is read only when `AllowPlaintext` is set and `httpx.SchemeFrom` is `http`. The handlers call `httpx.Fail` for every error and write nothing else themselves; `Issued.token` never appears in a log, span, error or body.
 
 ## Types
 
-Defined here: `Session`, `SessionID`, `Account`, `AccountQuery`, `Cursor`, `AccountPage`, `Credentials`, `PasswordChange`, `SessionInfo`, `Issued`, `SuperuserResult`, `Policy`, `SignupMode`, `Route`, `account.Record`, `account.State`, `account.Key`. Uses `model.AccountID`, `model.PersonID`, `model.Email`, `secret.Secret`, `audit.Entry`/`Actor`/`Ref`, `signals.Name`/`Payload`, `authz.Permission`/`PermissionDecl`.
+Defined here: `Session`, `SessionID`, `Account`, `AccountQuery`, `Cursor`, `AccountPage`, `Credentials`, `PasswordChange`, `SessionInfo`, `Issued`, `SuperuserResult`, `AccountResult`, `Guard`, `Policy`, `SignupMode`, `Route`, `account.Record`, `account.State`, `account.ResetState`, `account.Key`. Uses `model.AccountID`, `model.PersonID`, `model.Email`, `secret.Secret`, `audit.Entry`/`Actor`/`Ref`, `signals.Name`/`Payload`, `authz.Permission`/`PermissionDecl`.
 
 Field codes identity adds to the shell's vocabulary: `too_short` (params `min`), `too_long` (params `max`), `common`, `taken`, `incorrect`, `self`; plus the existing `required`, `malformed`, `range`.
 
 ## Data
 
-Migration set `identity`, schema `core`, `internal/core/identity/postgres/migrations/0001_init.sql`.
+Migration set `identity`, schema `core`, in `internal/core/identity/postgres/migrations/`: `0001_init.sql` (`core.account`) and `0002_password_reset.sql` (`core.password_reset`, D39).
 
 **`core.account`** (one row per account; a person has at most one)
 
@@ -599,9 +819,22 @@ Migration set `identity`, schema `core`, `internal/core/identity/postgres/migrat
 
 Indexes: `account_email_canonical_key` (unique), `account_person_id_key` (unique), `account_created_at_id_idx` on `(created_at DESC, id DESC)` for the list. `COMMENT ON COLUMN` carries each sensitivity level. No foreign key to a person row until `people` exists (M2 decides whether `people.person` references `core.account.person_id` or the reverse; identity proposes that `people` references nothing here and matches by ID).
 
+**`core.password_reset`** (D39)
+
+| Column | Type | Constraints | Sensitivity | Why | Retention |
+|---|---|---|---|---|---|
+| `id` | `uuid` | PK | internal | the idempotency key of the e-mail | row lifetime |
+| `account_id` | `uuid` | NOT NULL, FK `core.account(id)` ON DELETE CASCADE | internal | whose reset it is; goes with the account on `DeletePerson` | row lifetime |
+| `token_hash` | `bytea` | NOT NULL, UNIQUE | sensitive (a credential: SHA-256 of the token; the token itself is never stored, logged or exported) | redeem by hash | row lifetime |
+| `expires_at` | `timestamptz` | NOT NULL | internal | `now + accounts.password_reset_lifetime` | row lifetime |
+| `used_at` | `timestamptz` | NULL | internal | a replay answers `invalid` | row lifetime |
+| `created_at` | `timestamptz` | NOT NULL | internal | | row lifetime |
+
+Index: `password_reset_account_id_idx` on `(account_id)`. Used and expired rows are removed by the next request for that account (`ReplaceResetToken`) and by the M4 retention job; a deleted person's rows go with the account (cascade). `ExportPerson` does not include the table (a credential, nothing about the person).
+
 Personal data never leaves the table except: `email`, `disabled_at`, `last_login_at` to the person themselves and to `accounts.read` (audited, F35); `ExportPerson`. Nothing here goes to a log, span, metric, signal or error message (`Account.LogValue`, `Email.LogValue`, `secret.Secret`).
 
-Failed-login counters live in memory only (two bounded maps keyed by `netip.Addr` and by canonical address, each a ring of failure times within the window); they are personal data in flight (api.md "client address") and are never logged or persisted.
+Failed-login counters live in memory only (two bounded maps keyed by `netip.Addr` and by canonical address, each a ring of failure times within the window; reset requests have a second pair of the same maps, D40); they are personal data in flight (api.md "client address") and are never logged or persisted.
 
 ## Permissions
 
@@ -618,14 +851,17 @@ Operations and the permission each needs:
 | `ChangePassword`, `EndOtherSessions` | none (the session itself) | restricted sessions may change their password only |
 | `ListAccounts`, `GetAccount` | `accounts.read` | the superuser passes without a grant (D23); every returned record but the actor's own is an audited personal read |
 | `DisableAccount`, `EnableAccount`, `SetTemporaryPassword` | `accounts.manage` | never on the superuser account, never on oneself |
+| `RequestPasswordReset`, `CompletePasswordReset` | none | public routes (D39); no session needed, and a signed-in or restricted person may use them |
 | `EnsureSuperuser` | none: the operator on the host (`ActorOperator`) | no route |
+| `EnsureAccount` | none: the operator on the host, or `core/demo`'s seed (`ActorOperator`, D53) | no route |
 | `ExportPerson`, `DeletePerson`, `EmailOf`, `LinkAccount` | `people`'s (`people.data.export`/`.delete`, `people.profiles.manage`, M2), checked by `people` before it calls identity | no route here |
 
-In M1 `Permissions` is nil: `accounts.*` is denied to everyone but the superuser, so the milestone's "disable an account" is done by the superuser, and the admin screens show their forbidden state to anyone else (as `hello` and `audit` answer 403 until authz). A single record the caller may not see answers `Permission` here, not `NotFound`: the action (`accounts.read`) is refused before any ID is looked up, so no `403` confirms that an ID exists.
+In M1 `Permissions` is nil: `accounts.*` is denied to everyone but the superuser, so the milestone's "disable an account" is done by the superuser, and the admin screens show their forbidden state to anyone else (as `hello` and `audit` answer 403 until authz).
+A single record the caller may not see answers `Permission` here, not `NotFound`: the action (`accounts.read`) is refused before any ID is looked up, so no `403` confirms that an ID exists. In demo mode (D53) `Guard` refuses `Permission` field `account` code `protected` on a protected account whatever the grant (Behavior).
 
 ## Signals
 
-**Published:** `identity.account-created` `{account: AccountID, person: PersonID}`, inside the `Write` transaction of `SignUp` and of `EnsureSuperuser` (when it creates). Consumers: `people` (M2) creates the person's profile row, idempotent on the person ID. In M1 nobody subscribes; the name goes in `Env.CoreSignals`. No signal carries the address or anything personal (signals decision 4).
+**Published:** `identity.account-created` `{account: AccountID, person: PersonID}`, inside the `Write` transaction of `SignUp`, of `EnsureSuperuser` and of `EnsureAccount` (when they create). Consumers: `people` (M2) creates the person's profile row, idempotent on the person ID. In M1 nobody subscribes; the name goes in `Env.CoreSignals`. No signal carries the address or anything personal (signals decision 4).
 
 Not published, on purpose: disable, enable, delete. No consumer is named yet; when one is (for example `volunteers` dropping a disabled person from upcoming shifts), the name is added with it.
 
@@ -649,7 +885,7 @@ Declared here, read through `PolicySource` (settings, M2); until then `DefaultPo
 | `accounts.password_reset_address_limit` | int | `5` | `1`..`100` (reset requests per canonical submitted address per `login_failure_window`) (D41) | settings admin |
 | `accounts.password_reset_cooldown` | duration | `5m` | `0s`..`1h`; `0` turns the cooldown off; never above `password_reset_lifetime` (D41) | settings admin |
 
-`Policy.Validate` is the validation error for each (`Invalid`, field = the key). A changed lifetime applies to tokens issued after the change; existing tokens keep their `expires_at`. A changed limit or cooldown applies to the next request (the limiter holds counts, never limits; the amendment of 2026-10-20, D41).
+`Policy.Validate` is the validation error for each (`Invalid`, field = the key). A changed lifetime applies to tokens issued after the change; existing tokens keep their `expires_at`. A changed limit or cooldown applies to the next request (the limiter holds counts, never limits; D41).
 
 Configuration consumed through `app`: `session.key` (`Options.Key`), `http.allow_plaintext` (`Options.AllowPlaintext`). No new catalogue keys in M1.
 
@@ -659,13 +895,43 @@ Screen set `accounts` (`kind: "core"`, `web/src/core/accounts/`, catalogue `mess
 
 | Route | Who | What is on it | Empty / error / forbidden |
 |---|---|---|---|
-| `/accounts/sign-in` (public; the shell's `/sign-in` redirects here keeping `?returnTo=`) | signed out | the form the shell has today: e-mail (`autocomplete=username`, `inputMode=email`), password (`current-password`, a show/hide toggle), "Sign in"; a "Create an account" link when `signup_open`; already signed in: `Navigate` to `returnTo` | `401` → "That e-mail address or password isn't right." (never which); `429` → `error.rate_limited` with the retry time; `503 read_only` cannot happen here (sign-in works read-only); other errors through `ErrorSummary` with the reference |
+| `/accounts/sign-in` (public; the shell's `/sign-in` redirects here keeping `?returnTo=`) | signed out | the form the shell has today: e-mail (`autocomplete=username`, `inputMode=email`), password (`current-password`, a show/hide toggle), "Sign in"; a "Forgot your password?" link to `/accounts/password-reset`; a "Create an account" link when `signup_open`; already signed in: `Navigate` to `returnTo` | `401` → "That e-mail address or password isn't right." (never which); `429` → `error.rate_limited` with the retry time; `503 read_only` cannot happen here (sign-in works read-only); other errors through `ErrorSummary` with the reference |
 | `/accounts/sign-up` (public) | signed out, when `signup_open` | e-mail, password (`new-password`, the minimum length and "not a common password" stated under the field, a show/hide toggle; no confirm field), "Create account"; success: session refreshed, `Navigate` to `returnTo` or `/` | field errors by `fields[].code` (`too_short {min}`, `too_long {max}`, `common`, `taken` on the e-mail input from the `409`'s `fields`, `malformed`); `501` (invitation mode) → "This regional creates accounts by invitation."; `503 read_only` → the shell's read-only wording ("nothing can be saved right now"); `429` as above |
-| `/accounts/password` (signed in, restricted sessions included; nav `main` "Account", D57: the page is titled "Account" and holds two sections) | the person | page title "Account" (`core.accounts.password.title`; the nav label and the title agree, D57); first section "Change password" (`core.accounts.password.section`): current, new (`new-password`), "Change"; after success a toast "Password changed" and, when the session was restricted, `Navigate` to `returnTo` or `/`; a second section "Sign out everywhere else" with one button and a confirmation `Dialog`; a `Banner` "You must choose a new password before you continue." when `password_change_required`; for a protected demo account the notice "This is a shared demo account. Its password and e-mail address can't be changed." above the form and the form disabled (D57, demo.md) | `incorrect` on the current field; `503 read_only` → read-only wording; `401` → the shell's redirect |
+| `/accounts/password` (signed in, restricted sessions included; nav `main` "Account", D57: the page is titled "Account" and holds two sections) | the person | page title "Account" (`core.accounts.password.title`; the nav label and the title agree, D57); first section "Change password" (`core.accounts.password.section`): current, new (`new-password`), "Change"; after success a toast "Password changed" and, when the session was restricted, `Navigate` to `returnTo` or `/`; a second section "Sign out everywhere else" with one button and a confirmation `Dialog`; a `Banner` "You must choose a new password before you continue." when `password_change_required`; for a protected demo account (`SessionInfo.protected`, D58) the notice "This is a shared demo account. Its password and e-mail address can't be changed." above the form and the form disabled (D57, demo.md) | `incorrect` on the current field; `503 read_only` → read-only wording; `401` → the shell's redirect |
+| `/accounts/password-reset` (public) | signed out | one e-mail field, "Send the link"; on any `202` always "If an account exists for that address, an e-mail is on its way." | `501` (not configured) -> "Password reset by e-mail isn't set up here. Ask an administrator for a temporary password."; `429` -> `error.rate_limited` with the retry time; `503 read_only` -> the shell's read-only wording; field error for `malformed` |
+| `/accounts/password-reset?token=...` (public) | signed out | new password and the same again (`new-password`, the minimum length and "not a common password" under the field), "Change password"; on `204` `Navigate` to `/accounts/sign-in` with a "Password changed. Sign in with your new password." notice | `invalid` / `expired` -> an `ErrorState` with a link to ask again; password field errors (`too_short {min}`, `too_long {max}`, `common`); `503 read_only` as above |
 | `/accounts/admin` (nav `admin` "Accounts", `access: ["accounts.read"]`) | account admins, the superuser | a search field "E-mail address" (exact match) and, below it, the newest accounts as a list (phone: one card per account; wide: `Table`): address, state (Active, Disabled, Superuser), last sign-in, created; "Load more" keyset paging; tap → detail | empty: "No accounts yet."; `403` → "You don't have permission to see accounts." (`ErrorState`, forbidden); search with no match: "No account has that address." |
 | `/accounts/admin/:account` | as above | the account's fields; "Disable" / "Enable" (confirmation `Dialog`; disabled for the superuser account and for oneself, with the reason as text); a "Profile" link to `/people/<person>` (people, M2); "Set a temporary password" (confirmation, then a `Dialog` showing the password once in a `<code>` with a copy button and "The person must change it at their next sign-in."); a toast per action | `404` → `ErrorState` not found; `403` as above; `503 read_only` → actions disabled with the banner's wording |
 
+The forgotten-password screens (D39): the sign-in screen links to them. The token travels in the query of a page with no outbound links, and the document response for `/accounts/password-reset` carries `Referrer-Policy: no-referrer` (api.md step 4, F60; owner, 2026-10-20, D40), so the URL is never sent as a referrer even if a link is added later;
+the shell removes it from the address bar after reading it (`history.replaceState`) and sends it only in the body of the complete request; the api logs route patterns, never the query. The keys are `core.accounts.reset.*`.
+
 The frame (web-shell) shows the superuser banner from `superuser`, holds the person on `/accounts/password` for every route except that one while `password_change_required` is true (the server answers 401 on `/accounts/admin`, so identity's other routes are not usable either), and shows a neutral label ("Account") where it would show the playa name when `playa_name` is empty (Proposed change 2). Nothing identity renders includes the token, and no screen stores anything in the browser.
+
+### Catalogue text for the reset settings (D41)
+
+The settings admin screen (`settings`) shows the three reset keys with these catalogue entries in `web/src/core/accounts/messages/en.json`, following `core.accounts.setting.<key>.title|description` (settings.md; catalogue tests in `internal/app`: every core area's declared keys must have their titles, so `TestMessageCatalogues_EnglishCoversManifests` fails until they exist). Identity renders no screen of its own for them.
+
+| Key | en |
+|---|---|
+| `core.accounts.setting.password_reset_client_limit.title` | Password-reset requests from one device or network |
+| `core.accounts.setting.password_reset_client_limit.description` | How many password-reset e-mails may be requested from one device or network address within the sign-in window above. Many people share one address at a venue, so keep it at least as high as the per-address limit below. From 5 to 1000. |
+| `core.accounts.setting.password_reset_address_limit.title` | Password-reset requests for one e-mail address |
+| `core.accounts.setting.password_reset_address_limit.description` | How many password-reset e-mails may be requested for one e-mail address within the sign-in window above, whether or not an account exists for it. From 1 to 100. |
+| `core.accounts.setting.password_reset_cooldown.title` | Pause between password-reset e-mails |
+| `core.accounts.setting.password_reset_cooldown.description` | After a reset e-mail is sent, further requests for that account send nothing until this long has passed; the earlier link keeps working. 0 turns the pause off. Up to 1 hour, and never longer than the link lifetime above. |
+
+The `core.accounts.setting.login_failure_window.description` reads: "Failed sign-ins and password-reset requests older than this are forgotten. From 1 minute to 24 hours." (its title stays "How long failed sign-ins are counted"). Spanish, for the `es.json` of the `accounts` catalogue when one exists (today every screen set ships `en.json` only and other languages fall back to `en`, web-shell D8; no Spanish accounts catalogue yet, decision 22):
+
+| Key | es |
+|---|---|
+| `core.accounts.setting.password_reset_client_limit.title` | Solicitudes de restablecimiento desde un mismo dispositivo o red |
+| `core.accounts.setting.password_reset_client_limit.description` | Cuántos correos de restablecimiento de contraseña pueden solicitarse desde un mismo dispositivo o dirección de red dentro de la ventana de inicio de sesión de arriba. Muchas personas comparten una dirección en el evento, así que manténlo al menos tan alto como el límite por dirección de abajo. De 5 a 1000. |
+| `core.accounts.setting.password_reset_address_limit.title` | Solicitudes de restablecimiento para una misma dirección de correo |
+| `core.accounts.setting.password_reset_address_limit.description` | Cuántos correos de restablecimiento de contraseña pueden solicitarse para una misma dirección de correo dentro de la ventana de inicio de sesión de arriba, exista o no una cuenta con ella. De 1 a 100. |
+| `core.accounts.setting.password_reset_cooldown.title` | Pausa entre correos de restablecimiento |
+| `core.accounts.setting.password_reset_cooldown.description` | Tras enviar un correo de restablecimiento, las siguientes solicitudes para esa cuenta no envían nada hasta que pase este tiempo; el enlace anterior sigue funcionando. 0 desactiva la pausa. Hasta 1 hora, y nunca más que la duración del enlace de arriba. |
+| `core.accounts.setting.login_failure_window.description` | Los inicios de sesión fallidos y las solicitudes de restablecimiento más antiguos que esto se olvidan. De 1 minuto a 24 horas. |
 
 ## Behavior
 
@@ -674,13 +940,47 @@ The frame (web-shell) shows the superuser banner from `superuser`, holds the per
 - **Concurrency.** `*Service` is safe for concurrent use: the limiter holds a mutex; the hash semaphore is a buffered channel of `HashConcurrency`; a hash waits on `ctx` (so a slow login fails `Timeout`/`Canceled`, never piles up). Two concurrent `DisableAccount` calls both succeed (one changes, one sees it done). Two concurrent `SignUp` with the same address: one `Conflict`.
 - **Idempotency.** Disable, enable and `EnsureSuperuser` are idempotent; `SetTemporaryPassword` is not (each call is a new password and a new entry); `SignIn` is not (each call is a login).
 - **Retries.** Identity retries nothing. The shell never retries POSTs (web-shell decision 11). The limiter is the only backoff.
-- **Read-only copy.** `Authenticate`, `SessionInfo`, `SignIn`, `SignOut`, `ListAccounts`, `GetAccount`, `ExportPerson` work (audit entries spool); `SignIn` skips `last_login_at`. `SignUp`, `ChangePassword`, `EndOtherSessions`, the admin changes, `EnsureSuperuser` and `DeletePerson` fail `Unavailable` wrapping `db.ErrReadOnly` (api maps to `503 read_only`).
+- **Read-only copy.** `Authenticate`, `SessionInfo`, `SignIn`, `SignOut`, `ListAccounts`, `GetAccount`, `ExportPerson` work (audit entries spool); `SignIn` skips `last_login_at`. `SignUp`, `ChangePassword`, `EndOtherSessions`, the admin changes, `RequestPasswordReset`, `CompletePasswordReset`, `EnsureSuperuser`, `EnsureAccount` and `DeletePerson` fail `Unavailable` wrapping `db.ErrReadOnly` (api maps to `503 read_only`).
 - **Lifecycle.** `New` does no I/O; there is no `Start`, no goroutine and no `Close`. The limiter sweeps expired entries on each access, so a fake clock drives it in tests. `app` builds identity in part 2, after audit (audit.md Proposed change 1), sets `a.authenticator`, adds the `accounts` route set, the migration set, the command, `Permissions` to `corePerms` and `SignalAccountCreated` to `coreSignals`.
-- **The command.** `bms create-superuser <email>`: loads configuration like `serve` (needs `Session.Key`, app F6), builds the assembly through `check`'s path (so a schema behind exits 3 and a read-only copy exits 1 with "this copy is read-only; run it against the writing copy"), calls `EnsureSuperuser`, prints to stdout exactly: `Superuser account created.` or `Superuser account reset; its sessions have ended.`, then `Password (shown once, not stored anywhere else): <password>`, then `Sign in at /sign-in and keep this password in your password manager.` It never prints the address (the operator typed it). Exit 2 for a missing or invalid argument or a participant address (`Invalid`, `Conflict` with a line telling the operator to use another address), 1 otherwise.
+- **The command.** `bms create-superuser <email>`: loads configuration like `serve` (needs `Session.Key`, app F6), builds the assembly through `check`'s path (so a schema behind exits 3 and a read-only copy exits 1 with "this copy is read-only;
+  run it against the writing copy"), calls `EnsureSuperuser`, prints to stdout exactly: `Superuser account created.` or `Superuser account reset; its sessions have ended.`, then `Password (shown once, not stored anywhere else): <password>`, then `Sign in at /sign-in and keep this password in your password manager.` It never prints the address (the operator typed it).
+  Exit 2 for a missing or invalid argument or a participant address (`Invalid`, `Conflict` with a line telling the operator to use another address), 1 otherwise.
 - **Superuser sign-in.** The token's lifetime is `SuperuserSessionLifetime`; the audit action is `identity.superuser.login`; `Alerter.SuperuserSignedIn` is called (nil: `logger.WarnContext(ctx, "superuser signed in", slog.String("person_id", ...))`); the metric counts `outcome=superuser`.
 - **Password verification timing.** When no account matches, the service verifies the submitted password against a fixed dummy hash with the same parameters so the response time does not reveal the difference; the limiter still counts the attempt under both keys.
 - **Rehash on login.** When a stored hash's parameters are weaker than the current constants, `SignIn` re-hashes and `Rehash`es (compare-and-swap) on a writing copy (ignored on read-only), so parameters can be raised in a later release without a migration.
-- **Telemetry.** One `SpanInternal` span per use case, `identity.<use-case>`, attributes `telemetry.Token("outcome", ...)` and `telemetry.ID("account_id", ...)` only; `person_id` is on the request span already. Metrics: `bms.identity.logins{outcome: ok|superuser|bad_credentials|disabled|rate_limited|restricted}`, `bms.identity.sessions_rejected{reason: malformed|expired|revoked|disabled|unknown}`, `bms.identity.rate_limited{bucket: address|email|reset_address|reset_email}`. Never an address, a token or a password.
+- **Telemetry.** One `SpanInternal` span per use case, `identity.<use-case>`, attributes `telemetry.Token("outcome", ...)` and `telemetry.ID("account_id", ...)` only; `person_id` is on the request span already.
+  Metrics: `bms.identity.logins{outcome: ok|superuser|bad_credentials|disabled|rate_limited|restricted}`, `bms.identity.sessions_rejected{reason: malformed|expired|revoked|disabled|unknown}`, `bms.identity.rate_limited{bucket: address|email|reset_address|reset_email}`. Never an address, a token or a password.
+
+### Forgotten-password flow (D39, D40, D41)
+
+- **Uniform answers.** `RequestPasswordReset` answers `202` for a known, an unknown, a disabled and a superuser address alike; the audit entry (Outcome `Denied` for the last three, so an admin can see attempts) is the only difference.
+  Timing is equalised because every request verifies one dummy hash right after the `Configured` probe and before the lookup, for every address alike (on a known address no real hash is verified, so a dummy only on the unknown path would be a timing oracle) (implementation, 2026-10-19).
+- **Reset limits and cooldown (D40; settings since D41).** Reset requests are limited in their own buckets (client address `Policy.PasswordResetClientLimit`, submitted address `Policy.PasswordResetAddressLimit`, per `LoginFailureWindow`), so reset traffic cannot lock a person out of signing in and sign-in failures cannot block a reset;
+  `ChangePassword` still shares sign-in's buckets (D36(i)), this changes only `RequestPasswordReset`. Within `Policy.PasswordResetCooldown` of the account's newest reset row a request answers the same `202` as any other, sends nothing and records one `Denied` entry with Reason `cooldown`; the cooldown path does the same hash work as every other path (one dummy hash) and sends nothing;
+  its database work (the account lock and one read) sits between the unknown-address path and the send path, so it opens no gap beyond the existing known-versus-unknown difference, which the hash cost dominates. Only known, enabled, non-superuser accounts have a cooldown to find.
+  A cooldown of `0` means every request that reaches this step sends (the buckets still bound it; the `ResetState` read and lock still happen, so the timing is unchanged). The three are regional settings (`accounts.password_reset_client_limit|address_limit|cooldown`, owner, 2026-10-20, D41) read from the policy at use-case time; see Settings.
+- **Newest token only.** A new request deletes the account's earlier tokens in the same transaction that inserts the new one, so an older e-mail's link answers `invalid`.
+- **Single use.** `CompleteReset` marks `used_at` and fails `NotFound` on a used row; two concurrent redemptions: one succeeds, the other answers `invalid`.
+- **After a reset.** `session_generation` is bumped, so every session of the account ends, including a restricted one; `password_change_required` is cleared. No session is issued.
+- **Transactionality.** `Send` enqueues on the request's `Write` transaction (notify decision 1): the token row, the outbox row and the audit entry commit or roll back together. A `Send` failure other than `Unsupported` fails the request `Unavailable` with nothing committed; no token exists without its e-mail.
+- **Read-only copy.** Both methods fail `Unavailable` wrapping `db.ErrReadOnly` (the routes answer `503 read_only`); the limiter and the dummy-hash path run first so the response time does not tell.
+- **Privacy.** No log line, span attribute, metric or error carries the token, the address or the link (`telemetrytest` proves it). The rendered body, which holds the link, is cleared by notify when the row reaches `Sent` or at its `expires_at` (the reset row's `TTL` is the token lifetime), so a failed reset mail keeps its link no longer than the token is valid.
+- **Telemetry.** Spans `identity.request-password-reset` and `identity.complete-password-reset`; no metric carries the outcome of a reset request, because it must not distinguish the cases.
+- **Also for M4 (not designed here).** `ChangeEmail` with confirmation uses `notify.AddressSender` for the new address and `Notifier` for the old one; e-mail verification at sign-up (decision 15's "revisit") uses the same shape.
+- **A change applies to the next request, no restart.** The limiter holds counts and timestamps, never a limit: each `reserve` takes the limits and the window as arguments (as sign-in's does today), so a changed value is compared on the very next request.
+  Counts already in a bucket stay: lowering a limit below an address's current count limits it at once, raising it releases it; the window is also read per request, so shortening it forgets older entries on the next sweep. The cooldown is compared at request time against the newest reset row, so a shortened cooldown lets a waiting person ask again at once and a lengthened one applies to the account's next request.
+  `settings` decision 10 (no signal on change, every consumer reads at use-case time) is what makes this free.
+- **Invalid policy.** As F62: a `PolicySource` that returns a policy failing `Validate` (a stored value outside its range after an upgrade cannot happen, since `settings` decision 5 yields the default, but a broken adapter can) fails the use case `Invalid`; identity never falls back silently.
+- **Cooldown off.** With `PasswordResetCooldown == 0` step 5 skips the age comparison and always replaces the token and sends. The `ResetState` read and the account lock still happen, so the silent and the sending paths keep the same shape and no timing gap opens (D40's reasoning is unchanged).
+- **Privacy of the settings.** A setting's value never reaches a log, span or metric (settings decision 13); `bms.identity.rate_limited{bucket}` still counts only the bucket name.
+
+### Demo-mode `Guard` and `SessionInfo.Protected` (D53, D58)
+
+- **Guard (D53; demo mode only, a nil `Guard` protects nothing and production behaviour is unchanged).** Identity consults `Options.Guard` (when non-nil) in `ChangePassword`, `SetTemporaryPassword`, `DisableAccount`, `DeletePerson`, `LinkAccount` (after the superuser check), `RequestPasswordReset` (answers nil and sends nothing, as for a superuser address), `CompletePasswordReset` (no token can exist)
+  and any later e-mail change. The refusal is `Permission` with field `account` and code `protected`. `EnableAccount`, `SignOut` and `EndOtherSessions` stay allowed. A `Guard` error fails the use case (closed), except in `SessionInfo` (next bullet). `EnsureAccount` itself is not guarded (it is how the seed sets the demo password).
+- **`SessionInfo.Protected` (D58).** The password screen must know before the person types that the account is a shared demo account. `SessionInfo` sets `Protected` from `Options.Guard.Protected(ctx, session.Account)` when the call is made by a signed-in person and the Guard is non-nil; false (absent) for a nil Guard and for a signed-out answer. The screen shows `core.accounts.field.protected` and disables the form when `protected` is true; the e-mail is not added to the session.
+- **Guard error in `SessionInfo` (owner, 2026-10-30, D58).** On a `Guard` error `SessionInfo` answers `protected: false` and logs a warning (no personal data in the line); the rest of the answer is unaffected.
+  The server's own refusal (`Permission` `account` `protected`) on password, disable, delete and link stays the fail-closed backstop (F108 still applies to those use cases), so a protected account is never changed; at worst the form shows and the save is refused (F110, F111). `SessionInfo` stays one indexed read heavier in demo mode only.
 
 ### Accepted implementation deviations (M1 build, 2026-10-18)
 
@@ -780,151 +1080,6 @@ The frame (web-shell) shows the superuser banner from `superuser`, holds the per
 | F66 | `LinkAccount` | the account is a superuser's | Conflict (`superuser`) | refuse | `TestLinkAccount_Superuser_Conflict` |
 | F67 | `LinkAccount` | the target person already has an account | Conflict (`has_account`) | refuse | `TestLinkAccount_PersonHasAccount_Conflict` |
 | F68 | `DeletePerson` | the person's account is a superuser's | Permission | people reports it, deletion rolls back | `TestDeletePerson_Superuser_Permission` |
-
-## Lock-in check
-
-No external service. Libraries: `golang.org/x/crypto/argon2` (BSD-3-Clause), the standard library for HKDF (`crypto/hkdf`), HMAC, base64 and cookies, and PostgreSQL (D8). The embedded password list is SecLists' `xato-net-10-million-passwords-100000.txt` (MIT; the same SecLists top 100 000, renamed upstream), kept under `internal/core/identity/passwords/` with its licence text. Later providers (OIDC) must be implementable against Dex (D13 compose profile `oidc`) or Keycloak, both self-hostable; the trusted-header provider needs no external software.
-
-## Test plan
-
-- **Unit** (`identity`): a hand-written fake `store`, `clock.NewFake`, `audittest.NewFake("identity")`, `signalstest.NewFake("identity", []signals.Name{SignalAccountCreated}, nil)`, `telemetrytest.New(t)`; a fake `PolicySource`, `PermissionChecker` (allow/deny), `PermissionLister`, `NameSource`, `Alerter`. Table tests per failure mode above. Token tests tamper each region and check constant-time behaviour by construction (`hmac.Equal`). Limiter tests advance the fake clock. Every test puts an invented address and password through the service and asserts `!c.Contains(address)` and `!c.Contains(password)` across logs, spans, the fake recorder's entries (`Reason`, `Fields`) and error strings; the capture fails on any violation at cleanup.
-- **Handlers** (`httptest`): each route with `httpx.Fail`'s fallback statuses, the cookie attributes (F53), `no-store` on `/session` and `/temporary-password`, `bms_session_dev` under both of decision 24's conditions and refused otherwise, sign-out clears the cookie even when the recorder fails (F24).
-- **Permission tests:** F31, F32, F37-F40, F55; the superuser passes with a nil checker; a denying checker is honoured even for `accounts.read` on one's own account (the person is not special on the admin routes).
-- **Integration** (`//go:build integration`, `dbtest.TempDB`): `db.Version(postgres.Migrations)`; F63; `Authenticate` makes exactly one statement (the `Querier` tracer) and no write; `SignUp` → `SignIn` → `DisableAccount` → `Authenticate` 401 on a real pool; the read-only path with `SetReadOnly` on the fake and `default_transaction_read_only` on the container.
-- **End to end** (in `app`, extending the M0 run): `bms migrate` → `bms create-superuser <invented>` prints the password once and never the address → `POST /api/accounts/sign-up` → `GET /api/accounts/session` is signed in → `GET /api/hello/greeting` is now `403` (actor present, permission denied; app.md item 1083) → `POST /api/accounts/sign-out` → `401`; the superuser signs in, sees `superuser: true`, disables the participant, whose next request is `401`; the audit table holds the entries with the superuser marked; the e2e Playwright run signs up, signs in and changes a password at the phone viewport.
-- **Web** (`vitest`, `axe-core`): each screen's states in the UI table; "open redirect refused" moves here with the sign-in screen; the restricted-session redirect; the generated client replaces `shell/identity.ts`.
-
-## Amendment 2026-10-19 (D39): the forgotten-password flow
-
-Source: notify.md Proposed change 1, approved with the owner's answers of 2026-10-19 (D39). It replaces the "later `Reset` seam" this spec once named. Decisions 19 to 21 in the Summary.
-
-### Interface
-
-```go
-// Options gains (the Summary line):
-//   Notify notify.Notifier // scoped to "identity"; nil means no reset: both routes answer Unsupported
-
-// Policy gains PasswordResetLifetime time.Duration // accounts.password_reset_lifetime
-// DefaultPolicy: 1h. Validate: 10m..24h, else Invalid (field "accounts.password_reset_lifetime", code "range").
-
-// Settings declares the accounts.* keys for the settings core area "accounts"
-// (module-contract style Decl; the seven existing ones unchanged): eight here (D39),
-// eleven since D41; CheckSettings is the area's cross-field Check
-// (client_failure_limit >= login_failure_limit; since D41 also the two reset rules). Pure.
-var Settings []settings.Decl
-func CheckSettings(values map[string]string) error
-
-// Templates holds password-reset.{en,es}.tmpl and superuser-signed-in.{en,es}.tmpl
-// (owner "identity"; app registers it with notify, notify.md Behavior).
-var Templates fs.FS
-
-// RequestPasswordReset asks for a reset link for the account with this address.
-// Consumers: POST /api/accounts/password-reset. No session, no permission. Order:
-//  1. email.Validate (Invalid: email required / malformed);
-//  2. the reset limiter's two buckets (client address, canonical submitted address),
-//     separate from sign-in's failure buckets (a flood of reset requests never blocks
-//     sign-in, and failed sign-ins never block a reset), limits
-//     Policy.PasswordResetClientLimit and Policy.PasswordResetAddressLimit per
-//     Policy.LoginFailureWindow (D41: read from the policy on this request, as SignIn
-//     reads its limits), each request counted once whatever the outcome; at the limit:
-//     Unavailable wrapping httpx.ErrRateLimited (D40);
-//  3. Notify == nil, or Notify.Configured(ctx) is false: Unsupported, before the account
-//     lookup and for every address alike; a Configured error fails with its kind, also
-//     before the lookup (F91);
-//  4. verify one dummy hash, for every address alike, before the lookup (implementation, 2026-10-19);
-//     then the account lookup; unknown, disabled or superuser (D23: command only): an
-//     audit entry (Outcome Denied) is recorded, nothing is sent, nil returned;
-//  5. otherwise, in one Write transaction (the account row locked first, so two requests
-//     cannot both pass the cooldown): read the newest core.password_reset.created_at for
-//     the account, used or not; if Policy.PasswordResetCooldown is positive and the row
-//     is later than now - Policy.PasswordResetCooldown, record the entry (Outcome Denied,
-//     Reason "cooldown"), send nothing, commit nothing else and return nil (the same 202,
-//     so nothing is revealed; D40); a cooldown of 0 skips this test (D41); otherwise purge the
-//     account's expired and used tokens,
-//     delete its earlier tokens (only the newest is valid), mint PasswordResetTokenBytes
-//     random bytes (base64url, no padding), insert sha256(token) with
-//     expires_at = now + Policy.PasswordResetLifetime, Notify.Send(identity.password-reset,
-//     To: the account's person, Key: "password-reset:" + reset row id,
-//     TTL: Policy.PasswordResetLifetime (notify amendment: the queued text expires with
-//     the token), Link: "/accounts/password-reset?token=<token>",
-//     Vars{"lifetime_minutes": "<N>"}) (D40: a bare whole number of minutes, no unit),
-//     Record identity.password.reset-requested (Subject: the account's person).
-//     If Send answers Invalid or NotFound (for example a missing person row), the request
-//     answers silently (nil, nothing committed) with one warn line (implementation, 2026-10-19).
-//     The lifetime is formatted as whole minutes ("60"); each language's template words
-//     the unit ("{{.Vars.lifetime_minutes}} minutes", "... minutos"), so Spanish and
-//     English plurals and word order are the template's business, not the code's.
-// Returns nil in every non-error case; the handler answers 202 with no body. The body
-// of the request is {email} (implementation, 2026-10-19).
-func (s *Service) RequestPasswordReset(ctx context.Context, email model.Email) error
-
-// CompletePasswordReset redeems a token and sets a new password. Consumers:
-// POST /api/accounts/password-reset/complete. No session. Hashes the token and finds the
-// row; missing, used or disabled account: Invalid (token: invalid); expired: Invalid
-// (token: expired). The new password is checked as ChangePassword checks it (min length,
-// MaxPasswordBytes, common list). The body is {token, new_password} (implementation, 2026-10-19). Order (implementation, 2026-10-19):
-// a non-locking lookup and the validity checks; hash the new password outside any
-// transaction; then one Write transaction that locks the account first, marks the token
-// used (the `used_at IS NULL` guard decides a race), then sets password_hash and
-// password_changed_at, clears password_change_required, bumps session_generation (every
-// session ends) and Records identity.password.reset. Locking the account first avoids a
-// lock-order deadlock with RequestPasswordReset. No session is issued and no
-// cookie is set (decision 20). The handler answers 204; the shell goes to the sign-in page
-// with a "password changed" notice.
-func (s *Service) CompletePasswordReset(ctx context.Context, token, newPassword string) error
-```
-
-Store additions (identity's `store` interface, `postgres/`): `ReplaceResetToken(ctx, account model.AccountID, hash []byte, expires time.Time) (id uuid.UUID, err error)` (purges used and expired rows of that account, deletes its other rows, inserts; one statement set inside the caller's transaction), `ResetByHash(ctx, hash []byte) (ResetRow, error)` (`NotFound` when absent), `CompleteReset(ctx, id uuid.UUID, account model.AccountID, passwordHash string, now time.Time) error` (sets the password and the revocation, marks `used_at`; `NotFound` if the row was already used, so two concurrent redemptions cannot both win). `ResetState(ctx, account model.AccountID) (account.ResetState, error)` (implementation, 2026-10-20, D40 cooldown: locks the account row and returns `{NewestAt, Disabled, Superuser}`, the newest reset row's `created_at` (zero when none) and the account's flags read under the lock, so an account disabled after the lookup is denied without a send; a separate call because the cooldown check runs before `ReplaceResetToken` deletes anything).
-
-### Data
-
-Migration `0002_password_reset.sql` in `internal/core/identity/postgres/migrations/`.
-
-**`core.password_reset`**
-
-| Column | Type | Constraints | Sensitivity | Why | Retention |
-|---|---|---|---|---|---|
-| `id` | `uuid` | PK | internal | the idempotency key of the e-mail | row lifetime |
-| `account_id` | `uuid` | NOT NULL, FK `core.account(id)` ON DELETE CASCADE | internal | whose reset it is; goes with the account on `DeletePerson` | row lifetime |
-| `token_hash` | `bytea` | NOT NULL, UNIQUE | sensitive (a credential: SHA-256 of the token; the token itself is never stored, logged or exported) | redeem by hash | row lifetime |
-| `expires_at` | `timestamptz` | NOT NULL | internal | `now + accounts.password_reset_lifetime` | row lifetime |
-| `used_at` | `timestamptz` | NULL | internal | a replay answers `invalid` | row lifetime |
-| `created_at` | `timestamptz` | NOT NULL | internal | | row lifetime |
-
-Index: `password_reset_account_id_idx` on `(account_id)`. Used and expired rows are removed by the next request for that account (`ReplaceResetToken`) and by the M4 retention job; a deleted person's rows go with the account (cascade). `ExportPerson` does not include the table (a credential, nothing about the person).
-
-### Settings
-
-`accounts.password_reset_lifetime` (duration, default `1h`, range `10m`..`24h`, settings admin); see the Settings table. A changed lifetime applies to tokens minted after the change.
-
-### UI
-
-Added to the `accounts` screen set. The sign-in screen gains a "Forgot your password?" link.
-
-| Route | Who | What is on it | States |
-|---|---|---|---|
-| `/accounts/password-reset` (public) | signed out | one e-mail field, "Send the link"; on any `202` always "If an account exists for that address, an e-mail is on its way." | `501` (not configured) -> "Password reset by e-mail isn't set up here. Ask an administrator for a temporary password."; `429` -> `error.rate_limited` with the retry time; `503 read_only` -> the shell's read-only wording; field error for `malformed` |
-| `/accounts/password-reset?token=...` (public) | signed out | new password and the same again (`new-password`, the minimum length and "not a common password" under the field), "Change password"; on `204` `Navigate` to `/accounts/sign-in` with a "Password changed. Sign in with your new password." notice | `invalid` / `expired` -> an `ErrorState` with a link to ask again; password field errors (`too_short {min}`, `too_long {max}`, `common`); `503 read_only` as above |
-
-The token travels in the query of a page with no outbound links, and the document response for `/accounts/password-reset` carries `Referrer-Policy: no-referrer` (api.md step 4, F60; owner, 2026-10-20, D40), so the URL is never sent as a referrer even if a link is added later; the shell removes it from the address bar after reading it (`history.replaceState`) and sends it only in the body of the complete request; the api logs route patterns, never the query. The keys are `core.accounts.reset.*`.
-
-### Behavior
-
-- **Uniform answers.** `RequestPasswordReset` answers `202` for a known, an unknown, a disabled and a superuser address alike; the audit entry (Outcome `Denied` for the last three, so an admin can see attempts) is the only difference. Timing is equalised because every request verifies one dummy hash right after the `Configured` probe and before the lookup, for every address alike (on a known address no real hash is verified, so a dummy only on the unknown path would be a timing oracle) (implementation, 2026-10-19).
-- **Reset limits and cooldown (D40; settings since D41).** Reset requests are limited in their own buckets (client address `Policy.PasswordResetClientLimit`, submitted address `Policy.PasswordResetAddressLimit`, per `LoginFailureWindow`), so reset traffic cannot lock a person out of signing in and sign-in failures cannot block a reset; `ChangePassword` still shares sign-in's buckets (D36(i)), this changes only `RequestPasswordReset`. Within `Policy.PasswordResetCooldown` of the account's newest reset row a request answers the same `202` as any other, sends nothing and records one `Denied` entry with Reason `cooldown`; the cooldown path does the same hash work as every other path (one dummy hash) and sends nothing; its database work (the account lock and one read) sits between the unknown-address path and the send path, so it opens no gap beyond the existing known-versus-unknown difference, which the hash cost dominates. Only known, enabled, non-superuser accounts have a cooldown to find. A cooldown of `0` means every request that reaches this step sends (the buckets still bound it; the `ResetState` read and lock still happen, so the timing is unchanged). The three are regional settings (`accounts.password_reset_client_limit|address_limit|cooldown`, owner, 2026-10-20, D41) read from the policy at use-case time; see the amendment of 2026-10-20.
-- **Newest token only.** A new request deletes the account's earlier tokens in the same transaction that inserts the new one, so an older e-mail's link answers `invalid`.
-- **Single use.** `CompleteReset` marks `used_at` and fails `NotFound` on a used row; two concurrent redemptions: one succeeds, the other answers `invalid`.
-- **After a reset.** `session_generation` is bumped, so every session of the account ends, including a restricted one; `password_change_required` is cleared. No session is issued.
-- **Transactionality.** `Send` enqueues on the request's `Write` transaction (notify decision 1): the token row, the outbox row and the audit entry commit or roll back together. A `Send` failure other than `Unsupported` fails the request `Unavailable` with nothing committed; no token exists without its e-mail.
-- **Read-only copy.** Both methods fail `Unavailable` wrapping `db.ErrReadOnly` (the routes answer `503 read_only`); the limiter and the dummy-hash path run first so the response time does not tell.
-- **Privacy.** No log line, span attribute, metric or error carries the token, the address or the link (`telemetrytest` proves it). The rendered body, which holds the link, is cleared by notify when the row reaches `Sent` or at its `expires_at` (the reset row's `TTL` is the token lifetime), so a failed reset mail keeps its link no longer than the token is valid.
-- **Telemetry.** Spans `identity.request-password-reset` and `identity.complete-password-reset`; no metric carries the outcome of a reset request, because it must not distinguish the cases.
-- **Also for M4 (not designed here).** `ChangeEmail` with confirmation uses `notify.AddressSender` for the new address and `Notifier` for the old one; e-mail verification at sign-up (decision 15's "revisit") uses the same shape.
-
-### Failure modes
-
-| # | Method | Condition | errs kind | Caller is expected to | Test |
-|---|---|---|---|---|---|
 | F69 | `RequestPasswordReset` | e-mail empty or fails `ParseEmail` | Invalid (`email`: `required` / `malformed`) | field error | `TestRequestPasswordReset_BadEmail_Invalid` |
 | F70 | `RequestPasswordReset` | either reset bucket (client address, submitted address) at the limit; sign-in's buckets are not consulted | Unavailable wrapping `httpx.ErrRateLimited` | 429 | `TestRequestPasswordReset_RateLimited_Table` (per client, per address; the limits come from a fake `PolicySource`, not from constants; D41) |
 | F71 | `RequestPasswordReset` | `Notify` nil, or `Notify.Configured` is `false` | Unsupported, before the lookup, for a known, an unknown, a disabled and a superuser address alike; the store records no lookup | 501, the screen says it is not set up | `TestRequestPasswordReset_NotConfigured_UnsupportedForAnyAddress` (table over the four addresses; identical error kinds, no store call) |
@@ -950,181 +1105,11 @@ The token travels in the query of a page with no outbound links, and the documen
 | F91 | `RequestPasswordReset` | `Notify.Configured` fails | its kind (`Unavailable`, `Timeout`, `Canceled`), before the lookup, for every address alike | 503/504 | `TestRequestPasswordReset_ProbeFails_ReturnsKindBeforeLookup` |
 | F92 | `RequestPasswordReset` | `Policy.PasswordResetCooldown` is positive and a known address's newest reset row is younger than it | nil, the same `202`; nothing sent, no new token (the earlier link stays valid), one entry Denied (Reason `cooldown`); after the cooldown the next request sends and replaces the token | show the uniform message | `TestRequestPasswordReset_InsideCooldown_SilentNilNothingSent`, `TestRequestPasswordReset_AfterCooldown_Sends` |
 | F93 | `RequestPasswordReset`, `SignIn` | reset requests exhaust the reset buckets for an address; sign-in failures exhaust sign-in's buckets for it | the other flow is unaffected: sign-in still works after reset requests are limited, and a reset still works after failed sign-ins | none | `TestResetLimiter_SeparateFromSignIn_Table` |
-
-F94 to F98 (the reset limits as settings) are in the amendment of 2026-10-20 (D41) below.
-
-### Test plan
-
-- **Unit.** The fake store, `notifytest.NewFake("identity")` (`Sent()` after commit, `Fail(err)`), `clock.NewFake`, `audittest.NewFake("identity")`, `telemetrytest.New(t)`: tables for F69 to F90; the token is read from the fake notifier's recorded `Link` and redeemed, never from the store; the stored value is asserted to be 32 bytes of hash and never equal to the token; the `lifetime_minutes` var is the bare number ("60") and the stored `TTL` equals the lifetime; the cooldown and both reset buckets with a fake clock; a fake clock moves past `expires_at` (no sleeping); each test puts an invented address, token and password through the service and asserts `!c.Contains(...)` across logs, spans, entries and error strings.
-- **Handlers (`httptest`).** `202` for known, unknown and inside-cooldown addresses with identical bodies and headers; `204` on completion with no `Set-Cookie`; `501`, `429`, `503 read_only` statuses; the query string is absent from the log record.
-- **Permission tests.** Both routes are public: a signed-in person and a restricted session may use them; neither route returns a session.
-- **Integration (`//go:build integration`, `dbtest.TempDB`).** Migration `0002` applies; the unique `token_hash`; the cascade on account deletion; two concurrent `CompleteReset` calls: one wins; `Send` and the token row roll back together.
-- **End to end (`app`, with Mailpit).** Set the SMTP settings, request a reset, read the link from Mailpit, complete it, `Authenticate` with the old cookie is `401`, sign in with the new password.
-- **Web (`vitest`, `axe-core`).** Both screens' states; the token leaves the address bar; the sign-in link; focus and error summary.
-
-## Amendment 2026-10-19 (approved, owner, 2026-10-20, D40): reset requests are uniform when e-mail is off
-
-Closes "Needs a decision" in the D39 amendment above, together with notify.md's amendment of the same date (`Notifier.Configured`).
-
-**Decision.** Step 3 of `RequestPasswordReset` becomes: `Notify == nil`, or `Notify.Configured(ctx)` returns `false`: `Unsupported`, before the account lookup. The probe is a settings snapshot read (no SMTP connection, no recipient), so its answer cannot depend on the address. Every address therefore gets the same answer whatever the state of e-mail: `501` for all when it is off, `202` for all when it is on. A `Configured` error fails the request with its kind, still before the lookup, for every address alike (F91). If a settings admin clears the host between the probe and `Send` (a window one request long that only an admin can open), `Send` answers `Unsupported` after the lookup; identity then rolls back, returns nil (`202`), writes no entry and logs one warn line without the address (F72, replaced): uniformity over honesty for that one request, because the alternative is the oracle. The `/accounts/password-reset` screen is unchanged: its `501` state already reads "Password reset by e-mail isn't set up here. Ask an administrator for a temporary password."
-
-Options not taken: always `202` and enqueue (the queued reset link, a one-time credential, would outlive its hour in the outbox, and the person would be told an e-mail is coming when none can be; notify's `Send` refuses rows while unset by its decision 13); a public `email_enabled` flag read by the screen (does not fix the server, which must be uniform regardless of what the client shows).
-
-Interface change in identity: none. `Options.Notify` stays `notify.Notifier`, which now carries `Configured`; the unit tests' `notifytest.NewFake("identity")` gains `SetConfigured(false)` for the off path.
-
-### Failure modes
-
-F71, F72 and F91 are in the Failure modes table above (folded in 2026-10-20, D40).
-
-**Test plan (added).** The handler test's "identical bodies and headers" case runs twice, with the fake configured and not; `TestPasswordReset_NoSecretsInTelemetry` covers the F72 warn line; the Mailpit end-to-end run clears `notify.smtp_host` and asserts `501` with identical bodies for a known and an unknown address, then restores it.
-
-## Amendment 2026-10-20 (D41): the reset limits are settings
-
-Source: the owner, 2026-10-20 (D41, refining D40 and Q-RESET-RATE): "Make it a setting. The defaults are good." The three figures D40 built as constants in `internal/core/identity/identity.go` (`ResetClientLimit = 20`, `ResetAddressLimit = 5`, `PasswordResetCooldown = 5m`) become `accounts.*` regional settings with those defaults, handled exactly as the sign-in limits already are: `Policy` fields, `Settings` declarations, `Policy.Validate` and `CheckSettings` as the checks, read at use-case time. Nothing about the reset flow's order, answers or privacy changes. Decision 22 in the Summary carries the result.
-
-**Why these names.** The keys join the existing `accounts.password_reset_lifetime` as one `password_reset_*` family (`password_reset_client_limit`, `password_reset_address_limit`, `password_reset_cooldown`), so the settings admin screen, which lists an area's keys in declaration order, shows the four reset settings together and each key says what it limits, as `login_failure_limit` and `client_failure_limit` do for sign-in. The `Policy` field names follow the keys (`PasswordResetClientLimit`, `PasswordResetAddressLimit`, `PasswordResetCooldown`). The D40 constants are removed rather than kept as "the defaults": `LoginFailureLimit` has no exported constant either, and a constant that no longer governs anything would be read as if it did.
-
-**Why one window.** The reset buckets keep `accounts.login_failure_window` (decision 22): both pairs of buckets are the same type on the same sweep, the only figure the owner asked to tune is "how many", and a fourth key would be one more thing an admin must understand with no regional having asked for it. If one does, `accounts.password_reset_window` is a one-row addition with the same `1m`..`24h` range.
-
-### Interface
-
-```go
-// Policy gains (the full struct is in the Interface section above):
-//   PasswordResetClientLimit  int           // accounts.password_reset_client_limit
-//   PasswordResetAddressLimit int           // accounts.password_reset_address_limit
-//   PasswordResetCooldown     time.Duration // accounts.password_reset_cooldown; 0 = off
-//
-// DefaultPolicy: PasswordResetClientLimit 20, PasswordResetAddressLimit 5,
-// PasswordResetCooldown 5 * time.Minute (D40's figures, unchanged).
-//
-// Validate adds, each a validate.FieldError (code range, params min and max; durations in
-// plain units as the existing Checks print them), all violations reported together:
-//   validate.Range("accounts.password_reset_address_limit", p.PasswordResetAddressLimit, 1, 100)
-//   validate.Range("accounts.password_reset_client_limit", p.PasswordResetClientLimit,
-//                  min(max(5, p.PasswordResetAddressLimit), 1000), 1000)
-//   validate.Range("accounts.password_reset_cooldown", p.PasswordResetCooldown,
-//                  0, min(time.Hour, p.PasswordResetLifetime))
-// (the dependent bounds mirror the existing client_failure_limit rule; the max for the
-// cooldown is never below 10m because PasswordResetLifetime's own floor is 10m).
-//
-// Settings gains three Decls, declared after password_reset_lifetime, in this order:
-//   {Key: "password_reset_client_limit",  Kind: settings.Int,      Default: "20", Check: intRange(..., 5, 1000)}
-//   {Key: "password_reset_address_limit", Kind: settings.Int,      Default: "5",  Check: intRange(..., 1, 100)}
-//   {Key: "password_reset_cooldown",      Kind: settings.Duration, Default: "5m", Check: durationRange(..., 0, time.Hour)}
-//
-// CheckSettings (the area's cross-field Check over the effective values, bare keys) gains
-// two rules beside client_failure_limit >= login_failure_limit, each reported by the bare
-// key of the value that must move, all violations joined (validate.Errors):
-//   password_reset_client_limit >= password_reset_address_limit
-//       ("password_reset_client_limit", code range, min = the address limit, max = 1000)
-//   password_reset_cooldown <= password_reset_lifetime
-//       ("password_reset_cooldown", code range, min = "0s", max = the lifetime)
-// A value that does not parse is still the per-key Check's to report; the rule that needs
-// it is skipped. Pure.
-```
-
-The use case (`RequestPasswordReset`, step 2 and step 5 of its doc comment above) reads `pol := s.policy(ctx)` once, as it already does for the window and the lifetime, and passes `pol.PasswordResetClientLimit`, `pol.PasswordResetAddressLimit` and `pol.LoginFailureWindow` to `reserveIn` on the reset limiter, and compares the newest reset row against `pol.PasswordResetCooldown` when it is positive. No signature changes; no new store method; no migration. `app`'s `PolicySource` adapter maps the three keys onto the three fields as it maps the other eight (settings.md Proposed change 4, identity Proposed change 8).
-
-### Settings
-
-The three rows are in the Settings table above (D41). Ranges, and why:
-
-| Key | Default | Range | Reason for the range |
-|---|---|---|---|
-| `accounts.password_reset_client_limit` | `20` | `5`..`1000`, never below `password_reset_address_limit` | the floor is the smallest number that still lets a shared venue address serve a handful of people in one window; the ceiling matches `client_failure_limit`; the dependent floor has the same reason as sign-in's (many people share one address) |
-| `accounts.password_reset_address_limit` | `5` | `1`..`100` | `1` is the strictest a regional can ask (one e-mail per address per window) and still lets the flow work; the ceiling matches `login_failure_limit`; above it the bucket no longer bounds mail to one address |
-| `accounts.password_reset_cooldown` | `5m` | `0s`..`1h`, never above `password_reset_lifetime` | `0` turns the cooldown off for a regional that prefers the address bucket alone (the bucket still bounds mail); an hour is already the default link lifetime; a cooldown longer than the lifetime would leave a person whose link expired unable to ask for another, so the lifetime caps it |
-
-Who can change them: the settings admin, like every `accounts.*` key. Nothing personal is stored. The settings admin screen is `settings`' (its `/settings/:area` screen); identity supplies only the declarations and the catalogue text below.
-
-### Behavior
-
-- **A change applies to the next request, no restart.** The limiter holds counts and timestamps, never a limit: each `reserve` takes the limits and the window as arguments (as sign-in's does today), so a changed value is compared on the very next request. Counts already in a bucket stay: lowering a limit below an address's current count limits it at once, raising it releases it; the window is also read per request, so shortening it forgets older entries on the next sweep. The cooldown is compared at request time against the newest reset row, so a shortened cooldown lets a waiting person ask again at once and a lengthened one applies to the account's next request. `settings` decision 10 (no signal on change, every consumer reads at use-case time) is what makes this free.
-- **Invalid policy.** As F62: a `PolicySource` that returns a policy failing `Validate` (a stored value outside its range after an upgrade cannot happen, since `settings` decision 5 yields the default, but a broken adapter can) fails the use case `Invalid`; identity never falls back silently.
-- **Cooldown off.** With `PasswordResetCooldown == 0` step 5 skips the age comparison and always replaces the token and sends. The `ResetState` read and the account lock still happen, so the silent and the sending paths keep the same shape and no timing gap opens (D40's reasoning is unchanged).
-- **Concurrency, read-only copy, privacy, telemetry:** unchanged. A setting's value never reaches a log, span or metric (settings decision 13); `bms.identity.rate_limited{bucket}` still counts only the bucket name.
-
-### UI
-
-No screen of identity's changes. The settings admin screen (`settings`) shows the three keys with these catalogue entries in `web/src/core/accounts/messages/en.json`, following `core.accounts.setting.<key>.title|description` (settings.md, catalogue tests in `internal/app`: every core area's declared keys must have their titles, so `TestMessageCatalogues_EnglishCoversManifests` fails until they exist):
-
-| Key | en |
-|---|---|
-| `core.accounts.setting.password_reset_client_limit.title` | Password-reset requests from one device or network |
-| `core.accounts.setting.password_reset_client_limit.description` | How many password-reset e-mails may be requested from one device or network address within the sign-in window above. Many people share one address at a venue, so keep it at least as high as the per-address limit below. From 5 to 1000. |
-| `core.accounts.setting.password_reset_address_limit.title` | Password-reset requests for one e-mail address |
-| `core.accounts.setting.password_reset_address_limit.description` | How many password-reset e-mails may be requested for one e-mail address within the sign-in window above, whether or not an account exists for it. From 1 to 100. |
-| `core.accounts.setting.password_reset_cooldown.title` | Pause between password-reset e-mails |
-| `core.accounts.setting.password_reset_cooldown.description` | After a reset e-mail is sent, further requests for that account send nothing until this long has passed; the earlier link keeps working. 0 turns the pause off. Up to 1 hour, and never longer than the link lifetime above. |
-
-The existing `core.accounts.setting.login_failure_window.description` is reworded to say what it now also governs: "Failed sign-ins and password-reset requests older than this are forgotten. From 1 minute to 24 hours." (its title stays "How long failed sign-ins are counted"). Spanish, for the `es.json` of the `accounts` catalogue when one exists (today every screen set ships `en.json` only and other languages fall back to `en`, web-shell D8; see Open questions):
-
-| Key | es |
-|---|---|
-| `core.accounts.setting.password_reset_client_limit.title` | Solicitudes de restablecimiento desde un mismo dispositivo o red |
-| `core.accounts.setting.password_reset_client_limit.description` | Cuántos correos de restablecimiento de contraseña pueden solicitarse desde un mismo dispositivo o dirección de red dentro de la ventana de inicio de sesión de arriba. Muchas personas comparten una dirección en el evento, así que manténlo al menos tan alto como el límite por dirección de abajo. De 5 a 1000. |
-| `core.accounts.setting.password_reset_address_limit.title` | Solicitudes de restablecimiento para una misma dirección de correo |
-| `core.accounts.setting.password_reset_address_limit.description` | Cuántos correos de restablecimiento de contraseña pueden solicitarse para una misma dirección de correo dentro de la ventana de inicio de sesión de arriba, exista o no una cuenta con ella. De 1 a 100. |
-| `core.accounts.setting.password_reset_cooldown.title` | Pausa entre correos de restablecimiento |
-| `core.accounts.setting.password_reset_cooldown.description` | Tras enviar un correo de restablecimiento, las siguientes solicitudes para esa cuenta no envían nada hasta que pase este tiempo; el enlace anterior sigue funcionando. 0 desactiva la pausa. Hasta 1 hora, y nunca más que la duración del enlace de arriba. |
-| `core.accounts.setting.login_failure_window.description` | Los inicios de sesión fallidos y las solicitudes de restablecimiento más antiguos que esto se olvidan. De 1 minuto a 24 horas. |
-
-### Failure modes
-
-| # | Method | Condition | errs kind | Caller is expected to | Test |
-|---|---|---|---|---|---|
 | F94 | `Policy.Validate` | `PasswordResetAddressLimit` outside `1`..`100`; `PasswordResetClientLimit` outside `5`..`1000` or below `PasswordResetAddressLimit`; `PasswordResetCooldown` negative, above `1h` or above `PasswordResetLifetime` | Invalid (field = the full key, code `range`, every violation at once) | settings refuses the change; a broken adapter fails the use case (F62) | `TestPolicy_Validate_ResetLimits_Table` |
 | F95 | `CheckSettings` | effective `password_reset_client_limit` below `password_reset_address_limit` | Invalid (`password_reset_client_limit`: `range`, `min` = the address limit) | the settings screen shows the field error on the client limit | `TestCheckSettings_ResetClientNotBelowAddress` |
 | F96 | `CheckSettings` | effective `password_reset_cooldown` above `password_reset_lifetime` | Invalid (`password_reset_cooldown`: `range`, `max` = the lifetime) | the settings screen shows the field error on the cooldown | `TestCheckSettings_CooldownNotAboveLifetime` |
 | F97 | `RequestPasswordReset` | `PasswordResetCooldown` is `0` and the account's newest reset row is seconds old | nil; a new token replaces the old, one message sent, one entry (never Reason `cooldown`); the `ResetState` read still happens | show the uniform message | `TestRequestPasswordReset_CooldownOff_AlwaysSends` |
 | F98 | `RequestPasswordReset` | the fake `PolicySource` lowers a reset limit below an address's current count, or shortens the cooldown below the newest row's age, between two requests | the next request is limited (429) or sends, respectively, with no restart and no limiter reset; raising the limit again releases the address | none | `TestRequestPasswordReset_PolicyChange_AppliesToNextRequest` |
-
-`Settings`' three `Check`s cannot fail in a way of their own: each is `intRange` or `durationRange` over the same bounds as `Validate`, and `TestSettings_Checks_AgreeWithPolicyValidate` proves they agree at both bounds and one past each.
-
-### Test plan
-
-- **Unit (`identity`).** `TestSettings_DeclarationsAreValidAndDefaultToDefaultPolicy` covers eleven keys (`"20"`, `"5"`, `"5m"` equal `DefaultPolicy()`'s fields); `TestSettings_Checks_AgreeWithPolicyValidate` covers the three new keys at `lo-1`, `lo`, `hi`, `hi+1`; `TestCheckSettings_ClientLimitNotBelowLoginLimit` gains the two new rules (F95, F96) and a case where two rules fail at once and both field errors are returned; F94 as a table including the dependent bounds (`client 4, address 5` fails on the client key; `cooldown 20m, lifetime 10m` fails on the cooldown key; `cooldown 0` passes); `TestRequestPasswordReset_RateLimited_Table` and `TestResetLimiter_SeparateFromSignIn_Table` take their limits from a fake `PolicySource` returning a `Policy` with small values (for example client 3, address 2), so the tests no longer depend on the defaults; F97 and F98 with the fake clock and a fake `PolicySource` whose policy the test swaps between calls. Every test still asserts `!c.Contains(address)` across logs, spans, entries and errors (`telemetrytest`).
-- **Catalogue (`internal/app`).** The existing core-area catalogue test fails until the six new `en` entries exist; it also checks the reworded `login_failure_window` description is present (any text).
-- **Integration, handlers, end to end:** no additions; nothing in the database or on the wire changes. The Mailpit end-to-end run may set `accounts.password_reset_cooldown` to `0` through `PUT /api/settings/values` before requesting two resets in a row and assert two e-mails arrive; recommended, not required.
-
-## Amendment 2026-10-28 (approved, owner, D53): `EnsureAccount` and the `Guard`
-
-Written for the public demo (`demo.md`). Production behaviour is unchanged: `Options.Guard` is nil outside demo mode.
-
-### Interface
-
-```go
-// AccountResult is what EnsureAccount reports.
-type AccountResult struct {
-	Account model.AccountID
-	Person  model.PersonID
-	Created bool // false: the address existed and its password was reset
-}
-
-// EnsureAccount is the writer-only bootstrap for commands (the sibling of CreateSuperuser):
-// no actor, no permission check, no sign-up mode check, no limiter. The password is
-// validated as SignUp validates it (length, common-password list). It creates the account
-// and publishes SignalAccountCreated, or, when the address exists and is not a superuser,
-// sets the password, enables the account and bumps session_generation. Audited
-// identity.account.created or identity.password.changed with ActorOperator. Fails Invalid
-// (password), Conflict (code superuser) for a superuser address, Unavailable wrapping
-// db.ErrReadOnly on a read-only copy, store kinds. Consumer: core/demo's seed through app.
-func (s *Service) EnsureAccount(ctx context.Context, c Credentials) (AccountResult, error)
-
-// Guard says which accounts are shared and must stay usable by everyone.
-type Guard interface {
-	Protected(ctx context.Context, a model.AccountID) (bool, error)
-}
-```
-
-### Behavior
-
-Identity consults `Options.Guard` (when non-nil) in `ChangePassword`, `SetTemporaryPassword`, `DisableAccount`, `DeletePerson`, `LinkAccount` (after the superuser check), `RequestPasswordReset` (answers nil and sends nothing, as for a superuser address), `CompletePasswordReset` (no token can exist) and any later e-mail change. The refusal is `Permission` with field `account` and code `protected`. `EnableAccount`, `SignOut` and `EndOtherSessions` stay allowed. A `Guard` error fails the use case (closed). `EnsureAccount` itself is not guarded (it is how the seed sets the demo password).
-
-### Failure modes (added)
-
-| # | Method | Condition | errs kind | Caller is expected to | Test |
-|---|---|---|---|---|---|
 | F99 | `EnsureAccount` | password fails the sign-up rules | Invalid | fix the seed table | `TestEnsureAccount_WeakPassword_ReturnsInvalid` |
 | F100 | `EnsureAccount` | the address is a superuser's | Conflict `superuser` | exit 1 | `TestEnsureAccount_SuperuserAddress_ReturnsConflict` |
 | F101 | `EnsureAccount` | read-only copy | Unavailable wrapping `db.ErrReadOnly` | exit 1 | `TestEnsureAccount_ReadOnly_ReturnsUnavailable` |
@@ -1141,47 +1126,70 @@ Identity consults `Options.Guard` (when non-nil) in `ChangePassword`, `SetTempor
 
 Nil `Guard`: `TestGuard_Nil_ProtectsNothing`.
 
-## Amendment 2026-10-30 (D58): `SessionInfo.Protected`
+`Settings`' three `Check`s cannot fail in a way of their own: each is `intRange` or `durationRange` over the same bounds as `Validate`, and `TestSettings_Checks_AgreeWithPolicyValidate` proves they agree at both bounds and one past each.
 
-From demo.md Q-DEMO6 (answered, owner, 2026-10-30, D58). The password screen must know before the person types that the account is a shared demo account. The session carries it: `SessionInfo.Protected bool` (wire `protected`, `omitempty`), set by `SessionInfo` from `Options.Guard.Protected(ctx, session.Account)` when the call is made by a signed-in person and the Guard is non-nil; false (absent) for a nil Guard and for a signed-out answer. The screen shows `core.accounts.field.protected` and disables the form when `protected` is true; the server's `Permission` `account` `protected` stays the backstop for a stale page or a direct call. The e-mail is not added to the session.
+## Lock-in check
 
-**Guard error (owner, 2026-10-30, D58, revised).** If `SessionInfo` failed whenever the Guard errors, a demo database hiccup would make the session answer fail for everyone and break the whole app. On a `Guard` error `SessionInfo` therefore answers `protected: false` and logs a warning (no personal data in the line); the rest of the answer is unaffected. The server's own refusal (`Permission` `account` `protected`) on password, disable, delete and link stays the fail-closed backstop (F108 still applies to those use cases), so a protected account is never changed; at worst the form shows and the save is refused. Not taken: failing `SessionInfo` with the Guard's kind. F110 and F111 above; `SessionInfo` stays one indexed read heavier in demo mode only.
+No external service. Libraries: `golang.org/x/crypto/argon2` (BSD-3-Clause), the standard library for HKDF (`crypto/hkdf`), HMAC, base64 and cookies, and PostgreSQL (D8). The embedded password list is SecLists' `xato-net-10-million-passwords-100000.txt` (MIT; the same SecLists top 100 000, renamed upstream), kept under `internal/core/identity/passwords/` with its licence text.
+Later providers (OIDC) must be implementable against Dex (D13 compose profile `oidc`) or Keycloak, both self-hostable; the trusted-header provider needs no external software.
 
+## Test plan
+
+- **Unit** (`identity`): a hand-written fake `store`, `clock.NewFake`, `audittest.NewFake("identity")`, `signalstest.NewFake("identity", []signals.Name{SignalAccountCreated}, nil)`, `telemetrytest.New(t)`; a fake `PolicySource`, `PermissionChecker` (allow/deny), `PermissionLister`, `NameSource`, `Alerter`. Table tests per failure mode above.
+  Token tests tamper each region and check constant-time behaviour by construction (`hmac.Equal`). Limiter tests advance the fake clock. Every test puts an invented address and password through the service and asserts `!c.Contains(address)` and `!c.Contains(password)` across logs, spans, the fake recorder's entries (`Reason`, `Fields`) and error strings; the capture fails on any violation at cleanup.
+- **Handlers** (`httptest`): each route with `httpx.Fail`'s fallback statuses, the cookie attributes (F53), `no-store` on `/session` and `/temporary-password`, `bms_session_dev` under both of decision 24's conditions and refused otherwise, sign-out clears the cookie even when the recorder fails (F24).
+- **Permission tests:** F31, F32, F37-F40, F55; the superuser passes with a nil checker; a denying checker is honoured even for `accounts.read` on one's own account (the person is not special on the admin routes).
+- **Integration** (`//go:build integration`, `dbtest.TempDB`): `db.Version(postgres.Migrations)`; F63; `Authenticate` makes exactly one statement (the `Querier` tracer) and no write; `SignUp` → `SignIn` → `DisableAccount` → `Authenticate` 401 on a real pool; the read-only path with `SetReadOnly` on the fake and `default_transaction_read_only` on the container.
+- **End to end** (in `app`, extending the M0 run): `bms migrate` → `bms create-superuser <invented>` prints the password once and never the address → `POST /api/accounts/sign-up` → `GET /api/accounts/session` is signed in → `GET /api/hello/greeting` is now `403` (actor present, permission denied; app.md item 1083) → `POST /api/accounts/sign-out` → `401`;
+  the superuser signs in, sees `superuser: true`, disables the participant, whose next request is `401`; the audit table holds the entries with the superuser marked; the e2e Playwright run signs up, signs in and changes a password at the phone viewport.
+- **Web** (`vitest`, `axe-core`): each screen's states in the UI table; "open redirect refused" moves here with the sign-in screen; the restricted-session redirect; the generated client replaces `shell/identity.ts`.
+
+**Forgotten-password flow (D39, D40, D41).**
+
+- **Unit.** The fake store, `notifytest.NewFake("identity")` (`Sent()` after commit, `Fail(err)`), `clock.NewFake`, `audittest.NewFake("identity")`, `telemetrytest.New(t)`: tables for F69 to F90; the token is read from the fake notifier's recorded `Link` and redeemed, never from the store; the stored value is asserted to be 32 bytes of hash and never equal to the token;
+  the `lifetime_minutes` var is the bare number ("60") and the stored `TTL` equals the lifetime; the cooldown and both reset buckets with a fake clock; a fake clock moves past `expires_at` (no sleeping); each test puts an invented address, token and password through the service and asserts `!c.Contains(...)` across logs, spans, entries and error strings.
+- **Handlers (`httptest`).** `202` for known, unknown and inside-cooldown addresses with identical bodies and headers; `204` on completion with no `Set-Cookie`; `501`, `429`, `503 read_only` statuses; the query string is absent from the log record.
+- **Permission tests.** Both routes are public: a signed-in person and a restricted session may use them; neither route returns a session.
+- **Integration (`//go:build integration`, `dbtest.TempDB`).** Migration `0002` applies; the unique `token_hash`; the cascade on account deletion; two concurrent `CompleteReset` calls: one wins; `Send` and the token row roll back together.
+- **End to end (`app`, with Mailpit).** Set the SMTP settings, request a reset, read the link from Mailpit, complete it, `Authenticate` with the old cookie is `401`, sign in with the new password.
+- **Web (`vitest`, `axe-core`).** Both screens' states; the token leaves the address bar; the sign-in link; focus and error summary.
+- **Handler test run twice (D40).** The "identical bodies and headers" case runs twice, with the fake configured and not; `TestPasswordReset_NoSecretsInTelemetry` covers the F72 warn line; the Mailpit end-to-end run clears `notify.smtp_host` and asserts `501` with identical bodies for a known and an unknown address, then restores it.
+- **Unit (`identity`).** `TestSettings_DeclarationsAreValidAndDefaultToDefaultPolicy` covers eleven keys (`"20"`, `"5"`, `"5m"` equal `DefaultPolicy()`'s fields); `TestSettings_Checks_AgreeWithPolicyValidate` covers the three new keys at `lo-1`, `lo`, `hi`, `hi+1`;
+  `TestCheckSettings_ClientLimitNotBelowLoginLimit` gains the two new rules (F95, F96) and a case where two rules fail at once and both field errors are returned; F94 as a table including the dependent bounds (`client 4, address 5` fails on the client key; `cooldown 20m, lifetime 10m` fails on the cooldown key; `cooldown 0` passes);
+  `TestRequestPasswordReset_RateLimited_Table` and `TestResetLimiter_SeparateFromSignIn_Table` take their limits from a fake `PolicySource` returning a `Policy` with small values (for example client 3, address 2), so the tests no longer depend on the defaults; F97 and F98 with the fake clock and a fake `PolicySource` whose policy the test swaps between calls.
+  Every test still asserts `!c.Contains(address)` across logs, spans, entries and errors (`telemetrytest`).
+- **Catalogue (`internal/app`).** The existing core-area catalogue test fails until the six new `en` entries exist; it also checks the reworded `login_failure_window` description is present (any text).
+- **Integration, handlers, end to end:** no additions; nothing in the database or on the wire changes. The Mailpit end-to-end run may set `accounts.password_reset_cooldown` to `0` through `PUT /api/settings/values` before requesting two resets in a row and assert two e-mails arrive; recommended, not required.
+
+**Demo-mode `Guard` (D53, D58).** F99 to F111 and `TestGuard_Nil_ProtectsNothing`, with fakes: a fake `Guard` that protects, does not protect and fails.
+
+## Amendments
+
+Every amendment to this spec is folded into the text above: the forgotten-password flow (D39), the uniform reset answers when e-mail is off (D40), the reset limits as settings (D41, D43), `EnsureAccount` and the `Guard` (D53, D56) and `SessionInfo.Protected` (D58), with the earlier build deviations and approvals of 2026-10-18 to 2026-10-20.
+Their narratives, the reasons for each choice, what the reviews found, the superseded wording and the answered open questions are in `plan/design/history/identity.md`.
 
 ## Open questions
 
-**Numbers for reset limits: closed (owner, 2026-10-20, D41).** The figures proposed under D40 (20 per client address, 5 per submitted address per `accounts.login_failure_window`, a 5-minute cooldown) are kept as the defaults of three regional settings, `accounts.password_reset_client_limit|address_limit|cooldown` ("Make it a setting. The defaults are good."); the keys, ranges and tests are in the amendment of 2026-10-20 (D41) above and in decision 22. The ranges were the architect's proposal under D41 and are approved as written (owner, 2026-10-20, D43).
-
-Two choices in that amendment were the owner's rather than the architect's; both are answered as recommended (owner, 2026-10-20, D43), as are the ranges (decision 22):
-
-1. **May the cooldown be turned off (`0`)?** Answered yes (owner, 2026-10-20, D43), range `0s`..`1h`. The per-address bucket still bounds e-mails to any one address, so `0` only removes the "one link per five minutes" courtesy; a regional that prefers the bucket alone, or that is testing its e-mail set-up, should not have to lower it to a token value such as `1s`. If the owner says no, the floor becomes `30s` and F97 is dropped (the text and the `durationRange` floor are the only changes).
-2. **Should a Spanish `es.json` start now?** Answered not yet (owner, 2026-10-20, D43; no Spanish accounts catalogue yet). Reason: no screen set ships a second catalogue today and other languages fall back to `en` (web-shell D8); the Spanish strings in the amendment are ready for whoever starts the `accounts` catalogue's `es.json`, and starting it with six strings would commit the project to keeping a whole second catalogue current from this change on. If the owner says yes, the file is created with the six entries plus the reworded window description and the catalogue test gains an `es` case.
-
-Otherwise none. The nine questions are settled as decisions (owner, 2026-10-18), each marked where it sits in the Summary:
-
-1. **No playa name at sign-up in M1 (decision 8).** The profile is `people`'s (M2); M1 sign-up asks for an e-mail address and a password only, the header shows a neutral label until the person fills in their profile in M2, and `people` prompts "finish your profile" on first sign-in after it ships.
-2. **Several superuser accounts (decision 7).** Allowed, each created by `create-superuser` with its own address, none promotable from a participant account; the admin accounts list shows them.
-3. **Sign-up reveals an existing address (decision 15).** `409 taken`, rate-limited per address, until e-mail verification in M4.
-4. **Who owns the login address (decision 17).** Identity.
-5. **"See my other sessions" (decision 3).** Later, best effort; M1 ships "sign out everywhere else".
-6. **A disabled account with the right password (decision 4).** The same 401 as a wrong password; the `Denied` audit entry shows the admin.
-7. **The common-password list (decision 13).** SecLists top 100 000 (MIT), embedded, checked exactly.
-8. **Temporary passwords in M1 (decision 18).** Included.
-9. **Rate limit keyed on the submitted address (decision 12).** Yes: about 100 failures per fifteen minutes per client address and ten per fifteen minutes per submitted address, in memory per process (the client-address default raised, owner, 2026-10-18).
-
-**Exception to audit decision 3 (owner, 2026-10-18).** Sign-out clears the cookie before it records `identity.logout` (decision 10), so a person is never kept signed in by an audit failure; the response is still the error. Recorded in audit.md decision 3 as well. Every other action of identity follows "no audit, no action".
+None. Every question is answered and folded into the decisions above (the nine of 2026-10-18 are decisions 8, 7, 15, 17, 3, 4, 13, 18 and 12; the reset-flow questions are decisions 20 and 21; the reset figures, ranges, the cooldown allowed to be `0` and no Spanish `es.json` yet are decision 22). The record is in `plan/design/history/identity.md`.
 
 ## Proposed changes elsewhere
 
 Status as of 2026-10-20: items 1 to 17 are applied; item 18 waits for `docs/operating.md` (not written) and is carried by this list until then; the D41 amendment is approved (owner, 2026-10-20, D43); items 19 and 20 are applied 2026-10-20, item 21 is the plan-keeper's (decisions, open questions, roadmap).
 
-1. (applied 2026-10-18) **`plan/design/api.md` (row 16) and `internal/lib/httpx`:** add `httpx.ErrRateLimited`; the mapper maps anything wrapping it to `429 rate_limited` with `Retry-After: 60` (identity and intake both use it); `telemetry.md`'s `intake.ErrRateLimited` becomes `= httpx.ErrRateLimited` (or wraps it). Mark api Proposed change 9 applied: `Authenticator` implemented here with no write, the principal accessors are `SessionFrom`/`PersonFrom`, cookies as decisions 7 and 24, the `accounts` set with public sign-in, sign-up, session, sign-out and password routes; `httpx.TrustedPeerFrom` is not requested yet.
-2. (applied 2026-10-18) **`plan/design/web-shell.md` (row 17):** `/sign-in` becomes a redirect to `/accounts/sign-in` that keeps the query; `shell/screens/SignIn.tsx`, `shell/identity.ts` and the `shell.signin.*` keys move to `web/src/core/accounts/` (`core.accounts.*`); `web/src/core/index.ts` lists `accounts`; the session store gains `accountId`, `passwordChangeRequired`, `expiresAt`, `signupOpen`; the route gate sends a restricted session to `/accounts/password?returnTo=` for every route outside `/accounts/`; the header shows `shell.account.anonymous` ("Account") when `playa_name` is empty; `AccountControls` calls sign-out through the generated client; field codes `too_short {min}`, `too_long {max}`, `common`, `taken`, `incorrect`, `self` in the shell catalogue (`field.*`); mark Proposed change 5 applied with the extended session body; the e2e smoke run adds sign-up, sign-in and password change at the phone viewport.
-3. (applied 2026-10-18) **`plan/design/app.md` (row 18):** part 2 `identity` in `core_identity.go`: `declare` appends `identity.Set` to `coreSets`, `identity.Permissions` to `corePerms`, `SignalAccountCreated` to `coreSignals`, the command `create-superuser` (`usage: <email>`); `build` calls `identity.New` over `cfg.Session.Key`, `cfg.HTTP.AllowPlaintext`, `a.dbc`, the clock, telemetry, `audit.Scoped("identity")` (audit is built first, audit.md Proposed change 1: the table's order becomes audit 1, identity 2), `a.disp.Scope("identity", {SignalAccountCreated}, nil)`, every seam nil, and sets `a.authenticator` and the `accounts` route set (`Route` → `module.Route`); the audit `ActorFunc` closure is `func(ctx) (audit.Actor, bool) { s, ok := identity.SessionFrom(ctx); ... {Kind: ActorPerson, Person: s.Person, Superuser: s.Superuser}, ok }` (a restricted session is still the person for audit); the command prints as in Behavior; the end-to-end test as in the test plan; mark Proposed change 9 applied; F6 lists `create-superuser` (unchanged).
+1. (applied 2026-10-18) **`plan/design/api.md` (row 16) and `internal/lib/httpx`:** add `httpx.ErrRateLimited`; the mapper maps anything wrapping it to `429 rate_limited` with `Retry-After: 60` (identity and intake both use it); `telemetry.md`'s `intake.ErrRateLimited` becomes `= httpx.ErrRateLimited` (or wraps it).
+   Mark api Proposed change 9 applied: `Authenticator` implemented here with no write, the principal accessors are `SessionFrom`/`PersonFrom`, cookies as decisions 7 and 24, the `accounts` set with public sign-in, sign-up, session, sign-out and password routes; `httpx.TrustedPeerFrom` is not requested yet.
+2. (applied 2026-10-18) **`plan/design/web-shell.md` (row 17):** `/sign-in` becomes a redirect to `/accounts/sign-in` that keeps the query; `shell/screens/SignIn.tsx`, `shell/identity.ts` and the `shell.signin.*` keys move to `web/src/core/accounts/` (`core.accounts.*`); `web/src/core/index.ts` lists `accounts`; the session store gains `accountId`, `passwordChangeRequired`, `expiresAt`, `signupOpen`;
+   the route gate sends a restricted session to `/accounts/password?returnTo=` for every route outside `/accounts/`; the header shows `shell.account.anonymous` ("Account") when `playa_name` is empty; `AccountControls` calls sign-out through the generated client; field codes `too_short {min}`, `too_long {max}`, `common`, `taken`, `incorrect`, `self` in the shell catalogue (`field.*`);
+   mark Proposed change 5 applied with the extended session body; the e2e smoke run adds sign-up, sign-in and password change at the phone viewport.
+3. (applied 2026-10-18) **`plan/design/app.md` (row 18):** part 2 `identity` in `core_identity.go`: `declare` appends `identity.Set` to `coreSets`, `identity.Permissions` to `corePerms`, `SignalAccountCreated` to `coreSignals`, the command `create-superuser` (`usage: <email>`);
+   `build` calls `identity.New` over `cfg.Session.Key`, `cfg.HTTP.AllowPlaintext`, `a.dbc`, the clock, telemetry, `audit.Scoped("identity")` (audit is built first, audit.md Proposed change 1: the table's order becomes audit 1, identity 2), `a.disp.Scope("identity", {SignalAccountCreated}, nil)`, every seam nil, and sets `a.authenticator` and the `accounts` route set (`Route` → `module.Route`);
+   the audit `ActorFunc` closure is `func(ctx) (audit.Actor, bool) { s, ok := identity.SessionFrom(ctx); ... {Kind: ActorPerson, Person: s.Person, Superuser: s.Superuser}, ok }` (a restricted session is still the person for audit); the command prints as in Behavior; the end-to-end test as in the test plan; mark Proposed change 9 applied; F6 lists `create-superuser` (unchanged).
 4. (applied 2026-10-18) **`plan/design/module-hello.md` (row 4b) and `internal/modules/hello`:** M1 step of decision 2: `actor: identity.PersonFrom`; the e2e assertion `GET /api/hello/greeting` with a session is `403` and `deliver:hello.greeted` is asserted request-driven once the owner's base role exists (M2).
 5. (applied 2026-10-18) **`plan/design/module-contract.md` (row 4), `.claude/skills/go-conventions/SKILL.md`, `add-module/SKILL.md`:** "the actor is `identity.PersonFrom(ctx)` (false inside a signal delivery and for a restricted session); a module imports `core/identity` for it and takes it as a seam (`actorFunc`) so tests use `identity.WithSession`"; no `Deps` field is added.
-6. (applied 2026-10-18, by authz.md Proposed change 4: `PermissionsOf` returns every declared name for a superuser session and `p@<department-id>` entries; `identity.Permissions` carries `StarterRoles: []string{authz.RoleAccountAdmin}`) **`plan/design/authz.md` (row 7):** receive the actor through an option `app` fills from `identity.SessionFrom` (never import identity); `Allow` returns nil for `Superuser` (D23; the audit log marks it; no grant check); implement `identity.PermissionChecker` and `identity.PermissionLister`; the starter role "Account admin" holds `accounts.read` and `accounts.manage`; every signed-in person's base role holds nothing of identity's (the person's own routes need no permission).
-7. (applied 2026-10-18, by people.md Proposed change 3: the subscription, `NameSource`, the profile prompt, the login address, export and deletion through `app`'s adapter, `LinkAccount` as the "link an existing person" method) **`plan/design/people.md` (row 8):** subscribe to `identity.account-created {account, person}` and create the person row idempotently (and lazily on first profile access, since delivery is at most once); implement `identity.NameSource`; prompt for the playa name on first sign-in; the login address is identity's (decision 17); call `identity.ExportPerson`/`DeletePerson` in the person export and deletion (through `app`'s adapter, in the same transaction for deletion); "link an existing person to an account" is an identity method proposed with people's spec.
+6. (applied 2026-10-18, by authz.md Proposed change 4: `PermissionsOf` returns every declared name for a superuser session and `p@<department-id>` entries; `identity.Permissions` carries `StarterRoles: []string{authz.RoleAccountAdmin}`) **`plan/design/authz.md` (row 7):** receive the actor through an option `app` fills from `identity.SessionFrom` (never import identity); `Allow` returns nil for `Superuser` (D23;
+   the audit log marks it; no grant check); implement `identity.PermissionChecker` and `identity.PermissionLister`; the starter role "Account admin" holds `accounts.read` and `accounts.manage`; every signed-in person's base role holds nothing of identity's (the person's own routes need no permission).
+7. (applied 2026-10-18, by people.md Proposed change 3: the subscription, `NameSource`, the profile prompt, the login address, export and deletion through `app`'s adapter, `LinkAccount` as the "link an existing person" method) **`plan/design/people.md` (row 8):** subscribe to `identity.account-created {account, person}` and create the person row idempotently (and lazily on first profile access,
+   since delivery is at most once); implement `identity.NameSource`; prompt for the playa name on first sign-in; the login address is identity's (decision 17); call `identity.ExportPerson`/`DeletePerson` in the person export and deletion (through `app`'s adapter, in the same transaction for deletion); "link an existing person to an account" is an identity method proposed with people's spec.
 8. (applied 2026-10-19, D39) **`plan/design/settings.md` (row 15):** declare the eight (the seven above plus `accounts.password_reset_lifetime`) `accounts.*` keys with the ranges above and implement `identity.PolicySource` (`Policy.Validate` is the check).
 9. (applied 2026-10-19, D39: the superuser alert is `app`'s adapter, notify Proposed change 7; the reset flow is the amendment below, notify Proposed change 1) **`plan/design/notify.md` (row 11):** implement `identity.Alerter` (superuser sign-in to maintainers and site admins; D23) and the password-reset seam identity adds in M4.
 10. (applied 2026-10-18) **`plan/design/audit.md` (row 12):** item 3's action list gains `identity.account.read` (Fields `email`, `last_login_at`, `disabled_at`; personal), `identity.account.deleted`, `identity.password.temporary-set`, `identity.sessions.ended`, `identity.superuser.reset`; `Record` kinds used: `identity.account`, `identity.session`; the superuser's login records `identity.superuser.login` instead of `identity.login`.
@@ -1190,9 +1198,11 @@ Status as of 2026-10-20: items 1 to 17 are applied; item 18 waits for `docs/oper
 13. (applied 2026-10-18) **`plan/design/model.md` (row 2):** mark Proposed change 5 applied for identity (address stored as entered, unique on `lower(email)`, lookup by canonical form).
 14. (applied 2026-10-18) **`plan/design/db.md` (row 5):** mark Proposed change 10 applied for identity (`postgres.Migrations`, `identity.Set`, schema `core`).
 15. (applied 2026-10-18) **`plan/design/telemetry.md` (row 15b):** add `bms.identity.logins{outcome}`, `bms.identity.sessions_rejected{reason}`, `bms.identity.rate_limited{bucket}` to the instrument table.
-16. (applied 2026-10-18) **`plan/07-abstractions.md`, "identity":** Owns becomes "local accounts keyed by e-mail (D21), the password policy and Argon2id, the signed session token and cookie checked without a write, the `Authenticator` and the principal accessors (`SessionFrom`, `PersonFrom`), per-account revocation, failed-login limits, the superuser and `bms create-superuser` (D23), the `accounts` routes and screens, `identity.account-created`; providers (OIDC, trusted header) Later behind the same service"; Doesn't do adds "the profile and the playa name (`people`), invitations and password reset until their milestones, e-mail (`notify`)". Also the plan's statement that authz "doesn't do the superuser" becomes "authz allows the superuser by the flag identity supplies; identity creates and marks it".
+16. (applied 2026-10-18) **`plan/07-abstractions.md`, "identity":** Owns becomes "local accounts keyed by e-mail (D21), the password policy and Argon2id, the signed session token and cookie checked without a write, the `Authenticator` and the principal accessors (`SessionFrom`, `PersonFrom`), per-account revocation, failed-login limits, the superuser and `bms create-superuser` (D23), the `accounts` routes and screens,
+    `identity.account-created`; providers (OIDC, trusted header) Later behind the same service"; Doesn't do adds "the profile and the playa name (`people`), invitations and password reset until their milestones, e-mail (`notify`)". Also the plan's statement that authz "doesn't do the superuser" becomes "authz allows the superuser by the flag identity supplies; identity creates and marks it".
 17. (applied 2026-10-18) **`plan/09-core-features.md` §2:** the M1 line reads "create the superuser by command, sign up, sign in and out, change a password, sign out everywhere else, disable and re-enable an account, set a temporary password"; "see and end their other sessions" becomes "end their other sessions (M1); see them: Later"; the login name's ownership per decision 17 (applied).
-18. (pending: target not written) **`docs/operating.md` (unwritten):** `bms create-superuser <email>` (password shown once; re-running resets it and ends its sessions; a participant address is refused); losing `secrets.json` ends every session but keeps passwords; the superuser is for emergencies and every sign-in is logged and audited; the limiter is per process, and (D41) the sign-in and password-reset limits are `accounts.*` settings on the settings screen, applied to the next request without a restart.
+18. (pending: target not written) **`docs/operating.md` (unwritten):** `bms create-superuser <email>` (password shown once; re-running resets it and ends its sessions; a participant address is refused); losing `secrets.json` ends every session but keeps passwords; the superuser is for emergencies and every sign-in is logged and audited;
+    the limiter is per process, and (D41) the sign-in and password-reset limits are `accounts.*` settings on the settings screen, applied to the next request without a restart.
 19. (applied 2026-10-20, D43) **`plan/design/settings.md` (row 15):** "Declared elsewhere, stored here" reads `accounts.*` (identity, **eleven** keys, `identity.CheckSettings` for `client_failure_limit >= login_failure_limit`, `password_reset_client_limit >= password_reset_address_limit` and `password_reset_cooldown <= password_reset_lifetime`); its Proposed change 4 (applied, D39) stays as history. No other settings.md text counts the keys.
 20. (applied 2026-10-20, D43) **`plan/07-abstractions.md`, "identity":** Owns reads "failed-login and password-reset limits" instead of "failed-login limits".
 21. (pending, D41; `plan-keeper`) **`plan/03-decisions.md` D41 and `plan/06-open-questions.md` Q-RESET-RATE:** replace "being drafted" with a reference to this amendment and the three keys with their defaults and ranges; `plan/05-roadmap.md` if it carries an M4 line for the reset flow.

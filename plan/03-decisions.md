@@ -1033,3 +1033,25 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
   - **E-mail article wording:** the volunteers e-mail templates are reworded to avoid "a
     {{term …}}" before a regional word, e.g. "The {lead} of your {department}…". Article forms
     are not added to terms.
+
+## D59. Keep specs and tests readable by agents
+
+- **Status:** Accepted (2026-10-30), decided by the owner. The owner accepted the main session's
+  recommendations.
+- **Spec amendments:**
+  - When an amendment to a design spec is Implemented, fold it into the spec's main sections so
+    they state the current rule.
+  - Move the amendment's narrative verbatim to `plan/design/history/<spec>.md`, and leave a pointer
+    line in the spec's `## Amendments` section.
+  - Applied to module-volunteers (commit c8395d2). Being applied to people, identity, telemetry,
+    jobs, api, privacy-tags and settings.
+- **Plan line length:** no line in a plan document runs over 2000 characters. Dense summary
+  paragraphs become lists, and decision numbers are kept.
+- **Citing amendments:** a citation of an amendment by name ("Amendment V3") points at the history
+  file and keeps the amendment name.
+- **module-volunteers.md:** not split into a folder for now. Revisit if agents still struggle.
+- **Large test files:** `people.test.tsx`, `internal/app/internal_test.go` and
+  `volunteers/v1_integration_test.go` are split only when next worked on.
+- **Decision log size:** `plan/03-decisions.md` is split by milestone once it passes about 100 KB.
+- **E2E smoke spec:** split into one file per area (commit 75c6d3a).
+- **Dev database:** the renamed dev database `bms_pre_notify0002_20261030` was dropped.
