@@ -27,3 +27,8 @@ Return exactly:
 3. On failure: only the lines that matter (compiler errors, failing test names with their
    assertion output, lint findings with `file:line`), with the build chatter trimmed. On
    success: the one-line summary.
+
+Run long commands in the foreground, or in the background and wait for the completion notice.
+Never write a polling loop (`until ... do sleep ...`) that waits on a process or a file:
+`pgrep -f "<text>"` matches the loop's own command line, and a file that never appears leaves
+it running. Don't end your turn while a shell you started is still running.

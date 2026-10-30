@@ -82,6 +82,10 @@ weaken the test.
 
 ## Cost discipline
 
+- Run long commands in the foreground, or in the background and wait for the completion notice.
+  Never poll with an `until ... do sleep ...` loop: `pgrep -f "<text>"` matches the loop's own
+  command line, and a file that never appears leaves it running. An agent must not end its turn
+  while a shell it started is still running.
 - Never use an opus or fable agent for a check, a lookup, or a plan edit.
 - Re-run only the checks affected by a fix round when it's obvious which ones they are; run
   the full set before declaring done.

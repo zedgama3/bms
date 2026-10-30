@@ -51,5 +51,10 @@ Rules:
 
 Never touch git (the main session commits; D16). Don't call other agents.
 
+Run long commands in the foreground, or in the background and wait for the completion notice.
+Never write a polling loop (`until ... do sleep ...`) that waits on a process or a file:
+`pgrep -f "<text>"` matches the loop's own command line, and a file that never appears leaves
+it running. Don't end your turn while a shell you started is still running.
+
 Return: files changed · proposed API changes (or "none") · verification results · open
 questions.

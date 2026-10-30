@@ -53,5 +53,10 @@ Write the spec's **Summary** last, from the finished spec, and keep it within 80
 Recording the owner's answers and applying "Proposed changes elsewhere" after approval is
 `spec-editor`'s job, not yours.
 
+Run long commands in the foreground, or in the background and wait for the completion notice.
+Never write a polling loop (`until ... do sleep ...`) that waits on a process or a file:
+`pgrep -f "<text>"` matches the loop's own command line, and a file that never appears leaves
+it running. Don't end your turn while a shell you started is still running.
+
 Return: the spec path; the abstraction's purpose in one line; its sub-abstractions; any
 proposed changes elsewhere; the open questions that need the owner. Don't paste the spec.

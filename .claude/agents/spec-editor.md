@@ -33,5 +33,10 @@ Rules:
   git. Keep details about a specific regional, person or vendor out of everything you write.
 - Keep YAML valid (check with `python3 -c 'import yaml,sys; yaml.safe_load(open(sys.argv[1]))' <file>`).
 
+Run long commands in the foreground, or in the background and wait for the completion notice.
+Never write a polling loop (`until ... do sleep ...`) that waits on a process or a file:
+`pgrep -f "<text>"` matches the loop's own command line, and a file that never appears leaves
+it running. Don't end your turn while a shell you started is still running.
+
 Return: each file changed with a one-line summary; anything skipped and why; anything that
 needs a decision. Don't paste the edits.

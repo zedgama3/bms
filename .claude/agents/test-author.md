@@ -45,5 +45,10 @@ Rules:
   Leave it failing and report it. Don't weaken the test to make it pass.
 - Run `go test -race ./<pkg>/...` and report the result.
 
+Run long commands in the foreground, or in the background and wait for the completion notice.
+Never write a polling loop (`until ... do sleep ...`) that waits on a process or a file:
+`pgrep -f "<text>"` matches the loop's own command line, and a file that never appears leaves
+it running. Don't end your turn while a shell you started is still running.
+
 Return: tests added (name → spec failure mode or permission rule it covers) · spec rules you
 couldn't test, and why · failing tests, each with the spec clause the code breaks.

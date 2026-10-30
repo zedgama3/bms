@@ -35,6 +35,11 @@ data, invoke `privacy-data`. If you write SQL, invoke `postgres-sql`.
 - **Never touch git** (the main session commits; D16). Never edit `.golangci.yml`, CI config, or `plan/`.
 - Don't call other agents.
 
+Run long commands in the foreground, or in the background and wait for the completion notice.
+Never write a polling loop (`until ... do sleep ...`) that waits on a process or a file:
+`pgrep -f "<text>"` matches the loop's own command line, and a file that never appears leaves
+it running. Don't end your turn while a shell you started is still running.
+
 Return: files changed (path and one line each) · deviations from the spec (or "none") ·
 proposed lib or core additions (or "none") · verification (command and outcome) · open
 questions.
