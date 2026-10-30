@@ -94,6 +94,22 @@ Edits this spec needs in 07-abstractions.md or other specs (the architect lists 
 
 Sections that don't apply say "None" with a reason, rather than being dropped.
 
+## Amendments
+
+When an amendment is implemented, fold it into the spec body and move its narrative to
+`plan/design/history/<spec>.md`.
+
+- Rewrite the Summary, Interface, Data, Permissions, Signals, Settings, UI, Behavior, Failure
+  modes and Test plan so they state the current rules directly. Where a later amendment
+  overrides an earlier one, keep only the current rule. A short source tag such as "(V3, D57)"
+  is fine for traceability.
+- The history file starts with a one-line header saying what it is. It holds the amendment
+  narratives, the reasons, what the reviews found and the superseded wording, verbatim.
+- In the spec, leave one line (an "Amendments" section) pointing to the history file.
+- Keep decision numbers, Q-ids, F-numbers and test names: other files cite them.
+- No line in a spec is longer than 2000 characters (aim for under 500): use lists for dense
+  paragraphs.
+
 ## Reading other specs
 
 Read the **Summary** of each spec yours depends on, not the whole file. Open a specific
