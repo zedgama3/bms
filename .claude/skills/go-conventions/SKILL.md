@@ -36,6 +36,9 @@ web                         the built web shell (embed)   imports: stdlib, lib/e
   (`afterreports`).
 - depguard in `.golangci.yml` and `make imports` enforce these rules. A failure is a design
   problem, not a lint nuisance.
+- A core package takes a seam (a func or interface it keeps and calls later) as an `Options`
+  or `Decl` field, never as a method argument it retains. The seam test in `internal/app`
+  sees stored fields, not retained arguments.
 
 ## Module package layout
 

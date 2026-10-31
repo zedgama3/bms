@@ -68,3 +68,22 @@ func guardDoer(a *assembly) Doer {
 func makeFunc(a *assembly) func() error {
 	return func() error { return a.err }
 }
+
+// run is a method on assembly; send returns it as a method value (5a).
+func (a *assembly) run() {}
+
+func (a *assembly) send() func() { return a.run }
+
+// keyOnly uses the parameter's name only as a composite-literal key: not a capture.
+func keyOnly(a *assembly) Doer {
+	f := func() Doer { return lazyGuard{a: nil} }
+	_ = f
+	return doer{}
+}
+
+// selOnly names a field "a" on another value: not a capture.
+func selOnly(a *assembly, x plain) Doer {
+	f := func() Doer { return x.a }
+	_ = f
+	return doer{}
+}

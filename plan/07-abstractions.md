@@ -77,7 +77,7 @@ Rules (enforced by depguard and `make imports`):
 
 ## Late-bound seams
 
-A row is one type in `internal/app` (or one top-level function, for a closure that reads the assembly) that reads a field set after it was constructed. "Waits for" is what it resolves when called; "Reason" is the pair that forces it and the migration step that removes it (`plan/design/boundaries.md`). `TestSeamTable_MatchesApp` (rule 12, under `make imports`) fails on a late-bound candidate that is not listed here and on a row that names nothing in `app`. "None." is the empty table.
+A row is one type in `internal/app` (or one top-level function, for a closure that reads the assembly) that reads a field set after it was constructed. "Waits for" is what it resolves when called; "Reason" is the pair that forces it and the migration step that removes it (`plan/design/boundaries.md`). `TestSeamTable_MatchesApp` (rule 12, under `make imports`) fails on an unlisted late-bound type or closure, on a returned or stored capture that is not listed (shapes 5a and 5b), on a stored inline func literal always (it has no name to list; extract it), on a row that names nothing in `app` or is no longer late-bound, and on a missing section or rows beside "None.". "None." is the empty table.
 
 | Type | Waits for | Reason |
 |---|---|---|
@@ -99,6 +99,7 @@ A row is one type in `internal/app` (or one top-level function, for a closure th
 | `demoObjects` | a.cfg and a.plan for the buckets to clear | demo's reset needs files to clear every owner's objects, and files holds the demo cap (files ↔ demo); removed in step 10. |
 | `demoSchema` | a.migrator, a.plan and a.authz | the reset's migrate step is `bms migrate` re-run, which needs the authz seeder built before demo runs; it holds the assembly only because of that (F1); removed in step 10. |
 | `demoChannelFactory` | a.demo, which the demo part sets last | notify takes demo's capture channel, and demo is built after notify (notify ↔ demo); removed in step 10. |
+| `assembly.auditActor` | a.operator, which a command sets | audit asks app who the actor is, and app holds the order system, session, operator (F1); the method value is stored in `audit.Options`; removed in step 3. |
 ---
 
 ## Foundation

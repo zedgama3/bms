@@ -16,19 +16,39 @@ import (
 
 const seamDoc = "../../plan/07-abstractions.md"
 
-// seamCandidates parses the non-test .go files in dir and returns the names of the
-// late-bound candidates: a struct with a *assembly field, any type named lazy*, and a
-// top-level function taking or receiving *assembly, returning a named (non-builtin)
-// type or a func type, with a function literal that references the assembly. assembly and process are
-// excluded by name.
+// seamCandidates is seamScan without the stored-literal failures.
 func seamCandidates(t *testing.T, dir string) map[string]string {
+	t.Helper()
+	c, _ := seamScan(t, dir)
+	return c
+}
+
+// storedLiterals returns the failures for func literals that capture the assembly and
+// are stored in a project package's struct literal (rule 5b). They fail whether or not
+// the table lists anything, because a literal has no declaration a row could name.
+func storedLiterals(t *testing.T, dir string) []string {
+	t.Helper()
+	_, l := seamScan(t, dir)
+	return l
+}
+
+// seamScan parses the non-test .go files in dir and returns the late-bound candidates:
+// a struct with a *assembly field, any type named lazy*, a top-level function taking or
+// receiving *assembly, returning a named (non-builtin) type or a func type, that holds a
+// capture (5a), and a method value a.m stored in a project package's struct literal
+// (5b, keyed assembly.m). It also returns the stored-literal failures. assembly and
+// process are excluded by name.
+func seamScan(t *testing.T, dir string) (map[string]string, []string) {
 	t.Helper()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("read %s: %v", dir, err)
 	}
 	out := map[string]string{}
+	var lits []string
 	fset := token.NewFileSet()
+	var files []*ast.File
+	methods := map[string]bool{}
 	for _, e := range entries {
 		n := e.Name()
 		if e.IsDir() || !strings.HasSuffix(n, ".go") || strings.HasSuffix(n, "_test.go") {
@@ -38,6 +58,16 @@ func seamCandidates(t *testing.T, dir string) map[string]string {
 		if err != nil {
 			t.Fatalf("parse %s: %v", n, err)
 		}
+		files = append(files, f)
+		// First pass: the methods declared on assembly.
+		for _, d := range f.Decls {
+			if fd, ok := d.(*ast.FuncDecl); ok && fd.Recv != nil && strings.HasPrefix(funcKey(fd), "assembly.") {
+				methods[fd.Name.Name] = true
+			}
+		}
+	}
+	for _, f := range files {
+		imports := fileImports(f)
 		for _, d := range f.Decls {
 			switch d := d.(type) {
 			case *ast.GenDecl:
@@ -51,11 +81,34 @@ func seamCandidates(t *testing.T, dir string) map[string]string {
 					}
 				}
 			case *ast.FuncDecl:
-				if closureOverAssembly(d) {
+				held, stored := captures(d, methods, imports)
+				if held && returnsSeamShape(d) {
 					out[funcKey(d)] = kindClosure
+				}
+				for _, c := range stored {
+					if c.lit {
+						lits = append(lits, fmt.Sprintf("func literal in %s captures the assembly and is stored in %s: extract it to a named function or type and list it, or remove it", funcKey(d), c.typ))
+					} else {
+						out["assembly."+c.method] = kindClosure
+					}
 				}
 			}
 		}
+	}
+	sort.Strings(lits)
+	return out, lits
+}
+
+// fileImports maps each import name in f to its path.
+func fileImports(f *ast.File) map[string]string {
+	out := map[string]string{}
+	for _, im := range f.Imports {
+		path := strings.Trim(im.Path.Value, "\"`")
+		name := path[strings.LastIndex(path, "/")+1:]
+		if im.Name != nil {
+			name = im.Name.Name
+		}
+		out[name] = path
 	}
 	return out
 }
@@ -107,15 +160,18 @@ func hasAssemblyField(e ast.Expr) bool {
 var builtinTypes = map[string]bool{"error": true, "any": true, "string": true, "bool": true,
 	"int": true, "int64": true, "uint": true, "float64": true, "byte": true, "rune": true}
 
-// closureOverAssembly is rule 5: a function with an *assembly parameter, a named
-// non-builtin result, and a function literal that uses that parameter or receiver in any way.
-func closureOverAssembly(d *ast.FuncDecl) bool {
-	if d.Body == nil || d.Type.Results == nil {
-		return false
-	}
+// assemblyParams returns the names of d's receiver and parameters of type *assembly.
+func assemblyParams(d *ast.FuncDecl) []string {
 	var params []string
+	var lists []*ast.FieldList
 	if d.Recv != nil {
-		for _, p := range d.Recv.List {
+		lists = append(lists, d.Recv)
+	}
+	if d.Type.Params != nil {
+		lists = append(lists, d.Type.Params)
+	}
+	for _, l := range lists {
+		for _, p := range l.List {
 			if isAssemblyPtr(p.Type) {
 				for _, n := range p.Names {
 					params = append(params, n.Name)
@@ -123,56 +179,163 @@ func closureOverAssembly(d *ast.FuncDecl) bool {
 			}
 		}
 	}
-	for _, p := range d.Type.Params.List {
-		if isAssemblyPtr(p.Type) {
-			for _, n := range p.Names {
-				params = append(params, n.Name)
-			}
-		}
-	}
-	if len(params) == 0 {
+	return params
+}
+
+// returnsSeamShape reports whether d has a result list containing a named non-builtin
+// type or a func type (rule 5a).
+func returnsSeamShape(d *ast.FuncDecl) bool {
+	if d.Type.Results == nil {
 		return false
 	}
-	named := false
 	for _, r := range d.Type.Results.List {
 		switch x := r.Type.(type) {
 		case *ast.SelectorExpr, *ast.FuncType:
-			named = true
+			return true
 		case *ast.Ident:
-			named = named || !builtinTypes[x.Name]
-		}
-	}
-	if !named {
-		return false
-	}
-	found := false
-	ast.Inspect(d.Body, func(n ast.Node) bool {
-		lit, ok := n.(*ast.FuncLit)
-		if !ok {
-			return !found
-		}
-		ast.Inspect(lit.Body, func(m ast.Node) bool {
-			switch x := m.(type) {
-			case *ast.SelectorExpr:
-				// Only the operand can be a capture; x.a with Sel named like the
-				// parameter is not.
-				ast.Inspect(x.X, func(k ast.Node) bool {
-					if id, ok := k.(*ast.Ident); ok && isParam(id.Name, params) {
-						found = true
-					}
-					return !found
-				})
-				return false
-			case *ast.Ident:
-				if isParam(x.Name, params) {
-					found = true
-				}
+			if !builtinTypes[x.Name] {
+				return true
 			}
-			return !found
-		})
-		return false
+		}
+	}
+	return false
+}
+
+// usesParam reports whether n uses one of params as an identifier. A selector's Sel and
+// a composite literal's key are names, not uses.
+func usesParam(n ast.Node, params []string) bool {
+	found := false
+	ast.Inspect(n, func(m ast.Node) bool {
+		switch x := m.(type) {
+		case *ast.SelectorExpr:
+			if usesParam(x.X, params) {
+				found = true
+			}
+			return false
+		case *ast.KeyValueExpr:
+			if usesParam(x.Value, params) {
+				found = true
+			}
+			return false
+		case *ast.Ident:
+			if isParam(x.Name, params) {
+				found = true
+			}
+		}
+		return !found
 	})
 	return found
+}
+
+// storedCapture is a capture that is the value of a field of a project package's struct
+// literal (rule 5b).
+type storedCapture struct {
+	lit    bool
+	method string // the method name, for a method value
+	typ    string // pkg.T, for a literal
+}
+
+// captures walks d's body. held reports whether d holds any capture (a func literal using
+// the assembly, or an uncalled method value a.m); stored lists those that are 5b.
+func captures(d *ast.FuncDecl, methods map[string]bool, imports map[string]string) (held bool, stored []storedCapture) {
+	params := assemblyParams(d)
+	if d.Body == nil || len(params) == 0 {
+		return false, nil
+	}
+	called := map[ast.Node]bool{}
+	var stack []ast.Node
+	// compType returns the type expression of the composite literal at stack[i]. An
+	// elided type (a {..} element of a slice, array or map literal) takes its element type
+	// from the next enclosing literal, with a pointer stripped.
+	var compType func(i int) ast.Expr
+	compType = func(i int) ast.Expr {
+		comp, ok := stack[i].(*ast.CompositeLit)
+		if !ok {
+			return nil
+		}
+		if comp.Type != nil {
+			return comp.Type
+		}
+		j := i - 1
+		if j >= 0 {
+			if _, ok := stack[j].(*ast.KeyValueExpr); ok {
+				j--
+			}
+		}
+		if j < 0 {
+			return nil
+		}
+		if _, ok := stack[j].(*ast.CompositeLit); !ok {
+			return nil
+		}
+		var elem ast.Expr
+		switch t := compType(j).(type) {
+		case *ast.ArrayType:
+			elem = t.Elt
+		case *ast.MapType:
+			elem = t.Value
+		}
+		if st, ok := elem.(*ast.StarExpr); ok {
+			elem = st.X
+		}
+		return elem
+	}
+	storedIn := func() string {
+		// stack holds the ancestors of the capture; its top is the parent.
+		n := len(stack)
+		ci := -1
+		if n >= 1 {
+			switch stack[n-1].(type) {
+			case *ast.CompositeLit:
+				ci = n - 1
+			case *ast.KeyValueExpr:
+				if n >= 2 {
+					if _, ok := stack[n-2].(*ast.CompositeLit); ok {
+						ci = n - 2
+					}
+				}
+			}
+		}
+		if ci < 0 {
+			return ""
+		}
+		sel, ok := compType(ci).(*ast.SelectorExpr)
+		if !ok {
+			return ""
+		}
+		id, ok := sel.X.(*ast.Ident)
+		if !ok || !strings.HasPrefix(imports[id.Name], "github.com/zedgama3/bms/") {
+			return ""
+		}
+		return id.Name + "." + sel.Sel.Name
+	}
+	ast.Inspect(d.Body, func(n ast.Node) bool {
+		if n == nil {
+			stack = stack[:len(stack)-1]
+			return true
+		}
+		switch x := n.(type) {
+		case *ast.CallExpr:
+			called[x.Fun] = true
+		case *ast.FuncLit:
+			if usesParam(x.Body, params) {
+				held = true
+				if typ := storedIn(); typ != "" {
+					stored = append(stored, storedCapture{lit: true, typ: typ})
+				}
+			}
+		case *ast.SelectorExpr:
+			if id, ok := x.X.(*ast.Ident); ok && isParam(id.Name, params) && methods[x.Sel.Name] && !called[x] {
+				held = true
+				if typ := storedIn(); typ != "" {
+					stored = append(stored, storedCapture{method: x.Sel.Name, typ: typ})
+				}
+			}
+		}
+		stack = append(stack, n)
+		return true
+	})
+	return held, stored
 }
 
 func isParam(name string, params []string) bool {
@@ -305,18 +468,24 @@ func declaredNames(t *testing.T, dir string) map[string]bool {
 // seam table check, 1-5). An empty table ("None.") means no candidate may exist.
 func TestSeamTable_MatchesApp(t *testing.T) {
 	rows := seamRows(t, seamDoc)
-	cands := seamCandidates(t, ".")
+	cands, lits := seamScan(t, ".")
 	if len(rows) == 0 && len(cands) > 0 {
 		t.Errorf("seam table is None. but %d late-bound candidates exist", len(cands))
 	}
-	for _, p := range seamProblems(cands, rows, declaredNames(t, ".")) {
+	for _, p := range matchProblems(cands, lits, rows, declaredNames(t, ".")) {
 		t.Error(p)
 	}
 }
 
+// matchProblems is the whole MatchesApp evaluation: the table problems plus every stored
+// literal, which no row can clear.
+func matchProblems(cands map[string]string, lits, rows []string, declared map[string]bool) []string {
+	return append(seamProblems(cands, rows, declared), lits...)
+}
+
 // wantFixture is every candidate in testdata/seams/unlisted.go.
 var wantFixture = []string{"holder", "lazyThing", "makeDoer", "assembly.methodDoer",
-	"channelDoer", "guardDoer", "makeFunc"}
+	"channelDoer", "guardDoer", "makeFunc", "assembly.send"}
 
 // TestSeamTable_FlagsUnlistedType: candidates in the fixture, absent from the table,
 // are reported by name, and excluded names are not.
@@ -331,13 +500,13 @@ func TestSeamTable_FlagsUnlistedType(t *testing.T) {
 			t.Errorf("missing problem %q in:\n%s", msg, got)
 		}
 	}
-	for _, want := range []string{"makeDoer", "assembly.methodDoer", "channelDoer", "guardDoer", "makeFunc"} {
+	for _, want := range []string{"makeDoer", "assembly.methodDoer", "channelDoer", "guardDoer", "makeFunc", "assembly.send"} {
 		msg := fmt.Sprintf("late-bound closure %s is not in the seam table: name the type and list it, or remove it", want)
 		if !strings.Contains(got, msg) {
 			t.Errorf("missing problem %q in:\n%s", msg, got)
 		}
 	}
-	for _, not := range []string{"assembly", "process", "plain", "doer", "Doer", "closers", "assembly.closers", "noCapture"} {
+	for _, not := range []string{"assembly", "process", "plain", "doer", "Doer", "closers", "assembly.closers", "noCapture", "keyOnly", "selOnly", "assembly.run"} {
 		if _, ok := cands[not]; ok {
 			t.Errorf("%s must not be a candidate", not)
 		}
@@ -424,5 +593,77 @@ func TestSeamRows_Malformed(t *testing.T) {
 				t.Errorf("err=%v rows=%v", err, rows)
 			}
 		})
+	}
+}
+
+// TestSeamTable_FlagsStoredLiteral: a capturing literal stored in a project package's
+// struct literal fails, listed or not (rule 5b, B31).
+func TestSeamTable_FlagsStoredLiteral(t *testing.T) {
+	dir := filepath.Join("testdata", "seams", "stored")
+	want := []string{
+		"func literal in assembly.storeElided captures the assembly and is stored in audit.Decl: extract it to a named function or type and list it, or remove it",
+		"func literal in assembly.storeLiteral captures the assembly and is stored in audit.Options: extract it to a named function or type and list it, or remove it",
+		"func literal in assembly.storeNested captures the assembly and is stored in n.Options: extract it to a named function or type and list it, or remove it",
+		"func literal in storePositional captures the assembly and is stored in n.Decl: extract it to a named function or type and list it, or remove it",
+	}
+	got := storedLiterals(t, dir)
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("want %v, got %v", want, got)
+	}
+	// Listing cannot clear it: a literal is no candidate, so no row can name it.
+	cands, lits := seamScan(t, dir)
+	for _, bad := range []string{"assembly.storeLiteral", "storePositional", "assembly.storeElided", "assembly.storeNested"} {
+		if _, ok := cands[bad]; ok {
+			t.Errorf("%s must not be a candidate", bad)
+		}
+	}
+	rows := []string{"assembly.storeLiteral", "storePositional", "assembly.storeElided", "assembly.storeNested",
+		"assembly.actor", "assembly.other", "assembly.later"}
+	probs := matchProblems(cands, lits, rows, declaredNames(t, dir))
+	for _, w := range want {
+		found := false
+		for _, p := range probs {
+			found = found || p == w
+		}
+		if !found {
+			t.Errorf("listed, the literal failure %q must remain; got %v", w, probs)
+		}
+	}
+}
+
+// TestSeamTable_FlagsStoredMethodValue: a method value stored in a project package's
+// struct literal is the candidate assembly.<m>; unlisted it is reported, listed it clears
+// (rule 5b, B32).
+func TestSeamTable_FlagsStoredMethodValue(t *testing.T) {
+	dir := filepath.Join("testdata", "seams", "stored")
+	cands := seamCandidates(t, dir)
+	names := []string{"assembly.actor", "assembly.later", "assembly.other"}
+	if len(cands) != len(names) {
+		t.Fatalf("want exactly %v as candidates, got %v", names, cands)
+	}
+	var want []string
+	for _, n := range names {
+		if cands[n] != kindClosure {
+			t.Fatalf("want %s as a closure candidate, got %v", n, cands)
+		}
+		want = append(want, "late-bound closure "+n+" is not in the seam table: name the type and list it, or remove it")
+	}
+	if p := seamProblems(cands, nil, declaredNames(t, dir)); strings.Join(p, "|") != strings.Join(want, "|") {
+		t.Errorf("want %v, got %v", want, p)
+	}
+	if p := seamProblems(cands, names, declaredNames(t, dir)); len(p) != 0 {
+		t.Errorf("listed method value still flagged: %v", p)
+	}
+}
+
+// TestSeamTable_IgnoresWiring: captures in an app struct, a call argument, a stdlib
+// composite literal, a local or a goroutine are neither candidates nor failures (rule 6).
+func TestSeamTable_IgnoresWiring(t *testing.T) {
+	dir := filepath.Join("testdata", "seams", "wiring")
+	if c := seamCandidates(t, dir); len(c) != 0 {
+		t.Errorf("wiring must not be a candidate, got %v", c)
+	}
+	if l := storedLiterals(t, dir); len(l) != 0 {
+		t.Errorf("wiring must not fail, got %v", l)
 	}
 }
