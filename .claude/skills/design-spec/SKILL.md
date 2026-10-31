@@ -131,6 +131,9 @@ return message.
       events.
 - [ ] Things regionals would do differently are settings, with defaults.
 - [ ] Imports follow the layer rules in `go-conventions`.
+- [ ] For each dependency: what does this need that is built after it? (If anything, the
+      design names the split; nothing is late-bound.)
+- [ ] Does any of this belong in app? (Only constructors, forwarding and lifecycle may.)
 - [ ] Concurrency and lifecycle are stated (safe for concurrent use? who calls `Close`?).
 - [ ] Every setting and config value has a default, a valid range, and a validation error.
 - [ ] If an external technology is wrapped, the lock-in check names an OSI-licensed or

@@ -1066,3 +1066,31 @@ Statuses: **Accepted** (decided), **Proposed** (a recommendation waiting for sig
 - An account without a description shows none.
 - The "Sign in as {account}" button's accessible name is unchanged.
 - Applies to [design/demo.md](design/demo.md), UI.
+
+## D61. Boundary cleanup: two engineering tenets, three core abstractions, and renamed paths and signals
+
+- **Status:** Accepted (2026-10-31), decided by the owner. Source: [design/boundaries.md](design/boundaries.md)
+  (Approved).
+- **Two new engineering tenets:**
+  - **"App wires, it never decides":** `internal/app` calls constructors, adapts shapes and forwards.
+    It parses no setting and makes no domain decision. Each package reads its own settings area.
+  - **"No hidden two-way dependencies":** if component A needs B at runtime and B needs A, one is split
+    (a read-side `Lookup` built below the `Service`). Every surviving late-bound adapter is listed in a
+    "Late-bound seams" table in `07-abstractions.md`, checked by a test under `make imports`. The table
+    ends empty after the 13-step migration.
+- **Three new core abstractions, split out:**
+  - `auditlog`, from `audit`;
+  - `regional`, the regional profile and logo, from `settings`;
+  - `datarights`, per-person export and deletion, from `people`.
+- **HTTP paths:** move to `/api/regional/` and `/api/datarights/`.
+- **Signal:** `people.deletion-requested` becomes `datarights.deletion-requested`.
+- **Audit actions:** `settings.logo.*` becomes `regional.logo.*`, and `people.data.*` becomes
+  `datarights.*`. Existing audit entries keep their names.
+- **Permissions:** `people.data.export` and `people.data.delete` stay for now.
+- **Architecture review:** a whole-repo architecture review by `go-reviewer` and `make arch-report`
+  at every milestone close.
+- **Why:** a review found ownership drift. Domain logic had accumulated in `internal/app`, and
+  late-bound adapters hid runtime cycles that the import rules can't see. The owner wants the code to be
+  abstractions, each responsible for one thing, with clear ownership, guarded so it doesn't drift again.
+- **Current work:** the boundary cleanup (13 steps, branch `feat/boundaries`) is the current work, ahead
+  of packaging (D52).

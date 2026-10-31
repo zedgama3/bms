@@ -75,3 +75,14 @@ unless a decision in [03-decisions.md](03-decisions.md) explicitly changes it.
   built.
 - Mechanical checks (format, vet, lint, tests) run on the cheapest suitable model. Judgment
   work (design, review) runs on stronger ones.
+
+### 5. App wires, it never decides
+
+- `internal/app` calls constructors, converts shapes and forwards; it parses no setting and
+  holds no rule a burner or operator could name. Each package reads its own settings area.
+
+### 6. No hidden two-way dependencies
+
+- If component A needs B at runtime and B needs A, split one of them (a read-side `Lookup`
+  built below, a service above). A late-bound adapter exists only if it is listed, with its
+  reason, in the seam table in [07-abstractions.md](07-abstractions.md).

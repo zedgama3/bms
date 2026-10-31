@@ -25,7 +25,7 @@ copy and can fork it. Features are modules.
 ## Status
 
 - **Phase:** 1, first module (core M0–M4 done 2026-10-23)
-- **Last updated:** 2026-10-30
+- **Last updated:** 2026-10-31
 - **Done 2026-10-16:**
   - Repo scaffolded: plan, agents, skills, lint rules, dev compose. Methodology carried over
     from Sojourn (D7).
@@ -158,6 +158,10 @@ copy and can fork it. Features are modules.
 - **Status update 2026-10-30 (not a decision):** demo mode (design/demo.md, D53, with Amendment
     D1 / D56) and telemetry Amendment T1 (client telemetry for the public demo, D54) are
     Implemented, marked by the main session (checks green; the reviews' must-fix findings fixed).
+- **Owner's decision 2026-10-31 (D61):** boundary cleanup. Two engineering tenets ("App wires, it
+    never decides"; "No hidden two-way dependencies"), three core abstractions (`auditlog`, `regional`,
+    `datarights`), renamed HTTP paths, signal, and audit actions. The boundary cleanup (13 steps, branch
+    `feat/boundaries`) is now the current work, ahead of packaging (D52).
 - **Next steps (current, 2026-10-30, D53–D56):**
   1. Done 2026-10-30: build the demo spec (design/demo.md) and telemetry Amendment T1.
   2. Run the app locally for the owner.

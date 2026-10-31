@@ -33,6 +33,10 @@ Check, in this order:
    - logic that belongs to a different abstraction, or a regional difference hard-coded
      instead of made a setting
    - duplicated code that should be an `internal/lib` helper or a core contract
+   - new code in `internal/app` that is not a constructor call, a shape conversion, a
+     declaration collection or lifecycle (app wires, it never decides)
+   - a new type in `internal/app` that reads the assembly after construction, or a func
+     literal capturing it, that is not in the seam table of `07-abstractions.md`
 4. **Errors early:**
    - unchecked or discarded errors
    - errors returned without context

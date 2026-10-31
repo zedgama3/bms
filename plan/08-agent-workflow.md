@@ -60,6 +60,9 @@ architect ──▶ design spec (plan/design/<name>.md), owner approves
 The main session runs this loop with the `build-loop` skill. Agents never call other agents
 and never touch git. Only the main session commits, and only to a local feature branch.
 
+At a milestone close the main session runs `make arch-report` and a whole-repo review
+(build-loop step 5) before handing the branch to the owner.
+
 ## Why this split
 
 - **Cost:** most runs are checks and focused implementation, so they go to haiku and sonnet.

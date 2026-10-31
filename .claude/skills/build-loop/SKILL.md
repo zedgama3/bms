@@ -48,6 +48,8 @@ golangci-lint run ./internal/<pkg>/...
 make imports
 ```
 
+`make imports` includes the seam test (`TestSeamTable_MatchesApp`).
+
 For `web/`: `pnpm lint`, `pnpm tsc --noEmit`, `pnpm test`, `pnpm build`.
 
 If anything fails, send the failing output to the agent that owns the file (or to
@@ -79,6 +81,15 @@ weaken the test.
 - **Spec problem:** an implementer or reviewer says the spec is wrong or ambiguous, or a
   module needs something from another module that no core contract provides. Stop. Send it
   to `architect` for a revision, which needs the owner's approval again.
+
+## 5. Milestone close: architecture review
+
+When the last roadmap item of a milestone set is Implemented, before handing the branch to
+the owner: run `make arch-report` and send it, with a whole-repo prompt, to `go-reviewer`
+(read-only). Ask four questions: Which package has more than one purpose (its `doc.go` or
+spec needs "and")? Which `Options` struct takes something its package should read itself?
+Which component depends on one built after it? Which code in `app` decides? Findings go to
+the owner. A boundary move becomes an `architect` spec before any code.
 
 ## Cost discipline
 

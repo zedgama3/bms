@@ -39,6 +39,10 @@ Rules:
   proves it. A method with no failure modes needs a sentence explaining why it can't fail.
 - **Every operation on data names the permission it needs,** and every field holding
   personal data has a sensitivity level (`privacy-data`).
+- **Nothing is late-bound.** For each dependency, ask what it needs that is built after it;
+  if anything, the design names the split.
+- **Nothing decides in app.** Ask whether any of this belongs in app; only constructors,
+  forwarding and lifecycle may.
 - **Modules never depend on each other.** If a module needs something another module has, the
   design uses a core contract or a signal (domain event). If neither exists, propose a core change.
 - **Regional differences are configuration or data,** never code paths. If two regionals

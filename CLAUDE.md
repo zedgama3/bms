@@ -25,6 +25,10 @@ Stack: Go backend, Vite/React/TypeScript frontend, PostgreSQL. License: AGPL-3.0
    - **Privacy by default.** Personal and sensitive data (incidents, medical, legal names,
      contact details) follow the `privacy-data` skill: least access, audited reads, retention.
    - **The core works on OSI-licensed software alone.** Anything else is an optional module.
+   - **App wires, it never decides.** `internal/app` calls constructors and forwards; it parses
+     no setting and holds no rule. **No hidden two-way dependencies:** if A needs B at runtime
+     and B needs A, split one; a late-bound adapter exists only in the seam table in
+     `plan/07-abstractions.md`.
 2. **Keep private details out of the code and public docs.** Anything about a specific
    regional, a specific person or an existing vendor goes only in `plan/private/`, which is
    gitignored. Never put real personal data in fixtures, seeds or tests.

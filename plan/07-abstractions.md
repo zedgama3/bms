@@ -66,7 +66,39 @@ Rules (enforced by depguard and `make imports`):
     In `web/src/`, a module's or core area's folder never imports another's, `core/*` or
     `shell/*`; enforced by ESLint and `scripts/check-web-module-imports.sh` under
     `make imports`.
+11. **App wires, it never decides.** `internal/app` calls constructors, converts shapes,
+    collects declarations, orders the lifecycle and forwards; it parses no setting and holds
+    no rule. Each core package reads its own settings area through a `settings.Reader`.
+12. **No hidden two-way dependencies.** If component A takes B at runtime and B takes A,
+    split one into a part built below and a part built above. A late-bound adapter in `app`
+    (a value that reads a field set after construction) is listed in "Late-bound seams" with
+    the component it waits for and why no split is possible;
+    `TestSeamTable_MatchesApp` (under `make imports`) fails on one that is not.
 
+## Late-bound seams
+
+A row is one type in `internal/app` (or one top-level function, for a closure that reads the assembly) that reads a field set after it was constructed. "Waits for" is what it resolves when called; "Reason" is the pair that forces it and the migration step that removes it (`plan/design/boundaries.md`). `TestSeamTable_MatchesApp` (rule 12, under `make imports`) fails on a late-bound candidate that is not listed here and on a row that names nothing in `app`. "None." is the empty table.
+
+| Type | Waits for | Reason |
+|---|---|---|
+| `lazyPermissions` | a.permissions, which authz's part sets | audit and identity need authz's decisions, and authz records through audit (audit ↔ authz); removed in step 4. |
+| `lazyTitles` | a.titles, which authz's part sets | audit asks authz for titles when it records, and authz records through audit (audit ↔ authz); removed in step 4. |
+| `lazyLister` | a.lister, which authz's part sets | identity needs `PermissionsOf` and is built before authz; the pair is order only (identity ↔ authz); removed in step 4. |
+| `lazyNames` | a.names, which people's part sets | identity needs the playa name and people needs identity (identity ↔ people); removed in step 8. |
+| `lazyDepartments` | a.departments, which the departments part sets after authz is built | authz needs `Active` and departments needs the Authorizer (authz ↔ departments); removed in step 4. |
+| `lazyAuthorizer` | a.authz, which authz's part sets after settings is built | settings needs the Authorizer and is built before authz; the pair is order only (settings ↔ authz); removed in step 4. |
+| `lazyFilesStore` | a.files, which files' part sets after settings is built | settings holds the logo in files, and files reads its policy from settings (settings ↔ files); removed in step 7. |
+| `lazyIdentityPolicy` | a.settings, which settings' part sets after identity is built | identity reads its policy keys from settings and is built first; order, not imports, is the cause (F2); removed in step 5. |
+| `lazyPeoplePolicy` | a.settings, resolved when called | people reads its policy keys from settings through app; same cause as `lazyIdentityPolicy` (F2); removed in step 5. |
+| `lazyAlerter` | notify, authz and settings, which are built after identity | the alert is identity's reaction to its own event and needs notify, which needs identity (identity ↔ notify); removed in step 9. |
+| `lazyGuard` | a.demo, which the demo part sets last | identity asks demo whether an account is protected, and demo creates accounts through identity (identity ↔ demo); removed in step 10. |
+| `lazyFilesPolicy` | a.demo, which the demo part sets last | files takes demo's cap, and demo's reset clears files (files ↔ demo); removed in step 10. |
+| `lazyNotifier` | a.notifiers, which the notify part fills | identity and people send through notify, and notify reads their addresses and names (identity ↔ notify, people ↔ notify); removed in step 8. |
+| `lazyDeferrer` | a.jobs, which the jobs part sets after signals is built | the dispatcher defers through jobs, and the jobs runner redelivers through the dispatcher (signals ↔ jobs); removed in step 11. |
+| `demoAccess` | a.authz, which authz's part sets | the demo seed uses a slice of authz in a shape authz does not offer; demo is built last, so this is forwarding, not a runtime pair (F1); removed in step 10. |
+| `demoObjects` | a.cfg and a.plan for the buckets to clear | demo's reset needs files to clear every owner's objects, and files holds the demo cap (files ↔ demo); removed in step 10. |
+| `demoSchema` | a.migrator, a.plan and a.authz | the reset's migrate step is `bms migrate` re-run, which needs the authz seeder built before demo runs; it holds the assembly only because of that (F1); removed in step 10. |
+| `demoChannelFactory` | a.demo, which the demo part sets last | notify takes demo's capture channel, and demo is built after notify (notify ↔ demo); removed in step 10. |
 ---
 
 ## Foundation

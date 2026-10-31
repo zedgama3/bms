@@ -1,0 +1,848 @@
+# Boundary cleanup
+
+- **Status:** Approved
+- **Package:** `internal/app` (shrinks), `internal/core/*` (ownership moves), new `internal/core/auditlog`, `internal/core/regional`, `internal/core/datarights`; `internal/lib/httpx` (one type); `scripts/`, `Makefile`, `.golangci.yml` (guards)   **UI:** `web/src/core/settings`, `web/src/core/people`, `web/src/shell` (route paths only)
+- **Depends on specs:** app, audit, authz, identity, people, notify, settings, files, demo, jobs, signals, departments-events, module-contract, api (Summaries)   **Used by:** every later spec (the tenets and the seam table bind them)
+
+## Summary
+
+**Purpose:** make every piece of core code belong to exactly one abstraction, with the composition root wiring and never deciding, and keep it that way. A refactor: the schema, permissions, user-visible behavior and the module contract stay; the HTTP paths of two extracted areas, one signal name and the audit action names of moved code change (decisions 7, 8, 11). The owner approved the spec and its answers to the former open questions on 2026-10-31 (decisions 12–17).
+
+**Two new tenets** (Proposed changes 1–3): *app wires, it never decides* (app calls constructors, adapts shapes and forwards; it parses no setting and makes no domain decision; each package reads its own settings area) and *no hidden two-way dependencies* (if component A needs B at runtime and B needs A, one of them is split; every surviving late-bound adapter is listed in the seam table in `07-abstractions.md` with its reason). The unit of the second rule is the **constructed component**, not the Go package: a package may expose a read-side `Lookup` built below and a `Service` built above (decision 2).
+
+**Decisions:**
+1. The superuser alert, the settings→policy translations (`settingsPolicy`, `peoplePolicy`, `smtpSource`, `retentionSource`, `siteSource`, `addressSource`, `languageSource`, `nameSource`, `filesPolicy`), `auditPurge`, `auditActor`, `authzActor`, `demoObjects`, `demoAccess`, `demoProfiles` and the store probes in `check.go` leave `app` for their owners. `check.go` (printing, exit status), `usage.go`, `demoSchema` and the commands stay: they are app's.
+2. Read-side components built below the services: `authz.Lookup` (decisions, `PermissionsOf`, `TitlesOf`, `HoldersOf`, `StarterRoleIDs`), `departments.Lookup` (`NamesOf`, `Active`), `people.Lookup` (`NamesOf`, `PlayaNameOf`, `LanguageOf`, `ContactEmailOf`, `ConsentOf`), `identity.Lookup` (`EmailOf`), `demo.Guard`, `demo.Capture`, `jobs.Deferrer`. Each is permission-free system-level reading (or one append), needs nothing built after it, and is its package's own code.
+3. `audit` splits: `audit` keeps the recorder (`Entry`, `Recorder`, `Log`, spool, importer, ctx markers `WithSystem`/`WithOperator`); new `auditlog` owns `Search`, `Export`, `CountAbout`, the `audit.*` settings (replacing `auditsettings`), the `audit.purge` job and `/api/audit/`.
+4. New `regional` owns the regional's profile: the `regional.*` settings area, `Profile`, the public document, `theme.css`, the logo, under `/api/regional/`. `settings` is only the typed store, its screens and terminology, and no longer imports `files`.
+5. New `datarights` owns per-person export and deletion across the core and the modules, deletion requests (`core.data_request`), the admin notice, the `export` and `delete` commands, `/api/datarights/`; `module.PersonData`, `Export`, `Deletion`, `Kept` become aliases of its types. `people` keeps profiles, contacts, consents, search, linking, the person page, and answers for its own rows as one more source.
+6. Each package reads its own settings area through a `settings.Reader` in its `Options` (`identity`, `people`, `notify`, `files`, `auditlog`, `regional`); `filesettings` and `auditsettings` are deleted.
+7. One route shape: `httpx.Route` in `lib/httpx`; `module.CoreRoutes(area, routes, openapi)` converts; the nine per-package `Route` types and nine app converters go.
+8. New build order (Behavior, "The build order") removes all 14 `lazy` types, the three `demo` structs that hold the assembly and the one closure. The seam table ends empty; the check asserts it.
+9. `files` gains `Options.Settings`, `Options.Ceiling` (demo's constant caps applied by files) and `Purge`; `notify` gains `Options.Accounts`, `Profiles`, `Regional`, `Terms`, `Channel`, `Settings` and the core-only `AlertSender`; `identity` gains `Options.Settings`, `Options.Alerts`, `Alert` moves in; `demo` gains `NewGuard`, `NewCapture`, `FileCeiling`, `StateOf`; `jobs` gains `NewDeferrer`; `notify` gains `Probe` for `bms check`.
+10. Guards: `TestSeamTable_MatchesApp` (go/ast over `internal/app`, against the table) under `make imports`; depguard rule `app-no-stores`; `make arch-report`; a whole-repo architecture review at every milestone close (`build-loop` step 5); reviewer and architect checklist lines.
+11. Names that change: routes `GET /api/settings/public|theme.css|logo`, `PUT|DELETE /api/settings/logo` → `/api/regional/...`; people's export, deletion and request routes → `/api/datarights/...` (table under Interface); signal `people.deletion-requested` → `datarights.deletion-requested` (signals' owner rule; no subscriber exists); audit actions `settings.logo.*` → `regional.logo.*`, `people.data.*` and `people.request.*` → `datarights.*` (audit F9: an action belongs to its recorder's area). Permission names, tables, columns and migrations do not change.
+12. Permission names `people.data.export` and `people.data.delete` stay for now (owner, 2026-10-31); a rename with a `core.role_permission` data migration may come later, recorded in datarights' spec.
+13. `regional` and `datarights` record audit entries under their own areas, not under `settings` and `people` (owner, 2026-10-31); old entries keep the old names.
+14. The path moves to `/api/regional/` and `/api/datarights/` are accepted (owner, 2026-10-31).
+15. The milestone architecture review is run by `go-reviewer` with a whole-repo prompt; no new agent (owner, 2026-10-31).
+16. The four runners (`importer`, `refresher`, `notifyRunner`, `jobsRunner`) collapse into one generic runner over `Run`/`Close` in step 13, if the step-13 reviewer agrees (owner, 2026-10-31).
+17. `profiles.go` is not split now; the arch report flags it at the next milestone close (owner, 2026-10-31).
+
+**Exported names added:**
+- `audit.WithSystem`, `audit.WithOperator`; `auditlog.New`, `auditlog.Options`, `auditlog.Settings`.
+- `authz.NewLookup`, `authz.Lookup`, `authz.LookupOptions`; `departments.NewLookup`; `people.NewLookup`, `people.Lookup`; `identity.NewLookup`, `identity.Lookup`, `identity.Actor`, `identity.AuditActor`.
+- `notify.Accounts`, `notify.Profiles`, `notify.RegionalSource`, `notify.TermSource`, `notify.AlertSender`, `notify.Probe`, `notify.EmailState`.
+- `regional.New`, `regional.Profile`, `regional.Settings`, `regional.LogoRef`, `regional.MaxLogoBytes`.
+- `datarights.New`, `datarights.Options`, `datarights.PersonData`, `datarights.Export`, `datarights.Deletion`, `datarights.Kept`, `datarights.Source`.
+- `files.Purge`, `files.Settings`, `files.Options.Ceiling`; `demo.NewGuard`, `demo.NewCapture`, `demo.FileCeiling`, `demo.StateOf`; `jobs.NewDeferrer`; `httpx.Route`; `module.CoreRoutes`.
+
+**Removed:**
+- `app`: all `lazy*` types, `alert.go`, the eight settings adapters, `auditActor`, `authzActor`, `auditPurge`, `demoAccess`, `demoProfiles`, `demoObjects`, `demoChannelFactory`, `personData`, `notifyData`, `filesData`, the nine `*Routes` converters, and the `permissions`, `titles`, `lister`, `names`, `notifiers`, `filesPolicy`, `operator` assembly fields.
+- Packages `audit/auditsettings`, `files/filesettings`.
+- `settings.Regional`, `settings.Public`, `settings.ThemeCSS`, the logo methods; `people`'s data-rights methods.
+- Seams: `identity.Alerter`, `identity.PolicySource`, `people.PolicySource`, `files.PolicySource`, `notify.SMTPSource`, `SiteSource`, `RetentionSource`, `AddressSource`, `LanguageSource`, `NameSource`, `ChannelFactory`; `demo.Service.Policy`, `Channel`, `Protected`; `audit.Options.Permissions` (`Titles` stays, required).
+
+**errs kinds a caller must handle:** unchanged for every moved method. New: `files.Purge` `Unavailable` (store, read-only copy); `notify.AlertSender.SendAlert` `Unsupported` (no address configured); `demo.Guard.Protected` fails only with the store's kinds (`Unavailable`), never "not built"; `jobs.Deferrer.Defer` `Unavailable` wrapping `db.ErrReadOnly` on a read-only copy; `module.CoreRoutes` `Invalid` for a bad route; every `New` `Invalid` for a nil dependency.
+
+**Routes, signals, permissions, settings owned here:** none new. Ownership moves are listed under Interface, Signals, Permissions and Settings.
+
+**Migration:** thirteen steps (Behavior, "Staged migration"), each leaving `make check` green, each naming the adapters it removes and the tests that prove behavior unchanged. Step 1 lands the seam test with today's 18 rows; step 13 empties the table.
+
+**Expects of other specs:** app.md gives up "The superuser alert", the lazy amendments and the part order; audit, authz, identity, people, notify, settings, files, demo, jobs, departments-events, module-contract and api take the amendments listed under Proposed changes elsewhere; `spec-editor` applies them after approval.
+
+## Purpose
+
+Make each piece of core code belong to exactly one abstraction, and keep it so.
+
+## Responsibilities
+
+- Settle, for every finding in the review, which abstraction owns the code, with the reason.
+- Define the components that replace the late-bound adapters, with their interfaces and failure modes.
+- Define the two tenets, the seam table, the mechanical checks and the review cadence that keep ownership from drifting again.
+- Give an order of steps, each small enough for the build loop and each leaving the tree green.
+
+## Not responsible for
+
+- New user-visible features (none; the owners' specs).
+- Changing the database schema, any migration, any permission name or the module contract's semantics (unchanged; `db`, `authz`, `module-contract`).
+- The wording of the tenets in `00-principles.md`, `07-abstractions.md` and `CLAUDE.md`, the checklist lines in the agents and skills, and the amendments to other specs: proposed here, applied by `spec-editor` after approval.
+- Privacy classifications of the moved fields (unchanged; the owning specs).
+- The offline switchover, packaging, or anything on the roadmap after this.
+
+## Sub-abstractions
+
+| Name | Purpose (one line) | Notes |
+|---|---|---|
+| `auditlog` | Let the right people read, export and expire what the audit recorder wrote. | New package, split from `audit` (decision 3). |
+| `regional` | Hold the regional's public profile: name, contact, URL, language, timezone, colours, logo. | New package, split from `settings` (decision 4). |
+| `datarights` | Answer "everything about person X" and "delete person X" across the core and every module. | New package, split from `people` (decision 5). |
+| `authz.Lookup` | Decide and look up permissions without writing. | Read side of `authz`, built below `audit` (decision 2). |
+| `departments.Lookup`, `people.Lookup`, `identity.Lookup` | Answer system-level reads of a package's rows for other core parts. | Read sides, built below the services that need them. |
+| `demo.Guard`, `demo.Capture` | Protect the shared demo accounts; capture outgoing mail. | Built below `identity` and `notify`; inert unless demo mode. |
+| `jobs.Deferrer` | Store a failed signal delivery for redelivery. | Built below the dispatcher. |
+| Seam table and `TestSeamTable_MatchesApp` | Make every late-bound adapter in `app` visible and justified, or absent. | The guard for tenet 2. |
+| `arch-report` and the milestone review | Find ownership drift before it compounds. | The guard for tenet 1. |
+
+## Findings, verified, and the decisions
+
+Each finding was checked against the code on `feat/m1` (2026-10-30). Line counts are production lines.
+
+### F1. `internal/app` holds domain behavior
+
+Verified. `internal/app` has 5,673 production lines across 32 files. Of those, the following decide rather than wire:
+
+| Code | What it decides | Owner | Why |
+|---|---|---|---|
+| `alert.go` (112 lines): `lazyAlerter`, `alertSeams.send` | who is told of a superuser sign-in, the deadline, the link, that an empty `Key` is used | `identity` | the alert is identity's reaction to its own event (identity.md F27); it lived in app only because notify and authz were built later. |
+| `core_settings.go`: `settingsPolicy`, `peoplePolicy` | how `accounts.*` and `people.*` keys map onto `identity.Policy` and `people.Policy` | `identity`, `people` | the owner declares the keys (`identity.Settings`, `people.Settings`) and validates the policy; the mapping between them is the same knowledge. |
+| `core_notify.go`: `smtpSource`, `retentionSource` | how `notify.*` keys map onto `SMTPConfig` and the retention | `notify` | same. |
+| `core_notify.go`: `siteSource` | the language fallback (primary subtag, then the regional's default) and the four-form flattening of terms | `notify` | a rendering rule of notify's templates. |
+| `core_notify.go`: `addressSource`, `languageSource`, `nameSource` | login address first, else contact address; `NotFound` means "none" | `notify` | the delivery rule. The two lookups stay where the rows are (`identity`, `people`). |
+| `core_files.go`: `filesPolicy` | how `files.*` keys map onto `files.Policy` | `files` | same as the policies above. |
+| `core_jobs.go`: `auditPurge` | the retention job's rule (0 keeps forever; purge older than now minus retention) | `auditlog` | the retention setting is audit's (D30, D39). |
+| `core_audit.go`: `auditActor` | who the actor is: the system inside a job, else the session, else the operator | `audit` (the order), `identity` (the session) | "who is this" is identity's; "a job runs as the system" is a marker jobs sets and audit reads. |
+| `core_adapters.go`: `authzActor` | the person of a full session plus the superuser flag | `identity` | same. |
+| `core_demo.go`: `demoObjects.Clear` (buckets, the temp directory layout) | which buckets exist, where temp files live | `files` | files knows the owners it scoped and its temp directory. |
+| `core_demo.go`: `demoAccess`, `demoProfiles` | nothing; they forward and project because the demo seams did not match the services' signatures | `demo` | the seams take the services' shapes. |
+| `check.go`: `smtpConfig` and `email` build a `notify/postgres` store and an `smtp` channel; `demo` builds a `demo/postgres` store | how to probe notify and demo | `notify`, `demo` | app must not touch another package's store (Proposed change 6 adds the depguard rule). |
+
+Kept in app, with the reason:
+
+- `check.go` (616 lines) is the `check` command: the step order, printing, status ranking. After the probes move it calls `notify.Probe`, `demo.StateOf`, `audit.SpoolCounts` and prints. Wiring.
+- `usage.go` (132 lines) turns the web build's client manifest into the allowlists the two intake services take. Adapting one package's output into another's `Options` is wiring.
+- `core_demo.go`: `runDemo`, `demoStatus` (exit statuses are app's), `demoSchema` (the reset's migrate step is `bms migrate` re-run: app's own command sequence), `logDemo`.
+- The runners (`importer`, `refresher`, `notifyRunner`, `jobsRunner`): they start and stop a service's `Run` under app's lifecycle. Wiring. They may later collapse into one generic runner (decision 16); done in step 13, not before.
+- `settingsAreas`, `declaredPermissions`, `demoSchemas`, the `link*` functions: collecting declarations from the parts and the plan.
+
+### F2. Hidden runtime cycles
+
+Verified: 14 late-bound types (`lazyPermissions`, `lazyTitles`, `lazyLister`, `lazyNames`, `lazyDepartments`, `lazyAuthorizer`, `lazyFilesStore`, `lazyIdentityPolicy`, `lazyPeoplePolicy`, `lazyAlerter`, `lazyGuard`, `lazyFilesPolicy`, `lazyNotifier`, `lazyDeferrer`) and one closure (`demoChannelFactory`). Corrections to the brief:
+
+- `audit` does **not** import `authz`; it imports the leaf `authz/perm`. The import graph is acyclic as stated. The runtime cycle is real: `authz` records through `audit.Recorder`; `audit` asks `authz` for titles **when it records** (`record.go: stamp → titlesOf`), not only when it reads. Splitting audit into recorder and reader therefore does not break this pair on its own. What breaks it is that every authz call audit makes is a read: so `authz` splits into a read-side `Lookup` (built before audit, no recorder needed because decisions and lookups are not audited) and the admin `Service` (built after audit).
+- `identity` already imports `settings` (for `identity.Settings`). The policy adapter sits in app only because identity is built before settings. Order, not imports, is the cause.
+- `jobs ↔ signals` is a fifteenth pair the brief did not list: the dispatcher needs a `Deferrer` (jobs) and the runner needs the `Redeliverer` (the dispatcher).
+
+The pairs and their resolutions:
+
+| Pair | Runtime edges today | Resolution |
+|---|---|---|
+| audit ↔ authz | authz → Recorder; audit → `TitlesOf`, `Allow` | `authz.Lookup` below audit (titles, decisions); `authz.Service` above (grants, audited). `auditlog` above both (search needs `Allow`). |
+| authz ↔ departments | departments → Authorizer; authz → `Active` | `departments.Lookup` below authz; `departments.Service` above. |
+| identity ↔ authz | identity → `Allow`, `PermissionsOf`; authz → nothing of identity's at runtime (`identity.PersonFrom` is a ctx accessor) | order only: identity after authz. |
+| identity ↔ people | people → `EmailOf`, `LinkAccount`; identity → `PlayaNameOf` | `people.Lookup` below identity; `people.Service` above. |
+| identity ↔ notify | identity → `Notifier`, the alert; notify → `EmailOf` | `identity.Lookup` below notify; `identity.Service` above; the alert moves into identity. |
+| people ↔ notify | people → `Notifier`; notify → `PlayaNameOf`, `LanguageOf`, `ContactEmailOf` | `people.Lookup` below notify (above); people's only remaining use of notify, the deletion-request notice, moves to `datarights`, built after notify. |
+| settings ↔ authz | settings → Authorizer; authz → nothing | order only: settings after `authz.Lookup`. |
+| settings ↔ files | settings → `files.Store` (logo); files → its policy from settings | the logo moves to `regional`, built after files; files reads its own area. |
+| files ↔ demo | files → the demo cap; demo → `files` (Reset clears objects) | files takes a constant `Ceiling`; `files.Purge` serves the reset. |
+| identity ↔ demo | identity → `Protected`; demo → `EnsureAccount` | `demo.Guard` below identity (a read of `core.demo_account`); `demo.Service` last. |
+| notify ↔ demo | notify → the capture channel; demo → nothing of notify's at runtime, but is built last | `demo.Capture` below notify. |
+| signals ↔ jobs | dispatcher → `Defer`; runner → `Redeliver` | `jobs.Deferrer` (one insert) below the dispatcher; the runner above it. |
+
+No seam survives. The seam table in `07-abstractions.md` reads "None" at the end of step 13.
+
+### F3. `core/settings` does two jobs
+
+Verified: `regional.go` (333), `logo.go` (303), `public.go` (145) and parts of `http.go` are the regional's profile; the rest (decl, write, reader, snapshot, seal, terms, screens) is the store. The profile is why settings imports `files`. Decision: extract `regional` (decision 4). Terminology stays in settings: terms are declared per area by modules and the core and stored and edited like settings; `regional.language` is the default language terms are read in, which regional owns and settings reads through `TermSource`'s caller (notify).
+
+### F4. `core/people` does two jobs
+
+Verified: `datarights.go` (773), `notice.go` (147), the `Access`, `AuditCounter` and half of the `Accounts` seams, the `export` and `delete` commands and nine routes are the system-wide export and deletion; `profiles.go` (1,157), `contacts.go`, `consents.go`, `linking.go`, `membership.go` are the directory. Decision: extract `datarights` (decision 5). `profiles.go` itself is not split here: it is one concern (the profile use cases) and the size budget in the review (Behavior, "The architecture review") flags it for the owner's judgment at the next milestone close.
+
+### F5. Smaller items
+
+- **Route types.** Verified: nine core packages declare a `Route` (audit, authz, identity, people, departments, events, jobs, notify, settings, demo) and app converts each. Decision 7: `httpx.Route` in `lib/httpx` (the foundation; every layer may import it) and one converter `module.CoreRoutes` in `core/module` (the top of core, so rule 2 holds). `module.Route` and the module contract are untouched.
+- **`core/demo` imports 12 core packages.** That is its purpose (a seed through the real services) and it is built last, so the imports are fine. What was wrong is the glue in app (F1) and the two adapters on its seams; both go.
+
+## Interface
+
+Signatures compile in principle; doc comments say how they fail. `ctx` first, `error` last. Only new or changed surface is listed; moved methods keep their signatures.
+
+### `lib/httpx` and `core/module`: one route shape (decision 7)
+
+```go
+package httpx
+
+// Route is a route a core area or module exposes, relative to its set's prefix. Public
+// routes need no session; every other route needs one, and checks its permission inside
+// the use case. MaxBodyBytes and Timeout raise the shell's defaults (zero keeps them).
+type Route struct {
+    Method       string
+    Pattern      string
+    Public       bool
+    Handler      http.Handler
+    MaxBodyBytes int64
+    Timeout      time.Duration
+}
+```
+
+```go
+package module
+
+// CoreRoutes converts a core area's routes to a route set: Public becomes AccessPublic,
+// everything else AccessSignedIn. Fails errs.Invalid (field "routes[i].<field>") when a
+// route would fail Route.Validate, or area is not a reserved core area name.
+func CoreRoutes(area string, routes []httpx.Route, openapi []byte) (ModuleRoutes, error)
+```
+
+Consumer: app, once per core area. Every core `Routes()` returns `[]httpx.Route`.
+
+### `audit`: the recorder (decision 3)
+
+```go
+package audit
+
+// WithSystem marks ctx as running as the system. jobs sets it on every run (beside its own
+// InJob marker). A signal delivery needs no marker: audit imports signals and already
+// recognises a delivery's ctx. Pure.
+func WithSystem(ctx context.Context) context.Context
+
+// WithOperator marks ctx as a command the operator runs (create-superuser, export, delete,
+// migrate, demo). app sets it on the command's ctx. Pure.
+func WithOperator(ctx context.Context) context.Context
+
+// Options loses Permissions (search moved to auditlog). Actor is identity.AuditActor;
+// Titles is the authz.Lookup. The actor of an entry that names none is resolved in this
+// order: a signal delivery (as today), WithSystem, Actor, WithOperator; none means
+// errs.Invalid (F8, unchanged).
+type Options struct {
+    DB             db.DB
+    Clock          clock.Clock
+    Logger         *slog.Logger
+    Tracer         telemetry.Tracer
+    Meter          telemetry.Meter
+    Instance       string
+    DataDir        string
+    Actor          ActorFunc   // required
+    Titles         TitleSource // required from this spec on (the authz.Lookup)
+    ImportInterval time.Duration
+}
+```
+
+`Log` keeps `Scoped`, `Record` (through `scoped`), `Run`, `ImportOnce`, `Close`, `SpoolCounts`. `Search`, `Export`, `CountAbout`, `Purge`, `Routes`, `OpenAPI` and `Permissions` move to `auditlog`. Consumers of the markers: `jobs` (run), `signals` (delivery), app (commands).
+
+### `auditlog`: reading and expiring the log (decision 3)
+
+```go
+package auditlog // imports audit, authz, settings, jobs, db, telemetry, lib, model
+
+// Settings declares audit.retention and audit.self_view (from auditsettings, verbatim).
+var Settings []settings.Decl
+
+// Permissions declares audit.search and audit.export (moved from audit).
+var Permissions []authz.PermissionDecl
+
+type Options struct {
+    DB       db.DB
+    Clock    clock.Clock
+    Logger   *slog.Logger
+    Tracer   telemetry.Tracer
+    Meter    telemetry.Meter
+    Authz    authz.Authorizer // the Lookup
+    Actor    authz.ActorFunc  // identity.Actor
+    Settings settings.Reader  // scoped "audit"
+    Jobs     jobs.Registrar   // scoped "audit": Start registers audit.purge
+}
+
+// New validates o (errs.Invalid, one FieldError per nil dependency) and does no I/O.
+func New(o Options) (*Service, error)
+
+// Start registers audit.purge with Jobs. Fails with the Registrar's kinds (Conflict for a
+// name registered twice). Never writes, so it succeeds on a read-only copy.
+func (s *Service) Start(ctx context.Context) error
+
+// Search, Export and CountAbout keep audit.md's signatures and failure modes (audit.search,
+// audit.export; F15–F22). Routes returns GET /entries and GET /people/{person}/views as
+// httpx.Route; OpenAPI the fragment.
+func (s *Service) Search(ctx context.Context, q audit.Query) (audit.Page, error)
+func (s *Service) Export(ctx context.Context, person model.PersonID, w io.Writer) (int, error)
+func (s *Service) CountAbout(ctx context.Context, person model.PersonID) (int, error)
+func (s *Service) Routes() []httpx.Route
+func (s *Service) OpenAPI() []byte
+```
+
+`audit.Query`, `Page`, `Cursor`, `RecordID` stay in `audit` (the vocabulary). The purge job's rule (0 keeps forever; purge rows older than now minus `audit.retention`, writer only) moves from `app.auditPurge` unchanged. Consumers: app (routes, link), `datarights` (`Export`, `CountAbout`), the web audit screen (unchanged paths).
+
+### `authz`: the Lookup (decision 2)
+
+```go
+package authz
+
+// LookupOptions builds the read side: decisions and lookups over the roles and grants,
+// nothing audited, nothing written.
+type LookupOptions struct {
+    DB          db.DB
+    Clock       clock.Clock
+    Logger      *slog.Logger
+    Tracer      telemetry.Tracer
+    Meter       telemetry.Meter
+    Actor       ActorFunc        // identity.Actor
+    Declared    []PermissionDecl // the core's and the enabled modules'
+    Departments DepartmentSource // the departments.Lookup; required
+}
+
+// NewLookup validates o (errs.Invalid) and does no I/O.
+func NewLookup(o LookupOptions) (*Lookup, error)
+
+// Lookup implements Authorizer (Allow, AllowIn, ExtentOf), PermissionLister (PermissionsOf),
+// audit.TitleSource (TitlesOf), HoldersOf and StarterRoleIDs, with authz.md's failure modes
+// unchanged (F1–F6, F20, F21).
+type Lookup struct{ /* unexported */ }
+
+// Options (the admin Service) loses Departments and gains Lookup; the Service forwards the
+// decision methods to it so existing callers compile, and owns roles, grants, Seed,
+// ExportPerson, DeletePerson, Routes.
+type Options struct {
+    // ... as today, minus Departments
+    Lookup *Lookup // required
+}
+```
+
+Consumers of the Lookup: audit (`Titles`), api (`PermissionChecker`), identity (`Permissions`, `Lister`, `Holders`), settings, auditlog, jobs, files, regional, notify, people, datarights, departments, events, every module through `Deps.Authz`.
+
+### `departments`, `people`, `identity`: Lookups (decision 2)
+
+```go
+package departments
+
+// NewLookup builds the Directory (NamesOf, Active) over core.department alone; no
+// permission, no audit (internal level). Fails errs.Invalid for a nil dependency.
+func NewLookup(o LookupOptions) (*Lookup, error) // LookupOptions{DB, Tracer}
+// Options gains Lookup *Lookup; the Service forwards NamesOf and Active to it.
+```
+
+```go
+package people
+
+// NewLookup builds the system-level reads of core.person: NamesOf, PlayaNameOf (internal),
+// LanguageOf (internal), ConsentOf (internal), ContactEmailOf (personal: used only to
+// deliver mail, never shown to a viewer; notify.md "Addresses"). No permission, no audit,
+// as today on the Service. NotFound for an unknown or deleted person. Fails errs.Invalid
+// for a nil dependency.
+func NewLookup(o LookupOptions) (*Lookup, error) // LookupOptions{DB, Tracer, Meter}
+// Options gains Lookup *Lookup and loses Access, AuditCount, Notify, Holders, Policy
+// (replaced by Settings settings.Reader scoped "people"); the Service forwards the five
+// reads and keeps LegalNamesOf (audited, people.contacts.read) and the Directory contract.
+```
+
+```go
+package identity
+
+// NewLookup builds EmailOf over core.account alone: NotFound when the person has no
+// account; no permission, no audit (the address is used to deliver mail and by people's
+// link flow, both system-level or already authorized by the caller). Fails errs.Invalid.
+func NewLookup(o LookupOptions) (*Lookup, error) // LookupOptions{DB, Tracer}
+
+// Actor is authz.ActorFunc over the session in ctx: the person of a full session and
+// whether it is the superuser's; false without a session and for a restricted one. Pure.
+func Actor(ctx context.Context) (authz.Actor, bool)
+
+// AuditActor is audit.ActorFunc over the session in ctx: a restricted session is still the
+// person for audit. Pure.
+func AuditActor(ctx context.Context) (audit.Actor, bool)
+
+// Options changes: Permissions and Lister are the authz.Lookup (unchanged types); Names is
+// the people.Lookup; Policy PolicySource is replaced by Settings settings.Reader (scoped
+// "accounts"; the eleven-key mapping from app.settingsPolicy moves here, read per use
+// case, never cached); Alerter is replaced by Holders and Alerts; Guard stays.
+type Options struct {
+    // ... as today
+    Settings settings.Reader    // required; identity.DefaultPolicy when a key is unset is settings' default
+    Holders  HolderSource       // the authz.Lookup; required
+    Notify   notify.Notifier    // scoped "identity"; required from this spec on
+    Alerts   notify.AlertSender // scoped "identity"; required
+    Guard    Guard              // optional (demo.Guard)
+}
+
+type HolderSource interface {
+    HoldersOf(ctx context.Context, p authz.Permission) ([]model.PersonID, error)
+}
+```
+
+The superuser alert moves to `identity/alert.go` as the unexported `alert(ctx, person)` with app.md's rule verbatim (holders of `accounts.manage` by `Notify.Send`, the alert addresses by `Alerts.SendAlert`, detached `alertTimeout` of 5s, empty `Key`, `Unsupported` when nobody to tell, failures joined under the first kind, identity logs and counts and never fails the sign-in: identity F27). Its test seams are the three Options fields; `notifytest.Fake` and `authztest.Fake` serve.
+
+### `notify`: own settings and the delivery seams (decisions 1, 6, 9)
+
+```go
+package notify
+
+// Accounts is the identity.Lookup: the login address; NotFound when the person has none.
+type Accounts interface {
+    EmailOf(ctx context.Context, person model.PersonID) (model.Email, error)
+}
+
+// Profiles is the people.Lookup: the playa name, the saved language and the contact
+// address; NotFound when the person has no profile.
+type Profiles interface {
+    PlayaNameOf(ctx context.Context, person model.PersonID) (string, error)
+    LanguageOf(ctx context.Context, person model.PersonID) (string, error)
+    ContactEmailOf(ctx context.Context, person model.PersonID) (model.Email, error)
+}
+
+// RegionalSource is regional's Profile: name, public URL, default language.
+type RegionalSource interface {
+    Profile(ctx context.Context) (regional.Profile, error)
+}
+
+// TermSource is settings' TermsFor.
+type TermSource interface {
+    TermsFor(ctx context.Context, lang string) (map[string]settings.Forms, error)
+}
+
+// AlertSender sends one message to every notify.alert_addresses entry (core only: the
+// superuser alert). Fails errs.Unsupported when no address is configured, errs.Invalid for
+// a template of another owner, else as Send.
+type AlertSender interface {
+    SendAlert(ctx context.Context, m Message) error
+}
+
+// Options: SMTPSource, RetentionSource, SiteSource, AddressSource, LanguageSource,
+// NameSource and ChannelFactory are replaced. Settings is the "notify" reader (the key
+// mapping of app.smtpSource and retentionSource moves here). Channel is optional: nil
+// builds the SMTP channel from the settings per batch, as today; demo passes its Capture.
+type Options struct {
+    // ... as today
+    Settings settings.Reader
+    Regional RegionalSource
+    Terms    TermSource
+    Accounts Accounts
+    Profiles Profiles
+    Channel  Channel
+}
+
+// Alerts returns the AlertSender of owner (scoped like Scoped; fails Invalid for a bad
+// owner, Internal once Run has started).
+func (s *Service) Alerts(owner string) (AlertSender, error)
+
+// Probe is bms check's e-mail line over a real database: whether SMTP is configured and
+// how, the outbox counts, and whether the server accepts a conversation. It reads through
+// its own store on d and never returns an address, a user name or a password. Fails with
+// the store's and the channel's kinds; a schema behind is errs.Unavailable.
+func Probe(ctx context.Context, d db.DB, r settings.Reader) (EmailState, error)
+```
+
+The delivery rules that move in from app: an address is the login address, else the contact address, else the message is undeliverable (`NotFound`); `NotFound` from `Profiles` means no name and no language; the language falls back to its primary subtag, then the regional's default; a term is rendered under `key`, `key_plural`, `key_title`, `key_plural_title`.
+
+### `regional`: the regional's profile (decision 4)
+
+```go
+package regional // imports settings, files, audit, authz, db?, telemetry, lib, model; never notify, identity, people
+
+// Settings declares the regional.* keys (settings.regionalDecls today, verbatim): name,
+// contact_email, public_url, language, timezone, color_primary, color_primary_dark.
+var Settings []settings.Decl
+
+// Profile is settings.Regional today.
+type Profile struct {
+    Name, ContactEmail, PublicURL, Language, Timezone, ColorPrimary, ColorPrimaryDark string
+}
+
+// LogoRef and MaxLogoBytes move from settings unchanged; the files owner of the logo stays
+// "settings" (decision 12: the bucket and core.file.owner of deployed logos keep working).
+var LogoRef audit.Ref
+const MaxLogoBytes int64
+
+type Options struct {
+    Clock    clock.Clock
+    Logger   *slog.Logger
+    Tracer   telemetry.Tracer
+    Meter    telemetry.Meter
+    Audit    audit.Recorder  // scoped "regional"
+    Authz    authz.Authorizer
+    Actor    authz.ActorFunc
+    Settings settings.Reader // scoped "regional"
+    Revision RevisionSource  // settings: the current revision, for the public document's ETag
+    Files    files.Store     // scoped "settings" (the logo); required
+}
+
+func New(o Options) (*Service, error)
+
+// Profile reads the seven keys (settings' kinds). Public, ThemeCSS, Document (the public
+// document and the stylesheet), SetLogo, RemoveLogo, OpenLogo keep settings.md's rules and
+// failure modes; the audit actions become regional.logo.set|removed. Routes returns
+// GET /public, GET /theme.css, GET /logo (public), PUT /logo, DELETE /logo under
+// /api/regional. The permission of PUT and DELETE /logo stays settings.manage.
+func (s *Service) Profile(ctx context.Context) (Profile, error)
+func (s *Service) Routes() []httpx.Route
+```
+
+`settings.New` stops adding the `regional` area itself; app passes `regional.Settings` as a core area like `accounts`. `settings.Service` loses `Regional`, `Public`, `ThemeCSS`, `Document`'s public half and the logo; keeps `Document` (the settings screen), `Set`, `Scoped`, `TermsFor`, `Terms`, `SetTerms`, `Revision`.
+
+### `datarights`: export and deletion (decision 5)
+
+```go
+package datarights // imports people, identity, authz, auditlog, notify, files, audit, signals, settings?, db, telemetry, lib, model; never module
+
+// The types module-contract aliases (module.PersonData = datarights.PersonData, ...).
+type Export struct{ Data json.RawMessage }
+type Kept struct{ Kind string; Count int }
+type Deletion struct{ Deleted, Anonymized int; Kept []Kept }
+type PersonData interface {
+    ExportPerson(ctx context.Context, person model.PersonID) (Export, error)
+    DeletePerson(ctx context.Context, person model.PersonID) (Deletion, error)
+}
+type Source struct{ Name string; PersonData }
+
+// The core sources, in the shapes the services already have (no adapter anywhere).
+type RawSource interface { // identity, authz, notify
+    ExportPerson(ctx context.Context, person model.PersonID) (json.RawMessage, error)
+    DeletePerson(ctx context.Context, person model.PersonID) (int, error)
+}
+type FilesSource interface {
+    ExportPerson(ctx context.Context, person model.PersonID) (json.RawMessage, error)
+    DeletePerson(ctx context.Context, person model.PersonID) (files.Deletion, error)
+}
+type PeopleSource interface { // people.Service: its own rows, last
+    ExportPerson(ctx context.Context, person model.PersonID) (json.RawMessage, error)
+    // DeletePerson deletes the person row, contacts and consents inside the caller's Write
+    // transaction and publishes people.person-deleted after commit; Conflict when a module
+    // still references the person (FK RESTRICT: a programming error in a module).
+    DeletePerson(ctx context.Context, person model.PersonID) (int, error)
+    // Exists reports whether the person row exists (NotFound otherwise).
+    Exists(ctx context.Context, person model.PersonID) error
+}
+
+var Permissions []authz.PermissionDecl // people.data.export, people.data.delete (names unchanged, decision 11)
+var PublishedSignals = []signals.Name{SignalDeletionRequested} // "datarights.deletion-requested" {request, person}
+
+type Options struct {
+    DB       db.DB
+    Clock    clock.Clock
+    Logger   *slog.Logger
+    Tracer   telemetry.Tracer
+    Meter    telemetry.Meter
+    Audit    audit.Recorder   // scoped "datarights"
+    Signals  signals.Bus      // scoped "datarights"
+    Authz    authz.Authorizer // the Lookup
+    Actor    authz.ActorFunc
+    Session  identity.SessionFunc
+    Holders  HolderSource     // the Lookup: who is told of a new request (people.data.delete)
+    Notify   notify.Notifier  // scoped "datarights": the admin notice (people.Templates' request template moves here)
+    AuditLog AuditLog         // auditlog: Export (the person's audit rows) and CountAbout
+    Accounts RawSource        // identity
+    Access   RawSource        // authz.Service
+    Outbox   RawSource        // notify
+    Files    FilesSource
+    People   PeopleSource
+}
+
+func New(o Options) (*Service, error)
+
+// Link gives the service the modules' sources, in build order. Fails Conflict when called
+// twice, Invalid for a duplicate name. The deletion order is: modules in build order,
+// files, notify, access, identity, people (foreign keys point at core.person with
+// RESTRICT; people.md decision 11).
+func (s *Service) Link(modules []Source) error
+
+// Export, ExportCommand, Delete, DeleteCommand, RequestDeletion, MyRequests,
+// WithdrawRequest, ListRequests, DeclineRequest, FulfilRequest keep people.md's
+// signatures, permissions, audit reasons and failure modes (people F40–F58), recorded under
+// the datarights area (datarights.export, datarights.delete, datarights.request.*).
+func (s *Service) Routes() []httpx.Route
+```
+
+Routes under `/api/datarights/`: `GET /me/export`, `GET /me/requests`, `POST /me/requests`, `POST /me/requests/{request}/withdraw`, `GET /requests`, `POST /requests/{request}/decline`, `POST /requests/{request}/fulfil`, `GET /people/{person}/export`, `DELETE /people/{person}`. Commands `export` and `delete` move with their exit statuses.
+
+### `files` (decision 9)
+
+```go
+package files
+
+// Settings declares files.max_bytes, files.quota_bytes, files.max_per_record (from
+// filesettings, verbatim).
+var Settings []settings.Decl
+
+type Options struct {
+    // ... as today, minus Policy
+    Settings settings.Reader // scoped "files"; required; the mapping of app.filesPolicy moves here
+    // Ceiling bounds the settings-derived policy: each non-zero field is a maximum the
+    // policy never exceeds, and a zero QuotaBytes setting becomes Ceiling.QuotaBytes. Zero
+    // means no ceiling. demo.FileCeiling in demo mode.
+    Ceiling Policy
+    Jobs    jobs.Registrar // scoped "files": Start registers files.reap and files.sweep-orphans
+}
+
+// Purge deletes every object of every bucket this service has scoped and every file in
+// TempDir, and counts them. Writer only (Unavailable wrapping db.ErrReadOnly on a read-only
+// copy), store errors Unavailable. demo's Reset calls it.
+func (s *Service) Purge(ctx context.Context) (int, error)
+```
+
+### `demo` (decision 9)
+
+```go
+package demo
+
+// FileCeiling is files.Policy{MaxBytes: MaxUploadBytes, QuotaBytes: MaxQuotaBytes, MaxPerRecord: MaxPerRecord}.
+var FileCeiling files.Policy
+
+// NewGuard builds identity's Guard over core.demo_account alone. Protected fails only with
+// the store's kinds; it never answers "not built". Fails errs.Invalid for a nil DB.
+func NewGuard(o GuardOptions) (*Guard, error) // GuardOptions{DB, Tracer}
+
+// NewCapture builds notify's Channel that stores mail in core.demo_mail instead of sending
+// it (demo.md "Mail capture"). Fails errs.Invalid for a nil dependency.
+func NewCapture(o CaptureOptions) (*Capture, error) // CaptureOptions{DB, Clock, Logger, Tracer}
+
+// StateOf reads the marker: bms check's demo line. NotFound when not seeded.
+func StateOf(ctx context.Context, d db.DB) (State, error)
+
+// Options: Access, Profiles, Objects take the services' own shapes (authz.Service,
+// people.Service, files.Service satisfy them directly); Files PolicySource is removed.
+```
+
+### `jobs` (decision 2)
+
+```go
+package jobs
+
+// NewDeferrer builds signals.Deferrer over core.job alone: Defer inserts one
+// signals.redeliver row in the runner's row format. Fails Invalid for a nil dependency;
+// Defer fails Unavailable wrapping db.ErrReadOnly on a read-only copy.
+func NewDeferrer(o DeferrerOptions) (*Deferrer, error) // DeferrerOptions{DB, Clock, Instance}
+```
+
+The runner keeps `Redeliverer` and registers the `signals.redeliver` handler as today.
+
+### `settings`
+
+`Options` loses `Files`; `New` no longer adds the `regional` area (app passes `regional.Settings`). `Routes` returns `GET /`, `PUT /values`, `GET /terms`, `PUT /terms/{lang}`. Everything else is unchanged.
+
+### `app` after the refactor
+
+`assembly` keeps `cfg`, `tel`, `dbc`, `pool`, `migrator`, `disp`, `plan`, `set`, `ui`, the `core*` declaration slices, `routeSets`, `authenticator`, `deps`, `runnables`, `commands`, the built services it must call from commands, `parts`, `started`, `srv`. It loses `permissions`, `titles`, `lister`, `names`, `notifiers`, `filesPolicy`, `operator`. `core_adapters.go` and `alert.go` are deleted. No type in `app` holds a `*assembly` field except `assembly`'s own methods.
+
+## Types
+
+Uses `model.PersonID`, `model.AccountID`, `model.Email`, `model.DepartmentID`; the owning packages' types as listed. New: `httpx.Route`, `regional.Profile`, `datarights.{Export, Kept, Deletion, PersonData, Source}`, `notify.EmailState`, `demo.State`.
+
+## Data
+
+No table, column, index or migration changes. Ownership moves:
+
+| Table | Owner today | Owner after | Notes |
+|---|---|---|---|
+| `core.audit_entry` (appends) | audit | audit | — |
+| `core.audit_entry` (reads, deletes by retention) | audit | auditlog | two sub-abstractions of audit.md on one table; the delete is the retention job's only write. |
+| `core.data_request` | people | datarights | migration files stay in people's set (forward-only); a future change to the table goes in a `datarights` set added to `coreSetOrder` after `people` when first needed. Personal data: `note` is `personal`, retention as people.md says. |
+| `core.setting` rows of area `regional` | settings | regional declares, settings stores | as every other area. |
+| `core.file` rows with owner `settings` (the logo) | settings | regional | owner string unchanged (decision 12). |
+| `core.demo_account` (reads) | demo.Service | demo.Guard | same package. |
+| `core.demo_mail` (inserts) | demo.Service | demo.Capture | same package. |
+| `core.job` (one insert kind) | jobs.Runner | jobs.Deferrer | same package. |
+
+Personal-data columns keep their levels and retention from their specs; the Lookups expose the same fields the Services exposed to the same callers (identity → playa name; notify → address, language, name; modules → names and consent).
+
+## Permissions
+
+None new, none renamed. Declared-by moves: `audit.search`, `audit.export` → `auditlog`; `people.data.export`, `people.data.delete` → `datarights` (decision 12: the names stay; a rename with a data migration may come later); `settings.manage` stays settings' and guards regional's logo and the `regional` area as today.
+
+## Signals
+
+- Published: `datarights.deletion-requested` `{request, person}` replaces `people.deletion-requested` (signals' owner rule: the publisher segment must equal the scope's owner; no subscriber exists in the core or `volunteers`). `people.person-created` and `people.person-deleted` stay people's: `people.Service.DeletePerson` publishes the latter inside datarights' deletion, after commit, as today.
+- Subscribed: unchanged (`people` subscribes `identity.account-created`).
+- A handler's audit entries are the system's, as today: audit recognises a delivery's ctx itself, and jobs sets `audit.WithSystem` on every run.
+
+## Settings
+
+None new. Declared-by moves: `audit.*` → `auditlog`; `files.*` → `files`; `regional.*` → `regional`. Read-by: each owner through its own `settings.Reader`. No key, default, range or title changes.
+
+## UI
+
+No screen changes. Paths the web calls change in two steps: `web/src/shell` (`publicDoc.ts`, `regional.ts`, `App.tsx`, `Nav.tsx`), `web/src/core/settings` (`LogoControls.tsx`, `queries.ts`) and `web/src/api/public.ts` move to `/api/regional/...` (step 7); `web/src/core/people` (`YourData.tsx`, `screens/Requests.tsx`) move to `/api/datarights/...` (step 12). The generated client (`make openapi-check`) carries the new operations. The audit screen's filters by action prefix gain the new prefixes beside the old (old entries keep their names).
+
+## Behavior
+
+### The tenets (Proposed changes 1–2)
+
+**App wires, it never decides.** `internal/app` calls constructors with values from `config`, from other parts' outputs and from the plan; it converts shapes (`module.CoreRoutes`), collects declarations, orders the lifecycle and maps errors to exit statuses. It parses no setting (every package takes a `settings.Reader` for its own area), implements no interface another package declares except by forwarding to a built service, and holds no rule a burner or operator could name. A test of app proves wiring (a service receives what it was given), never a rule.
+
+**No hidden two-way dependencies.** The unit is the constructed component. If component A takes B in its `Options` and B takes A, split one of them into a part built below and a part built above (a read-side `Lookup`, a feature package like `auditlog`), or move the behavior to the side that already has what it needs. A package may hold both halves when its imports allow; it must split into two packages when the upper half needs imports the lower half's importers already have (audit/auditlog). Every late-bound adapter that survives (a value that reads a field set after it was constructed) is listed in the seam table in `07-abstractions.md` with the component it waits for and why no split is possible; `TestSeamTable_MatchesApp` fails on one that is not.
+
+### The build order
+
+`serve`, `check`, `openapi` and the operator commands build in this order; `TestParts_OrderAndNames_Pinned` pins it. Each item names what it takes; nothing takes anything built later.
+
+| # | Component | Takes |
+|---|---|---|
+| 0 | telemetry, config, db, migrator | as today |
+| 1 | `jobs.NewDeferrer`; `signals.New(Deferrer)` | db |
+| 2 | `departments.NewLookup` | db |
+| 3 | `authz.NewLookup` | db, declared permissions, departments.Lookup, `identity.Actor` |
+| 4 | `audit.New` | db, `identity.AuditActor`, authz.Lookup (titles) |
+| 5 | `authz.New` | audit, signals, authz.Lookup |
+| 6 | `jobs.New` | audit, authz.Lookup, the dispatcher |
+| 7 | `settings.New` | audit, authz.Lookup, the areas (declarations only) |
+| 8 | `auditlog.New` | audit (none at build: its own store), authz.Lookup, settings "audit", jobs "audit" |
+| 9 | `departments.New`, `events.New` | audit, signals, authz.Lookup, departments.Lookup |
+| 10 | `files.New` | audit, authz.Lookup, settings "files", objects, jobs "files", `demo.FileCeiling` when demo mode |
+| 11 | `regional.New` | audit, authz.Lookup, settings "regional", files "settings" |
+| 12 | `identity.NewLookup`, `people.NewLookup` | db |
+| 13 | `demo.NewGuard`, `demo.NewCapture` (demo mode only) | db |
+| 14 | `notify.New` | audit, authz.Lookup, settings "notify", regional, settings (terms), identity.Lookup, people.Lookup, Capture or nil |
+| 15 | `identity.New` | audit, signals, authz.Lookup, people.Lookup, settings "accounts", notify "identity", alerts "identity", Guard or nil |
+| 16 | `people.New` | audit, signals, authz.Lookup, people.Lookup, identity (`EmailOf`, `LinkAccount`), settings "people" |
+| 17 | `datarights.New` | audit, signals, authz.Lookup, identity, authz.Service, notify "datarights", auditlog, files, people |
+| 18 | modules (`Build`), then `Link`: datarights (module sources), people (person page, membership), notify (templates), demo (seed contributors) | |
+| 19 | `demo.New` | every service (built last; routes only in demo mode) |
+| 20 | api | authenticator (identity), permission checker (authz.Lookup), route sets |
+
+Runnables start after `Set.Start` in the order audit importer, settings refresher, notify sender, files probe, jobs runner (unchanged), and stop in reverse.
+
+`openapi` and `check` build every component against `db.None()`; every `New` above does no I/O (app.md decision 7, unchanged). `Start` methods that register jobs never write.
+
+### Concurrency and lifecycle
+
+Unchanged for every moved method. Each Lookup is safe for concurrent use once built and has no `Close`. `auditlog.Service`, `regional.Service`, `datarights.Service` have no background work; `auditlog.Start` and `files.Start` register jobs. `demo.Capture` and `demo.Guard` have no lifecycle.
+
+### The seam table and its check (decision 10)
+
+`07-abstractions.md` gains a section **"Late-bound seams"** with a table `| Type | Waits for | Reason |` whose rows name a type or a top-level function in `internal/app` (a function for the closure shape of rule 5). "None." is the empty table.
+
+`internal/app/seams_test.go`, `TestSeamTable_MatchesApp` (no build tag, no database):
+
+1. Parses every non-test `.go` file in `internal/app` with `go/parser`.
+2. Collects the late-bound candidates: a named struct type with a field of type `*assembly` (whatever the field's name), and any type whose name starts with `lazy`. The `assembly` type itself and `*process` holders are excluded by name.
+3. Reads `../../plan/07-abstractions.md`, finds the "Late-bound seams" section and parses the backticked first column of each row.
+4. Fails naming each candidate not in the table ("late-bound adapter %s is not in the seam table") and each row whose type no longer exists ("seam table row %s names no type or function in app").
+5. Also fails for any function literal in a non-test file that captures an `*assembly` and returns an interface value (`go/types` is not needed: the test flags a `func(...)` returning a named interface type from a function whose receiver or parameter is `*assembly` and which references `a.` inside the literal); the error says to name the type and list it, or remove it. This catches `demoChannelFactory`'s shape.
+
+`make imports` runs `go test -count=1 -run 'TestSeamTable_MatchesApp' ./internal/app/` beside the two scripts; `make test` runs it too. At step 1 the table holds 18 rows (the 14 `lazy` types, `demoAccess`, `demoSchema`, `demoObjects` and the function `demoChannelFactory`); `demoAccess`, `demoObjects` and `demoChannelFactory` are removed in step 10, `demoSchema` also in step 10 (it holds its parts directly); at step 13 it reads "None." and the test asserts no candidate exists.
+
+### depguard `app-no-stores` (Proposed change 6)
+
+A rule for `**/internal/app/**` denying `github.com/zedgama3/bms/internal/core/*/postgres` (except `core/db`), `.../core/notify/smtp`, `.../core/notify/channel`, `.../core/objects/*` is allowed (app builds the object store; decision: the store is configuration, not a package's internals). Added at step 10, when the last store import leaves `check.go`.
+
+### `make arch-report` and the architecture review (decision 10)
+
+`scripts/arch-report.sh` prints, for a reviewer: (a) the import edges among `internal/core/*`, `internal/contracts/*`, `internal/api`, `internal/app` (from `go list -f '{{.ImportPath}} {{join .Imports " "}}'`), (b) production line counts per package and the ten largest production files, (c) the `Options` struct of every core `New` with its field count (`grep -A40 'type Options struct'`), (d) the result of the seam test. No judgment in the script.
+
+**At every milestone close** (the last roadmap item of a milestone set Implemented), before the branch is handed to the owner, the main session runs `make arch-report` and sends it with a whole-repo prompt to `go-reviewer` (read-only, opus) asking four questions: Which package has more than one purpose (its `doc.go` or spec needs "and")? Which `Options` struct takes something its package should read itself? Which component depends on one built after it? Which code in `app` decides? Findings go to the owner; a boundary move becomes an `architect` spec like this one before any code. `build-loop` gains this as step 5; `08-agent-workflow.md` gains one line in the loop diagram (Proposed changes 4, 5).
+
+### Staged migration
+
+Every step is one build-loop run (`go-implementer` + `test-author`, `check-runner`, `go-reviewer`; `frontend-implementer` and `web-reviewer` in steps 7 and 12) and ends with `make check` green and a commit on the feature branch. "Unchanged" tests are the existing ones that must still pass as written; "moved" tests keep their names and assertions and change package; "new" tests are written from this spec.
+
+| Step | Change | Removes | Unchanged proof | Moved / new tests |
+|---|---|---|---|---|
+| 1 | Seam table with today's 18 rows; `seams_test.go`; `make imports` runs it; `scripts/arch-report.sh`, `make arch-report` | nothing | `make check` | new: `TestSeamTable_MatchesApp`, `TestSeamTable_FlagsUnlistedType` (a fixture file under `testdata`, parsed the same way), `TestSeamTable_FlagsStaleRow` |
+| 2 | `httpx.Route`, `module.CoreRoutes`; every core `Routes()` returns `[]httpx.Route`; app calls `CoreRoutes` | nine `Route` types, nine converters | every core `*_http_test`, `TestOpenAPI_*`, `make openapi-check` (document unchanged) | new: `TestCoreRoutes_PublicBecomesAccessPublic`, `TestCoreRoutes_BadRoute_ReturnsInvalid`, `TestCoreRoutes_NotACoreArea_ReturnsInvalid` |
+| 3 | `identity.Actor`, `identity.AuditActor`, `audit.WithSystem`, `audit.WithOperator`; jobs sets the system marker on every run; commands set the operator marker | `authzActor`, `auditActor`, `assembly.operator` | identity, authz, audit, jobs, signals suites; `person_commands_integration_test` | moved: `TestAuditActor_InJob_IsTheSystem` → audit (`TestResolveActor_SystemMarker_WinsOverSession`); new: `TestResolveActor_OperatorMarker_WithoutSession`, `TestActor_RestrictedSession_IsFalse`, `TestAuditActor_RestrictedSession_IsThePerson` |
+| 4 | `departments.NewLookup`, `authz.NewLookup`; order 2–5 and 7 of the table; identity, settings, audit, api take the Lookup | `lazyPermissions`, `lazyTitles`, `lazyLister`, `lazyDepartments`, `lazyAuthorizer` | authz, departments, audit, identity, settings suites (the decision tests run against the Lookup through the Service's forwarding); `core_integration_test` | moved: `TestLazyAuthorizer_AfterAuthz_Delegates` deleted (no seam); new: `TestNewLookup_NilDepartments_ReturnsInvalid` (authz), `TestLookup_Active_ArchivedIsFalse` (departments), `TestNew_RecordsTitlesFromLookup` (audit, with `authztest.Fake`) |
+| 5 | Each package reads its own area: `identity.Options.Settings`, `people.Options.Settings`, `notify.Options.Settings` (SMTP, retention), `files.Options.Settings`, `files.Settings` (from `filesettings`); settings built before identity | `lazyIdentityPolicy`, `lazyPeoplePolicy`, `settingsPolicy`, `peoplePolicy`, `smtpSource`, `retentionSource`, `filesPolicy`, package `filesettings` | identity, people, notify, files suites; `TestLazyPolicies_*` deleted (no seam) | moved: `TestSettingsPolicy_ReadsEveryKey`, `_Defaults_AreIdentityDefaultPolicy`, `_WrongArea_ReturnsInvalid` → identity; `TestPeoplePolicy_*` → people; `TestSMTPSource_*`, `TestRetentionSource_*` → notify; new: `TestPolicy_UnsetKey_IsTheDeclaredDefault` in each (uses `settingstest.NewFake`) |
+| 6 | `auditlog` package; `auditlog.Settings` (from `auditsettings`); the purge job in `auditlog.Start`; `/api/audit/` served by auditlog | `auditPurge`, package `auditsettings`, `audit.Options.Permissions` | audit's `TestSearch_*`, `TestExport_*` (moved verbatim), the audit screen e2e, `catalogue_jobs_test` (job list unchanged) | moved: the search/export/retention tests → auditlog; new: `TestStart_RegistersAuditPurge`, `TestPurge_RetentionZero_DeletesNothing`, `TestPurge_ReadOnlyCopy_ReturnsUnavailable` |
+| 7 | `regional` package; routes under `/api/regional/`; web paths; settings loses `files` | `lazyFilesStore` | settings' `TestLogo_*`, `TestPublic_*`, `TestTheme_*` (moved verbatim), `core_settings_logo_test` → regional, the logo and theme e2e | moved as listed; new: `TestNew_NilFiles_ReturnsInvalid`, `TestProfile_ReadsSevenKeys`, `TestRoutes_ArePublicWhereSettingsWere`; web: `LogoControls.test.tsx`, `publicDoc.test.ts` updated |
+| 8 | `identity.NewLookup`, `people.NewLookup`; notify's new seams (`Accounts`, `Profiles`, `Regional`, `Terms`, `Channel`); notify built before identity and people | `lazyNotifier`, `lazyNames`, `addressSource`, `languageSource`, `nameSource`, `siteSource` | notify, identity, people suites; `core_notify_integration_test` (delivery to a login address, to a contact address, undeliverable) | moved: `TestAddressSource_Table`, `TestLanguageAndNameSources_NotFoundIsEmpty`, `TestSiteSource_*` → notify; new: `TestLookup_EmailOf_NoAccount_ReturnsNotFound` (identity), `TestLookup_ContactEmailOf_Deleted_ReturnsNotFound` (people) |
+| 9 | The alert in identity; `notify.AlertSender`, `Service.Alerts` | `lazyAlerter`, `app/alert.go` | identity's sign-in tests (F27: a failed alert never fails the sign-in); `TestAlert_*` moved verbatim | moved: the nine `TestAlert_*` → identity; new: `TestSendAlert_NoAddress_ReturnsUnsupported`, `TestSendAlert_OtherOwnersTemplate_ReturnsInvalid` (notify) |
+| 10 | `demo.NewGuard`, `demo.NewCapture`, `demo.FileCeiling`, `demo.StateOf`, `files.Purge`, `notify.Probe`; demo's seams take the services' shapes; `demoSchema` holds the migrator, the plan's ordered sets and the authz seeder directly, not `*assembly`; `check.go` calls the probes; depguard `app-no-stores` | `lazyGuard`, `lazyFilesPolicy`, `demoChannelFactory`, `demoObjects`, `demoAccess`, `demoSchema` (its `*assembly` field), `demoProfiles`, `checkReport.smtpConfig` | `demo_integration_test` (seed, reset, protected accounts, capture), `demo_caps_integration_test`, `commands_test` (`check` output pinned), `usage_check_test` | moved: `TestDemoPolicy_ServiceMissing_FailsClosed` deleted (no gap exists; `TestNew_CeilingNeverRaises` in files replaces it); new: `TestGuard_UnknownAccount_IsFalse`, `TestCapture_StoresInsteadOfSending`, `TestPurge_ClearsScopedBucketsAndTemp`, `TestPurge_ReadOnlyCopy_ReturnsUnavailable`, `TestProbe_NothingSet_IsNotConfigured`, `TestProbe_NeverReturnsAnAddress` |
+| 11 | `jobs.NewDeferrer`; built before the dispatcher | `lazyDeferrer` | signals and jobs suites; `internal_jobs_integration_test` (a failed delivery is redelivered) | new: `TestNewDeferrer_NilDB_ReturnsInvalid`, `TestDefer_ReadOnlyCopy_ReturnsUnavailable`, `TestDefer_RowIsRunnableByTheRunner` |
+| 12 | `datarights` package; module-contract aliases; routes under `/api/datarights/`; web paths; signal rename; people's `PeopleSource`; the two commands move | `personData`, `notifyData`, `filesData`, `notifySource`, `filesSource`; people's data-rights code | people's `TestExport_*`, `TestDelete_*`, `TestRequest*` (moved verbatim), `person_commands_integration_test`, every module's `moduletest.Conformance` (the aliases keep them compiling and passing), the export and deletion e2e | moved as listed; new: `TestLink_Twice_ReturnsConflict`, `TestDelete_OrderIsModulesFilesNotifyAccessIdentityPeople` (fakes record the order), `TestDeletePerson_ModuleStillReferences_ReturnsConflict` (people), `TestPublishes_DatarightsDeletionRequested`; web: `YourData.test.tsx`, `Requests.test.tsx` updated |
+| 13 | Seam table set to "None."; `seams_test.go` asserts no candidate; app.md's body rewritten by `spec-editor` from this spec (the amendments list); `make arch-report` run and attached to the hand-back | the last `lazy` mention | `make check`; `make test-integration`; `make test-e2e` in the three modes | new: `TestSeamTable_IsEmpty` |
+
+Steps 2, 3 and 11 are independent of the rest and may run first in any order; 4 precedes 5–9; 7 precedes 8 (notify's `Regional`); 8 precedes 9 and 12; 10 may run any time after 5.
+
+### Risks
+
+- **A "nothing yet" default was load-bearing.** Each lazy adapter answers something before its part is built (deny, empty, default policy, `Unsupported`). A command or test that builds a subset of parts relied on that. Mitigation: every `New` validates its dependencies as required, so a missing one fails at build with `Invalid` naming the field rather than silently changing an answer; `check` and `openapi` build everything.
+- **`check` and `openapi` must still build against `db.None()`.** The new `New`s do no I/O (every step's reviewer checks); `TestCheck_*` and `TestOpenAPI_*` in `commands_test` prove it per step.
+- **Path changes (steps 7 and 12) break a client that is not updated in the same step.** The web, the generated client and the e2e tests change in the same commit; `make openapi-check` fails otherwise. There is one deployed instance (the public demo) and it ships the matching web build.
+- **Audit action renames split a history.** Entries before step 6, 7 and 12 keep `people.data.*`, `settings.logo.*`; the audit screen filters both prefixes. The history files of the specs record the rename date.
+- **The signal rename.** No subscriber exists; `CoreSignals` changes; the graph check (`Resolve`) would refuse a module subscribing to the old name, loudly.
+- **Two sub-abstractions on one table** (audit/auditlog on `core.audit_entry`, people/datarights on `core.data_request`'s migrations). Each spec says who inserts, reads and deletes; `postgres-sql`'s one-schema-per-module rule is about schemas, which do not change.
+- **Step size.** Steps 6, 7 and 12 move several hundred lines each. If a step cannot close in two fix rounds, split it (for 12: the aliases and the `PeopleSource` first, the package move second) rather than merge it with the next.
+- **Order drift after this spec.** The seam test catches a new late-bound type; it cannot catch a new rule written as plain wiring. That is what the reviewer line and the milestone review are for.
+
+## Failure modes
+
+Moved methods keep their specs' failure modes and tests. New ones:
+
+| # | Method | Condition | errs kind | Caller is expected to | Test |
+|---|---|---|---|---|---|
+| B1 | `module.CoreRoutes` | a route fails `Route.Validate` | Invalid | fail the build (a programming error) | TestCoreRoutes_BadRoute_ReturnsInvalid |
+| B2 | `module.CoreRoutes` | `area` is not a reserved core area name | Invalid | fail the build | TestCoreRoutes_NotACoreArea_ReturnsInvalid |
+| B3 | `audit.New` | `Titles` nil | Invalid | fail the build | TestNew_NilTitles_ReturnsInvalid |
+| B4 | `audit.Log.Record` | no system or operator marker and `Actor` false | Invalid (F8, unchanged) | fail the use case | TestRecord_NoActor_ReturnsInvalid (exists) |
+| B5 | `authz.NewLookup` | nil `Departments` or empty `Declared` | Invalid | fail the build | TestNewLookup_NilDepartments_ReturnsInvalid |
+| B6 | `auditlog.New` | nil dependency | Invalid | fail the build | TestNew_NilDependency_ReturnsInvalid |
+| B7 | `auditlog.Start` | `audit.purge` registered twice | Conflict | fail the start | TestStart_Twice_ReturnsConflict |
+| B8 | `auditlog` purge handler | read-only copy | Unavailable wrapping `db.ErrReadOnly` | jobs retries later | TestPurge_ReadOnlyCopy_ReturnsUnavailable |
+| B9 | `regional.New` | nil `Files` or `Settings` | Invalid | fail the build | TestNew_NilFiles_ReturnsInvalid |
+| B10 | `regional.Profile` | a key fails to read | the Reader's kind | fail the request | TestProfile_ReaderFails_KeepsTheKind |
+| B11 | `notify.AlertSender.SendAlert` | no alert address configured | Unsupported | log once, continue (identity) | TestSendAlert_NoAddress_ReturnsUnsupported |
+| B12 | `notify.AlertSender.SendAlert` | template of another owner | Invalid | fail (a programming error) | TestSendAlert_OtherOwnersTemplate_ReturnsInvalid |
+| B13 | `notify.Probe` | schema behind, no table | Unavailable | print "unknown", not a check failure | TestProbe_NoTable_ReturnsUnavailable |
+| B14 | `identity.New` | nil `Settings`, `Holders`, `Notify` or `Alerts` | Invalid | fail the build | TestNew_NilAlerts_ReturnsInvalid |
+| B15 | `identity.Lookup.EmailOf` | no account for the person | NotFound | notify: try the contact address | TestLookup_EmailOf_NoAccount_ReturnsNotFound |
+| B16 | `people.Lookup.*Of` | unknown or deleted person | NotFound | notify: "none"; identity: no name | TestLookup_ContactEmailOf_Deleted_ReturnsNotFound |
+| B17 | `datarights.New` | nil dependency | Invalid | fail the build | TestNew_NilPeople_ReturnsInvalid |
+| B18 | `datarights.Link` | called twice | Conflict | fail the link | TestLink_Twice_ReturnsConflict |
+| B19 | `datarights.Link` | duplicate source name | Invalid | fail the link | TestLink_DuplicateName_ReturnsInvalid |
+| B20 | `datarights.Delete` | a module still references the person after its `DeletePerson` | Conflict (from people) | fail the deletion, roll back | TestDeletePerson_ModuleStillReferences_ReturnsConflict |
+| B21 | `files.Purge` | read-only copy | Unavailable wrapping `db.ErrReadOnly` | demo reset fails its "objects" step | TestPurge_ReadOnlyCopy_ReturnsUnavailable |
+| B22 | `files.Purge` | object store unreachable | Unavailable | same | TestPurge_StoreFails_ReturnsUnavailable |
+| B23 | `files.New` | `Settings` nil | Invalid | fail the build | TestNew_NilSettings_ReturnsInvalid |
+| B24 | `demo.NewGuard`, `NewCapture` | nil DB | Invalid | fail the build | TestNewGuard_NilDB_ReturnsInvalid |
+| B25 | `demo.Guard.Protected` | store fails | Unavailable | identity refuses the change (fail closed, as today) | TestProtected_StoreFails_ReturnsUnavailable |
+| B26 | `demo.StateOf` | not seeded | NotFound | `check` prints "not seeded" | TestStateOf_NoMarker_ReturnsNotFound |
+| B27 | `jobs.NewDeferrer` | nil DB | Invalid | fail the build | TestNewDeferrer_NilDB_ReturnsInvalid |
+| B28 | `jobs.Deferrer.Defer` | read-only copy | Unavailable wrapping `db.ErrReadOnly` | the dispatcher logs it; the delivery is final (signals F-unchanged) | TestDefer_ReadOnlyCopy_ReturnsUnavailable |
+| B29 | `TestSeamTable_MatchesApp` | a late-bound type not in the table | test failure | list it with a reason, or remove it | TestSeamTable_FlagsUnlistedType |
+| B30 | `TestSeamTable_MatchesApp` | a table row names no type | test failure | delete the row | TestSeamTable_FlagsStaleRow |
+
+`identity.Actor`, `identity.AuditActor`, `audit.WithSystem`, `audit.WithOperator`, `module.CoreRoutes`'s happy path, `demo.FileCeiling` and the Lookups' constructors beyond nil checks cannot fail: they are pure functions over a ctx or a value.
+
+## Lock-in check
+
+No external technology is wrapped. `objects` (disk, S3-compatible), SMTP and PostgreSQL keep their implementations; nothing here changes which ones exist.
+
+## Test plan
+
+- **Unit, per step** (fakes: `dbtest`, `authztest` (gains `HoldersOf` if missing), `peopletest`, `notifytest`, `settingstest`, `jobstest`, `filestest`, `telemetrytest`): the moved tests verbatim, the new tests in the table above.
+- **Permission tests:** unchanged for every moved use case (the same names run in the new package).
+- **Integration** (`//go:build integration`, the compose PostgreSQL): `core_integration_test`, `core_notify_integration_test`, `demo_integration_test`, `demo_caps_integration_test`, `person_commands_integration_test`, `internal_jobs_integration_test` run unchanged at every step; `TestDefer_RowIsRunnableByTheRunner` and `TestPurge_ClearsScopedBucketsAndTemp` are new.
+- **Conformance:** `moduletest.Conformance` for `hello` and `volunteers` at every step (the aliases in step 12 must keep both green without a change in either module).
+- **End to end:** `make test-e2e` in the three modes at steps 7, 12 and 13.
+- **Document:** `make openapi-check` at every step; steps 7 and 12 commit the new document.
+- **Guards:** `TestSeamTable_*` from step 1; `golangci-lint` with `app-no-stores` from step 10; `make arch-report` at step 13 and every milestone close after.
+
+## Open questions
+
+None. Q1–Q6 were answered by the owner on 2026-10-31 and are decisions 12 (Q1), 13 (Q2), 14 (Q3), 15 (Q4), 16 (Q5) and 17 (Q6).
+
+## Proposed changes elsewhere
+
+Applied by `spec-editor` after approval, in the step that needs each.
+
+1. *(applied 2026-10-31)* **`plan/00-principles.md`**, Engineering tenets: add **5. App wires, it never decides** and **6. No hidden two-way dependencies**, with the two paragraphs under Behavior, "The tenets" (shortened to the principle and one sentence of consequence each).
+2. **`plan/07-abstractions.md`** *(rules 11 and 12 and the "Late-bound seams" section applied 2026-10-31; the entry edits and new entries pending: land with their steps)*:
+   - rule 11 (app wires) and rule 12 (no hidden two-way dependencies; the seam table) under "Layers and dependency rules";
+   - a new section **"Late-bound seams"** with the table (18 rows at step 1, "None." at step 13);
+   - the **app** entry: "Doesn't do: anything any assembled package does; parse a setting; implement a package's seam except by forwarding";
+   - new entries **auditlog**, **regional**, **datarights**; the core diagram lists `auditlog · regional · datarights`;
+   - **audit** loses search, export, retention and the settings; **settings** loses the regional profile and the logo and gains "declares no area of its own"; **people** loses export, deletion, requests and the two commands and gains `Lookup` and "answers for its own rows as a datarights source";
+   - **authz**, **departments** gain `Lookup`; **identity** gains `Lookup`, `Actor`, `AuditActor`, the alert; **notify** gains `AlertSender`, `Probe` and the delivery rules; **files** gains `Settings`, `Ceiling`, `Purge`; **demo** gains `Guard`, `Capture`, `FileCeiling`, `StateOf`; **jobs** gains `Deferrer`.
+3. *(applied 2026-10-31)* **`CLAUDE.md`**, Non-negotiables 1: add "**App wires, it never decides.** `internal/app` calls constructors and forwards; it parses no setting and holds no rule. **No hidden two-way dependencies:** if A needs B at runtime and B needs A, split one; a late-bound adapter exists only in the seam table in `plan/07-abstractions.md`."
+4. *(applied 2026-10-31)* **`.claude/skills/build-loop/SKILL.md`**: new **5. Milestone close: architecture review** (Behavior, "`make arch-report` and the architecture review"), and in step 2 the note that `make imports` includes the seam test.
+5. *(applied 2026-10-31)* **`plan/08-agent-workflow.md`**: one line after the loop diagram: "At a milestone close the main session runs `make arch-report` and a whole-repo review (build-loop step 5) before handing the branch to the owner."
+6. **`.golangci.yml`**: depguard rule `app-no-stores` (Behavior). **`Makefile`**: `imports` runs the seam test; new `arch-report` target. **`scripts/arch-report.sh`**: new.
+7. *(applied 2026-10-31)* **`.claude/skills/design-spec/SKILL.md`**, checklist: "- [ ] For each dependency: what does this need that is built after it? (If anything, the design names the split; nothing is late-bound.)" and "- [ ] Does any of this belong in app? (Only constructors, forwarding and lifecycle may.)". **`.claude/agents/architect.md`**, Rules: the same two questions as bullets.
+8. *(applied 2026-10-31)* **`.claude/agents/go-reviewer.md`**, check 3 Boundaries: "- new code in `internal/app` that is not a constructor call, a shape conversion, a declaration collection or lifecycle (app wires, it never decides)" and "- a new type in `internal/app` that reads the assembly after construction, or a func literal capturing it, that is not in the seam table of `07-abstractions.md`".
+9. **`.claude/skills/go-conventions/SKILL.md`**, Layers: add `internal/core/auditlog`, `regional`, `datarights` to the core list; the sentence "A core package reads its own settings area through a `settings.Reader` in its `Options`; it never receives a parsed policy from app." and "A core area's `Routes()` returns `[]httpx.Route`; app converts with `module.CoreRoutes`."
+10. **`plan/design/app.md`**: remove "The superuser alert", the four lazy amendments (2026-10-19, 2026-10-21, the demo adapters of 2026-10-28), `authzActor`/`auditActor`; replace "How later core services plug in" with the build order table above; the Imports section drops `core/demo/postgres`, `core/notify/postgres`, `core/notify/smtp`, `core/notify/channel` and adds `core/auditlog`, `core/regional`, `core/datarights`; narratives go to `history/app.md`.
+11. **`plan/design/audit.md`**: the recorder keeps F1–F14 and the spool; Search, Export, CountAbout, retention, `audit.search|export`, the settings and the routes move to a new section "The log reader (`auditlog`)" with F15–F22 unchanged; `Options.Permissions` removed, `Titles` required; `WithSystem`, `WithOperator` and the actor order added.
+12. **`plan/design/authz.md`**: `Lookup` and `LookupOptions`; `Departments` moves to the Lookup; the Service forwards decisions; F1–F6, F20, F21 are the Lookup's.
+13. **`plan/design/identity.md`**: `Lookup`, `Actor`, `AuditActor`; `Options.Settings` replaces `PolicySource`; `Holders` and `Alerts` replace `Alerter`; "The superuser alert" section moved in from app.md verbatim; identity built after notify and authz.
+14. **`plan/design/people.md`**: `Lookup`; the data-rights sections (export, deletion, requests, the notice, the two commands, their routes, F40–F58, the signal `people.deletion-requested`) move to datarights.md; people answers as a `PeopleSource`; `Options` loses `Access`, `AuditCount`, `Notify`, `Holders`, `Policy` and gains `Lookup`, `Settings`.
+15. **New `plan/design/datarights.md`**, **`regional.md`**, **`auditlog.md`**: written by `spec-editor` from the moved sections and this spec's Interface, each with its own Summary; README rows added as Approved-on-approval-of-this-spec.
+16. **`plan/design/notify.md`**: the six seams replaced by `Settings`, `Regional`, `Terms`, `Accounts`, `Profiles`, `Channel`; `AlertSender`, `Alerts`, `Probe`; the delivery rules moved in; the imports line gains `core/regional` and `core/settings`.
+17. **`plan/design/settings.md`**: regional profile, public document, theme, logo and the `regional` area move to regional.md; `Options.Files` removed; routes reduced to four.
+18. **`plan/design/files.md`**: `Settings`, `Options.Settings`, `Options.Ceiling`, `Options.Jobs`, `Purge`; `PolicySource` removed; `filesettings` removed.
+19. **`plan/design/demo.md`**: `Guard`, `Capture`, `FileCeiling`, `StateOf`; `Service.Policy`, `Channel`, `Protected` removed; `Objects` is `files.Purge`; the seams take the services' shapes.
+20. **`plan/design/jobs.md`**: `NewDeferrer`; the runner sets `audit.WithSystem` on every run.
+21. **`plan/design/signals.md`**: the `Deferrer` is `jobs.Deferrer`, built before the dispatcher; the delivery marker audit reads is unchanged.
+22. **`plan/design/departments-events.md`**: `departments.Lookup`; authz's `DepartmentSource` is the Lookup.
+23. **`plan/design/module-contract.md`**: `PersonData`, `Export`, `Deletion`, `Kept` are aliases of `datarights`'; `CoreRoutes`; `Deps` unchanged.
+24. **`plan/design/api.md`**: `PermissionChecker` is the `authz.Lookup`; route sets `regional` and `datarights` added to the reserved core area names; the moved paths.
+25. **`plan/design/web-shell.md`**: the public document, theme and logo come from `/api/regional/`.
+26. **`plan/03-decisions.md`** (by `plan-keeper` on approval): the two tenets, the path moves, the signal rename and the audit action renames as one decision with this spec as its source.
