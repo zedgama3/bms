@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/lib/errs"
@@ -110,7 +111,7 @@ func runCreateSuperuser(ctx context.Context, p *process) int {
 		return ExitUsage
 	}
 	a := newAssembly(p, cfg)
-	a.operator = true
+	ctx = audit.WithOperator(ctx) // the command acts with the operator's hands
 	if err := a.startTelemetry(ctx, p.lookup, p.stderr); err != nil {
 		return p.earlyFail(ctx, err, ExitUsage)
 	}

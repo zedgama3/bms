@@ -8,6 +8,7 @@ import (
 
 	"github.com/zedgama3/bms/internal/contracts/membership"
 	"github.com/zedgama3/bms/internal/contracts/personpage"
+	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/module"
 	"github.com/zedgama3/bms/internal/core/people"
@@ -96,7 +97,7 @@ func buildPeople(_ context.Context, a *assembly) error {
 		Audit:      rec,
 		Signals:    bus,
 		Authz:      a.deps.authz,
-		Actor:      authzActor,
+		Actor:      identity.Actor,
 		Session:    identity.SessionFrom,
 		Accounts:   a.identity,
 		Access:     a.authz,
@@ -228,7 +229,7 @@ func runPersonCommand(ctx context.Context, p *process, name string, writes bool,
 		return ExitUsage
 	}
 	a := newAssembly(p, cfg)
-	a.operator = true
+	ctx = audit.WithOperator(ctx) // the command acts with the operator's hands
 	if err := a.startTelemetry(ctx, p.lookup, p.stderr); err != nil {
 		return p.earlyFail(ctx, err, ExitUsage)
 	}

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/zedgama3/bms/internal/core/audit"
+	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/jobs"
 	"github.com/zedgama3/bms/internal/core/settings"
 	"github.com/zedgama3/bms/internal/core/signals"
@@ -74,7 +75,7 @@ func buildJobs(_ context.Context, a *assembly) error {
 		Meter:        m,
 		Audit:        rec,
 		Authz:        a.deps.authz,
-		Actor:        authzActor,
+		Actor:        identity.Actor,
 		Redeliverer:  a.disp,
 		Instance:     a.cfg.Instance.Name,
 		PollInterval: jobsPollInterval,

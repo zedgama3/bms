@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/zedgama3/bms/internal/core/audit"
+	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/lib/validate"
 	"github.com/zedgama3/bms/internal/model"
@@ -78,4 +80,28 @@ func PersonFrom(ctx context.Context) (model.PersonID, bool) {
 		return model.PersonID{}, false
 	}
 	return s.Person, true
+}
+
+// Actor is authz.ActorFunc over the session in ctx: the person of a full session and whether
+// it is the superuser's. It is false without a session, for a restricted session
+// (PasswordChangeRequired) and inside a signal delivery (PersonFrom's rule). Pure: no I/O,
+// no failure.
+func Actor(ctx context.Context) (authz.Actor, bool) {
+	p, ok := PersonFrom(ctx)
+	if !ok {
+		return authz.Actor{}, false
+	}
+	s, _ := SessionFrom(ctx)
+	return authz.Actor{Person: p, Superuser: s.Superuser}, true
+}
+
+// AuditActor is audit.ActorFunc over the session in ctx: the session's person and whether it
+// is the superuser's. A restricted session is still the person for audit, so unlike Actor it
+// answers for one. It is false without a session. Pure: no I/O, no failure.
+func AuditActor(ctx context.Context) (audit.Actor, bool) {
+	s, ok := SessionFrom(ctx)
+	if !ok {
+		return audit.Actor{}, false
+	}
+	return audit.Actor{Kind: audit.ActorPerson, Person: s.Person, Superuser: s.Superuser}, true
 }

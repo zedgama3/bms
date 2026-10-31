@@ -300,9 +300,9 @@ type Registrar interface {
 	Enqueue(ctx context.Context, r Request) (JobID, error)
 }
 
-// InJob reports whether ctx is a handler's ctx. app's audit ActorFunc answers ActorSystem
-// when it is true; authz has no actor and refuses permission-checked use cases, as inside a
-// signal delivery. Cannot fail.
+// InJob reports whether ctx is a handler's ctx. The runner also marks it audit.WithSystem, so
+// audit records the system; authz has no actor and refuses permission-checked use cases, as
+// inside a signal delivery. Cannot fail.
 func InJob(ctx context.Context) bool { return rules.InJob(ctx) }
 
 // Redeliverer hands a stored delivery back to the subscriber: the *signals.Dispatcher.

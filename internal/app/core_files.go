@@ -12,8 +12,10 @@ import (
 	"time"
 
 	"github.com/zedgama3/bms/internal/config"
+	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/files"
 	"github.com/zedgama3/bms/internal/core/files/filesettings"
+	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/jobs"
 	"github.com/zedgama3/bms/internal/core/objects"
 	"github.com/zedgama3/bms/internal/core/objects/disk"
@@ -137,7 +139,7 @@ func buildFiles(_ context.Context, a *assembly) error {
 		Tracer:  tr,
 		Meter:   m,
 		Audit:   rec,
-		Actor:   authzActor,
+		Actor:   identity.Actor,
 		Objects: store,
 		TempDir: filepath.Join(dir, "tmp"),
 		Policy:  lazyFilesPolicy{a: a}, // the settings-backed policy, capped by demo mode (core_demo.go)
@@ -311,7 +313,7 @@ func runFilesCommand(ctx context.Context, p *process, fn func(context.Context, *
 		return ExitUsage
 	}
 	a := newAssembly(p, cfg)
-	a.operator = true
+	ctx = audit.WithOperator(ctx) // the command acts with the operator's hands
 	if err := a.startTelemetry(ctx, p.lookup, p.stderr); err != nil {
 		return p.earlyFail(ctx, err, ExitUsage)
 	}

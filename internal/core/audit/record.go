@@ -115,26 +115,30 @@ func (l *Log) stamp(ctx context.Context, traceID string, entries []Entry) ([]Rec
 	return recs, nil
 }
 
-// resolveActor applies decision 6: a set Kind is taken as given; otherwise a signal
-// delivery is the system; otherwise the ActorFunc answers (a session is its person, and
-// while a bms command runs the operator, and inside a job the system); with no answer the
-// actor is anonymous. An inconsistent answer (anonymous, a person without Person, the
-// operator or the system with a Person or Superuser) fails Internal (F13b).
+// resolveActor applies decision 3's order: a set Kind is taken as given; otherwise a signal
+// delivery is the system; then a WithSystem marker is the system; then the ActorFunc answers
+// (a session is its person); then a WithOperator marker is the operator; with none of them
+// the actor is anonymous (a failed login, a public route). An inconsistent ActorFunc answer
+// (anonymous, a person without Person, the operator or the system with a Person or
+// Superuser) fails Internal (F13b).
 func (l *Log) resolveActor(ctx context.Context, given Actor) (Actor, error) {
 	const op = "audit.Log.Record"
 	if given.Kind != 0 {
 		return given, nil
 	}
-	if signals.InDelivery(ctx) {
+	if signals.InDelivery(ctx) || isSystem(ctx) {
 		return Actor{Kind: ActorSystem}, nil
 	}
 	a, ok := l.opts.Actor(ctx)
 	if !ok {
+		if isOperator(ctx) {
+			return Actor{Kind: ActorOperator}, nil
+		}
 		return Actor{Kind: ActorAnonymous}, nil
 	}
 	a.Titles = nil
-	// The function returns a person, the operator while a bms command runs, or the system
-	// inside a job (app); anything else is a bug in the wiring.
+	// The function returns a person (or, for a test's fake, the operator or the system);
+	// anything else is a bug in the wiring.
 	if (a.Kind != ActorPerson && a.Kind != ActorOperator && a.Kind != ActorSystem) || a.Validate() != nil {
 		return Actor{}, errs.E(op, errs.Internal, errors.New("the actor function returned an actor that is not a valid person, the operator or the system"))
 	}

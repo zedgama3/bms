@@ -99,7 +99,6 @@ A row is one type in `internal/app` (or one top-level function, for a closure th
 | `demoObjects` | a.cfg and a.plan for the buckets to clear | demo's reset needs files to clear every owner's objects, and files holds the demo cap (files ↔ demo); removed in step 10. |
 | `demoSchema` | a.migrator, a.plan and a.authz | the reset's migrate step is `bms migrate` re-run, which needs the authz seeder built before demo runs; it holds the assembly only because of that (F1); removed in step 10. |
 | `demoChannelFactory` | a.demo, which the demo part sets last | notify takes demo's capture channel, and demo is built after notify (notify ↔ demo); removed in step 10. |
-| `assembly.auditActor` | a.operator, which a command sets | audit asks app who the actor is, and app holds the order system, session, operator (F1); the method value is stored in `audit.Options`; removed in step 3. |
 ---
 
 ## Foundation

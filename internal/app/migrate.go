@@ -9,6 +9,7 @@ import (
 
 	"github.com/zedgama3/bms/internal/app/secrets"
 	"github.com/zedgama3/bms/internal/config"
+	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/lib/validate"
@@ -123,7 +124,7 @@ func runMigrate(ctx context.Context, p *process) int {
 		return p.earlyFail(ctx, err, ExitUsage)
 	}
 	a := newAssembly(p, cfg)
-	a.operator = true
+	ctx = audit.WithOperator(ctx) // the command acts with the operator's hands
 	if err := a.startTelemetry(ctx, p.lookup, p.stderr); err != nil {
 		return p.earlyFail(ctx, err, ExitUsage)
 	}

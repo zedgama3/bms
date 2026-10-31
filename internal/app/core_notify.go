@@ -83,7 +83,7 @@ func buildNotify(_ context.Context, a *assembly) error {
 		Meter:     m,
 		Audit:     rec,
 		Authz:     a.deps.authz,
-		Actor:     authzActor,
+		Actor:     identity.Actor,
 		SMTP:      smtpSource{r: reader},
 		Site:      siteSource{svc: a.settings},
 		Retention: retentionSource{r: reader},

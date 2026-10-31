@@ -96,8 +96,18 @@ func TestCoreRoutes_NotACoreArea_ReturnsInvalid(t *testing.T) {
 	r := []httpx.Route{{Method: http.MethodGet, Pattern: "/x", Handler: coreRouteHandler()}}
 	for _, area := range []string{"", "hello", "volunteers", "People", " people", "api"} {
 		t.Run("area "+area, func(t *testing.T) {
-			if _, err := module.CoreRoutes(area, r, nil); !errs.Is(err, errs.Invalid) {
+			_, err := module.CoreRoutes(area, r, nil)
+			if !errs.Is(err, errs.Invalid) {
 				t.Fatalf("err = %v, want Invalid", err)
+			}
+			found := false
+			for _, fe := range validate.Fields(err) {
+				if fe.Field == "area" {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("no field %q in %v", "area", validate.Fields(err))
 			}
 		})
 	}

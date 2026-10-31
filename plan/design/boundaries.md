@@ -205,7 +205,7 @@ func WithOperator(ctx context.Context) context.Context
 // Options loses Permissions (search moved to auditlog). Actor is identity.AuditActor;
 // Titles is the authz.Lookup. The actor of an entry that names none is resolved in this
 // order: a signal delivery (as today), WithSystem, Actor, WithOperator; none means
-// errs.Invalid (F8, unchanged).
+// anonymous (audit.md decision 6, unchanged).
 type Options struct {
     DB             db.DB
     Clock          clock.Clock
@@ -768,7 +768,7 @@ Moved methods keep their specs' failure modes and tests. New ones:
 | B1 | `module.CoreRoutes` | a route fails `Route.Validate` | Invalid | fail the build (a programming error) | TestCoreRoutes_BadRoute_ReturnsInvalid |
 | B2 | `module.CoreRoutes` | `area` is not a reserved core area name | Invalid | fail the build | TestCoreRoutes_NotACoreArea_ReturnsInvalid |
 | B3 | `audit.New` | `Titles` nil | Invalid | fail the build | TestNew_NilTitles_ReturnsInvalid |
-| B4 | `audit.Log.Record` | no system or operator marker and `Actor` false | Invalid (F8, unchanged) | fail the use case | TestRecord_NoActor_ReturnsInvalid (exists) |
+| B4 | `audit.Log.Record` | no system or operator marker, no session and `Actor` false | recorded as `anonymous` (audit.md decision 6, unchanged) | none: a failed login or public route is anonymous by design | TestRecord_ActorResolution ("no session is anonymous" row, exists) |
 | B5 | `authz.NewLookup` | nil `Departments` or empty `Declared` | Invalid | fail the build | TestNewLookup_NilDepartments_ReturnsInvalid |
 | B6 | `auditlog.New` | nil dependency | Invalid | fail the build | TestNew_NilDependency_ReturnsInvalid |
 | B7 | `auditlog.Start` | `audit.purge` registered twice | Conflict | fail the start | TestStart_Twice_ReturnsConflict |
@@ -860,3 +860,4 @@ Applied by `spec-editor` after approval, in the step that needs each.
 ## Amendments
 
 - **A1, 2026-10-31** (approved by the owner 2026-10-31; folded in 2026-10-31): the seam check's closure rule is defined by where a capture is stored. The narrative, the reason and what was folded in are in `plan/design/history/boundaries.md`.
+- **E1, 2026-10-31** (erratum, approved by the owner 2026-10-31): an entry with no actor, no marker and no session is anonymous, as before; the earlier text said `errs.Invalid` citing F8, which is the action-grammar failure.

@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/zedgama3/bms/internal/core/departments"
+	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/lib/errs"
 )
 
@@ -61,7 +62,7 @@ func buildDepartments(_ context.Context, a *assembly) error {
 		Audit:   rec,
 		Signals: bus,
 		Authz:   a.deps.authz,
-		Actor:   authzActor,
+		Actor:   identity.Actor,
 	})
 	if err != nil {
 		return err //nolint:wrapcheck // departments.New names itself

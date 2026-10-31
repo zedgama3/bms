@@ -67,19 +67,6 @@ func (l lazyNames) PlayaNameOf(ctx context.Context, person model.PersonID) (stri
 	return l.a.names.PlayaNameOf(ctx, person) //nolint:wrapcheck // the source's own error
 }
 
-// authzActor is the ActorFunc of authz and people over identity's ctx accessors: the person
-// of a full session and whether it is the superuser's. It is false without a session and for
-// a restricted one (identity.PersonFrom's rule); the services also refuse the actor inside
-// a signal delivery. It does no I/O.
-func authzActor(ctx context.Context) (authz.Actor, bool) {
-	p, ok := identity.PersonFrom(ctx)
-	if !ok {
-		return authz.Actor{}, false
-	}
-	s, _ := identity.SessionFrom(ctx)
-	return authz.Actor{Person: p, Superuser: s.Superuser}, true
-}
-
 // lazyDepartments is authz's DepartmentSource over a.departments, which the departments part
 // sets after authz is built: until then a department grant is Unsupported, as it is when
 // authz is given no source (departments-events.md; D37).

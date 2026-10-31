@@ -7,6 +7,7 @@ import (
 	"slices"
 
 	"github.com/zedgama3/bms/internal/core/authz"
+	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/lib/errs"
 )
@@ -66,7 +67,7 @@ func buildAuthz(_ context.Context, a *assembly) error {
 		Meter:    m,
 		Audit:    rec,
 		Signals:  bus,
-		Actor:    authzActor,
+		Actor:    identity.Actor,
 		Declared: declaredPermissions(a),
 
 		Departments: lazyDepartments{a},

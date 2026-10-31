@@ -10,7 +10,6 @@ import (
 	"github.com/zedgama3/bms/internal/config"
 	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/identity"
-	"github.com/zedgama3/bms/internal/core/jobs"
 	"github.com/zedgama3/bms/internal/lib/errs"
 )
 
@@ -49,7 +48,7 @@ func buildAudit(_ context.Context, a *assembly) error {
 		Meter:       m,
 		Instance:    a.cfg.Instance.Name,
 		DataDir:     a.cfg.Data.Dir,
-		Actor:       a.auditActor,
+		Actor:       identity.AuditActor,
 		Titles:      lazyTitles{a: a},
 		Permissions: lazyPermissions{a: a},
 	})
@@ -67,35 +66,6 @@ func buildAudit(_ context.Context, a *assembly) error {
 	}
 	a.runnables = append(a.runnables, runnable{name: "audit", start: im.start, stop: im.stop})
 	return nil
-}
-
-// auditActor is audit's ActorFunc, in this order: the system inside a job (jobs.InJob; it
-// comes before the session because a handler runs as the system with no session, and a
-// test's ctx may carry both); the session's person; while a command that acts as the
-// operator runs (a.operator: create-superuser, export, delete, migrate) the operator.
-// Audit asks it only outside a signal delivery (where it answers the system itself) and
-// only for an entry that names no actor. It does no I/O.
-func (a *assembly) auditActor(ctx context.Context) (audit.Actor, bool) {
-	if jobs.InJob(ctx) {
-		return audit.Actor{Kind: audit.ActorSystem}, true
-	}
-	if act, ok := actorFromSession(ctx); ok {
-		return act, true
-	}
-	if a.operator {
-		return audit.Actor{Kind: audit.ActorOperator}, true
-	}
-	return audit.Actor{}, false
-}
-
-// actorFromSession is audit's ActorFunc over identity's ctx accessor. A restricted session
-// is still the person for audit. It does no I/O and is called per request only.
-func actorFromSession(ctx context.Context) (audit.Actor, bool) {
-	s, ok := identity.SessionFrom(ctx)
-	if !ok {
-		return audit.Actor{}, false
-	}
-	return audit.Actor{Kind: audit.ActorPerson, Person: s.Person, Superuser: s.Superuser}, true
 }
 
 // importer runs audit.Log.Run in a goroutine of its own: start launches it, stop cancels it

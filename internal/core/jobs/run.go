@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/jobs/internal/rules"
 	"github.com/zedgama3/bms/internal/core/jobs/rows"
@@ -498,7 +499,7 @@ func (r *Runner) execute(ctx, sctx context.Context, lj rows.Lease) result {
 	if timeout == 0 {
 		timeout = r.to
 	}
-	runCtx, cancelRun := context.WithCancel(rules.WithJob(sctx, lj.ID))
+	runCtx, cancelRun := context.WithCancel(audit.WithSystem(rules.WithJob(sctx, lj.ID)))
 	defer cancelRun()
 	hctx, cancelTimeout := context.WithTimeout(runCtx, timeout)
 	defer cancelTimeout()

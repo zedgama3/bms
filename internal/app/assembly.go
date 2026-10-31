@@ -126,7 +126,6 @@ type assembly struct {
 	jobs        *jobs.Runner               // the jobs part's runner (lazyDeferrer, audit.purge, bms check); nil before its build
 	notifiers   map[string]notify.Notifier // the Notifiers notify scoped for identity and people (Scoped fails once Run started); nil before its build
 	stdout      io.Writer                  // the command's standard output (migrate's seed line)
-	operator    bool                       // a command that acts as the operator is running (auditActor)
 	parts       []part
 	started     []runnable
 	srv         httpServer

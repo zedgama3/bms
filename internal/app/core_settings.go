@@ -71,7 +71,7 @@ func buildSettings(_ context.Context, a *assembly) error {
 		Meter:      m,
 		Audit:      rec,
 		Authz:      lazyAuthorizer{a: a},
-		Actor:      authzActor,
+		Actor:      identity.Actor,
 		Files:      lazyFilesStore{a: a},
 		Areas:      settingsAreas(a),
 		SealingKey: a.cfg.Settings.SealingKey,

@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -27,14 +26,12 @@ import (
 	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/demo"
-	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/module"
 	"github.com/zedgama3/bms/internal/core/settings"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/telemetry/telemetrytest"
 	"github.com/zedgama3/bms/internal/lib/clock"
 	"github.com/zedgama3/bms/internal/lib/errs"
-	"github.com/zedgama3/bms/internal/lib/httpx"
 	"github.com/zedgama3/bms/internal/lib/secret"
 	"github.com/zedgama3/bms/internal/lib/validate"
 	"github.com/zedgama3/bms/internal/model"
@@ -820,35 +817,6 @@ func TestAddCoreSet_Table(t *testing.T) {
 	}
 }
 
-func TestActorFromSession_Table(t *testing.T) {
-	person := model.NewID[model.PersonID]()
-	now := time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)
-	session := func(super, restricted bool) identity.Session {
-		return identity.Session{
-			ID: model.NewID[identity.SessionID](), Account: model.NewID[model.AccountID](), Person: person,
-			Superuser: super, PasswordChangeRequired: restricted, IssuedAt: now, ExpiresAt: now.Add(time.Hour),
-		}
-	}
-	for _, tc := range []struct {
-		name string
-		ctx  context.Context
-		want audit.Actor
-		ok   bool
-	}{
-		{"no session", context.Background(), audit.Actor{}, false},
-		{"participant", identity.WithSession(context.Background(), session(false, false)), audit.Actor{Kind: audit.ActorPerson, Person: person}, true},
-		{"superuser is marked", identity.WithSession(context.Background(), session(true, false)), audit.Actor{Kind: audit.ActorPerson, Person: person, Superuser: true}, true},
-		{"a restricted session is still the person", identity.WithSession(context.Background(), session(false, true)), audit.Actor{Kind: audit.ActorPerson, Person: person}, true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			got, ok := actorFromSession(tc.ctx)
-			if ok != tc.ok || got.Kind != tc.want.Kind || got.Person != tc.want.Person || got.Superuser != tc.want.Superuser {
-				t.Errorf("actorFromSession = %+v, %v; want %+v, %v", got, ok, tc.want, tc.ok)
-			}
-		})
-	}
-}
-
 type allowOnly authz.Permission
 
 func (a allowOnly) Allow(_ context.Context, p authz.Permission) error {
@@ -873,26 +841,46 @@ func TestLazyPermissions_DeniesUntilAuthzSetsTheChecker(t *testing.T) {
 	}
 }
 
+// The built route sets, not hand-made input: only accounts' GET /session is public (the
+// shell asks it before anyone has signed in), and every audit route is signed in.
 func TestAccountRoutes_PublicMapsToAccessPublic(t *testing.T) {
-	h := http.NotFoundHandler()
-	set, err := module.CoreRoutes("accounts", []httpx.Route{
-		{Method: "GET", Pattern: "/session", Public: true, Handler: h},
-		{Method: "GET", Pattern: "/", Handler: h},
-	}, nil)
-	if err != nil {
-		t.Fatalf("CoreRoutes: %v", err)
+	a := builtCore(t)
+	sets := map[string]module.ModuleRoutes{}
+	for _, rs := range a.routeSets {
+		sets[rs.Module] = rs
 	}
-	got := set.Routes
-	if len(got) != 2 || got[0].Access != module.AccessPublic || got[1].Access != module.AccessSignedIn {
-		t.Errorf("routes = %+v, want public then signed-in", got)
+	acc, ok := sets["accounts"]
+	if !ok || len(acc.Routes) == 0 {
+		t.Fatalf("no accounts route set among %d sets", len(a.routeSets))
 	}
-	auditSet, err := module.CoreRoutes("audit", []httpx.Route{{Method: "GET", Pattern: "/entries", Handler: h}}, nil)
-	if err != nil {
-		t.Fatalf("CoreRoutes: %v", err)
+	var public []string
+	for _, r := range acc.Routes {
+		if r.Access == module.AccessPublic {
+			public = append(public, r.Method+" "+r.Pattern)
+		}
 	}
-	for _, r := range auditSet.Routes {
+	if !slices.Contains(public, "GET /session") {
+		t.Errorf("public accounts routes = %v, want GET /session among them", public)
+	}
+	var signedIn bool
+	for _, r := range acc.Routes {
+		if r.Method == http.MethodGet && r.Pattern == "/session" {
+			continue
+		}
+		if r.Access == module.AccessSignedIn {
+			signedIn = true
+		}
+	}
+	if !signedIn {
+		t.Error("no accounts route other than GET /session is signed-in")
+	}
+	aud, ok := sets["audit"]
+	if !ok || len(aud.Routes) == 0 {
+		t.Fatalf("no audit route set")
+	}
+	for _, r := range aud.Routes {
 		if r.Access != module.AccessSignedIn {
-			t.Errorf("audit route %s is %v, want signed-in", r.Pattern, r.Access)
+			t.Errorf("audit route %s %s is %v, want signed-in", r.Method, r.Pattern, r.Access)
 		}
 	}
 }
@@ -1311,32 +1299,6 @@ func TestLazyAdapters_BeforeTheirPartsAreBuilt_AnswerNothing(t *testing.T) {
 	}
 	if got, err := (lazyDepartments{a: a}).Active(ctx, model.DepartmentID{}); !errs.Is(err, errs.Unsupported) || got {
 		t.Errorf("Active = %v, %v, want false and Unsupported", got, err)
-	}
-}
-
-func TestAuditActor_Command_IsTheOperatorOnlyWithoutASession(t *testing.T) {
-	a := &assembly{}
-	person := model.NewID[model.PersonID]()
-	withSession := identity.WithSession(context.Background(), identity.Session{Person: person})
-	for _, tc := range []struct {
-		name     string
-		operator bool
-		ctx      context.Context
-		want     audit.Actor
-		ok       bool
-	}{
-		{"not a command, no session", false, context.Background(), audit.Actor{}, false},
-		{"a command, no session", true, context.Background(), audit.Actor{Kind: audit.ActorOperator}, true},
-		{"a command, a session", true, withSession, audit.Actor{Kind: audit.ActorPerson, Person: person}, true},
-		{"not a command, a session", false, withSession, audit.Actor{Kind: audit.ActorPerson, Person: person}, true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			a.operator = tc.operator
-			got, ok := a.auditActor(tc.ctx)
-			if ok != tc.ok || !reflect.DeepEqual(got, tc.want) {
-				t.Errorf("auditActor = %+v, %v; want %+v, %v", got, ok, tc.want, tc.ok)
-			}
-		})
 	}
 }
 

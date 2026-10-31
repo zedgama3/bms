@@ -15,6 +15,7 @@ import (
 	"github.com/zedgama3/bms/internal/config"
 	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/db"
+	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/notify"
 	notifypg "github.com/zedgama3/bms/internal/core/notify/postgres"
 	"github.com/zedgama3/bms/internal/core/notify/smtp"
@@ -539,7 +540,7 @@ func (r *checkReport) smtpConfig(ctx context.Context, a *assembly) (notify.SMTPC
 	}
 	svc, err := settings.New(settings.Options{
 		DB: a.pool, Clock: a.clock, Logger: a.component("settings"), Tracer: tr, Meter: m, Audit: rec,
-		Authz: lazyAuthorizer{a: a}, Actor: authzActor, Areas: settingsAreas(a), SealingKey: a.cfg.Settings.SealingKey,
+		Authz: lazyAuthorizer{a: a}, Actor: identity.Actor, Areas: settingsAreas(a), SealingKey: a.cfg.Settings.SealingKey,
 	})
 	if err != nil {
 		return notify.SMTPConfig{}, err //nolint:wrapcheck // printed with its kind
