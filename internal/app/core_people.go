@@ -111,22 +111,10 @@ func buildPeople(_ context.Context, a *assembly) error {
 	a.people = svc
 	a.deps.people = svc
 	a.names = svc
-	a.routeSets = append(a.routeSets, module.ModuleRoutes{
-		Module:  peopleArea,
-		Routes:  peopleRoutes(svc.Routes()),
-		OpenAPI: svc.OpenAPI(),
-	})
-	return nil
-}
-
-// peopleRoutes converts people's routes (people cannot import core/module) to module
-// routes: all signed-in, the permission being checked inside each use case.
-func peopleRoutes(in []people.Route) []module.Route {
-	out := make([]module.Route, len(in))
-	for i, r := range in {
-		out[i] = module.Route{Method: r.Method, Pattern: r.Pattern, Access: module.AccessSignedIn, Handler: r.Handler}
+	if err := a.addCoreRoutes(peopleArea, svc.Routes(), svc.OpenAPI()); err != nil {
+		return err
 	}
-	return out
+	return nil
 }
 
 // linkPeople gives the service every built module's PersonData and every contribution to the

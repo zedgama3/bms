@@ -14,6 +14,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/module"
 	"github.com/zedgama3/bms/internal/core/settings"
 	"github.com/zedgama3/bms/internal/lib/errs"
+	"github.com/zedgama3/bms/internal/lib/httpx"
 )
 
 func TestLazyFilesStore_BeforeFiles_ReturnsUnavailable(t *testing.T) {
@@ -75,12 +76,16 @@ func TestLazyFilesStore_AfterFiles_IsScopedSettings(t *testing.T) {
 }
 
 func TestSettingsRoutes_CarryBodyCapAndTimeout(t *testing.T) {
-	in := []settings.Route{
+	in := []httpx.Route{
 		{Method: http.MethodGet, Pattern: "/public", Public: true, Handler: http.NotFoundHandler()},
 		{Method: http.MethodPut, Pattern: "/logo", Handler: http.NotFoundHandler(), MaxBodyBytes: 2 * settings.MaxLogoBytes, Timeout: files.UploadTimeout},
 		{Method: http.MethodGet, Pattern: "/logo", Public: true, Handler: http.NotFoundHandler(), Timeout: files.ServeTimeout},
 	}
-	out := settingsRoutes(in)
+	set, err := module.CoreRoutes("settings", in, nil)
+	if err != nil {
+		t.Fatalf("CoreRoutes: %v", err)
+	}
+	out := set.Routes
 	if len(out) != len(in) {
 		t.Fatalf("%d routes out, %d in", len(out), len(in))
 	}

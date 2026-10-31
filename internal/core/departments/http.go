@@ -14,19 +14,10 @@ import (
 //go:embed openapi.json
 var openAPIFragment []byte
 
-// Route is one HTTP route of the departments set; app converts it to module.Route
-// (departments cannot import core/module). Every route is for signed-in people: the
-// permission is checked inside the use case.
-type Route struct {
-	Method  string
-	Pattern string // relative to /api/departments
-	Handler http.Handler
-}
-
 // Routes returns the routes of the departments set. Handlers are thin: parse, call the
 // service, httpx.Fail on error. Cannot fail.
-func (s *Service) Routes() []Route {
-	return []Route{
+func (s *Service) Routes() []httpx.Route {
+	return []httpx.Route{
 		{Method: http.MethodGet, Pattern: "/", Handler: s.listHandler()},
 		{Method: http.MethodPost, Pattern: "/", Handler: s.createHandler()},
 		{Method: http.MethodGet, Pattern: "/{department}", Handler: s.getHandler()},

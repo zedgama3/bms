@@ -105,7 +105,7 @@ func nextResetIP() string {
 
 // bareCall runs a handler with no Failer installed, so httpx.Fail writes its own fallback
 // body and two responses can be compared byte for byte.
-func bareCall(t testing.TB, rt identity.Route, ctx context.Context, body string) *httptest.ResponseRecorder { //nolint:revive // ctx is deliberately second: the route is the subject
+func bareCall(t testing.TB, rt httpx.Route, ctx context.Context, body string) *httptest.ResponseRecorder { //nolint:revive // ctx is deliberately second: the route is the subject
 	t.Helper()
 	var rd io.Reader
 	if body != "" {

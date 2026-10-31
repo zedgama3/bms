@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"regexp"
 	"strings"
 	"time"
@@ -364,12 +363,6 @@ type Ran struct {
 	Failed    int // final failures (including no_handler and gave_up)
 	Retried   int // rows re-queued with backoff
 	Released  int // rows given back (Canceled, read-only, lost lease)
-}
-
-// Route is the shape app converts (jobs cannot import core/module; audit decision 14).
-type Route struct {
-	Method, Pattern string
-	Handler         http.Handler
 }
 
 // recordOf converts a stored row; a status the table cannot hold is a bug.

@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/zedgama3/bms/internal/core/identity"
-	"github.com/zedgama3/bms/internal/core/module"
 	"github.com/zedgama3/bms/internal/core/notify"
 	"github.com/zedgama3/bms/internal/core/notify/channel"
 	"github.com/zedgama3/bms/internal/core/people"
@@ -113,24 +112,12 @@ func buildNotify(_ context.Context, a *assembly) error {
 	}
 	a.notify = svc
 	a.deps.notify = svc
-	a.routeSets = append(a.routeSets, module.ModuleRoutes{
-		Module:  notifyArea,
-		Routes:  notifyRoutes(svc.Routes()),
-		OpenAPI: svc.OpenAPI(),
-	})
+	if err := a.addCoreRoutes(notifyArea, svc.Routes(), svc.OpenAPI()); err != nil {
+		return err
+	}
 	r := &notifyRunner{svc: svc, logger: a.component("notify")}
 	a.runnables = append(a.runnables, runnable{name: "notify", start: r.start, stop: r.stop})
 	return nil
-}
-
-// notifyRoutes converts notify's routes (notify cannot import core/module) to module
-// routes: all signed-in, the permission being checked inside each use case.
-func notifyRoutes(in []notify.Route) []module.Route {
-	out := make([]module.Route, len(in))
-	for i, r := range in {
-		out[i] = module.Route{Method: r.Method, Pattern: r.Pattern, Access: module.AccessSignedIn, Handler: r.Handler}
-	}
-	return out
 }
 
 // linkNotify registers the template defaults of every built module that ships any. It runs

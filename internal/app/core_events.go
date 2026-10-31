@@ -82,22 +82,10 @@ func buildEvents(_ context.Context, a *assembly) error {
 	}
 	a.events = svc
 	a.deps.events = svc
-	a.routeSets = append(a.routeSets, module.ModuleRoutes{
-		Module:  eventsArea,
-		Routes:  eventsRoutes(svc.Routes()),
-		OpenAPI: svc.OpenAPI(),
-	})
-	return nil
-}
-
-// eventsRoutes converts events' routes (events cannot import core/module) to module routes:
-// all signed-in, the permission being checked inside each use case.
-func eventsRoutes(in []events.Route) []module.Route {
-	out := make([]module.Route, len(in))
-	for i, r := range in {
-		out[i] = module.Route{Method: r.Method, Pattern: r.Pattern, Access: module.AccessSignedIn, Handler: r.Handler}
+	if err := a.addCoreRoutes(eventsArea, svc.Routes(), svc.OpenAPI()); err != nil {
+		return err
 	}
-	return out
+	return nil
 }
 
 // linkEvents gives the service every module's contribution to events.event-setup, in build

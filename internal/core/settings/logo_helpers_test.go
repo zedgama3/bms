@@ -223,7 +223,7 @@ func (r *rig) send(ctx context.Context, method, path string, body []byte, conten
 	return w, f
 }
 
-func logoRoute(t testing.TB, svc *settings.Service, method string) settings.Route {
+func logoRoute(t testing.TB, svc *settings.Service, method string) httpx.Route {
 	t.Helper()
 	for _, rt := range svc.Routes() {
 		if rt.Method == method && rt.Pattern == "/logo" {
@@ -231,7 +231,7 @@ func logoRoute(t testing.TB, svc *settings.Service, method string) settings.Rout
 		}
 	}
 	t.Fatalf("no %s /logo route", method)
-	return settings.Route{}
+	return httpx.Route{}
 }
 
 // closeContent closes c (nil is fine) and fails the test when Close fails.

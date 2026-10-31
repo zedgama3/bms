@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/zedgama3/bms/internal/core/identity"
-	"github.com/zedgama3/bms/internal/core/module"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/lib/errs"
 )
@@ -83,26 +82,10 @@ func buildIdentity(_ context.Context, a *assembly) error {
 	}
 	a.identity = svc
 	a.authenticator = svc
-	a.routeSets = append(a.routeSets, module.ModuleRoutes{
-		Module:  accountsArea,
-		Routes:  accountRoutes(svc.Routes()),
-		OpenAPI: svc.OpenAPI(),
-	})
-	return nil
-}
-
-// accountRoutes converts identity's routes (identity cannot import core/module) to module
-// routes: a public route needs no session, every other one does.
-func accountRoutes(in []identity.Route) []module.Route {
-	out := make([]module.Route, len(in))
-	for i, r := range in {
-		access := module.AccessSignedIn
-		if r.Public {
-			access = module.AccessPublic
-		}
-		out[i] = module.Route{Method: r.Method, Pattern: r.Pattern, Access: access, Handler: r.Handler}
+	if err := a.addCoreRoutes(accountsArea, svc.Routes(), svc.OpenAPI()); err != nil {
+		return err
 	}
-	return out
+	return nil
 }
 
 // useAnotherAddress is what the operator reads when a participant account holds the

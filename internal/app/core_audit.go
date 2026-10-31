@@ -11,7 +11,6 @@ import (
 	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/jobs"
-	"github.com/zedgama3/bms/internal/core/module"
 	"github.com/zedgama3/bms/internal/lib/errs"
 )
 
@@ -58,11 +57,9 @@ func buildAudit(_ context.Context, a *assembly) error {
 		return err //nolint:wrapcheck // audit.New names itself
 	}
 	a.deps.audit = log
-	a.routeSets = append(a.routeSets, module.ModuleRoutes{
-		Module:  "audit",
-		Routes:  auditRoutes(log.Routes()),
-		OpenAPI: log.OpenAPI(),
-	})
+	if err := a.addCoreRoutes("audit", log.Routes(), log.OpenAPI()); err != nil {
+		return err
+	}
 	im := &importer{
 		log:    log,
 		logger: a.component("audit"),
@@ -99,16 +96,6 @@ func actorFromSession(ctx context.Context) (audit.Actor, bool) {
 		return audit.Actor{}, false
 	}
 	return audit.Actor{Kind: audit.ActorPerson, Person: s.Person, Superuser: s.Superuser}, true
-}
-
-// auditRoutes converts audit's routes (audit cannot import core/module) to module routes:
-// all signed-in (audit decision 14).
-func auditRoutes(in []audit.Route) []module.Route {
-	out := make([]module.Route, len(in))
-	for i, r := range in {
-		out[i] = module.Route{Method: r.Method, Pattern: r.Pattern, Access: module.AccessSignedIn, Handler: r.Handler}
-	}
-	return out
 }
 
 // importer runs audit.Log.Run in a goroutine of its own: start launches it, stop cancels it

@@ -5,6 +5,6 @@
 // when the copy can write. Audit reviewers search and export through Search and Export,
 // which are themselves audited.
 //
-// It imports no module and not core/module: Routes returns the package's own Route type
-// and app converts it.
+// It imports no module and not core/module: Routes returns []httpx.Route
+// and app converts it with module.CoreRoutes.
 package audit

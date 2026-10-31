@@ -9,7 +9,6 @@ import (
 
 	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/jobs"
-	"github.com/zedgama3/bms/internal/core/module"
 	"github.com/zedgama3/bms/internal/core/settings"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/lib/errs"
@@ -88,22 +87,10 @@ func buildJobs(_ context.Context, a *assembly) error {
 	}
 	a.jobs = r
 	a.deps.jobs = r
-	a.routeSets = append(a.routeSets, module.ModuleRoutes{
-		Module:  jobsArea,
-		Routes:  jobsRoutes(r.Routes()),
-		OpenAPI: r.OpenAPI(),
-	})
-	return nil
-}
-
-// jobsRoutes converts jobs' routes (jobs cannot import core/module) to module routes: all
-// signed-in, the permission being checked inside each use case.
-func jobsRoutes(in []jobs.Route) []module.Route {
-	out := make([]module.Route, len(in))
-	for i, r := range in {
-		out[i] = module.Route{Method: r.Method, Pattern: r.Pattern, Access: module.AccessSignedIn, Handler: r.Handler}
+	if err := a.addCoreRoutes(jobsArea, r.Routes(), r.OpenAPI()); err != nil {
+		return err
 	}
-	return out
+	return nil
 }
 
 // linkJobs registers audit.purge (the first scheduled job) and adds the runner as a

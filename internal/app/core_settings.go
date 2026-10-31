@@ -10,7 +10,6 @@ import (
 	"github.com/zedgama3/bms/internal/core/audit/auditsettings"
 	"github.com/zedgama3/bms/internal/core/files/filesettings"
 	"github.com/zedgama3/bms/internal/core/identity"
-	"github.com/zedgama3/bms/internal/core/module"
 	"github.com/zedgama3/bms/internal/core/notify"
 	"github.com/zedgama3/bms/internal/core/people"
 	"github.com/zedgama3/bms/internal/core/settings"
@@ -82,11 +81,9 @@ func buildSettings(_ context.Context, a *assembly) error {
 	}
 	a.settings = svc
 	a.deps.settings = svc
-	a.routeSets = append(a.routeSets, module.ModuleRoutes{
-		Module:  settingsArea,
-		Routes:  settingsRoutes(svc.Routes()),
-		OpenAPI: svc.OpenAPI(),
-	})
+	if err := a.addCoreRoutes(settingsArea, svc.Routes(), svc.OpenAPI()); err != nil {
+		return err
+	}
 	r := &refresher{svc: svc, logger: a.component("settings")}
 	a.runnables = append(a.runnables, runnable{name: "settings", start: r.start, stop: r.stop})
 	return nil
@@ -114,25 +111,6 @@ func settingsAreas(a *assembly) []settings.Area {
 		areas = append(areas, settings.Area{Name: ms.Module, Decls: ms.Settings, Terms: ms.Terms})
 	}
 	return areas
-}
-
-// settingsRoutes converts settings' routes (settings cannot import core/module) to module
-// routes: the public document, the stylesheet and the logo need no session, every other one
-// does and checks its permission inside the use case. A route's body cap and deadline carry
-// over (zero means the shell's).
-func settingsRoutes(in []settings.Route) []module.Route {
-	out := make([]module.Route, len(in))
-	for i, r := range in {
-		access := module.AccessSignedIn
-		if r.Public {
-			access = module.AccessPublic
-		}
-		out[i] = module.Route{
-			Method: r.Method, Pattern: r.Pattern, Access: access, Handler: r.Handler,
-			MaxBodyBytes: r.MaxBodyBytes, Timeout: r.Timeout,
-		}
-	}
-	return out
 }
 
 // refresher runs settings.Service.Run in a goroutine of its own: start launches it, stop

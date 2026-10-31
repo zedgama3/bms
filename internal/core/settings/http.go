@@ -47,8 +47,8 @@ func notModified(r *http.Request, revision int64) bool {
 // field error of a file over MaxLogoBytes wins for anything near the cap) and
 // files.UploadTimeout; GET /logo gets files.ServeTimeout.
 // Handlers are thin: parse, call the service, httpx.Fail on error. Cannot fail.
-func (s *Service) Routes() []Route {
-	return []Route{
+func (s *Service) Routes() []httpx.Route {
+	return []httpx.Route{
 		{Method: http.MethodGet, Pattern: "/public", Public: true, Handler: s.publicHandler()},
 		{Method: http.MethodGet, Pattern: "/theme.css", Public: true, Handler: s.themeHandler()},
 		{Method: http.MethodGet, Pattern: "/", Handler: s.documentHandler()},

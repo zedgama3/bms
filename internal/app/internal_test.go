@@ -34,6 +34,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/telemetry/telemetrytest"
 	"github.com/zedgama3/bms/internal/lib/clock"
 	"github.com/zedgama3/bms/internal/lib/errs"
+	"github.com/zedgama3/bms/internal/lib/httpx"
 	"github.com/zedgama3/bms/internal/lib/secret"
 	"github.com/zedgama3/bms/internal/lib/validate"
 	"github.com/zedgama3/bms/internal/model"
@@ -874,14 +875,22 @@ func TestLazyPermissions_DeniesUntilAuthzSetsTheChecker(t *testing.T) {
 
 func TestAccountRoutes_PublicMapsToAccessPublic(t *testing.T) {
 	h := http.NotFoundHandler()
-	got := accountRoutes([]identity.Route{
+	set, err := module.CoreRoutes("accounts", []httpx.Route{
 		{Method: "GET", Pattern: "/session", Public: true, Handler: h},
 		{Method: "GET", Pattern: "/", Handler: h},
-	})
+	}, nil)
+	if err != nil {
+		t.Fatalf("CoreRoutes: %v", err)
+	}
+	got := set.Routes
 	if len(got) != 2 || got[0].Access != module.AccessPublic || got[1].Access != module.AccessSignedIn {
 		t.Errorf("routes = %+v, want public then signed-in", got)
 	}
-	for _, r := range auditRoutes([]audit.Route{{Method: "GET", Pattern: "/entries", Handler: h}}) {
+	auditSet, err := module.CoreRoutes("audit", []httpx.Route{{Method: "GET", Pattern: "/entries", Handler: h}}, nil)
+	if err != nil {
+		t.Fatalf("CoreRoutes: %v", err)
+	}
+	for _, r := range auditSet.Routes {
 		if r.Access != module.AccessSignedIn {
 			t.Errorf("audit route %s is %v, want signed-in", r.Pattern, r.Access)
 		}

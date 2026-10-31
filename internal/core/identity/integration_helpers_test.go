@@ -20,6 +20,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/db/dbtest"
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/lib/errs"
+	"github.com/zedgama3/bms/internal/lib/httpx"
 	"github.com/zedgama3/bms/internal/model"
 )
 
@@ -207,7 +208,7 @@ func (a *alerter) count() int {
 
 // callPlain runs a route handler without a Failer, so httpx.Fail writes its own fallback
 // problem body: what two responses carry can then be compared byte for byte.
-func callPlain(t testing.TB, rt identity.Route, ctx context.Context, body string) *httptest.ResponseRecorder { //nolint:revive // ctx is deliberately second: the route is the subject
+func callPlain(t testing.TB, rt httpx.Route, ctx context.Context, body string) *httptest.ResponseRecorder { //nolint:revive // ctx is deliberately second: the route is the subject
 	t.Helper()
 	var rd io.Reader
 	if body != "" {

@@ -448,7 +448,7 @@ func (f *failRec) count() int {
 }
 
 // handlerFor returns the route's handler or stops the test.
-func handlerFor(t testing.TB, svc *identity.Service, method, pattern string) identity.Route {
+func handlerFor(t testing.TB, svc *identity.Service, method, pattern string) httpx.Route {
 	t.Helper()
 	for _, rt := range svc.Routes() {
 		if rt.Method == method && rt.Pattern == pattern {
@@ -456,12 +456,12 @@ func handlerFor(t testing.TB, svc *identity.Service, method, pattern string) ide
 		}
 	}
 	t.Fatalf("no route %s %s", method, pattern)
-	return identity.Route{}
+	return httpx.Route{}
 }
 
 // call runs one route handler. ctx is the request context (a session, a client address, a
 // scheme); a failRec is installed and returned.
-func call(t testing.TB, rt identity.Route, ctx context.Context, body string, mods ...func(*http.Request)) (*httptest.ResponseRecorder, *failRec) { //nolint:revive // ctx is deliberately second: the route is the subject
+func call(t testing.TB, rt httpx.Route, ctx context.Context, body string, mods ...func(*http.Request)) (*httptest.ResponseRecorder, *failRec) { //nolint:revive // ctx is deliberately second: the route is the subject
 	t.Helper()
 	f := &failRec{}
 	ctx = httpx.WithFailer(ctx, f)

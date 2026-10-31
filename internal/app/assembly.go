@@ -31,6 +31,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/telemetry"
 	"github.com/zedgama3/bms/internal/lib/clock"
 	"github.com/zedgama3/bms/internal/lib/errs"
+	"github.com/zedgama3/bms/internal/lib/httpx"
 	"github.com/zedgama3/bms/internal/lib/validate"
 	"github.com/zedgama3/bms/web"
 )
@@ -456,6 +457,18 @@ func (a *assembly) setsFor(manifests []module.Manifest) []db.Set {
 		}
 	}
 	return sets
+}
+
+// addCoreRoutes converts a core area's routes with module.CoreRoutes and adds the set to the
+// assembly's route sets. A bad route is a programming error and fails the build (boundaries
+// B1, B2).
+func (a *assembly) addCoreRoutes(area string, routes []httpx.Route, openapi []byte) error {
+	set, err := module.CoreRoutes(area, routes, openapi)
+	if err != nil {
+		return err //nolint:wrapcheck // CoreRoutes names itself
+	}
+	a.routeSets = append(a.routeSets, set)
+	return nil
 }
 
 // apiOptions returns the options of api.New for this assembly; the caller overrides what

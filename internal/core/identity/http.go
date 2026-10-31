@@ -15,19 +15,10 @@ import (
 //go:embed openapi.json
 var openAPIFragment []byte
 
-// Route is one HTTP route of the accounts set; app converts it to module.Route (identity
-// cannot import core/module), Public → module.AccessPublic.
-type Route struct {
-	Method  string
-	Pattern string // relative to /api/accounts
-	Public  bool   // true: reachable without a full session; the principal is checked inside
-	Handler http.Handler
-}
-
 // Routes returns the thirteen routes of the accounts set. Handlers are thin: parse, call the
 // service, set the cookie, httpx.Fail on error. Cannot fail.
-func (s *Service) Routes() []Route {
-	return []Route{
+func (s *Service) Routes() []httpx.Route {
+	return []httpx.Route{
 		{Method: http.MethodGet, Pattern: "/session", Public: true, Handler: s.sessionHandler()},
 		{Method: http.MethodPost, Pattern: "/sign-up", Public: true, Handler: s.signUpHandler()},
 		{Method: http.MethodPost, Pattern: "/sign-in", Public: true, Handler: s.signInHandler()},

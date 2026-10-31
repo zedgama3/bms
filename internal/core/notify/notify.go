@@ -3,7 +3,6 @@ package notify
 import (
 	"fmt"
 	"log/slog"
-	"net/http"
 	"strings"
 	"time"
 
@@ -190,13 +189,6 @@ type Sent struct {
 	Retried int // requeued with a backoff
 	Failed  int // final failures (rejected, attempts exhausted)
 	Skipped int // rows ended Skipped (the recipient has no address), or, when SMTP is not configured, the queued rows left alone
-}
-
-// Route is the shape app converts to module.Route. Pattern is relative to /api/notify.
-// Every route needs a signed-in person; the permission is checked inside the use case.
-type Route struct {
-	Method, Pattern string
-	Handler         http.Handler
 }
 
 // primary returns the primary subtag of a language tag: "es-MX" is "es".

@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/zedgama3/bms/internal/core/departments"
-	"github.com/zedgama3/bms/internal/core/module"
 	"github.com/zedgama3/bms/internal/lib/errs"
 )
 
@@ -69,20 +68,8 @@ func buildDepartments(_ context.Context, a *assembly) error {
 	}
 	a.departments = svc
 	a.deps.departments = svc
-	a.routeSets = append(a.routeSets, module.ModuleRoutes{
-		Module:  departmentsArea,
-		Routes:  departmentsRoutes(svc.Routes()),
-		OpenAPI: svc.OpenAPI(),
-	})
-	return nil
-}
-
-// departmentsRoutes converts departments' routes (departments cannot import core/module) to
-// module routes: all signed-in, the permission being checked inside each use case.
-func departmentsRoutes(in []departments.Route) []module.Route {
-	out := make([]module.Route, len(in))
-	for i, r := range in {
-		out[i] = module.Route{Method: r.Method, Pattern: r.Pattern, Access: module.AccessSignedIn, Handler: r.Handler}
+	if err := a.addCoreRoutes(departmentsArea, svc.Routes(), svc.OpenAPI()); err != nil {
+		return err
 	}
-	return out
+	return nil
 }

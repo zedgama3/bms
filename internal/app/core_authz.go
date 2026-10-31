@@ -7,7 +7,6 @@ import (
 	"slices"
 
 	"github.com/zedgama3/bms/internal/core/authz"
-	"github.com/zedgama3/bms/internal/core/module"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/lib/errs"
 )
@@ -80,11 +79,9 @@ func buildAuthz(_ context.Context, a *assembly) error {
 	a.titles = svc
 	a.lister = svc
 	a.deps.authz = svc
-	a.routeSets = append(a.routeSets, module.ModuleRoutes{
-		Module:  accessArea,
-		Routes:  accessRoutes(svc.Routes()),
-		OpenAPI: svc.OpenAPI(),
-	})
+	if err := a.addCoreRoutes(accessArea, svc.Routes(), svc.OpenAPI()); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -96,16 +93,6 @@ func declaredPermissions(a *assembly) []authz.PermissionDecl {
 		fromModules = a.plan.Permissions()
 	}
 	return slices.Concat(a.corePerms, fromModules)
-}
-
-// accessRoutes converts authz's routes (authz cannot import core/module) to module routes:
-// all signed-in, the permission being checked inside each use case.
-func accessRoutes(in []authz.Route) []module.Route {
-	out := make([]module.Route, len(in))
-	for i, r := range in {
-		out[i] = module.Route{Method: r.Method, Pattern: r.Pattern, Access: module.AccessSignedIn, Handler: r.Handler}
-	}
-	return out
 }
 
 // seedAuthz is authz's step of `bms migrate`: it applies the declarations' StarterRoles once

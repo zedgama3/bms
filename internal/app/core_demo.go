@@ -109,11 +109,9 @@ func buildDemo(_ context.Context, a *assembly) error {
 	if a.cfg.Demo.Enabled {
 		// The route set exists only in demo mode: on any other install /api/demo is a 404, the
 		// web reads that as "not a demo", and `bms openapi` (demo off) does not document it.
-		a.routeSets = append(a.routeSets, module.ModuleRoutes{
-			Module:  demoArea,
-			Routes:  demoRoutes(svc.Routes()),
-			OpenAPI: svc.OpenAPI(),
-		})
+		if err := a.addCoreRoutes(demoArea, svc.Routes(), svc.OpenAPI()); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -139,19 +137,6 @@ func demoSchemas(a *assembly) []string {
 	}
 	if len(out) == 0 {
 		out = []string{"core"} // a test builds the parts without declaring any set
-	}
-	return out
-}
-
-// demoRoutes converts demo's routes (demo cannot import core/module) to module routes.
-func demoRoutes(in []demo.Route) []module.Route {
-	out := make([]module.Route, len(in))
-	for i, r := range in {
-		access := module.AccessSignedIn
-		if r.Public {
-			access = module.AccessPublic
-		}
-		out[i] = module.Route{Method: r.Method, Pattern: r.Pattern, Access: access, Handler: r.Handler}
 	}
 	return out
 }

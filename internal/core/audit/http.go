@@ -27,15 +27,6 @@ const (
 	viewsFileSuffix   = ".jsonl"
 )
 
-// Route is one HTTP route of the audit area, relative to /api/audit. audit cannot import
-// core/module (module is the top of the core graph), so app converts each Route to a
-// module.Route (Access signed-in) when it builds the "audit" route set (decision 14).
-type Route struct {
-	Method  string
-	Pattern string
-	Handler http.Handler
-}
-
 // reader is the part of *Log the handlers call, so they are tested over a fake.
 type reader interface {
 	Search(ctx context.Context, q Query) (Page, error)
@@ -44,14 +35,14 @@ type reader interface {
 
 // Routes lists GET /entries and GET /people/{person}/views. Handlers are thin: parse the
 // query, call Search or Export, httpx.Fail on error. Cannot fail.
-func (l *Log) Routes() []Route { return routesOver(l, l.logger) }
+func (l *Log) Routes() []httpx.Route { return routesOver(l, l.logger) }
 
 // OpenAPI returns the fragment for those routes. Cannot fail (embedded; a test proves it
 // parses and names exactly the routes).
 func (l *Log) OpenAPI() []byte { return append([]byte(nil), openAPIFragment...) }
 
-func routesOver(r reader, logger *slog.Logger) []Route {
-	return []Route{
+func routesOver(r reader, logger *slog.Logger) []httpx.Route {
+	return []httpx.Route{
 		{Method: http.MethodGet, Pattern: "/entries", Handler: entriesHandler(r)},
 		{Method: http.MethodGet, Pattern: "/people/{person}/views", Handler: viewsHandler(r, logger)},
 	}

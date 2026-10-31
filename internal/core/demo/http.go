@@ -13,19 +13,10 @@ import (
 //go:embed openapi.json
 var openAPIFragment []byte
 
-// Route is one HTTP route of the demo set; app converts it to module.Route (demo cannot
-// import core/module). Public routes need no session; the others need one and nothing else.
-type Route struct {
-	Method  string
-	Pattern string // relative to /api/demo
-	Public  bool
-	Handler http.Handler
-}
-
 // Routes returns GET / (public: the banner data) and GET /mail (signed-in: the viewer's own
 // captured mail). Cannot fail.
-func (s *Service) Routes() []Route {
-	return []Route{
+func (s *Service) Routes() []httpx.Route {
+	return []httpx.Route{
 		{Method: http.MethodGet, Pattern: "/", Public: true, Handler: s.infoHandler()},
 		{Method: http.MethodGet, Pattern: "/mail", Handler: s.mailHandler()},
 	}

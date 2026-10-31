@@ -2,7 +2,6 @@ package settings
 
 import (
 	"crypto/sha256"
-	"net/http"
 	"time"
 
 	"github.com/zedgama3/bms/internal/core/audit"
@@ -179,15 +178,4 @@ type FormChanges struct {
 	SingularTitle *string  `json:"singular_title,omitempty"`
 	PluralTitle   *string  `json:"plural_title,omitempty"`
 	Reset         []string `json:"reset,omitempty"` // forms to reset: "singular", ...
-}
-
-// Route is the shape app converts to module.Route (audit decision 14). Pattern is relative
-// to /api/settings. MaxBodyBytes and Timeout are module.Route's (api decision 32): zero
-// means the shell's; app copies them.
-type Route struct {
-	Method, Pattern string
-	Public          bool
-	Handler         http.Handler
-	MaxBodyBytes    int64
-	Timeout         time.Duration
 }

@@ -15,8 +15,8 @@ var openAPIFragment []byte
 // Routes returns the routes of the notify set, relative to /api/notify. Every route needs a
 // signed-in person; the permission is checked inside the use case. Handlers are thin: parse,
 // call the service, httpx.Fail on error. Cannot fail.
-func (s *Service) Routes() []Route {
-	return []Route{
+func (s *Service) Routes() []httpx.Route {
+	return []httpx.Route{
 		{Method: http.MethodGet, Pattern: "/templates", Handler: s.listTemplatesHandler()},
 		{Method: http.MethodGet, Pattern: "/templates/{name}/{lang}", Handler: s.getTemplateHandler()},
 		{Method: http.MethodPut, Pattern: "/templates/{name}/{lang}", Handler: s.putTemplateHandler()},

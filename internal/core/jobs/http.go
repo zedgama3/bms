@@ -16,8 +16,8 @@ var openAPIFragment []byte
 // Routes returns the routes of the jobs set, relative to /api/jobs. Every route needs a
 // signed-in person; the permission is checked inside the use case. Handlers are thin: parse,
 // call the runner, httpx.Fail on error. Cannot fail.
-func (r *Runner) Routes() []Route {
-	return []Route{
+func (r *Runner) Routes() []httpx.Route {
+	return []httpx.Route{
 		{Method: http.MethodGet, Pattern: "/", Handler: r.statusHandler()},
 		{Method: http.MethodPost, Pattern: "/registered/{name}/run", Handler: r.runNowHandler()},
 		{Method: http.MethodPost, Pattern: "/queue/{job}/retry", Handler: r.retryHandler()},

@@ -14,19 +14,10 @@ import (
 //go:embed openapi.json
 var openAPIFragment []byte
 
-// Route is one HTTP route of the people set; app converts it to module.Route (people cannot
-// import core/module). Every route is for signed-in people: the permission is checked
-// inside the use case.
-type Route struct {
-	Method  string
-	Pattern string // relative to /api/people
-	Handler http.Handler
-}
-
 // Routes returns the routes of the people set (people.md, "Routes"). Handlers are thin:
 // parse, call the service, httpx.Fail on error. Cannot fail.
-func (s *Service) Routes() []Route {
-	return []Route{
+func (s *Service) Routes() []httpx.Route {
+	return []httpx.Route{
 		{Method: http.MethodGet, Pattern: "/me", Handler: s.meHandler()},
 		{Method: http.MethodPut, Pattern: "/me", Handler: s.updateHandler(s.self)},
 		{Method: http.MethodPost, Pattern: "/me/contacts", Handler: s.addContactHandler(s.self)},

@@ -15,19 +15,10 @@ import (
 //go:embed openapi.json
 var openAPIFragment []byte
 
-// Route is one HTTP route of the access set; app converts it to module.Route (authz
-// cannot import core/module). Every route is for signed-in people: the permission is
-// checked inside the use case.
-type Route struct {
-	Method  string
-	Pattern string // relative to /api/access
-	Handler http.Handler
-}
-
 // Routes returns the twelve routes of the access set. Handlers are thin: parse, call the
 // service, httpx.Fail on error. Cannot fail.
-func (s *Service) Routes() []Route {
-	return []Route{
+func (s *Service) Routes() []httpx.Route {
+	return []httpx.Route{
 		{Method: http.MethodGet, Pattern: "/permissions", Handler: s.listPermissionsHandler()},
 		{Method: http.MethodGet, Pattern: "/roles", Handler: s.listRolesHandler()},
 		{Method: http.MethodPost, Pattern: "/roles", Handler: s.createRoleHandler()},
