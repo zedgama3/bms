@@ -155,7 +155,7 @@ func TestNew_GRPCProtocol_ReturnsInvalidNamingVariable(t *testing.T) {
 		for _, val := range []string{"grpc", "http/json", "bogus"} {
 			t.Run(v+"="+val, func(t *testing.T) {
 				tel, err := newWithEnv(map[string]string{
-					"OTEL_EXPORTER_OTLP_ENDPOINT": "http://127.0.0.1:4318",
+					"OTEL_EXPORTER_OTLP_ENDPOINT": closedEndpoint(t),
 					v:                             val,
 				})
 				if err == nil {
@@ -168,7 +168,7 @@ func TestNew_GRPCProtocol_ReturnsInvalidNamingVariable(t *testing.T) {
 		}
 	}
 	tel, err := newWithEnv(map[string]string{
-		"OTEL_EXPORTER_OTLP_ENDPOINT": "http://127.0.0.1:4318",
+		"OTEL_EXPORTER_OTLP_ENDPOINT": closedEndpoint(t),
 		"OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf",
 	})
 	if err != nil {
@@ -299,7 +299,7 @@ func TestNew_ExporterConstructionFails_ReturnsInvalidAndCleansUp(t *testing.T) {
 	const cert = "OTEL_EXPORTER_OTLP_CERTIFICATE"
 	t.Setenv(cert, "/nonexistent/dir/ca.pem")
 	tel, err := newWithEnv(map[string]string{
-		"OTEL_EXPORTER_OTLP_ENDPOINT": "http://127.0.0.1:4318",
+		"OTEL_EXPORTER_OTLP_ENDPOINT": closedEndpoint(t),
 		cert:                          "/nonexistent/dir/ca.pem",
 	})
 	if err == nil {
@@ -330,20 +330,21 @@ func TestNew_NoEnvironment_WorksWithoutExport(t *testing.T) {
 
 func TestNew_EndpointPerSignal_Table(t *testing.T) {
 	const base = "OTEL_EXPORTER_OTLP_ENDPOINT"
+	ep, ep2 := closedEndpoint(t), closedEndpoint(t)
 	cases := []struct {
 		name string
 		env  map[string]string
 		want bool
 	}{
 		{"none", nil, false},
-		{"base only", map[string]string{base: "http://127.0.0.1:4318"}, true},
-		{"traces only", map[string]string{"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://127.0.0.1:4318/v1/traces"}, true},
-		{"metrics only", map[string]string{"OTEL_EXPORTER_OTLP_METRICS_ENDPOINT": "http://127.0.0.1:4318/v1/metrics"}, true},
-		{"logs only", map[string]string{"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://127.0.0.1:4318/v1/logs"}, true},
-		{"base and signal", map[string]string{base: "http://127.0.0.1:4318", "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://127.0.0.1:4319/v1/logs"}, true},
-		{"disabled with base", map[string]string{base: "http://127.0.0.1:4318", "OTEL_SDK_DISABLED": "true"}, false},
-		{"disabled with signal", map[string]string{"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://127.0.0.1:4318/v1/traces", "OTEL_SDK_DISABLED": "true"}, false},
-		{"disabled false with base", map[string]string{base: "http://127.0.0.1:4318", "OTEL_SDK_DISABLED": "false"}, true},
+		{"base only", map[string]string{base: ep}, true},
+		{"traces only", map[string]string{"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": ep+"/v1/traces"}, true},
+		{"metrics only", map[string]string{"OTEL_EXPORTER_OTLP_METRICS_ENDPOINT": ep+"/v1/metrics"}, true},
+		{"logs only", map[string]string{"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": ep+"/v1/logs"}, true},
+		{"base and signal", map[string]string{base: ep, "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": ep2+"/v1/logs"}, true},
+		{"disabled with base", map[string]string{base: ep, "OTEL_SDK_DISABLED": "true"}, false},
+		{"disabled with signal", map[string]string{"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": ep+"/v1/traces", "OTEL_SDK_DISABLED": "true"}, false},
+		{"disabled false with base", map[string]string{base: ep, "OTEL_SDK_DISABLED": "false"}, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -411,4 +412,20 @@ func TestNew_NeverDials(t *testing.T) {
 	if err := ln.Close(); err != nil {
 		t.Errorf("close listener: %v", err)
 	}
+}
+
+// closedEndpoint returns an http endpoint on the loopback interface whose port was free a
+// moment ago and has nothing listening, so exporters never reach a real collector.
+func closedEndpoint(t *testing.T) string {
+	t.Helper()
+	var lc net.ListenConfig
+	ln, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	addr := ln.Addr().String()
+	if err := ln.Close(); err != nil {
+		t.Fatalf("close listener: %v", err)
+	}
+	return "http://" + addr
 }
