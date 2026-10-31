@@ -4,10 +4,6 @@
 # Every threshold is a shipped example value, marked "THRESHOLD" with its meaning: tune it
 # for your installation. Severities: page (wake someone), warn (look today), info (look when
 # convenient). Rules aggregate by instance, so one file serves several bms copies.
-#
-# Known quirk: bms_jobs_runs_total carries the job name (for example "audit.purge") in the
-# label "job", which overwrites Prometheus's own job (service) label on those series. The job
-# rule below reads it as it is; its alerts carry job=<job name>.
 groups:
   - name: bms
     rules:
@@ -103,14 +99,14 @@ groups:
       # THRESHOLD: 0 = any failed, panicked, lost-lease or no-handler run in 15 minutes.
       - alert: BmsJobFailures
         expr: |
-          sum by (instance, job, outcome) (increase(bms_jobs_runs_total{outcome=~"failed|panicked|lost_lease|no_handler"}[15m]))
+          sum by (instance, job_name, outcome) (increase(bms_jobs_runs_total{outcome=~"failed|panicked|lost_lease|no_handler"}[15m]))
             > 0
         for: 15m
         labels:
           severity: warn
         annotations:
-          summary: "bms {{ $labels.instance }}: job {{ $labels.job }} is {{ $labels.outcome }}"
-          description: "Job {{ $labels.job }} ended {{ $labels.outcome }} {{ $value | humanize }} times in 15 minutes. See the bms / Jobs and notifications dashboard."
+          summary: "bms {{ $labels.instance }}: job {{ $labels.job_name }} is {{ $labels.outcome }}"
+          description: "Job {{ $labels.job_name }} ended {{ $labels.outcome }} {{ $value | humanize }} times in 15 minutes. See the bms / Jobs and notifications dashboard."
 
       # THRESHOLD: 0 = any failed, rejected or no-SMTP delivery in 30 minutes.
       - alert: BmsNotifyDeliveryFailing

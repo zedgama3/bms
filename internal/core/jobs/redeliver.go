@@ -92,7 +92,7 @@ func (r *Runner) Defer(ctx context.Context, d signals.Delivery) (err error) {
 	}
 	now := r.now()
 	trace, _ := telemetry.TraceIDFrom(ctx)
-	span.SetAttrs(telemetry.Token("job", string(NameRedeliver)), telemetry.ID("signal_id", d.Signal.ID))
+	span.SetAttrs(telemetry.Token("job_name", string(NameRedeliver)), telemetry.ID("signal_id", d.Signal.ID))
 	_, err = r.store.Defer(ctx, rows.New{
 		ID: newJobID(), Name: string(NameRedeliver), Key: d.Signal.ID.String() + ":" + d.Subscriber, Args: args,
 		RunAt: now.Add(r.retry.Delay(d.Attempt+1, r.jitter())), TraceID: trace,

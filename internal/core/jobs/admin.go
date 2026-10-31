@@ -131,7 +131,7 @@ func (r *Runner) RunNow(ctx context.Context, name Name) (_ JobID, err error) {
 	if r.db.ReadOnly() {
 		return JobID{}, readOnlyErr(op)
 	}
-	span.SetAttrs(telemetry.Token("job", string(name)))
+	span.SetAttrs(telemetry.Token("job_name", string(name)))
 	id := newJobID()
 	now := r.now()
 	trace, _ := telemetry.TraceIDFrom(ctx)

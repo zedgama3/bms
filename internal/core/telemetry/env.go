@@ -1,12 +1,9 @@
 package telemetry
 
 import (
-	"crypto/tls"
-	"crypto/x509"
 	"fmt"
 	"math"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 
@@ -162,52 +159,4 @@ func parseResourceAttrs(s string) map[string]string {
 		out[k] = strings.TrimSpace(v)
 	}
 	return out
-}
-
-// checkTLSFiles fails with errs.Invalid, naming the variable and the signal, when a
-// certificate file the SDK exporter will read for signal is unreadable or malformed (F11).
-// The SDK itself only logs such a failure and then exports without the certificate, which
-// hides a broken deployment; New refuses instead. Paths are never echoed.
-func checkTLSFiles(get func(string) (string, bool), signal string) error {
-	const op = "telemetry.New"
-	sig := strings.ToUpper(signal)
-	read := func(name string) (path string, data []byte, set bool, err error) {
-		for _, v := range []string{"OTEL_EXPORTER_OTLP_" + sig + "_" + name, "OTEL_EXPORTER_OTLP_" + name} {
-			p, ok := get(v)
-			if !ok || strings.TrimSpace(p) == "" {
-				continue
-			}
-			b, rerr := os.ReadFile(strings.TrimSpace(p)) //nolint:gosec // operator-supplied path, read once at start
-			if rerr != nil {
-				return "", nil, true, fieldErr(op, v, "unreadable",
-					fmt.Sprintf("%s exporter: the file cannot be read", signal))
-			}
-			return v, b, true, nil
-		}
-		return "", nil, false, nil
-	}
-	if name, pem, set, err := read("CERTIFICATE"); err != nil {
-		return err
-	} else if set && !x509.NewCertPool().AppendCertsFromPEM(pem) {
-		return fieldErr(op, name, "malformed", fmt.Sprintf("%s exporter: the file holds no PEM certificate", signal))
-	}
-	certName, certPEM, certSet, err := read("CLIENT_CERTIFICATE")
-	if err != nil {
-		return err
-	}
-	keyName, keyPEM, keySet, err := read("CLIENT_KEY")
-	if err != nil {
-		return err
-	}
-	if certSet || keySet {
-		if _, kerr := tls.X509KeyPair(certPEM, keyPEM); kerr != nil {
-			name := certName
-			if name == "" {
-				name = keyName
-			}
-			return fieldErr(op, name, "malformed",
-				fmt.Sprintf("%s exporter: the client certificate and key do not form a pair", signal))
-		}
-	}
-	return nil
 }

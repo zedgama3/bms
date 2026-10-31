@@ -621,10 +621,14 @@ func TestRun_Telemetry_CountsLagAndSpans(t *testing.T) {
 	r.runOnce()
 	var got float64
 	for _, m := range r.cap.Measurements() {
-		if m.Instrument == "bms.jobs.runs" && m.Attrs["job"] == "volunteers.remind" {
+		if m.Instrument == "bms.jobs.runs" && m.Attrs["job_name"] == "volunteers.remind" {
 			got += m.Value
 			if m.Attrs["module"] != "volunteers" || m.Attrs["outcome"] != "ok" {
 				t.Errorf("attrs = %v", m.Attrs)
+			}
+			// The attribute is job_name: a bare job would overwrite Prometheus's own job label.
+			if _, bad := m.Attrs["job"]; bad {
+				t.Errorf("attrs carry a job key, want job_name only: %v", m.Attrs)
 			}
 		}
 	}
@@ -646,7 +650,7 @@ func TestRun_Telemetry_CountsLagAndSpans(t *testing.T) {
 		case "jobs.tick":
 			tick = true
 		case "jobs.run":
-			if sp.Kind == telemetry.SpanConsumer && sp.Attrs["job"] == "volunteers.remind" {
+			if sp.Kind == telemetry.SpanConsumer && sp.Attrs["job_name"] == "volunteers.remind" {
 				run = true
 			}
 		}

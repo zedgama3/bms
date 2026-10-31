@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"regexp"
 	"sync"
@@ -79,8 +80,12 @@ type Options struct {
 	// Clock drives the rate limits inside this package (violation warnings, export failure
 	// warnings). Must not be nil.
 	Clock clock.Clock
-	// Environ looks up the OTEL_* variables this package reads. nil means os.LookupEnv.
-	// Tests pass a map lookup.
+	// Environ looks up the OTEL_* variables this package reads: the endpoint, protocol,
+	// sampler and resource variables, and the certificate and timeout variables (OTEL_EXPORTER_OTLP_
+	// [SIGNAL_]CERTIFICATE, CLIENT_CERTIFICATE, CLIENT_KEY, TIMEOUT) that New applies to
+	// each exporter's HTTP client. The SDK still reads every other variable (headers,
+	// compression, the batch and metric interval and timeout settings) from the process
+	// environment, whatever Environ returns. nil means os.LookupEnv. Tests pass a map lookup.
 	Environ func(key string) (string, bool)
 	// Observer receives a copy of everything emitted, after the policy was applied. nil in
 	// production; telemetrytest sets it. See Observer.
@@ -237,11 +242,14 @@ func (t *Telemetry) build(ctx context.Context, opts Options, env envConfig, res 
 	// Phase 1: every certificate check and every exporter, before any provider exists. A
 	// failure here has started no goroutine and dialed nothing (exporters are lazy), so
 	// there is nothing to flush and "New never dials" holds on the failure path too.
+	clients := map[string]*http.Client{}
 	for _, sig := range signalNames {
 		if _, ok := env.endpoints[sig]; ok {
-			if err := checkTLSFiles(environ, sig); err != nil {
+			c, err := exporterClient(environ, sig)
+			if err != nil {
 				return err
 			}
+			clients[sig] = c
 		}
 	}
 	var (
@@ -263,14 +271,14 @@ func (t *Telemetry) build(ctx context.Context, opts Options, env envConfig, res 
 		}
 	}
 	if url, ok := env.endpoints["traces"]; ok {
-		exp, err := otlptracehttp.New(ctx, otlptracehttp.WithEndpointURL(url))
+		exp, err := otlptracehttp.New(ctx, otlptracehttp.WithEndpointURL(url), otlptracehttp.WithHTTPClient(clients["traces"]))
 		if err != nil {
 			return exporterErr(op, "traces", err)
 		}
 		texp = &spanExporter{inner: exp, t: t}
 	}
 	if url, ok := env.endpoints["metrics"]; ok {
-		exp, err := otlpmetrichttp.New(ctx, otlpmetrichttp.WithEndpointURL(url))
+		exp, err := otlpmetrichttp.New(ctx, otlpmetrichttp.WithEndpointURL(url), otlpmetrichttp.WithHTTPClient(clients["metrics"]))
 		if err != nil {
 			releaseExporters()
 			return exporterErr(op, "metrics", err)
@@ -278,7 +286,7 @@ func (t *Telemetry) build(ctx context.Context, opts Options, env envConfig, res 
 		mexp = &metricExporter{inner: exp, t: t}
 	}
 	if url, ok := env.endpoints["logs"]; ok {
-		exp, err := otlploghttp.New(ctx, otlploghttp.WithEndpointURL(url))
+		exp, err := otlploghttp.New(ctx, otlploghttp.WithEndpointURL(url), otlploghttp.WithHTTPClient(clients["logs"]))
 		if err != nil {
 			releaseExporters()
 			return exporterErr(op, "logs", err)

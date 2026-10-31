@@ -167,8 +167,8 @@ copy and can fork it. Features are modules.
   - Fixed 2026-10-30 (commit 3671d42): `bms check` read the demo marker through a service built on the refusing database; it now reads the real pool.
   - Fixed 2026-10-30: a message that cannot be formatted (for example a disabled module's term) now falls back to `en`, then to the key, never a raw placeholder (web-shell F24a).
   - Done 2026-10-30: the six telemetry dashboards and 14 alert rules (deploy/observability/, telemetry Proposed change 23). Alerts have no notification route yet (no Alertmanager on the observability stack): the owner chooses where they go.
-  - Still open: `bms_jobs_runs_total` carries the job name in `job`, which overwrites Prometheus's reserved `job` label; rename the attribute (for example `job_name`) and regroup the jobs panels and `BmsJobFailures`.
-  - Still open: about every 15 minutes a metrics export fails with `EOF` (probably an idle keep-alive connection closed by the collector); the next export succeeds, but `BmsTelemetryExportFailing` will fire (info).
+  - Fixed 2026-10-30: the jobs telemetry attribute `job` is now `job_name` (metric, spans, logs), so it no longer overwrites Prometheus's `job` label; series recorded before the deploy keep the old label.
+  - Fixed 2026-10-30: the intermittent metrics export `EOF` (a stale keep-alive race: the collector closes idle connections at about 60 s, the SDK kept them 90 s); each exporter now has its own HTTP client that drops idle connections after 30 s.
   - Still open: packaging (container image, compose for operators) is next per D52.
 
 - **Next steps before D53–D55 (history, kept as written, 2026-10-28):**

@@ -344,5 +344,5 @@ func newMetrics(m telemetry.Meter, r *Runner) (metrics, error) {
 }
 
 func (m metrics) run(ctx context.Context, name Name, outcome string) {
-	m.runs.Add(ctx, 1, telemetry.Token("job", string(name)), telemetry.Module(name.Owner()), telemetry.Token("outcome", outcome))
+	m.runs.Add(ctx, 1, telemetry.Token("job_name", string(name)), telemetry.Module(name.Owner()), telemetry.Token("outcome", outcome))
 }

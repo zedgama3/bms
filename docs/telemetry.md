@@ -67,6 +67,8 @@ If no collector is configured, nothing is exported. Standard output (the journal
 
 bms speaks **OTLP over HTTP with protobuf only** (`http/protobuf`). It does not speak gRPC and does not read `OTEL_TRACES_EXPORTER` and the like: if an endpoint is set it exports with OTLP/HTTP, otherwise it exports nothing. A collector that accepts OTLP/HTTP on port 4318 (the OpenTelemetry Collector, Grafana Alloy and many others) works.
 
+bms drops idle connections to the collector after 30 s, so a proxy or load balancer in front of the collector must keep idle connections open longer than 30 s; otherwise exports can fail intermittently with `EOF`.
+
 Set these in the environment (for the systemd install, `/etc/bms/bms.env`; the commented lines are already in `bms.env.example`) and restart:
 
 ```

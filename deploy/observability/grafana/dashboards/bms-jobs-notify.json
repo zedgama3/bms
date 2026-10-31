@@ -156,7 +156,7 @@
     {
       "type": "timeseries",
       "title": "Job runs by job and outcome",
-      "description": "bms.jobs.runs. The job label holds the job name (for example audit.purge).",
+      "description": "bms.jobs.runs. The job_name label holds the job name (for example audit.purge).",
       "datasource": {
         "type": "prometheus",
         "uid": "${prometheus}"
@@ -168,8 +168,8 @@
             "type": "prometheus",
             "uid": "${prometheus}"
           },
-          "expr": "sum by (job, outcome) (increase(bms_jobs_runs_total{instance=\"$instance\", module=~\"$module\"}[$__rate_interval]))",
-          "legendFormat": "{{job}} {{outcome}}",
+          "expr": "sum by (job_name, outcome) (increase(bms_jobs_runs_total{instance=\"$instance\", module=~\"$module\"}[$__rate_interval]))",
+          "legendFormat": "{{job_name}} {{outcome}}",
           "range": true,
           "instant": false,
           "editorMode": "code"

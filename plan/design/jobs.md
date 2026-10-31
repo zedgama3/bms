@@ -80,7 +80,7 @@ A handler that re-enqueues its own key from inside its run (volunteers' reminder
 - screen `/jobs`
 - keys `core.jobs.*`
 - spans `jobs.tick`, `jobs.enqueue` (Producer), `jobs.defer` (Producer), `jobs.run` (Consumer), `jobs.<use-case>`
-- metrics `bms.jobs.runs{job, module, outcome}`, `bms.jobs.queue{status}` (gauge), `bms.jobs.lag` (histogram, seconds from `run_at` to start).
+- metrics `bms.jobs.runs{job_name, module, outcome}` (attribute renamed from `job`, 2026-10-30: it clashed with Prometheus's reserved `job` label), `bms.jobs.queue{status}` (gauge), `bms.jobs.lag` (histogram, seconds from `run_at` to start).
 
 **Expects of dependencies.**
 - `db`: `Transact`, `TxMode`, `ReadOnly`, `ErrReadOnly`, `Wrap`, `*Error.Constraint`, `Set`, `None`, `dbtest`; `jobs` is already in the fixed set order.
@@ -772,7 +772,7 @@ Stop order: HTTP drained, **jobs stopped** (running handlers get `Canceled`, row
 2a.
 **Reclaim** (`reclaim_expired_leases.sql`; runs before step 2, and is labelled 2a so the step numbers cited elsewhere in this spec keep their meaning).
 In one `Write` transaction, take up to `MaxBatch` rows with `status = 'running' AND leased_until < now` (`FOR UPDATE SKIP LOCKED`, by `(run_at, id)`) and settle them: `attempts < Retry.MaxAttempts` → `queued`, `run_at` unchanged (due now), `leased_until = NULL`, `last_error = 'lost_lease'`, the attempt stays counted; `attempts >= Retry.MaxAttempts` → `failed`, `last_error = 'gave_up'`, `finished_at = now`.
-A `gave_up` row is logged and counted `outcome=failed` like a run that gave up; a requeued one is logged `outcome=lost_lease`, counted in `Ran.Released` and metered `bms.jobs.runs{outcome=lost_lease}` with the `job` and `module` tokens from the row's name (Q-JOBS11; `TestRunOnce_ReclaimedRow_CountsReleasedAndLostLease`).
+A `gave_up` row is logged and counted `outcome=failed` like a run that gave up; a requeued one is logged `outcome=lost_lease`, counted in `Ran.Released` and metered `bms.jobs.runs{outcome=lost_lease}` with the `job_name` and `module` tokens from the row's name (Q-JOBS11; `TestRunOnce_ReclaimedRow_CountsReleasedAndLostLease`).
 This is the only way a row whose handler kills its process every time (a fatal, an OOM) ends: step 3 alone would re-lease it forever, and before this step it did, so one poison row took the server down once per `Lease`.
 A copy that is read-only (step 1) reclaims nothing (F47).  Both arms first apply a held request (decision 23): a lapsed row with `next_run_at` set becomes `queued` at it with `attempts = 0` whatever its attempts, counted and logged as `lost_lease` with `next=true` (F56).
 2.
@@ -785,7 +785,7 @@ Two processes on one database insert each slot once (the unique index), and a ti
 No due row: the tick ends.
 4. Hand the row to a worker goroutine (below). The tick does not wait for runs (`RunOnce` does).
 
-**A run** (`jobs.run` span, `SpanConsumer`, attributes `job` token, `module` token (the owner), `job_id` ID, `attempt` int, `outcome` token; a child of the enqueuer's trace when `trace_id` is set, through `WithParentFrom`-style linking from the stored trace ID; otherwise a root):
+**A run** (`jobs.run` span, `SpanConsumer`, attributes `job_name` token, `module` token (the owner), `job_id` ID, `attempt` int, `outcome` token; a child of the enqueuer's trace when `trace_id` is set, through `WithParentFrom`-style linking from the stored trace ID; otherwise a root):
 1. Find the handler. None registered here → `UPDATE ... SET status='failed', last_error='no_handler'` fenced by `leased_until`; log once; `outcome=no_handler` (decision 8).
 2. Derive `ctx`: `context.WithoutCancel(runnerCtx)` for values, plus the runner's own cancellation (shutdown), plus `WithTimeout(Decl.Timeout)`, plus the `InJob` marker. No transaction, no session.
 3.
@@ -804,7 +804,7 @@ A fenced-out write (lost lease) applies nothing: the lessee's own exit will.
    - `Unavailable` or `Timeout` (`retry.Retryable`) and `attempts < Retry.MaxAttempts` → `queued`, `run_at = now + Retry.Delay(attempts + 1, u)`, `last_error = <kind>`; `outcome=retried`.
    - `Unavailable` or `Timeout` at the last attempt → `failed`, `last_error='gave_up'`; `outcome=failed`.
    - any other kind (`Invalid`, `NotFound`, `Conflict`, `Permission`, `Unauthenticated`, `Unsupported`, `Internal`, `Canceled` with a live ctx) → `failed`, `last_error = <kind>`; `outcome=failed`. A bug is not retried; the log line carries the kind and the op, the admin can `Retry` after a fix.
-6. `bms.jobs.lag` records `started_at - run_at` in seconds; `bms.jobs.runs{job, module, outcome}` counts; the span records the error where it is handled (here), so the handler should not also log it.
+6. `bms.jobs.lag` records `started_at - run_at` in seconds; `bms.jobs.runs{job_name, module, outcome}` counts; the span records the error where it is handled (here), so the handler should not also log it.
 
 **The redelivery job** (`signals.redeliver`): `Defer` stores the `Delivery` (decision 9); the handler decodes it, sets `Attempt = row.attempts + d.Attempt` (the first delivery counts), calls `Redeliverer.Redeliver`.
 Its errors follow the table above with two readings: `NotFound` (no handler: the module was disabled since) → `done` with a log line and `outcome=dropped` (signals Proposed change 6), and the handler's own `Unavailable`/`Timeout` → retried until `Retry.MaxAttempts` counting the first delivery, then `gave_up`.
@@ -848,7 +848,7 @@ Clock skew between two writers moves slots and fences by the skew: a slot may be
 
 **Read-only copy.** `Register`, `Scoped`, `Status`, `Routes` work; the loop skips; `Enqueue`, `Defer`, `RunNow`, `Retry`, `Cancel` fail `Unavailable` wrapping `db.ErrReadOnly` (the api answers `503 read_only`); a run in flight when the copy flips releases its row at the next write that answers `25006`.
 
-**Telemetry.** Spans and metrics as listed in the Summary; attributes are tokens, IDs, ints and kinds only; `args` never appear on a span, a log line or a metric; the log line per outcome carries `job`, `job_id`, `attempt`, `outcome`, `error.kind`.
+**Telemetry.** Spans and metrics as listed in the Summary; attributes are tokens, IDs, ints and kinds only; `args` never appear on a span, a log line or a metric; the log line per outcome carries `job_name`, `job_id`, `attempt`, `outcome`, `error.kind`.
 `bms.jobs.queue{status}` is a gauge refreshed at the end of each writer pass from one count query, and reports `queued` and `running` only: the final statuses are bounded by `jobs.purge` and visible in `StatusView.Counts`, and a gauge of `done` rows over seven days says nothing an operator acts on.
 Because the pass is skipped on a read-only copy, the gauge there is stale or absent; `StatusView.ReadOnly` is the signal that copy gives, and the writer's gauge is the one to watch.
 A handler's own spans are children of `jobs.run` through the ctx.
@@ -1019,7 +1019,7 @@ the runnable `Run`/`Close` started after `Set.Start`, stopped after HTTP drained
 `migrate` is unaffected.
 3. (applied 2026-10-20, D43) **`plan/design/signals.md` (row 10), Proposed change 6:** mark applied by this spec: `Defer` stores on the writer with key `<signal id>:<subscriber>`; the job name is `signals.redeliver`; `Redeliver` is called with `Attempt` counting the first delivery; `NotFound` is dropped with a log line (`outcome=dropped`); `db.ErrReadOnly` releases and pauses; the give-up count is `DefaultRetry.MaxAttempts` (10) in all.
 4. (applied 2026-10-20, D43) **`plan/design/db.md` (row 5), Proposed change 13:** mark applied for jobs (the loop reads `ReadOnly()` before each tick; a run that meets `ErrReadOnly` releases its row and pauses).
-5. (applied 2026-10-20, D43) **`plan/design/telemetry.md` (row 15b), the metric table and Proposed change 6:** `bms.jobs.runs{job, module, outcome}` with outcomes `ok`, `retried`, `failed`, `canceled`, `read_only`, `panicked`, `no_handler`, `lost_lease`, `dropped`; add `bms.jobs.queue{status}` (gauge) and `bms.jobs.lag` (histogram, seconds); span names `jobs.tick`, `jobs.enqueue`, `jobs.defer`, `jobs.run`; mark Proposed change 6 applied.
+5. (applied 2026-10-20, D43) **`plan/design/telemetry.md` (row 15b), the metric table and Proposed change 6:** `bms.jobs.runs{job_name, module, outcome}` with outcomes `ok`, `retried`, `failed`, `canceled`, `read_only`, `panicked`, `no_handler`, `lost_lease`, `dropped`; add `bms.jobs.queue{status}` (gauge) and `bms.jobs.lag` (histogram, seconds); span names `jobs.tick`, `jobs.enqueue`, `jobs.defer`, `jobs.run`; mark Proposed change 6 applied.
 6. (applied 2026-10-20, D43) **`plan/design/audit.md` (row 12), Proposed change 7:** mark applied: `app` registers `audit.purge` (hourly) through `jobs`, calling `Purge(ctx, now - retention)` on the writer only, skipping when `audit.retention` is 0.
 7. (applied 2026-10-20, D43) **`plan/design/people.md` (row 8), Proposed change 17:** mark the redelivery part applied (a failed `identity.account-created` handling with a retryable kind is redelivered through `signals.redeliver`); the `people.retention.unused` proposal stays with `people` (its key would be `people.retention_unused` under the underscore grammar, D39, declared by `people` when it registers that job).
 8.

@@ -286,7 +286,7 @@ func (r *Runner) reclaim(ctx context.Context, now time.Time, ts *tally) error {
 	}
 	for _, g := range got {
 		attrs := []slog.Attr{
-			slog.String("job", g.Name), slog.String("job_id", g.ID.String()), slog.Int("attempt", g.Attempts),
+			slog.String("job_name", g.Name), slog.String("job_id", g.ID.String()), slog.Int("attempt", g.Attempts),
 		}
 		if g.Next {
 			attrs = append(attrs, slog.Bool("next", true))
@@ -456,7 +456,7 @@ func (r *Runner) runOne(ctx context.Context, lj rows.Lease, ts *tally) {
 	name := Name(lj.Name)
 	opts := []telemetry.StartOption{
 		telemetry.WithKind(telemetry.SpanConsumer),
-		telemetry.WithAttrs(telemetry.Token("job", lj.Name), telemetry.Module(name.Owner()),
+		telemetry.WithAttrs(telemetry.Token("job_name", lj.Name), telemetry.Module(name.Owner()),
 			telemetry.ID("job_id", lj.ID), telemetry.Int("attempt", lj.Attempts)),
 	}
 	if lj.TraceID != "" {
@@ -509,12 +509,12 @@ func (r *Runner) execute(ctx, sctx context.Context, lj rows.Lease) result {
 
 	if fence.isLost() {
 		r.logger.WarnContext(sctx, "jobs: the lease on a job was taken by another process; its result is not recorded",
-			slog.String("job", lj.Name), slog.String("job_id", lj.ID.String()), slog.Int("attempt", lj.Attempts))
+			slog.String("job_name", lj.Name), slog.String("job_id", lj.ID.String()), slog.Int("attempt", lj.Attempts))
 		return result{outcome: outcomeLostLease, err: res.err}
 	}
 	if res.panicked {
 		r.logger.ErrorContext(sctx, "jobs: a handler panicked",
-			slog.String("job", lj.Name), slog.String("job_id", lj.ID.String()), slog.Int("attempt", lj.Attempts),
+			slog.String("job_name", lj.Name), slog.String("job_id", lj.ID.String()), slog.Int("attempt", lj.Attempts),
 			slog.String("error.kind", errs.Internal.String()), slog.String("stack", string(res.stack)))
 	}
 	return r.settle(sctx, lj, fence, r.decide(hctx, lj, res.err, res.panicked), res.err)
@@ -636,7 +636,7 @@ func (r *Runner) settle(sctx context.Context, lj rows.Lease, fence *leaseFence, 
 			r.paused.Store(true)
 		}
 		r.logger.WarnContext(sctx, "jobs: could not record the outcome of a job; its lease will lapse",
-			slog.String("job", lj.Name), slog.String("job_id", lj.ID.String()),
+			slog.String("job_name", lj.Name), slog.String("job_id", lj.ID.String()),
 			slog.String("error.kind", errs.KindOf(err).String()))
 		herr = errors.Join(herr, err)
 	case !ok:
@@ -657,7 +657,7 @@ func (r *Runner) logOutcome(ctx context.Context, lj rows.Lease, outcome string, 
 		level = slog.LevelWarn
 	}
 	attrs := []slog.Attr{
-		slog.String("job", lj.Name), slog.String("job_id", lj.ID.String()), slog.Int("attempt", lj.Attempts),
+		slog.String("job_name", lj.Name), slog.String("job_id", lj.ID.String()), slog.Int("attempt", lj.Attempts),
 		slog.String("outcome", outcome),
 	}
 	if herr != nil && outcome != outcomeDropped {
@@ -747,5 +747,5 @@ func (r *Runner) beat(ctx context.Context, id rows.ID, fence *leaseFence, cancel
 
 // tick counts the tick-level outcome (a read-only copy skipped).
 func (m metrics) tick(ctx context.Context, outcome string) {
-	m.runs.Add(ctx, 1, telemetry.Token("job", "tick"), telemetry.Token("module", "jobs"), telemetry.Token("outcome", outcome))
+	m.runs.Add(ctx, 1, telemetry.Token("job_name", "tick"), telemetry.Token("module", "jobs"), telemetry.Token("outcome", outcome))
 }

@@ -74,7 +74,7 @@ func (s scoped) Enqueue(ctx context.Context, req Request) (id JobID, err error) 
 	if err := rules.Scope(op, s.owner, string(req.Name)); err != nil {
 		return JobID{}, err //nolint:wrapcheck // rules.Scope names itself
 	}
-	span.SetAttrs(telemetry.Token("job", string(req.Name)))
+	span.SetAttrs(telemetry.Token("job_name", string(req.Name)))
 	if _, ok := s.r.entryOf(req.Name); !ok {
 		return JobID{}, errs.E(op, errs.Invalid, &validate.FieldError{
 			Field: "name", Code: codeUnknown, Reason: "no handler is registered for this job in this process",

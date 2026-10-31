@@ -74,7 +74,7 @@
 - D20 token grammar `[A-Za-z0-9/_][A-Za-z0-9._:/{}-]{0,127}` so `_OTHER` is a token; unknown-method span is `HTTP <route>`.
 - D21 `api.code` accepts any token (`IsToken`), not only `errs.Kind` names; the web shell sends its real code in `code` (owner 2026-10-17).
 - D22 client reports are logged with `origin=client`, not `source=client` (avoids slog `AddSource`'s `source` at debug).
-- D23 `IsToken`, `Collect`; `New` reads the OTLP certificate and key files to pre-check them; accepted deviations: violations ride on `Attr`, caps include the ellipsis, `Float`/`Duration` dropped on metrics (rule `invalid_metric_attr`), generic `slog.Any` rendered with `%v` then scrubbed, no global propagator, `otel.SetLogger(logr.Discard())`, two-phase build.
+- D23 `IsToken`, `Collect`; `New` reads the OTLP certificate and key files and they are the exporters' TLS source (fix, 2026-10-30); accepted deviations: violations ride on `Attr`, caps include the ellipsis, `Float`/`Duration` dropped on metrics (rule `invalid_metric_attr`), generic `slog.Any` rendered with `%v` then scrubbed, no global propagator, `otel.SetLogger(logr.Discard())`, two-phase build.
 - D24 `client.stack` may be up to `MaxStackBytes` (4096); every other log string keeps `MaxLogValueBytes`.
 - D25 scrubbing and redaction stay on at every level, including debug; the startup warning is `app`'s.
 - D26 (T1, D54) usage events use a second route, `POST /api/client-events`.
@@ -94,7 +94,7 @@
 - Span/Attr/log methods never fail: bad input becomes a marker (`[denied]`, `[invalid-token]`, `invalid-span-name`) plus a Violation. `RefFrom`/`TraceIDFrom` return ok=false without a span (omit the field).
 
 **Owns (config, routes, metrics):**
-- Reads `OTEL_SDK_DISABLED`, `OTEL_EXPORTER_OTLP_ENDPOINT` (+ `_TRACES/_METRICS/_LOGS_ENDPOINT`), `OTEL_EXPORTER_OTLP_PROTOCOL` (+ variants), `OTEL_TRACES_SAMPLER(_ARG)`, `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES`; the SDK reads the rest (headers never logged).
+- Reads `OTEL_SDK_DISABLED`, `OTEL_EXPORTER_OTLP_ENDPOINT` (+ `_TRACES/_METRICS/_LOGS_ENDPOINT`), `OTEL_EXPORTER_OTLP_PROTOCOL` (+ variants), `OTEL_TRACES_SAMPLER(_ARG)`, `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES`; `New` itself also reads the certificate and timeout variables (`OTEL_EXPORTER_OTLP_[SIGNAL_]CERTIFICATE`, `CLIENT_CERTIFICATE`, `CLIENT_KEY`, `TIMEOUT`) because it gives each exporter its own HTTP client (fix, 2026-10-30); the SDK reads the rest (headers never logged).
 - No settings, no permissions, no tables, no signals. Key denylist and `Scrub` rules are package constants.
 - Routes, both `AccessPublic` and mounted by api: `POST /api/client-errors` over `intake.Accept`; `POST /api/client-events` over `Usage.Accept` (T1).
 - Instruments: `bms.telemetry.{export_failures,dropped,policy_violations,log_write_failures}`, `bms.client_errors.{accepted,rejected}` (accepted gains `screen`); (T1) `bms.client.{screen_views,actions,screen_ready,lcp,inp,cls}`, `bms.client_events.{accepted,rejected,folded}`, `bms.api.errors` (api records it); (D53) rows for `bms.demo.*`.
@@ -820,7 +820,7 @@ types (never in an exported signature, so a caller compiles against this spec al
 
 No tables, no files. `telemetry` writes to `Options.Stdout` and to the collector; the only
 files it reads are the OTLP certificate and client certificate and key named by `OTEL_*`,
-which `New` reads once to pre-check them (decision 23). What it emits, by field, with the sensitivity each would have if
+which `New` reads once and which are the exporters' TLS source (decision 23; fix, 2026-10-30). What it emits, by field, with the sensitivity each would have if
 it were stored by bms (privacy-data), and where retention is set:
 
 | Field | Where | Level | Why it is needed | Retention |
@@ -879,7 +879,7 @@ by tests, with the reason each is not a key:
 | Constant | Value | Why not configurable |
 |---|---|---|
 | span queue, log queue | 2048 records each (the SDK's default), non-blocking: full means drop and count | memory bound per process; `OTEL_BSP_MAX_QUEUE_SIZE` and `OTEL_BLRP_MAX_QUEUE_SIZE` are honoured by the SDK for an operator who insists |
-| export timeout | 10 s per batch | shorter than the SDK's 30 s so a dead collector releases the exporter goroutine quickly; `OTEL_EXPORTER_OTLP_TIMEOUT` overrides |
+| export timeout | 10 s per batch | shorter than the SDK's 30 s so a dead collector releases the exporter goroutine quickly; `OTEL_EXPORTER_OTLP_TIMEOUT` is the per-request HTTP timeout instead (default 10 s; 0 or less keeps 10 s, unlike the SDK), and `OTEL_BSP_EXPORT_TIMEOUT` / `OTEL_METRIC_EXPORT_TIMEOUT` (default 10 s) still cap each export |
 | metric export interval | 60 s | `OTEL_METRIC_EXPORT_INTERVAL` overrides |
 | sampler | `always_on` | a regional's traffic is small and every error must have its trace (decision 6); `OTEL_TRACES_SAMPLER` overrides within the supported set |
 | export-failure warning | once per signal per minute | a down collector must not fill stdout |
@@ -1053,7 +1053,7 @@ None of its own. What this spec provides for screens elsewhere:
     At debug level slog's `AddSource` writes a `source` attribute; the old name collided.
 23. **Implementation additions and accepted deviations** (owner, 2026-10-17). `IsToken(s)`
     is exported; `(*Telemetry).Collect(ctx)` exists for tests and needs an `Observer`;
-    `New` reads the OTLP certificate and key files to pre-check them. Accepted as built:
+    `New` reads the OTLP certificate and key files and they are the exporters' TLS source (fix, 2026-10-30). Accepted as built:
     violations are carried on `Attr`; caps count the ellipsis; `Float` and `Duration` on a
     metric are dropped with rule `invalid_metric_attr`; a generic `slog.Any` is rendered
     with `%v` and then scrubbed; no global propagator is set (step 8 no longer sets one);
@@ -1095,8 +1095,7 @@ Read by this package through `Options.Environ` and validated here:
 Read by the SDK itself, not validated here beyond what the SDK does (a bad value falls
 back to the SDK default and the SDK's warning reaches the logger through the error
 handler): `OTEL_EXPORTER_OTLP_HEADERS` (and signal variants; may carry a credential:
-never logged, never printed by `bms check`), `OTEL_EXPORTER_OTLP_TIMEOUT`,
-`OTEL_EXPORTER_OTLP_CERTIFICATE`, `_CLIENT_CERTIFICATE`, `_CLIENT_KEY`, `_COMPRESSION`,
+never logged, never printed by `bms check`), `_COMPRESSION`,
 `OTEL_BSP_*`, `OTEL_BLRP_*`, `OTEL_METRIC_EXPORT_INTERVAL`, `OTEL_METRIC_EXPORT_TIMEOUT`,
 `OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT`, `OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT`. `OTEL_TRACES_EXPORTER`
 and its siblings (the autoexport convention) are not read: the exporter is OTLP when an
@@ -1114,6 +1113,18 @@ endpoint is set and nothing otherwise. A signal exports iff `OTEL_SDK_DISABLED` 
 4. Tracer provider: the sampler from step 2; if traces export, an OTLP/HTTP span exporter
    with the endpoint from step 2, wrapped by the failure counter, behind a batch processor
    (queue 2048, export timeout 10 s, non-blocking). An exporter constructor error is F11.
+   Each exporter (traces, metrics, logs) gets its own `*http.Client` built in
+   `internal/core/telemetry/transport.go` (fix, 2026-10-30): the transport is a fresh transport like the SDK's own
+   with `IdleConnTimeout` 30 s. Why: the collector's OTLP HTTP server closes idle
+   connections after about 60 s, the SDK's own transport keeps them 90 s, and the metric
+   reader posts every 60 s, so a POST on a connection the server was closing failed with
+   `EOF` and neither Go nor the SDK retries it (the intermittent "telemetry export failed ...
+   EOF"). Because the SDK ignores the certificate and timeout variables when given a client,
+   `New` applies them itself: `OTEL_EXPORTER_OTLP_[SIGNAL_]CERTIFICATE`, `CLIENT_CERTIFICATE`
+   and `CLIENT_KEY` (the signal-specific value wins, as in the SDK), and
+   `OTEL_EXPORTER_OTLP_[SIGNAL_]TIMEOUT` in ms (default 10 s). The earlier certificate
+   pre-check (decision 23) is now the real TLS source. Errors are unchanged: F11 (`Invalid`,
+   naming the variable, never the path).
 5. Meter provider: if metrics export, an OTLP/HTTP metric exporter behind a periodic reader
    (60 s, 10 s timeout); cumulative temporality; otherwise no reader (instruments still
    work and cost nothing). Register the package's own instruments
@@ -1308,8 +1319,8 @@ Browser telemetry uses two routes because the two kinds of data have different s
 | `bms.notify.delivered` | counter, `{message}` | `outcome` = `ok`, `retry`, `failed`, `rejected`, `skipped`, `no_smtp`, `read_only` (D58: `skipped` is a message with no address, reason `no_address` on the span; notify.md) | `notify` |
 | `bms.notify.outbox` | gauge, `{message}` | `status` = `queued`, `sending`, `sent`, `failed` | `notify` (after each tick) |
 | `bms.notify.purged` | counter, `{message}` | — | `notify` |
-| `bms.signals.published`, `bms.signals.delivered` | counter | `signal`/`job` (token), `module`, `outcome` (`delivered`: `ok`, `failed`, `deferred`, `read_only`, `panicked`; `published` has none) | `signals` (signals.md "Telemetry") |
-| `bms.jobs.runs` | counter, `{run}` | `job` (token), `module`, `outcome` = `ok`, `retried`, `failed`, `canceled`, `read_only`, `panicked`, `no_handler`, `lost_lease`, `dropped` | `jobs` (jobs.md; D43) |
+| `bms.signals.published`, `bms.signals.delivered` | counter | `signal` (token), `module`, `outcome` (`delivered`: `ok`, `failed`, `deferred`, `read_only`, `panicked`; `published` has none) | `signals` (signals.md "Telemetry") |
+| `bms.jobs.runs` | counter, `{run}` | `job_name` (token), `module`, `outcome` = `ok`, `retried`, `failed`, `canceled`, `read_only`, `panicked`, `no_handler`, `lost_lease`, `dropped` | `jobs` (jobs.md; D43) |
 | `bms.jobs.queue` | gauge, `{job}` | `status` | `jobs` (D43) |
 | `bms.jobs.lag` | histogram, `s` | — | `jobs` (D43) |
 | `bms.files.uploads` | counter, `{upload}` | `outcome` = `ok`, `invalid`, `conflict`, `unavailable`, `timeout` | `files` (D44) |
@@ -1413,7 +1424,7 @@ Alert rules (`deploy/observability/alerts/bms.rules.yaml`, one group `bms`). The
 | F8 | `New` | `OTEL_TRACES_SAMPLER` not in the supported set (`parentbased_*`, `jaeger_remote`, `xray`, unknown), or `traceidratio` with ARG missing, not a number or outside `[0,1]` | Invalid naming the variable and listing the supported values | fix it | `TestNew_UnsupportedSampler_ReturnsInvalid` |
 | F9 | `New` | `OTEL_SDK_DISABLED` not `true`/`false` | Invalid | fix it | `TestNew_BadSDKDisabled_ReturnsInvalid` |
 | F10 | `New` | `ctx` done | Canceled / Timeout | stop | `TestNew_ContextCanceled_ReturnsCanceled` |
-| F11 | `New` | an exporter constructor fails (an unreadable `OTEL_EXPORTER_OTLP_CERTIFICATE`) | Invalid wrapping the SDK error, naming the signal; providers built so far shut down | fix the file | `TestNew_ExporterConstructionFails_ReturnsInvalidAndCleansUp` |
+| F11 | `New` | an exporter constructor fails (an unreadable `OTEL_EXPORTER_OTLP_CERTIFICATE`) | Invalid from bms itself (a certificate error names the variable, code `missing`, `permission` or `unreadable` (other read errors), or `malformed` (no PEM), never the path; other constructor errors name the signal); providers built so far shut down | fix the file | `TestNew_ExporterConstructionFails_ReturnsInvalidAndCleansUp` |
 | F12 | `Tracer`, `Meter` | name not a token or over 64 bytes | Invalid | fix the caller | `TestTracerMeter_BadScopeName_ReturnsInvalid` |
 | F13 | `Tracer`, `Meter` | after `Close` | Internal | fix app ordering | `TestTracerMeter_AfterClose_ReturnsInternal` |
 | F14 | `Tracer.Start` | name neither a token nor `<METHOD> <route pattern>` (`[A-Z]{3,10}`, one space, a token beginning with `/`; decision 19), or over 128 bytes: a lower-case method (`get /x`), two spaces, a space elsewhere (`signal hello.greeted`), a route without `/` (`GET x`) | none: span named `invalid-span-name`; `Violation{trace, invalid_span_name}` | fix the caller (the test fails) | `TestStart_BadName_UsesPlaceholderAndCountsViolation` (table of the rejected shapes), `TestStart_HTTPSpanName_Accepted` (`GET /api/people/{id}`, `POST /api/client-errors` pass unchanged) |
@@ -1560,6 +1571,11 @@ asserts `!c.Contains(marker)`; invented people only):
 - `TestExport_CollectorDown_RequestLatencyUnaffected` (F25): endpoint on a closed port; a
   thousand spans and log records end within a tight budget; the failure counter is
   non-zero; exactly one warn per signal in the buffer; `Close` within its deadline.
+- Exporter client (fix, 2026-10-30): `TestExport_AcrossIdleGaps_NeverReusesAConnectionTheServerMayClose`
+  (idle gaps longer than the client's idle timeout never reuse a connection the server may
+  have closed); `TestExporterClient_TimeoutVariable_SignalWinsOverGeneric`;
+  `TestNew_CertificateVariable_StillHonouredWithCustomClient`;
+  `TestExporterClient_BadCertificateFile_ReturnsInvalid` (F11, names the variable, not the path).
 - `TestExport_HeadersNeverLogged`: `OTEL_EXPORTER_OTLP_HEADERS=authorization=ZQ9MARKER7`
   with a receiver that returns 500; the marker appears in no log line.
 
@@ -1691,14 +1707,14 @@ target to be written and are carried by this list until then.
    `signals.md`, by its Proposed change 3, with the token names `signal:<name>` (Producer)
    and `deliver:<name>` (Consumer), the counters `bms.signals.published{signal,module}`
    and `bms.signals.delivered{signal,module,outcome}`, and `outcome` ∈ `ok`, `failed`,
-   `deferred`, `read_only`, `panicked`; applied for `jobs.md` 2026-10-20, D43, by jobs.md Proposed change 5: `bms.jobs.runs{job, module, outcome}` with outcomes `ok`, `retried`, `failed`, `canceled`, `read_only`, `panicked`, `no_handler`, `lost_lease`, `dropped`; `bms.jobs.queue{status}` (gauge); `bms.jobs.lag` (histogram, seconds); span names `jobs.tick`, `jobs.enqueue`, `jobs.defer`, `jobs.run`): wrap
+   `deferred`, `read_only`, `panicked`; applied for `jobs.md` 2026-10-20, D43, by jobs.md Proposed change 5: `bms.jobs.runs{job_name, module, outcome}` with outcomes `ok`, `retried`, `failed`, `canceled`, `read_only`, `panicked`, `no_handler`, `lost_lease`, `dropped`; `bms.jobs.queue{status}` (gauge); `bms.jobs.lag` (histogram, seconds); span names `jobs.tick`, `jobs.enqueue`, `jobs.defer`, `jobs.run`): wrap
    each publish in a `SpanProducer` span `signal:<name>` and each delivery in a
    `SpanConsumer` span `deliver:<name>` with `Module(subscriber)` as a child of the
    publisher's ctx (after commit, so the trace spans the request and its consequences;
    decision 19, signals.md decision 12); each job run in a `SpanConsumer` span (its name
    is `jobs.md`'s to define as a token); `RecordError` on failure; counters
    `bms.signals.delivered{signal,module,outcome}` (`outcome` = `ok`, `failed`, `deferred`,
-   `read_only`, `panicked`) and `bms.jobs.runs{job,outcome}` (the job outcomes are for
+   `read_only`, `panicked`) and `bms.jobs.runs{job_name,outcome}` (the job outcomes are for
    `jobs.md` to define); payloads never on spans (IDs only, by their own rule).
 7. **`plan/design/audit.md` (row 12)** (applied 2026-10-18, by audit.md Proposed change 8; `Record` stamps `TraceIDFrom(ctx)` on every entry, `""` when none): record `telemetry.TraceIDFrom(ctx)` on every entry
    (09 §8), empty when none.
