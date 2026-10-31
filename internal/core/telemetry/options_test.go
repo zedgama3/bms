@@ -338,12 +338,12 @@ func TestNew_EndpointPerSignal_Table(t *testing.T) {
 	}{
 		{"none", nil, false},
 		{"base only", map[string]string{base: ep}, true},
-		{"traces only", map[string]string{"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": ep+"/v1/traces"}, true},
-		{"metrics only", map[string]string{"OTEL_EXPORTER_OTLP_METRICS_ENDPOINT": ep+"/v1/metrics"}, true},
-		{"logs only", map[string]string{"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": ep+"/v1/logs"}, true},
-		{"base and signal", map[string]string{base: ep, "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": ep2+"/v1/logs"}, true},
+		{"traces only", map[string]string{"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": ep + "/v1/traces"}, true},
+		{"metrics only", map[string]string{"OTEL_EXPORTER_OTLP_METRICS_ENDPOINT": ep + "/v1/metrics"}, true},
+		{"logs only", map[string]string{"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": ep + "/v1/logs"}, true},
+		{"base and signal", map[string]string{base: ep, "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": ep2 + "/v1/logs"}, true},
 		{"disabled with base", map[string]string{base: ep, "OTEL_SDK_DISABLED": "true"}, false},
-		{"disabled with signal", map[string]string{"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": ep+"/v1/traces", "OTEL_SDK_DISABLED": "true"}, false},
+		{"disabled with signal", map[string]string{"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": ep + "/v1/traces", "OTEL_SDK_DISABLED": "true"}, false},
 		{"disabled false with base", map[string]string{base: ep, "OTEL_SDK_DISABLED": "false"}, true},
 	}
 	for _, tc := range cases {
