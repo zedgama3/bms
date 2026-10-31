@@ -50,7 +50,7 @@ done | LC_ALL=C sort -rn | head -10 | awk '{ printf "%7d  %s\n", $1, $2 }'
 echo
 echo "== (c) Options structs and their field counts =="
 # A field is a line at one tab of indent inside "type Options struct {", not a comment.
-# A struct nested in Options would be counted as one field per line; the reviewer reads the file.
+# A struct nested in Options counts as one field (its own fields sit deeper); the reviewer reads the file.
 find internal -name '*.go' ! -name '*_test.go' | LC_ALL=C sort | while read -r f; do
   awk -v file="$f" '
     /^type Options struct \{/ { inside = 1; n = 0; start = FNR; next }

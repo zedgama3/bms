@@ -42,3 +42,29 @@ func (a *assembly) closers() []Doer {
 	_ = f
 	return nil
 }
+
+// noCapture has a literal that never uses the assembly and must stay unflagged.
+func noCapture(a *assembly) Doer {
+	f := func() Doer { return doer{} }
+	_ = f
+	return doer{}
+}
+
+// channelDoer passes the assembly on as a call argument inside the literal (C2).
+func channelDoer(a *assembly) Doer {
+	f := func() Doer { return channelOf(a) }
+	_ = f
+	return doer{}
+}
+
+// guardDoer builds a holder with the assembly in a composite literal (C2).
+func guardDoer(a *assembly) Doer {
+	f := func() Doer { return lazyGuard{a: a} }
+	_ = f
+	return doer{}
+}
+
+// makeFunc returns an unnamed func type (C3).
+func makeFunc(a *assembly) func() error {
+	return func() error { return a.err }
+}
