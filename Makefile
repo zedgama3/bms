@@ -8,7 +8,7 @@ VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev
 # The development environment: the compose .env, loaded the way an operator would.
 DEVENV   = set -a; . deploy/compose/.env; set +a;
 
-.PHONY: help fmt vet build test test-integration lint imports web-check web-build openapi-check bin run migrate test-e2e check check-go up observe down ps
+.PHONY: help fmt vet build test test-integration lint imports arch-report web-check web-build openapi-check bin run migrate test-e2e check check-go up observe down ps
 
 help:             ## list the targets; check-go is the Go-only subset of check
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | sed -E 's/^([a-zA-Z_-]+):[^#]*## /  \1\t/'
@@ -31,9 +31,13 @@ test-integration: ## needs `make up`
 lint:             ## golangci-lint
 	$(GOLANGCI_LINT) run ./...
 
-imports:          ## a module never imports another module (Go and web)
+imports:          ## a module never imports another module (Go and web); the seam table matches app
 	./scripts/check-module-imports.sh
 	./scripts/check-web-module-imports.sh
+	$(GO) test -count=1 -run 'TestSeamTable_MatchesApp' ./internal/app/
+
+arch-report:      ## import edges, package sizes, Options field counts and the seam test, for the architecture review
+	./scripts/arch-report.sh
 
 web-check:        ## every web check (needs Node and pnpm)
 	$(PNPM) -C web check
