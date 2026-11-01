@@ -7,22 +7,19 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
-	"slices"
-	"strings"
 
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/notify"
 	"github.com/zedgama3/bms/internal/core/people"
-	"github.com/zedgama3/bms/internal/core/regional"
-	"github.com/zedgama3/bms/internal/core/settings"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/model"
 )
 
 // notifyPart is core part 9: the e-mail outbox, the SMTP channel and the templates every
 // core area and module sends through (notify.md; app.md "How later core services plug in",
-// row 9). It is built after settings, identity, people and authz, whose seams it takes;
-// identity and people, built earlier, reach it through the lazy adapters below.
+// row 9). It is built after settings, regional and authz, and takes the identity and people
+// Lookups (built by buildLookups) to find an address, a language and a name; identity and
+// people are built after it and take the Notifiers it scopes.
 var notifyPart = part{
 	name:    "notify",
 	declare: declareNotify,
@@ -45,9 +42,9 @@ func declareNotify(a *assembly) error {
 	return nil
 }
 
-// notifyOwners are the core areas that hold a Notifier before notify exists: identity (the
-// password reset and the superuser alert) and people (the deletion-request notice). Each is
-// scoped in build, because Scoped fails once Run has started.
+// notifyOwners are the core areas that hold a Notifier: identity (the password reset and the
+// superuser alert) and people (the deletion-request notice). Each is scoped in build, because
+// Scoped fails once Run has started, and handed to its part, which is built next.
 var notifyOwners = []string{accountsOwner, peopleArea}
 
 // accountsOwner is the owner identity's templates and messages carry: "identity" (the
@@ -59,8 +56,8 @@ const accountsOwner = "identity"
 // parts use, mounts the routes and registers the sender loop as a runnable.
 func buildNotify(_ context.Context, a *assembly) error {
 	const op = "app.notify.build"
-	if a.deps.audit == nil || a.deps.authz == nil || a.settings == nil || a.regional == nil || a.identity == nil || a.people == nil {
-		return errs.E(op, errs.Internal, errors.New("notify is built after audit, settings, regional, identity, authz and people"))
+	if a.deps.audit == nil || a.deps.authz == nil || a.settings == nil || a.regional == nil || a.identityLookup == nil || a.peopleLookup == nil {
+		return errs.E(op, errs.Internal, errors.New("notify is built after audit, settings, regional, authz and the identity and people lookups"))
 	}
 	rec, err := a.deps.audit.Scoped(notifyArea)
 	if err != nil {
@@ -75,21 +72,21 @@ func buildNotify(_ context.Context, a *assembly) error {
 		return err
 	}
 	svc, err := notify.New(notify.Options{
-		DB:        a.dbc,
-		Clock:     a.clock,
-		Logger:    a.component("notify"),
-		Tracer:    tr,
-		Meter:     m,
-		Audit:     rec,
-		Authz:     a.deps.authz,
-		Actor:     identity.Actor,
-		Settings:  reader,
-		Site:      siteSource{reg: a.regional, terms: a.settings},
-		Addresses: addressSource{accounts: a.identity, contacts: a.people},
-		Languages: languageSource{p: a.people},
-		Names:     nameSource{p: a.people},
-		Hostname:  a.cfg.Instance.Name,
-		Channel:   demoChannelFactory(a), // nil unless demo mode: notify then sends over SMTP
+		DB:       a.dbc,
+		Clock:    a.clock,
+		Logger:   a.component("notify"),
+		Tracer:   tr,
+		Meter:    m,
+		Audit:    rec,
+		Authz:    a.deps.authz,
+		Actor:    identity.Actor,
+		Settings: reader,
+		Regional: a.regional,
+		Terms:    a.settings,
+		Accounts: a.identityLookup,
+		Profiles: a.peopleLookup,
+		Hostname: a.cfg.Instance.Name,
+		Channel:  demoChannelFactory(a), // nil unless demo mode: notify then sends over SMTP
 	})
 	if err != nil {
 		return err //nolint:wrapcheck // notify.New names itself
@@ -190,190 +187,6 @@ func (r *notifyRunner) stop(ctx context.Context) error {
 	case <-ctx.Done():
 		return errs.E(op, errs.KindOf(ctx.Err()), fmt.Errorf("the notify sender did not stop: %w", ctx.Err()))
 	}
-}
-
-// ---- adapters over settings ------------------------------------------------------------
-
-// regionalSource is the part of *regional.Service siteSource reads, and termSource the part
-// of *settings.Service.
-type (
-	regionalSource interface {
-		Profile(ctx context.Context) (regional.Profile, error)
-	}
-	termSource interface {
-		TermsFor(ctx context.Context, lang string) (map[string]settings.Forms, error)
-	}
-)
-
-var (
-	_ regionalSource = (*regional.Service)(nil)
-	_ termSource     = (*settings.Service)(nil)
-)
-
-// siteSource is notify's SiteSource over regional's Profile and settings' TermsFor.
-type siteSource struct {
-	reg   regionalSource
-	terms termSource
-}
-
-var _ notify.SiteSource = siteSource{}
-
-// Site answers the regional's name, public URL, default language and the terms in lang: ""
-// and a language the build does not ship (neither itself nor its primary subtag) use the
-// regional's default language. Each term is under its singular key, and under key_plural,
-// key_title and key_plural_title for its other forms. It fails with the settings' kinds.
-func (s siteSource) Site(ctx context.Context, lang notify.Language) (notify.Site, error) {
-	const op = "app.siteSource.Site"
-	reg, err := s.reg.Profile(ctx)
-	if err != nil {
-		return notify.Site{}, fmt.Errorf("%s: %w", op, err)
-	}
-	use := string(lang)
-	if !slices.Contains(settings.Languages, use) {
-		use, _, _ = strings.Cut(use, "-")
-	}
-	if !slices.Contains(settings.Languages, use) {
-		use = reg.Language
-	}
-	forms, err := s.terms.TermsFor(ctx, use)
-	if err != nil {
-		return notify.Site{}, fmt.Errorf("%s: terms in %s: %w", op, use, err)
-	}
-	terms := make(map[string]string, 4*len(forms))
-	for key, f := range forms {
-		terms[key] = f.Singular
-		terms[key+"_plural"] = f.Plural
-		terms[key+"_title"] = f.SingularTitle
-		terms[key+"_plural_title"] = f.PluralTitle
-	}
-	return notify.Site{Name: reg.Name, URL: reg.PublicURL, DefaultLanguage: notify.Language(reg.Language), Terms: terms}, nil
-}
-
-// ---- adapters over identity and people --------------------------------------------------
-
-// accountEmails is identity's EmailOf and contactEmails people's ContactEmailOf: the two
-// places an address is.
-type (
-	accountEmails interface {
-		EmailOf(ctx context.Context, person model.PersonID) (model.Email, error)
-	}
-	contactEmails interface {
-		ContactEmailOf(ctx context.Context, person model.PersonID) (model.Email, error)
-	}
-)
-
-var (
-	_ accountEmails = (*identity.Service)(nil)
-	_ contactEmails = (*people.Service)(nil)
-)
-
-// addressSource is notify's AddressSource: the login address of the person's account, else
-// the contact address of the profile.
-type addressSource struct {
-	accounts accountEmails
-	contacts contactEmails
-}
-
-var _ notify.AddressSource = addressSource{}
-
-// AddressOf asks identity first. A person without an account (NotFound) or an account with
-// no address is asked of people. It fails errs.NotFound when neither holds one (notify then
-// ends the message as undeliverable) and with the store kinds otherwise.
-func (s addressSource) AddressOf(ctx context.Context, person model.PersonID) (model.Email, error) {
-	const op = "app.addressSource.AddressOf"
-	to, err := s.accounts.EmailOf(ctx, person)
-	switch {
-	case err == nil && to != "":
-		return to, nil
-	case err != nil && !errs.Is(err, errs.NotFound):
-		return "", fmt.Errorf("%s: account: %w", op, err)
-	}
-	to, err = s.contacts.ContactEmailOf(ctx, person)
-	if err != nil {
-		return "", fmt.Errorf("%s: contact: %w", op, err)
-	}
-	return to, nil
-}
-
-// languageSource is notify's LanguageSource over people's LanguageOf: a person with no
-// profile has no language.
-type languageSource struct {
-	p interface {
-		LanguageOf(ctx context.Context, person model.PersonID) (string, error)
-	}
-}
-
-var _ notify.LanguageSource = languageSource{}
-
-// LanguageOf returns the saved language tag, "" for NotFound, and the store's kinds
-// otherwise.
-func (s languageSource) LanguageOf(ctx context.Context, person model.PersonID) (notify.Language, error) {
-	l, err := s.p.LanguageOf(ctx, person)
-	switch {
-	case errs.Is(err, errs.NotFound):
-		return "", nil
-	case err != nil:
-		return "", fmt.Errorf("app.languageSource.LanguageOf: %w", err)
-	}
-	return notify.Language(l), nil
-}
-
-// nameSource is notify's NameSource over people's PlayaNameOf: a person with no profile has
-// no name.
-type nameSource struct {
-	p interface {
-		PlayaNameOf(ctx context.Context, person model.PersonID) (string, error)
-	}
-}
-
-var _ notify.NameSource = nameSource{}
-
-// PlayaNameOf returns the playa name, "" for NotFound, and the store's kinds otherwise.
-func (s nameSource) PlayaNameOf(ctx context.Context, person model.PersonID) (string, error) {
-	n, err := s.p.PlayaNameOf(ctx, person)
-	switch {
-	case errs.Is(err, errs.NotFound):
-		return "", nil
-	case err != nil:
-		return "", fmt.Errorf("app.nameSource.PlayaNameOf: %w", err)
-	}
-	return n, nil
-}
-
-// ---- the lazy Notifier ------------------------------------------------------------------
-
-// lazyNotifier is the Notifier of a part built before notify (identity, people): it resolves
-// the owner's Notifier, which buildNotify scoped, when called. Until notify is built Send
-// fails errs.Unsupported wrapping notify.ErrNotConfigured and Configured is false, which is
-// what both callers read as "no e-mail here". It does no I/O of its own.
-type lazyNotifier struct {
-	a     *assembly
-	owner string
-}
-
-var _ notify.Notifier = lazyNotifier{}
-
-func (l lazyNotifier) resolve() (notify.Notifier, bool) {
-	n, ok := l.a.notifiers[l.owner]
-	return n, ok
-}
-
-// Send forwards to the owner's Notifier.
-func (l lazyNotifier) Send(ctx context.Context, m notify.Message) error {
-	n, ok := l.resolve()
-	if !ok {
-		return errs.E("app.lazyNotifier.Send", errs.Unsupported, notify.ErrNotConfigured)
-	}
-	return n.Send(ctx, m) //nolint:wrapcheck // the notifier's own error
-}
-
-// Configured forwards to the owner's Notifier.
-func (l lazyNotifier) Configured(ctx context.Context) (bool, error) {
-	n, ok := l.resolve()
-	if !ok {
-		return false, nil
-	}
-	return n.Configured(ctx) //nolint:wrapcheck // the notifier's own error
 }
 
 // ---- the outbox in a person's export and deletion ----------------------------------------

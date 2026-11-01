@@ -350,7 +350,7 @@ func (s *Service) addressOf(ctx context.Context, row message.Record) (to model.E
 	if row.Address != "" {
 		return model.Email(row.Address), nil
 	}
-	to, err = s.addresses.AddressOf(ctx, row.Person)
+	to, err = s.addressOfPerson(ctx, row.Person)
 	if err != nil {
 		return "", seamError("notify.AddressOf", "the address lookup", err)
 	}

@@ -81,11 +81,9 @@ A row is one type in `internal/app` (or one top-level function, for a closure th
 
 | Type | Waits for | Reason |
 |---|---|---|
-| `lazyNames` | a.names, which people's part sets | identity needs the playa name and people needs identity (identity ↔ people); removed in step 8. |
-| `lazyAlerter` | notify, which is built after identity | the alert is identity's reaction to its own event and needs notify, which needs identity (identity ↔ notify); removed in step 9. |
+| `lazyAlerter` | notify, authz and settings, resolved when called | the alert is identity's reaction to its own event; notify is now built before identity (step 8), so the late binding is left over until the alert moves into identity and app's adapter goes; removed in step 9. |
 | `lazyGuard` | a.demo, which the demo part sets last | identity asks demo whether an account is protected, and demo creates accounts through identity (identity ↔ demo); removed in step 10. |
 | `lazyFilesPolicy` | a.demo, which the demo part sets last | files takes demo's cap, and demo's reset clears files (files ↔ demo); removed in step 10. |
-| `lazyNotifier` | a.notifiers, which the notify part fills | identity and people send through notify, and notify reads their addresses and names (identity ↔ notify, people ↔ notify); removed in step 8. |
 | `lazyDeferrer` | a.jobs, which the jobs part sets after signals is built | the dispatcher defers through jobs, and the jobs runner redelivers through the dispatcher (signals ↔ jobs); removed in step 11. |
 | `demoAccess` | a.authz, which authz's part sets | the demo seed uses a slice of authz in a shape authz does not offer; demo is built last, so this is forwarding, not a runtime pair (F1); removed in step 10. |
 | `demoObjects` | a.cfg and a.plan for the buckets to clear | demo's reset needs files to clear every owner's objects, and files holds the demo cap (files ↔ demo); removed in step 10. |
@@ -166,7 +164,7 @@ A row is one type in `internal/app` (or one top-level function, for a closure th
 
 ### identity: who is this?
 - **Purpose:** authenticate a person and manage their session.
-- **Owns:** local accounts keyed by e-mail (D21), the password policy and Argon2id, the signed session token and cookie checked without a write, the `Authenticator` and the principal accessors (`SessionFrom`, `PersonFrom`), per-account revocation, failed-login and password-reset limits, the superuser and `bms create-superuser` (D23), the `accounts` routes and screens, `identity.account-created`; providers (OIDC, trusted header; D15) Later behind the same service.
+- **Owns:** local accounts keyed by e-mail (D21), the password policy and Argon2id, the signed session token and cookie checked without a write, the `Authenticator` and the principal accessors (`SessionFrom`, `PersonFrom`), per-account revocation, failed-login and password-reset limits, the superuser and `bms create-superuser` (D23), the `accounts` routes and screens, `identity.account-created`, `identity.NewLookup` (`EmailOf` over `core.account` alone: no permission, no audit; notify's `Accounts`); providers (OIDC, trusted header; D15) Later behind the same service.
 - **Doesn't do:** decide what they may do (`authz`), hold their profile or the playa name (`people`), invitations until their milestone, e-mail delivery (`notify`). The forgotten-password flow (token, routes, screens; D39) is identity's, the e-mail is notify's.
 
 ### authz: may they do this?
@@ -192,7 +190,7 @@ A row is one type in `internal/app` (or one top-level function, for a closure th
   lookup and search, the person page with `people.person-page`, export and deletion across
   identity, authz and every module (`PersonData`) with deletion requests, the `export` and
   `delete` commands, the `people` routes and screens, signals
-  `people.person-created|deleted|deletion-requested`, `Directory.LegalNamesOf` (audited, `people.contacts.read`), and the contracts `contracts/personpage` and `contracts/membership` (D44), the installation-wide uniqueness and permanence of playa names (`NameKey`, `playa_name_key`), the once-per-session first-sign-in prompt mark (`name_prompted_at`, D57).
+  `people.person-created|deleted|deletion-requested`, `Directory.LegalNamesOf` (audited, `people.contacts.read`), and the contracts `contracts/personpage` and `contracts/membership` (D44), the installation-wide uniqueness and permanence of playa names (`NameKey`, `playa_name_key`), the once-per-session first-sign-in prompt mark (`name_prompted_at`, D57), `people.NewLookup` (the system reads `NamesOf`, `PlayaNameOf`, `LanguageOf`, `ConsentOf`, `ContactEmailOf`: no permission, no audit; the Service forwards them; notify's `Profiles`).
 - **Doesn't do:** module-specific data about a person; the login address (`identity`); who may
   see a profile (`authz`); the person's own view of who read their data (`audit`, Later);
   department membership (a module contributes it through `people.membership`; `volunteers` first); retiring or approving names (Later).
@@ -224,7 +222,7 @@ A row is one type in `internal/app` (or one top-level function, for a closure th
 
 ### notify: tell someone something
 - **Purpose:** deliver a notification to a person through a channel.
-- **Owns:** the `Notifier` contract (scoped per owner; `Send`, `Configured`) and `AddressSender`; templates per language with regional overrides; the outbox (`core.notify_message`) written on the caller's transaction; the sender loop on the writing copy with retries; the SMTP channel (stdlib; Mailpit in development); the `notify` routes and screens; permissions `notify.templates.manage`, `notify.outbox.manage`; settings `notify.*`. E-mail first, others later behind the same `Channel`.
+- **Owns:** the `Notifier` contract (scoped per owner; `Send`, `Configured`) and `AddressSender`; templates per language with regional overrides; the outbox (`core.notify_message`) written on the caller's transaction; the sender loop on the writing copy with retries; the SMTP channel (stdlib; Mailpit in development); the `notify` routes and screens; permissions `notify.templates.manage`, `notify.outbox.manage`; settings `notify.*`; the delivery rules (the login address, else the contact address, else undeliverable; the language fallback; the four term forms), read through `Accounts`, `Profiles`, `Regional` and `Terms`, so it is built before identity and people (boundaries step 8). E-mail first, others later behind the same `Channel`.
 - **Doesn't do:** decide who needs telling (modules do), subscribe to signals or pick recipients; HTML, attachments, SMS (Later behind `Channel`).
 
 ### audit: who did what, and who saw what

@@ -37,8 +37,13 @@ func bareService(t *testing.T) (*Service, *clock.Fake) {
 	if err != nil {
 		t.Fatalf("signalstest.NewFake: %v", err)
 	}
+	lk, err := newLookup(LookupOptions{DB: dbtest.NewFake(), Tracer: c.Tracer("identity")}, struct{ store }{})
+	if err != nil {
+		t.Fatalf("newLookup: %v", err)
+	}
 	s, err := newService(Options{
-		DB: dbtest.NewFake(), Clock: clk, Logger: c.Logger(), Tracer: c.Tracer("identity"),
+		Lookup: lk,
+		DB:     dbtest.NewFake(), Clock: clk, Logger: c.Logger(), Tracer: c.Tracer("identity"),
 		Key: secret.New("internal-test-session-key-0123456789abcdef"), Audit: audittest.NewFake("identity"), Signals: bus,
 		Settings: settingstest.NewFake("accounts", Settings),
 	}, struct{ store }{})

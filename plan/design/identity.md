@@ -37,12 +37,14 @@
   - `Alerter{SuperuserSignedIn(ctx, model.PersonID) error}` (notify, M4 [one warn log line]).
   - `Notify notify.Notifier` (scoped `identity`, D39 [nil: the reset routes answer `Unsupported`]).
   - `Guard{Protected(ctx, AccountID) (bool, error)}` (demo mode, D53 [nil: nothing protected]); a protected account's password, address, disabling and deletion refuse `Permission` field `account` code `protected`.
-- `Options{DB, Clock, Logger, Tracer, Meter, Key secret.Secret, AllowPlaintext bool, Audit audit.Recorder, Signals signals.Bus, Policy, Permissions, Lister, Names, Alerter, Notify notify.Notifier, Guard Guard}` (+`Validate`); `New(Options) (*Service, error)` (no I/O; works against `db.None()`).
+- `Options{DB, Clock, Logger, Tracer, Meter, Key secret.Secret, AllowPlaintext bool, Audit audit.Recorder, Signals signals.Bus, Settings settings.Reader, Lookup *Lookup (required, step 8), Permissions, Lister, Names, Alerter, Notify notify.Notifier, Guard Guard}` (+`Validate`); `New(Options) (*Service, error)` (no I/O; works against `db.None()`).
 - `*Service` (safe for concurrent use, nothing to close):
   - Sessions: `Authenticate(ctx, *http.Request) (context.Context, model.PersonID, error)` (= `api.Authenticator`); `SessionInfo(ctx) (SessionInfo, error)`; `SignUp(ctx, Credentials) (Issued, error)`; `SignIn(ctx, Credentials) (Issued, error)`; `SignOut(ctx) error`; `ChangePassword(ctx, PasswordChange) (Issued, error)`; `EndOtherSessions(ctx) (Issued, error)`.
   - Forgotten password (D39): `RequestPasswordReset(ctx, model.Email) error`; `CompletePasswordReset(ctx, token, newPassword string) error`.
   - Account admin: `ListAccounts(ctx, AccountQuery) (AccountPage, error)`; `GetAccount(ctx, model.AccountID) (Account, error)`; `DisableAccount(ctx, model.AccountID) error`; `EnableAccount(ctx, model.AccountID) error`; `SetTemporaryPassword(ctx, model.AccountID) (secret.Secret, error)`.
   - Commands: `EnsureSuperuser(ctx, model.Email) (SuperuserResult, error)`; `CreateSuperuser(ctx, out io.Writer, email string) error` (app's command; prints the spec's lines, never the address); `EnsureAccount(ctx, Credentials) (AccountResult, error)` (writer-only, no actor, for commands; D53).
+  - `Actor(ctx) (authz.Actor, bool)` = `authz.ActorFunc` over the session in ctx: the person of a full session and whether it is the superuser's; false without a session, for a restricted session and inside a signal delivery. `AuditActor(ctx) (audit.Actor, bool)` = `audit.ActorFunc`: the session's person and the superuser flag; a restricted session still answers. Both pure (no I/O, no failure); in `internal/core/identity/session.go` (boundaries step 3).
+  - `Lookup` (boundaries step 8): `NewLookup(LookupOptions{DB, Tracer}) (*Lookup, error)` builds `EmailOf(ctx, model.PersonID) (model.Email, error)` over `core.account` alone: `NotFound` when the person has no account, `Invalid` for a zero ID, no permission, no audit; `Invalid` for a nil dependency. It is notify's `Accounts` (login address for delivery); `Service.EmailOf` forwards to it; `LookupOptions` is `DB` and `Tracer` only. `Options.Lookup *Lookup` is required (`Validate` fails Invalid, field `identity.lookup`), like people's.
   - For `people`: `ExportPerson(ctx, model.PersonID) (json.RawMessage, error)`; `DeletePerson(ctx, model.PersonID) (int, error)` (`Permission` for a superuser account); `EmailOf(ctx, model.PersonID) (model.Email, error)`; `LinkAccount(ctx, model.Email, model.PersonID) (model.AccountID, model.PersonID, error)`.
   - `Routes() []Route`; `OpenAPI() []byte`. `Route{Method, Pattern string, Public bool, Handler http.Handler}` (`app` converts to `module.Route`, as for audit).
 - Constants: `CookieName = "__Host-bms_session"`, `DevCookieName = "bms_session_dev"`, `TokenVersion = 1`, `MaxPasswordBytes = 256`, `PasswordMinLengthFloor = 12`, `GeneratedPasswordLength = 24`, `HashConcurrency = 4`, `MaxTrackedKeys = 10000`, `MaxPageSize = 100`, `DefaultPageSize = 50`, `ClockSkew = 5 * time.Minute`, `PasswordResetTokenBytes = 32` (D39).
@@ -94,7 +96,7 @@
 - `LinkAccount`: `NotFound` (`email` `unknown`), `Conflict` (`superuser`, `has_account`).
 - `RequestPasswordReset`: `Invalid` (`email`: `required`, `malformed`), `Unavailable` wrapping `httpx.ErrRateLimited`, `Unsupported` (no `Notify`), `Unavailable` (store, audit, `Notify.Send` other than `Unsupported`), `Unavailable` wrapping `db.ErrReadOnly`; nil for an unknown, disabled or superuser address.
 - `CompletePasswordReset`: `Invalid` (`token`: `invalid`, `expired`; `new_password`: `too_short`, `too_long`, `common`), `Unavailable` wrapping `db.ErrReadOnly`, store and audit kinds.
-- `New`/`Options.Validate`: `Invalid` with fields `identity.db`, `identity.clock`, `identity.logger`, `identity.tracer`, `identity.audit`, `identity.signals`, `session.key`.
+- `New`/`Options.Validate`: `Invalid` with fields `identity.db`, `identity.clock`, `identity.logger`, `identity.tracer`, `identity.audit`, `identity.signals`, `identity.settings`, `identity.lookup` (step 8), `session.key`; tests `TestNew_Table` (nil lookup), `TestNew_ZeroOptions_ReportsEveryProblemAtOnce`.
 - No sentinels of its own.
 
 **Owns.**
@@ -446,6 +448,7 @@ type Options struct {
 	Audit          audit.Recorder  // scoped to "identity"; required
 	Signals        signals.Bus     // scoped to "identity", publishes SignalAccountCreated; required
 	Settings       settings.Reader // scoped to "accounts"; required (field identity.settings)
+	Lookup         *Lookup         // required (field identity.lookup); Service.EmailOf forwards to it (step 8)
 	Permissions    PermissionChecker
 	Lister         PermissionLister
 	Names          NameSource
@@ -456,7 +459,7 @@ type Options struct {
 
 // Validate fails errs.Invalid joining a validate.FieldError per problem: "identity.db",
 // "identity.clock", "identity.logger", "identity.tracer", "identity.audit",
-// "identity.signals" (nil) and "session.key" (unset).
+// "identity.signals", "identity.settings", "identity.lookup" (nil) and "session.key" (unset).
 func (o Options) Validate() error
 
 // New validates o, derives the signing key (HKDF-SHA256, info "bms identity session v1"),
@@ -649,6 +652,9 @@ func (s *Service) ExportPerson(ctx context.Context, person model.PersonID) (json
 // (F48). Consumer: people's deletion (M2) through app.
 func (s *Service) DeletePerson(ctx context.Context, person model.PersonID) (int, error)
 
+// Service.EmailOf forwards to Options.Lookup.EmailOf (NewLookup, boundaries step 8), which
+// answers over core.account alone, with the same kinds (F64); notify uses the Lookup directly.
+//
 // EmailOf returns the login address of the person's account, for people's display. It
 // checks no permission (people's seam; people checks its own). NotFound when the person
 // has no account (F64), Invalid for a zero ID, store kinds. Not audited here.
@@ -1073,7 +1079,7 @@ The `core.accounts.setting.login_failure_window.description` reads: "Failed sign
 | F61 | `Authenticate` | the request has an `Authorization` header | ignored (no bearer scheme in M1) | — | `TestAuthenticate_IgnoresAuthorizationHeader` |
 | F62 | any | the `Settings` read returns an error or yields an invalid `Policy` | its kind / Invalid | 503/500 | `TestPolicy_SourceFailure_FailsUseCase` |
 | F63 | store (integration) | unique violations, generated column, keyset order, `TouchLogin` on read-only | as `db.Wrap` classifies | — | `TestStore_Integration_Table` (`dbtest.TempDB`) |
-| F64 | `EmailOf` | the person has no account | NotFound | people shows no login address | `TestEmailOf_NoAccount_NotFound` |
+| F64 | `EmailOf`, `Lookup.EmailOf` | the person has no account | NotFound | people shows no login address | `TestEmailOf_NoAccount_NotFound` and `TestLookup_EmailOf_NoAccount_ReturnsNotFound` |
 | F65 | `LinkAccount` | no account has the address | NotFound (`email`: `unknown`) | field error, never more | `TestLinkAccount_UnknownEmail_NotFound` |
 | F66 | `LinkAccount` | the account is a superuser's | Conflict (`superuser`) | refuse | `TestLinkAccount_Superuser_Conflict` |
 | F67 | `LinkAccount` | the target person already has an account | Conflict (`has_account`) | refuse | `TestLinkAccount_PersonHasAccount_Conflict` |
@@ -1165,6 +1171,7 @@ Later providers (OIDC) must be implementable against Dex (D13 compose profile `o
 
 Every amendment to this spec is folded into the text above: the forgotten-password flow (D39), the uniform reset answers when e-mail is off (D40), the reset limits as settings (D41, D43), `EnsureAccount` and the `Guard` (D53, D56) and `SessionInfo.Protected` (D58), with the earlier build deviations and approvals of 2026-10-18 to 2026-10-20.
 - **2026-11-01, boundaries step 5:** `Options.Settings` (a `settings.Reader` scoped to `accounts`, required) replaces `Policy PolicySource`; the `PolicySource` type is removed and identity's own `policyFrom` maps the eleven keys (moved from `app`'s `settingsPolicy`). Holders, Alerts and the alert (step 9) and Names (step 8) are unchanged here.
+- **2026-11-01, boundaries step 8:** `identity.NewLookup` (`LookupOptions{DB, Tracer}`) builds `EmailOf` over `core.account` alone, with no permission and no audit; notify takes it as `Accounts`. Test: `TestLookup_EmailOf_NoAccount_ReturnsNotFound` (F64's kind, on the Lookup). `Holders`, `Alerts` and the alert stay for step 9; `Service.EmailOf` now forwards to the Lookup, and `Options.Lookup` is required (field `identity.lookup`). The `Names` seam is not changed by this step. `Actor` and `AuditActor` (applied in code at step 3, `internal/core/identity/session.go`) are documented here at step 8 (Summary, Exported).
 
 Their narratives, the reasons for each choice, what the reviews found, the superseded wording and the answered open questions are in `plan/design/history/identity.md`.
 

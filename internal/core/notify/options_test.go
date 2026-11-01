@@ -32,10 +32,10 @@ func TestOptionsValidate_Table(t *testing.T) {
 		{"nil authz", func(o *notify.Options) { o.Authz = nil }, "notify.authz"},
 		{"nil actor", func(o *notify.Options) { o.Actor = nil }, "notify.actor"},
 		{"nil settings", func(o *notify.Options) { o.Settings = nil }, "notify.settings"},
-		{"nil site source", func(o *notify.Options) { o.Site = nil }, "notify.site"},
-		{"nil addresses", func(o *notify.Options) { o.Addresses = nil }, "notify.addresses"},
-		{"nil languages", func(o *notify.Options) { o.Languages = nil }, "notify.languages"},
-		{"nil names", func(o *notify.Options) { o.Names = nil }, "notify.names"},
+		{"nil regional", func(o *notify.Options) { o.Regional = nil }, "notify.regional"},
+		{"nil terms", func(o *notify.Options) { o.Terms = nil }, "notify.terms"},
+		{"nil accounts", func(o *notify.Options) { o.Accounts = nil }, "notify.accounts"},
+		{"nil profiles", func(o *notify.Options) { o.Profiles = nil }, "notify.profiles"},
 		{"poll at minimum", func(o *notify.Options) { o.PollInterval = time.Second }, ""},
 		{"poll at maximum", func(o *notify.Options) { o.PollInterval = 5 * time.Minute }, ""},
 		{"poll below minimum", func(o *notify.Options) { o.PollInterval = 999 * time.Millisecond }, "notify.poll_interval"},
@@ -78,7 +78,7 @@ func TestOptionsValidate_ZeroOptions_ReportsEveryRequiredField(t *testing.T) {
 	wantKind(t, err, errs.Invalid)
 	for _, f := range []string{
 		"notify.db", "notify.clock", "notify.logger", "notify.tracer", "notify.audit", "notify.authz",
-		"notify.actor", "notify.settings", "notify.site", "notify.addresses", "notify.languages", "notify.names",
+		"notify.actor", "notify.settings", "notify.regional", "notify.terms", "notify.accounts", "notify.profiles",
 	} {
 		if !hasField(err, f, "") {
 			t.Errorf("missing field error %q in %v", f, describe(err))
@@ -94,7 +94,7 @@ func TestNew_DoesNoIO(t *testing.T) {
 	if n := len(d.Calls()); n != 0 {
 		t.Fatalf("New ran %d statements", n)
 	}
-	if n := r.smtp.calls.Load() + r.site.calls.Load(); n != 0 {
+	if n := r.smtp.calls.Load() + seamCalls(r); n != 0 {
 		t.Fatalf("New called a seam %d times", n)
 	}
 }

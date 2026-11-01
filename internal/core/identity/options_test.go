@@ -28,6 +28,7 @@ func TestNew_Table(t *testing.T) {
 		{"nil tracer", func(o *identity.Options) { o.Tracer = nil }, "identity.tracer"},
 		{"nil audit", func(o *identity.Options) { o.Audit = nil }, "identity.audit"},
 		{"nil signals", func(o *identity.Options) { o.Signals = nil }, "identity.signals"},
+		{"nil lookup", func(o *identity.Options) { o.Lookup = nil }, "identity.lookup"},
 		{"unset key", func(o *identity.Options) { o.Key = secret.Secret{} }, "session.key"},
 		{"empty key", func(o *identity.Options) { o.Key = secret.New("") }, "session.key"},
 	}
@@ -47,7 +48,7 @@ func TestNew_Table(t *testing.T) {
 
 func TestNew_ZeroOptions_ReportsEveryProblemAtOnce(t *testing.T) {
 	err := identity.Options{}.Validate()
-	for _, f := range []string{"identity.db", "identity.clock", "identity.logger", "identity.tracer", "identity.audit", "identity.signals", "identity.settings", "session.key"} {
+	for _, f := range []string{"identity.db", "identity.clock", "identity.logger", "identity.tracer", "identity.audit", "identity.signals", "identity.settings", "identity.lookup", "session.key"} {
 		wantField(t, err, f, "")
 	}
 }

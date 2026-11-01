@@ -116,8 +116,13 @@ func TestMigrations_ApplyOnAnEmptyDatabase_AndAreIdempotent(t *testing.T) {
 func TestBackfill_OnePersonRowPerExistingAccount(t *testing.T) {
 	pool := dbtest.TempDB(t)
 	migrate(t, pool, identity.Set) // an M1 installation: accounts, no person rows
+	lookup, err := identity.NewLookup(identity.LookupOptions{DB: pool, Tracer: telemetrytest.New(t).Tracer("identity")})
+	if err != nil {
+		t.Fatal(err)
+	}
 	svc, err := identity.New(identity.Options{
-		DB: pool, Clock: clock.Real(), Logger: telemetrytest.New(t).Logger(), Tracer: telemetrytest.New(t).Tracer("identity"),
+		Lookup: lookup,
+		DB:     pool, Clock: clock.Real(), Logger: telemetrytest.New(t).Logger(), Tracer: telemetrytest.New(t).Tracer("identity"),
 		Key: secret.New("people-pg-test-session-key-0123456789abcdef"), Audit: audittest.NewFake("identity"),
 		Signals:  mustBus(t),
 		Settings: settingstest.NewFake("accounts", identity.Settings),

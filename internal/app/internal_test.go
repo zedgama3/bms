@@ -241,7 +241,7 @@ func TestAssembly_CorePermsStartWithModulesRead(t *testing.T) {
 
 // coreOrder is the order in which the core's services plug in (app.md "How later core
 // services plug in"); coreParts must be a subsequence of it.
-var coreOrder = []string{"audit", "authz", "settings", "jobs", "auditlog", "identity", "people", "departments", "events", "files", "regional", "notify", "demo"}
+var coreOrder = []string{"audit", "authz", "settings", "jobs", "auditlog", "departments", "events", "files", "regional", "notify", "identity", "people", "demo"}
 
 func TestParts_OrderAndNames_Pinned(t *testing.T) {
 	pos := -1
@@ -739,10 +739,10 @@ func TestCoreParts_Declare_SetsPermissionsSignalAndCommand(t *testing.T) {
 		"settings.read,settings.manage," +
 		"jobs.read,jobs.manage," +
 		"audit.search,audit.export," +
-		"accounts.read,accounts.manage," +
-		"people.directory.read,people.contacts.read,people.profiles.manage,people.data.export,people.data.delete," +
 		"departments.manage,departments.details.manage,events.manage," +
-		"notify.templates.manage,notify.outbox.manage"
+		"notify.templates.manage,notify.outbox.manage," +
+		"accounts.read,accounts.manage," +
+		"people.directory.read,people.contacts.read,people.profiles.manage,people.data.export,people.data.delete"
 	if got := strings.Join(perms, ","); got != want {
 		t.Errorf("corePerms = %s, want %s (api first, then each part's in part order)", got, want)
 	}
@@ -756,8 +756,8 @@ func TestCoreParts_Declare_SetsPermissionsSignalAndCommand(t *testing.T) {
 			t.Errorf("coreSignals = %v lacks %s", a.coreSignals, want)
 		}
 	}
-	if len(a.corePoints) != 4 || a.corePoints[3].Name != demoseed.Point || a.corePoints[0].Name != personpage.Point || a.corePoints[1].Name != membership.Point || a.corePoints[2].Name != eventsetup.Point {
-		t.Errorf("corePoints = %v, want %s, %s, %s then %s", a.corePoints, personpage.Point, membership.Point, eventsetup.Point, demoseed.Point)
+	if len(a.corePoints) != 4 || a.corePoints[3].Name != demoseed.Point || a.corePoints[0].Name != eventsetup.Point || a.corePoints[1].Name != personpage.Point || a.corePoints[2].Name != membership.Point {
+		t.Errorf("corePoints = %v, want %s, %s, %s then %s", a.corePoints, eventsetup.Point, personpage.Point, membership.Point, demoseed.Point)
 	}
 	for _, pt := range a.corePoints {
 		if pt.Accepts(struct{}{}) {
@@ -886,8 +886,8 @@ func TestBuildParts_AgainstNoDatabase_SetsAuthenticatorRoutesAndRunnable(t *test
 			t.Errorf("route set %s has %d routes and %d bytes of fragment", rs.Module, len(rs.Routes), len(rs.OpenAPI))
 		}
 	}
-	if strings.Join(areas, ",") != "access,settings,jobs,audit,accounts,people,departments,events,regional,notify" {
-		t.Errorf("route sets = %v, want access, settings, jobs, audit, accounts, people, departments, events, regional, notify", areas)
+	if strings.Join(areas, ",") != "access,settings,jobs,audit,departments,events,regional,notify,accounts,people" {
+		t.Errorf("route sets = %v, want access, settings, jobs, audit, departments, events, regional, notify, accounts, people", areas)
 	}
 	var runnables []string
 	for _, r := range a.runnables {
@@ -1203,7 +1203,7 @@ func TestCoreParts_StarterRoles_AreAuthzKeys(t *testing.T) {
 	}
 }
 
-func TestBuildParts_AuthzAndPeople_FillTheLazySeams(t *testing.T) {
+func TestBuildParts_BuildsTheLookups(t *testing.T) {
 	a := builtCore(t)
 	if a.authz == nil || a.people == nil || a.deps.authz == nil || a.deps.people == nil {
 		t.Fatalf("authz=%v people=%v deps.authz=%v deps.people=%v, want all set", a.authz, a.people, a.deps.authz, a.deps.people)
@@ -1211,8 +1211,8 @@ func TestBuildParts_AuthzAndPeople_FillTheLazySeams(t *testing.T) {
 	if a.departments == nil || a.events == nil || a.deps.departments == nil || a.deps.events == nil {
 		t.Fatalf("departments=%v events=%v deps.departments=%v deps.events=%v, want all set", a.departments, a.events, a.deps.departments, a.deps.events)
 	}
-	if a.names == nil {
-		t.Errorf("names=%v, want set", a.names)
+	if a.identityLookup == nil || a.peopleLookup == nil {
+		t.Errorf("identityLookup=%v peopleLookup=%v, want both set", a.identityLookup, a.peopleLookup)
 	}
 	deps, err := a.provision(context.Background(), module.Manifest{Name: "zqalpha"})
 	if err != nil {
@@ -1220,14 +1220,6 @@ func TestBuildParts_AuthzAndPeople_FillTheLazySeams(t *testing.T) {
 	}
 	if deps.Authz == nil || deps.People == nil || deps.Departments == nil || deps.Events == nil {
 		t.Errorf("provision: Authz=%v People=%v Departments=%v Events=%v, want all set", deps.Authz, deps.People, deps.Departments, deps.Events)
-	}
-}
-
-func TestLazyAdapters_BeforeTheirPartsAreBuilt_AnswerNothing(t *testing.T) {
-	a := &assembly{}
-	ctx := context.Background()
-	if got, err := (lazyNames{a: a}).PlayaNameOf(ctx, model.PersonID{}); err != nil || got != "" {
-		t.Errorf("PlayaNameOf = %q, %v, want empty", got, err)
 	}
 }
 

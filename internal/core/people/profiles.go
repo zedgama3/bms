@@ -57,59 +57,7 @@ func (s *Service) actorPerson(ctx context.Context, op string) (authz.Actor, erro
 	return a, nil
 }
 
-// ---- Directory and NameSource -----------------------------------------------------------
-
-// NamesOf returns the playa name of each known person; unknown or deleted IDs are omitted
-// and an unfilled name is "". Internal level: it serves any actor, a signal handler and a
-// job included. Fails errs.Invalid (ids, too_many {max}) for more than MaxNames IDs, and
-// with the store's kinds.
-func (s *Service) NamesOf(ctx context.Context, ids []model.PersonID) (_ map[model.PersonID]string, err error) {
-	const op = "people.Service.NamesOf"
-	ctx, span := s.start(ctx, "names-of")
-	defer endSpan(span, &err)
-	if len(ids) > MaxNames {
-		return nil, paramInvalid(op, "ids", codeTooMany, map[string]string{"max": fmt.Sprint(MaxNames)},
-			fmt.Sprintf("at most %d IDs", MaxNames))
-	}
-	unique := make([]model.PersonID, 0, len(ids))
-	seen := make(map[model.PersonID]struct{}, len(ids))
-	for _, id := range ids {
-		if _, dup := seen[id]; dup || id.IsZero() {
-			continue
-		}
-		seen[id] = struct{}{}
-		unique = append(unique, id)
-	}
-	span.SetAttrs(telemetry.Int("ids", len(unique)))
-	if len(unique) == 0 {
-		return map[model.PersonID]string{}, nil
-	}
-	names, err := s.store.NamesOf(ctx, unique)
-	if err != nil {
-		return nil, wrap(op, err)
-	}
-	return names, nil
-}
-
-// ConsentOf reports whether person currently consents to purpose; false when unknown or
-// deleted. Internal level, no permission: the module is deciding whether it may process.
-// Fails errs.Invalid for a bad purpose or a zero person, and with the store's kinds.
-func (s *Service) ConsentOf(ctx context.Context, person model.PersonID, purpose Purpose) (_ bool, err error) {
-	const op = "people.Service.ConsentOf"
-	ctx, span := s.start(ctx, "consent-of")
-	defer endSpan(span, &err)
-	if err := purpose.Validate(); err != nil {
-		return false, wrap(op, err)
-	}
-	if person.IsZero() {
-		return false, fieldInvalid(op, "person", codeRequired, "must be set")
-	}
-	granted, err := s.store.Consent(ctx, person, string(purpose))
-	if err != nil {
-		return false, wrap(op, err)
-	}
-	return granted, nil
-}
+// ---- LegalNamesOf -----------------------------------------------------------------------
 
 // LegalNamesOf returns the legal name of each person among ids who has one; unknown IDs
 // and people with none are omitted and not audited (F69). It needs people.contacts.read in
@@ -206,19 +154,6 @@ func (s *Service) LegalNamesOf(ctx context.Context, ids []model.PersonID) (_ map
 	}
 	span.SetAttrs(telemetry.Int("returned", len(out)))
 	return out, nil
-}
-
-// PlayaNameOf is identity.NameSource: the person's playa name ("" until filled in). Fails
-// errs.NotFound when there is no row yet (identity shows ""), and with the store's kinds.
-func (s *Service) PlayaNameOf(ctx context.Context, person model.PersonID) (_ string, err error) {
-	const op = "people.Service.PlayaNameOf"
-	ctx, span := s.start(ctx, "playa-name-of")
-	defer endSpan(span, &err)
-	name, err := s.store.PlayaNameOf(ctx, person)
-	if err != nil {
-		return "", wrap(op, err)
-	}
-	return name, nil
 }
 
 // ---- building a profile -----------------------------------------------------------------

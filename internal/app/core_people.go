@@ -18,7 +18,8 @@ import (
 
 // peoplePart is core part 5: profiles, contacts, consents, and the export and deletion of
 // one person across the core and every module (people.md; app.md "How later core services
-// plug in", row 5). It is built after authz, whose service it takes.
+// plug in", row 5). It is built after authz, whose service it takes, and after notify, whose
+// Notifier it takes (boundaries step 8).
 var peoplePart = part{
 	name:    "people",
 	declare: declarePeople,
@@ -69,12 +70,16 @@ func declarePeople(a *assembly) error {
 }
 
 // buildPeople constructs the service (no I/O), subscribes its identity.account-created
-// handler through its scope, fills identity's NameSource and mounts the people routes.
+// handler through its scope and mounts the people routes.
 // Link, which gives the service the modules' PersonData and page providers, comes later.
 func buildPeople(_ context.Context, a *assembly) error {
 	const op = "app.people.build"
-	if a.deps.audit == nil || a.identity == nil || a.authz == nil || a.deps.authz == nil || a.settings == nil || a.auditlog == nil {
-		return errs.E(op, errs.Internal, errors.New("people is built after audit, auditlog, settings, identity and authz"))
+	if a.deps.audit == nil || a.identity == nil || a.authz == nil || a.deps.authz == nil || a.settings == nil || a.auditlog == nil || a.peopleLookup == nil {
+		return errs.E(op, errs.Internal, errors.New("people is built after audit, auditlog, settings, identity, authz and the people lookup"))
+	}
+	notifier, ok := a.notifiers[peopleArea]
+	if !ok {
+		return errs.E(op, errs.Internal, errors.New("people is built after notify, which scopes its Notifier"))
 	}
 	reader, err := a.settings.Scoped(peopleSettings)
 	if err != nil {
@@ -107,15 +112,15 @@ func buildPeople(_ context.Context, a *assembly) error {
 		Access:     a.authz,
 		AuditCount: a.auditlog,
 		Settings:   reader,
-		Notify:     lazyNotifier{a: a, owner: peopleArea},
+		Notify:     notifier,
 		Holders:    a.authz,
+		Lookup:     a.peopleLookup,
 	})
 	if err != nil {
 		return err //nolint:wrapcheck // people.New names itself
 	}
 	a.people = svc
 	a.deps.people = svc
-	a.names = svc
 	if err := a.addCoreRoutes(peopleArea, svc.Routes(), svc.OpenAPI()); err != nil {
 		return err
 	}

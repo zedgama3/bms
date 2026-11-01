@@ -22,7 +22,7 @@
 - **Used by:** every module (`Deps.People`, the `people.person-page` point, the
   `people.person-deleted` signal), `identity` (`NameSource`), `authz` and `audit` (the
   `search` and `names` routes behind their screens), the web shell (the profile prompt and
-  the saved language), `app` (part 5, the `export` and `delete` commands), `notify` (`PlayaNameOf`, `LanguageOf`, `ContactEmailOf`, and its outbox as a `Source`), `settings` (`Reader`, `Decl`).
+  the saved language), `app` (part 5, the `export` and `delete` commands), `notify` (`PlayaNameOf`, `LanguageOf`, `ContactEmailOf` through `people.Lookup`, and its outbox as a `Source`), `settings` (`Reader`, `Decl`).
 
 ## Summary
 
@@ -43,8 +43,9 @@
 - Seams `app` fills: `Accounts{EmailOf(ctx, PersonID) (model.Email, error); LinkAccount(ctx, model.Email, PersonID) (model.AccountID, model.PersonID, error); ExportPerson(ctx, PersonID) (json.RawMessage, error); DeletePerson(ctx, PersonID) (int, error)}` (`*identity.Service`; the two first methods
   are proposed); `Access{ExportPerson; DeletePerson(ctx, PersonID) (int, error)}` (`*authz.Service`); `AuditCounter{CountAbout(ctx, PersonID) (int, error)}` (`*audit.Log`); `Holders{HoldersOf(ctx, authz.Permission) ([]model.PersonID, error)}` (`*authz.Service`, D39); `Notify notify.Notifier` (scoped
   `people`, D39); `Source{Name string; Exporter PersonData}` with `PersonData{ExportPerson(ctx, PersonID) (Export, error); DeletePerson(ctx, PersonID) (ModuleDeletion, error)}`; `SectionProvider{Module string; personpage.Provider}`.
+- `Lookup` (boundaries step 8): `NewLookup(LookupOptions{DB, Tracer}) (*Lookup, error)` (`Invalid` for a nil dependency; there is no `Meter`, the reads carry no metric) holds the system-level reads of `core.person`: `NamesOf`, `PlayaNameOf`, `LanguageOf`, `ConsentOf` (all `internal` level) and `ContactEmailOf` (`personal`: used only to deliver mail, never shown to a viewer). No permission, no audit; `NotFound` for an unknown or deleted person where the method says so today. `*Service` forwards the five reads to it. It is notify's `Profiles` (`PlayaNameOf`, `LanguageOf`, `ContactEmailOf`) and may serve identity's `NameSource`.
 - `Directory` (= `module.Deps.People`): `NamesOf(ctx, []model.PersonID) (map[model.PersonID]string, error)`, `ConsentOf(ctx, model.PersonID, Purpose) (bool, error)`.
-- `Options{DB, Clock, Logger, Tracer, Meter, Audit (scoped "people"), Signals (scoped "people"), Authz authz.Authorizer, Actor authz.ActorFunc, Accounts, Access, AuditCount AuditCounter, Settings settings.Reader (scoped "people", required), Notify notify.Notifier, Holders Holders, Session SessionFunc}` (+`Validate`, which refuses a
+- `Options{DB, Clock, Logger, Tracer, Meter, Audit (scoped "people"), Signals (scoped "people"), Authz authz.Authorizer, Actor authz.ActorFunc, Accounts, Lookup *Lookup (required, step 8), Access, AuditCount AuditCounter, Settings settings.Reader (scoped "people", required), Notify notify.Notifier, Holders Holders, Session SessionFunc}` (+`Validate`, which refuses a
   nil `Session` (P-W1, D58) as it does the other required fields; `Notify` and `Holders` optional: nil means no notice); `New(Options) (*Service, error)` (no I/O; subscribes to `identity.account-created`; works against `db.None()`); `(*Service).Link(sources []Source, sections []SectionProvider,
   members []MembershipProvider) error` (once, from `app`'s `link`); `MembershipProvider{Module string; Provider membership.Provider}`.
 - `SessionFunc func(ctx) (identity.Session, bool)` (= `identity.SessionFrom`; P-W1, D58): `Me` reads the session's `IssuedAt` through it (decision 34). `Me` records the first-sign-in prompt and sets `Profile.FirstPrompt` (decisions 34 to 36); `Get` never does.
@@ -132,7 +133,7 @@
 - `UpdateMe`, `Create`, `Update`: `Conflict` with field `playa_name` code `taken` when another person holds the same `NameKey` (the unique index decides, so the race is covered; the error names nobody); `UpdateMe`: `Invalid` `playa_name` `permanent` when a name is set and the new one has a different key; `Update` by a profile manager never fails `permanent`: a different key is written and audited with `Reason "rename"`, for any person including the manager.
 - `Link`: `Internal` (called twice, nil provider).
 - `Me`: `Internal` when a signed-in actor has no session in ctx (a wiring error, F104); the first-sign-in mark failing with a store kind fails `Me` with it, except `db.ErrReadOnly`, which answers `first_prompt` false and no error (F96, F97).
-- `New`/`Options.Validate`: `Invalid` with fields `people.db`, `people.clock`, `people.logger`, `people.tracer`, `people.audit`, `people.signals`, `people.authz`, `people.actor`, `people.accounts`, `people.access`, `people.audit_count`, `people.session` (P-W1, F102).
+- `New`/`Options.Validate`: `Invalid` with fields `people.db`, `people.clock`, `people.logger`, `people.tracer`, `people.audit`, `people.signals`, `people.authz`, `people.actor`, `people.accounts`, `people.lookup` (step 8), `people.access`, `people.audit_count`, `people.settings`, `people.session` (P-W1, F102); tests `TestNew_NilDependency_ReturnsInvalid` (`people.lookup` case), `TestOptions_Validate_ReportsEveryProblemAtOnce`.
 
 **Owns.**
 
@@ -516,6 +517,7 @@ type Options struct {
 	Authz      authz.Authorizer
 	Actor      authz.ActorFunc // app: identity.PersonFrom + SessionFrom.Superuser
 	Accounts   Accounts
+	Lookup     *Lookup         // required (field people.lookup); the five system reads (step 8)
 	Access     Access
 	AuditCount AuditCounter
 	Settings   settings.Reader // scoped "people"; required (field people.settings)
@@ -530,7 +532,7 @@ type SessionFunc func(ctx context.Context) (identity.Session, bool)
 
 // Validate fails errs.Invalid joining a validate.FieldError per nil dependency (fields
 // people.db, people.clock, people.logger, people.tracer, people.audit, people.signals,
-// people.authz, people.actor, people.accounts, people.access, people.audit_count,
+// people.authz, people.actor, people.accounts, people.lookup, people.access, people.audit_count,
 // people.session).
 func (o Options) Validate() error
 
@@ -547,7 +549,8 @@ type Service struct{ /* unexported */ }
 // nil provider. Before Link, Export and Delete fail Internal and pages carry no sections.
 func (s *Service) Link(sources []Source, sections []SectionProvider, members []MembershipProvider) error
 
-// Directory and NameSource.
+// Directory and NameSource. NamesOf, ConsentOf, PlayaNameOf, LanguageOf and ContactEmailOf
+// forward to Options.Lookup (boundaries step 8); behaviour and kinds are unchanged.
 func (s *Service) NamesOf(ctx context.Context, ids []model.PersonID) (map[model.PersonID]string, error)
 func (s *Service) ConsentOf(ctx context.Context, person model.PersonID, purpose Purpose) (bool, error)
 // PlayaNameOf is identity.NameSource: NotFound when there is no row yet (identity shows "").
@@ -585,7 +588,8 @@ func (s *Service) ListRequests(ctx context.Context, q RequestQuery) ([]Request, 
 func (s *Service) DeclineRequest(ctx context.Context, id RequestID, note string) (Request, error)
 func (s *Service) FulfilRequest(ctx context.Context, id RequestID) (DeletionReport, error)
 
-// System reads for notify's seams (D39, decision 28): no actor, no audit, never on a route.
+// System reads for notify's Profiles (D39, decision 28): no actor, no audit, never on a route.
+// The Service forwards both to Options.Lookup (step 8); notify takes the Lookup directly.
 // LanguageOf returns the saved language ("" when none); ContactEmailOf returns contact_email
 // for a person without an account (NotFound when empty or absent).
 func (s *Service) LanguageOf(ctx context.Context, person model.PersonID) (string, error)
@@ -679,7 +683,7 @@ MarkNamePrompted(ctx context.Context, person model.PersonID, issued, now time.Ti
 | `ConsentOf` | modules (registrations, Later) | valid purpose, non-zero person | current flag; false for unknown |
 | `PlayaNameOf` | identity (`SessionInfo`) | — | name or `NotFound` |
 | `LegalNamesOf` | volunteers' roster | `people.contacts.read` in any extent; ≤ `MaxNames` IDs; legal-name mode not hidden | legal names of the people the extent reaches (decision 9, D45) and always the actor's own (D46); one `people.person.read` per returned person other than the actor; never on a route |
-| `LanguageOf`, `ContactEmailOf` | notify's `LanguageSource` and `AddressSource` (`app` writes them) | — (system reads, decision 28) | the language or the account-less address; `NotFound` when absent; no audit |
+| `LanguageOf`, `ContactEmailOf` | notify's `Profiles` (= `people.Lookup`, step 8) | — (system reads, decision 28) | the language or the account-less address; `NotFound` when absent; no audit |
 | `Me` | the profile screen, the shell's frame (language, prompt) | an actor with a session in ctx (else `Internal`, F104) | full profile with every field group, `Can` for self; a missing row answers an empty `Person{ID: actor}` with `Complete: false`, no write; when a first-sign-in prompt is due it is recorded after the profile is built and reported in `FirstPrompt` (decisions 34 to 36, Behavior) |
 | `UpdateMe` | the profile screen | an actor; fields valid; `FieldRequired` fields non-empty after the update (not checked when the body sets only `language`, D37); `FieldHidden` fields absent; when the row already holds a playa name, `PlayaName` is nil, the same string, or a respelling with the same `NameKey` (else `Invalid permanent`); the key is not held by another person (else `Conflict taken`, decided by the unique index) | row upserted (decision 2) with `playa_name_key = NameKey(playa_name)` whenever the name is written; `people.person.changed` (or `.created` plus `people.person-created` when the row was missing) in the transaction; an unchanged profile writes and audits nothing |
 | `Get` | the person page; admin screens | `people.directory.read` in any extent (self → `Me`) | internal fields; personal fields and contacts when `people.contacts.read` reaches the person (decision 9: site, or a department extent with a provider reporting them); consents when `people.profiles.manage`; sections; `people.person.read` recorded when any personal field was included |
@@ -1050,7 +1054,7 @@ Declared as `people.Settings` in the settings core area `people` (D39; titles ar
 | F62 | `RequestDeletion` | `HoldersOf` or `Send` fails other than `Unsupported` | its kind; the transaction rolls back; no request row | retry | `TestRequestDeletion_NotifyFails_RollsBack` |
 | F63 | `RequestDeletion` | success with holders | the holders are `To`, `Key` is the request ID, `Link` is `/people/admin/requests`, no `Vars` (asserted from `notifytest.Fake.Sent()`) | nothing | `TestRequestDeletion_SendsNoticeToHolders` |
 | F64 | `RequestDeletion` | the request is a duplicate | `Conflict`; nothing sent | show the open one | `TestRequestDeletion_Duplicate_NothingSent` |
-| F65 | `LanguageOf`, `ContactEmailOf` | zero person; no row or no address | Invalid; NotFound | notify uses the site default / reports `no_address` | `TestLanguageOf_Table`, `TestContactEmailOf_Table` |
+| F65 | `LanguageOf`, `ContactEmailOf` | zero person; no row or no address | Invalid; NotFound | notify uses the site default / reports `no_address` | `TestLanguageOf_Table`, `TestContactEmailOf_Table`, `TestLookup_ContactEmailOf_Deleted_ReturnsNotFound` |
 | F66 | `Settings` | `emergency_contacts` set to `required` | Invalid (`people.emergency_contacts`, `one_of`) | settings refuses the change | `TestSettings_EmergencyContactsRequired_Invalid` |
 | F67 | `LegalNamesOf` | the actor lacks `people.contacts.read` in every extent | Permission | show forbidden | `TestLegalNamesOf_NoContactsRead_ReturnsPermission` |
 | F68 | `LegalNamesOf` | more than `MaxNames` IDs | Invalid | batch | `TestLegalNamesOf_TooManyIDs_ReturnsInvalid` |
@@ -1125,7 +1129,8 @@ NFKC)` and `regexp_replace` are core PostgreSQL (≥ 13, UTF-8 databases) and ar
 
 Amendment narratives (D39, D44, D45, D46, P1 (D48, D51), D53, P-W1 (D57, D58)), their reasons, review findings and superseded wording are in `plan/design/history/people.md`. The current rules are stated in the sections above.
 
-- **2026-11-01, boundaries step 5:** `Options.Settings` (a `settings.Reader` scoped to `people`, required) replaces `Policy PolicySource`; the `PolicySource` type is removed and people's own mapping (moved from `app`'s `peoplePolicy`) builds the `Policy`. `Lookup` and the other `Options` removals (`Access`, `AuditCount`, `Notify`, `Holders`) are step 8.
+- **2026-11-01, boundaries step 5:** `Options.Settings` (a `settings.Reader` scoped to `people`, required) replaces `Policy PolicySource`; the `PolicySource` type is removed and people's own mapping (moved from `app`'s `peoplePolicy`) builds the `Policy`. `Lookup` is step 8; the other `Options` removals (`Access`, `AuditCount`, `Notify`, `Holders`) land with step 12 (see the step 8 note below).
+- **2026-11-01, boundaries step 8:** `people.NewLookup(LookupOptions{DB, Tracer})` holds `NamesOf`, `PlayaNameOf`, `LanguageOf`, `ConsentOf` and `ContactEmailOf` (no permission, no audit, `NotFound` as before); `Options.Lookup` is required and the Service forwards the five reads to it. `LegalNamesOf` (audited, `people.contacts.read`) and the `Directory` contract stay on the Service. The removals of `Access`, `AuditCount`, `Notify` and `Holders` are not step 8's: they land with step 12 (datarights), since they serve the data-rights code that moves there (datarights' `Options` takes `Access`, `AuditLog` (for `CountAbout`), `Notify` and `Holders`). `Options.Accounts` stays (`LinkAccount`, export, deletion). `LookupOptions` has no `Meter` (it was accepted but unused and is dropped): the reads carry no metric. Test: `TestLookup_ContactEmailOf_Deleted_ReturnsNotFound`.
 
 ## Open questions
 

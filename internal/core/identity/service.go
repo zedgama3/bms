@@ -104,11 +104,12 @@ type Options struct {
 	Alerter        Alerter
 	Notify         notify.Notifier // scoped to "identity"; nil means no reset: RequestPasswordReset answers Unsupported
 	Guard          Guard           // optional; nil protects nothing (D53, demo mode only)
+	Lookup         *Lookup         // EmailOf; built before notify; required
 }
 
 // Validate fails errs.Invalid joining a validate.FieldError per problem: "identity.db",
 // "identity.clock", "identity.logger", "identity.tracer", "identity.audit",
-// "identity.signals", "identity.settings" (nil) and "session.key" (unset).
+// "identity.signals", "identity.settings", "identity.lookup" (nil) and "session.key" (unset).
 func (o Options) Validate() error {
 	v := validate.Errors{Op: "identity.Options.Validate"}
 	if o.DB == nil {
@@ -131,6 +132,9 @@ func (o Options) Validate() error {
 	}
 	if o.Settings == nil {
 		v.Addf("identity.settings", codeRequired, "must be set")
+	}
+	if o.Lookup == nil {
+		v.Addf("identity.lookup", codeRequired, "must be set")
 	}
 	if !o.Key.IsSet() {
 		v.Addf("session.key", codeRequired, "must be set")
@@ -156,6 +160,7 @@ type Service struct {
 	alerter        Alerter
 	notify         notify.Notifier
 	guard          Guard
+	lookup         *Lookup
 
 	common  map[string]struct{}
 	dummy   secret.Secret // verified when no account matched, so the answer costs the same
@@ -211,7 +216,7 @@ func newService(o Options, st store) (*Service, error) {
 		store: st, db: o.DB, clock: o.Clock, logger: o.Logger, tracer: o.Tracer,
 		key: key, allowPlaintext: o.AllowPlaintext, audit: o.Audit, signals: o.Signals,
 		settings: o.Settings, perms: o.Permissions, lister: o.Lister, names: o.Names, alerter: o.Alerter,
-		notify: o.Notify, guard: o.Guard,
+		notify: o.Notify, guard: o.Guard, lookup: o.Lookup,
 		common: common, dummy: dummyHash(), limiter: newLimiter(), resetLimiter: newResetLimiter(), sem: make(chan struct{}, HashConcurrency),
 		rand: rand.Reader, metrics: m,
 	}, nil

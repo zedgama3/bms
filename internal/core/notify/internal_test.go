@@ -16,6 +16,8 @@ import (
 	"github.com/zedgama3/bms/internal/core/authz/authztest"
 	"github.com/zedgama3/bms/internal/core/db/dbtest"
 	"github.com/zedgama3/bms/internal/core/notify/message"
+	"github.com/zedgama3/bms/internal/core/regional"
+	"github.com/zedgama3/bms/internal/core/settings"
 	"github.com/zedgama3/bms/internal/core/settings/settingstest"
 	"github.com/zedgama3/bms/internal/core/telemetry/telemetrytest"
 	"github.com/zedgama3/bms/internal/lib/clock"
@@ -153,28 +155,33 @@ func rigSettings() *settingstest.Fake {
 	return f
 }
 
+// siteSrc is Regional and Terms with fixed answers.
 type siteSrc struct{}
 
-func (siteSrc) Site(context.Context, Language) (Site, error) {
-	return Site{Name: "Test Burn", URL: "https://burn.example.org", DefaultLanguage: "en"}, nil
+func (siteSrc) Profile(context.Context) (regional.Profile, error) {
+	return regional.Profile{Name: "Test Burn", PublicURL: "https://burn.example.org", Language: "en"}, nil
 }
 
+func (siteSrc) TermsFor(context.Context, string) (map[string]settings.Forms, error) { return nil, nil }
+
+// addrSrc is Accounts: it answers one address or one error for everybody.
 type addrSrc struct {
 	email model.Email
 	err   error
 }
 
-func (a addrSrc) AddressOf(context.Context, model.PersonID) (model.Email, error) {
+func (a addrSrc) EmailOf(context.Context, model.PersonID) (model.Email, error) {
 	return a.email, a.err
 }
 
-type langSrc struct{}
+// profSrc is Profiles for a person with no language, no name and no contact address.
+type profSrc struct{}
 
-func (langSrc) LanguageOf(context.Context, model.PersonID) (Language, error) { return "", nil }
-
-type nameSrc struct{}
-
-func (nameSrc) PlayaNameOf(context.Context, model.PersonID) (string, error) { return "", nil }
+func (profSrc) PlayaNameOf(context.Context, model.PersonID) (string, error) { return "", nil }
+func (profSrc) LanguageOf(context.Context, model.PersonID) (string, error)  { return "", nil }
+func (profSrc) ContactEmailOf(context.Context, model.PersonID) (model.Email, error) {
+	return "", errs.E("test.ContactEmailOf", errs.NotFound, errors.New("no profile"))
+}
 
 type rig struct {
 	svc *Service
@@ -197,7 +204,7 @@ func newRig(t *testing.T, mutate ...func(*Options, *fakeStore, *testChannel, *ri
 		Meter: r.cap.Meter("notify"), Audit: audittest.NewFake("notify"), Authz: authztest.NewFake(),
 		Actor:    func(context.Context) (authz.Actor, bool) { return authz.Actor{}, false },
 		Settings: rigSettings(),
-		Site:     siteSrc{}, Addresses: addrSrc{email: "someone@example.org"}, Languages: langSrc{}, Names: nameSrc{},
+		Regional: siteSrc{}, Terms: siteSrc{}, Accounts: addrSrc{email: "someone@example.org"}, Profiles: profSrc{},
 		Channel: func(SMTPConfig) (Channel, error) { return r.ch, nil }, Hostname: "bms.example.org",
 		Lease: 30 * time.Second, SendTimeout: 5 * time.Second,
 	}
@@ -288,7 +295,7 @@ func TestSendOnce_CanceledAfterAccepted_StillMarksSent(t *testing.T) {
 
 func TestSendOnce_MalformedAddress_FailsFinallyAsAddress(t *testing.T) {
 	r := newRig(t, func(o *Options, _ *fakeStore, _ *testChannel, _ *rig) {
-		o.Addresses = addrSrc{email: "not an address"}
+		o.Accounts = addrSrc{email: "not an address"}
 	})
 	r.st.leaseRows = []message.Record{r.row(time.Minute)}
 	res, err := r.svc.SendOnce(context.Background())
@@ -312,7 +319,7 @@ func TestSendOnce_MalformedAddress_FailsFinallyAsAddress(t *testing.T) {
 
 func TestSendOnce_AddressLookupFails_RequeuedAsLookup(t *testing.T) {
 	r := newRig(t, func(o *Options, _ *fakeStore, _ *testChannel, _ *rig) {
-		o.Addresses = addrSrc{err: errs.E("test", errs.Unavailable, errors.New("down"))}
+		o.Accounts = addrSrc{err: errs.E("test", errs.Unavailable, errors.New("down"))}
 	})
 	r.st.leaseRows = []message.Record{r.row(time.Minute)}
 	res, err := r.svc.SendOnce(context.Background())

@@ -39,11 +39,16 @@ type Options struct {
 	Actor authz.ActorFunc
 	// Settings is the reader scoped "notify" (the SMTP keys and retention), read per use
 	// case and never cached; required.
-	Settings  settings.Reader
-	Site      SiteSource
-	Addresses AddressSource
-	Languages LanguageSource
-	Names     NameSource
+	Settings settings.Reader
+	// Regional is the regional's profile (name, public URL, default language) and Terms its
+	// terminology; Accounts is the identity.Lookup and Profiles the people.Lookup. All four
+	// are required; the delivery rules that use them are notify's own (an address is the
+	// login address, else the contact address; a profile that is not found has no name and no
+	// language; a language falls back to its primary subtag, then the regional's default).
+	Regional RegionalSource
+	Terms    TermSource
+	Accounts Accounts
+	Profiles Profiles
 	// Channel builds the channel for the current SMTP settings; nil means the SMTP channel
 	// of notify/smtp, built with SendTimeout, Hostname and Clock.
 	Channel      ChannelFactory
@@ -55,8 +60,8 @@ type Options struct {
 
 // Validate fails errs.Invalid joining one validate.FieldError per problem: a nil dependency
 // (fields notify.db, notify.clock, notify.logger, notify.tracer, notify.audit,
-// notify.authz, notify.actor, notify.settings, notify.site, notify.addresses, notify.languages,
-// notify.names), notify.poll_interval, notify.lease and notify.send_timeout
+// notify.authz, notify.actor, notify.settings, notify.regional, notify.terms, notify.accounts,
+// notify.profiles), notify.poll_interval, notify.lease and notify.send_timeout
 // outside their ranges, and notify.hostname that is empty or malformed.
 func (o Options) Validate() error {
 	v := validate.Errors{Op: "notify.Options.Validate"}
@@ -72,10 +77,10 @@ func (o Options) Validate() error {
 		{"notify.authz", o.Authz == nil},
 		{"notify.actor", o.Actor == nil},
 		{"notify.settings", o.Settings == nil},
-		{"notify.site", o.Site == nil},
-		{"notify.addresses", o.Addresses == nil},
-		{"notify.languages", o.Languages == nil},
-		{"notify.names", o.Names == nil},
+		{"notify.regional", o.Regional == nil},
+		{"notify.terms", o.Terms == nil},
+		{"notify.accounts", o.Accounts == nil},
+		{"notify.profiles", o.Profiles == nil},
 	} {
 		if d.isNil {
 			v.Addf(d.field, codeRequired, "must be set")

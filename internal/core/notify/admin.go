@@ -177,7 +177,7 @@ func (s *Service) checkOverride(ctx context.Context, op string, def *definition,
 	if err != nil {
 		return Rendered{}, wrap(op, err)
 	}
-	site, err := s.site.Site(ctx, lang)
+	site, err := s.siteOf(ctx, lang)
 	if err != nil {
 		return Rendered{}, seamError(op, "the site settings", err)
 	}
@@ -272,7 +272,7 @@ func (s *Service) ResetTemplate(ctx context.Context, name Template, lang Languag
 
 // Preview renders t (not saved) with placeholder values: each declared variable stands for
 // itself. Needs notify.templates.manage. Fails errs.Unauthenticated, errs.Permission,
-// errs.NotFound, errs.Invalid as PutTemplate, and the SiteSource's kind.
+// errs.NotFound, errs.Invalid as PutTemplate, and the kinds of Regional and Terms.
 func (s *Service) Preview(ctx context.Context, name Template, lang Language, t TemplateText) (_ Rendered, err error) {
 	const op = "notify.Service.Preview"
 	ctx, span := s.start(ctx, "preview")

@@ -395,13 +395,17 @@ func newWB(t *testing.T, grants ...authz.Permission) *wbRig {
 	}
 	st := &fakeStore{person: rows.Person{ID: me, PlayaName: "Dusty Ember"}}
 	acc := &wbAccounts{has: true}
+	lk, err := newLookup(LookupOptions{DB: dbtest.NewFake(), Tracer: c.Tracer("people")}, st)
+	if err != nil {
+		t.Fatalf("newLookup: %v", err)
+	}
 	svc, err := newService(Options{
 		DB: dbtest.NewFake(), Clock: clock.NewFake(time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)),
 		Logger: c.Logger(), Tracer: c.Tracer("people"), Audit: rec, Signals: bus, Authz: az,
 		Actor:    func(context.Context) (authz.Actor, bool) { return authz.Actor{Person: me}, true },
 		Session:  identity.SessionFrom,
 		Accounts: acc, Access: wbAccess{}, AuditCount: wbCounter{},
-		Settings: settingstest.NewFake("people", Settings),
+		Settings: settingstest.NewFake("people", Settings), Lookup: lk,
 	}, st)
 	if err != nil {
 		t.Fatalf("newService: %v", err)

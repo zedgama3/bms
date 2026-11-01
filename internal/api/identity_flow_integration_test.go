@@ -55,8 +55,13 @@ func newFlowRig(t *testing.T) *flowRig {
 	if err != nil {
 		t.Fatal(err)
 	}
+	lookup, err := identity.NewLookup(identity.LookupOptions{DB: pool, Tracer: r.cap.Tracer("identity")})
+	if err != nil {
+		t.Fatalf("identity.NewLookup: %v", err)
+	}
 	svc, err := identity.New(identity.Options{
-		DB: pool, Clock: r.clk, Logger: r.cap.Logger(), Tracer: r.cap.Tracer("identity"), Meter: r.cap.Meter("identity"),
+		Lookup: lookup,
+		DB:     pool, Clock: r.clk, Logger: r.cap.Logger(), Tracer: r.cap.Tracer("identity"), Meter: r.cap.Meter("identity"),
 		Key: secret.New(flowKey), AllowPlaintext: true, Audit: audittest.NewFake("identity"), Signals: bus,
 		Permissions: allowAll{}, Settings: settingstest.NewFake("accounts", identity.Settings),
 	})

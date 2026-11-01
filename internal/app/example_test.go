@@ -21,10 +21,10 @@ func ExampleMain_help() {
 	//   openapi           print the OpenAPI document (needs no configuration)
 	//   version           print the build version
 	//   help              print this usage
+	//   files             check the stored files against their records (files verify)  verify
 	//   create-superuser  create or reset the superuser account; its password is shown once  <email>
 	//   export            print everything held about one person as JSON (personal data)  <person-id>
 	//   delete            delete one person everywhere and print what was deleted  <person-id>
-	//   files             check the stored files against their records (files verify)  verify
 	//   demo              seed the fictional demo regional, or reset it (demo seed|reset)  seed|reset
 	// Configuration comes from `BMS_*` environment variables; run `bms check` to see it.
 	// exit status: 0

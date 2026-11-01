@@ -104,7 +104,6 @@ type assembly struct {
 	routeSets     []module.ModuleRoutes       // one per core area with routes; Module is the area name
 	authenticator api.Authenticator           // identity (M1); nil until then
 	permissions   api.PermissionChecker       // the authz.Lookup; nil before buildLookups
-	names         identity.NameSource         // people (M2); nil until then (identity reads it lazily)
 	deps          coreDeps                    // copied into every module's Deps by provision
 
 	runnables []runnable // started after Set.Start, stopped before it (jobs, M4)
@@ -121,6 +120,8 @@ type assembly struct {
 	departments *departments.Service // the departments part's service; nil before its build
 
 	departmentsLookup *departments.Lookup        // built by buildLookups; nil before it
+	identityLookup    *identity.Lookup           // built by buildLookups; notify takes it as Accounts, identity forwards EmailOf to it; nil before it
+	peopleLookup      *people.Lookup             // built by buildLookups; notify takes it as Profiles, identity as its names, people forwards to it; nil before it
 	authzLookup       *authz.Lookup              // built by buildLookups; audit, identity, settings and api take it; nil before it
 	events            *events.Service            // the events part's service; nil before its build
 	notify            *notify.Service            // the notify part's service (the alert, the outbox in export); nil before its build

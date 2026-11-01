@@ -12,23 +12,12 @@ import (
 	"github.com/zedgama3/bms/internal/model"
 )
 
-// EmailOf returns the login address of the person's account, for people's display. It
-// checks no permission (people's seam; people checks its own) and records nothing. Works on
-// a read-only copy. Fails Invalid for a zero ID, NotFound when the person has no account
-// (F64) and store kinds.
-func (s *Service) EmailOf(ctx context.Context, person model.PersonID) (_ model.Email, err error) {
-	const op = "identity.Service.EmailOf"
-	ctx, span := s.start(ctx, "email-of")
-	defer endSpan(span, &err)
-
-	if person.IsZero() {
-		return "", fieldInvalid(op, "person", codeRequired, "must be set")
-	}
-	rec, err := s.store.ExportByPerson(ctx, person)
-	if err != nil {
-		return "", wrap(op, err)
-	}
-	return rec.Email, nil
+// EmailOf is Lookup.EmailOf: the login address of the person's account, for people's
+// display. It checks no permission (people's seam; people checks its own) and records
+// nothing. Fails Invalid for a zero ID, NotFound when the person has no account (F64) and
+// store kinds.
+func (s *Service) EmailOf(ctx context.Context, person model.PersonID) (model.Email, error) {
+	return s.lookup.EmailOf(ctx, person) //nolint:wrapcheck // the Lookup names itself
 }
 
 // LinkAccount moves the account with this e-mail address to the given person and returns

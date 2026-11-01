@@ -127,13 +127,13 @@ func (s *Service) enqueue(ctx context.Context, owner *string, addr model.Email, 
 			name string
 		)
 		if !t.person.IsZero() {
-			if pl, err = s.languages.LanguageOf(ctx, t.person); err != nil {
+			if pl, err = s.languageOf(ctx, t.person); err != nil {
 				return nil, seamError(op, "the language lookup", err)
 			}
 			if pl.Validate() != nil {
 				pl = ""
 			}
-			if name, err = s.names.PlayaNameOf(ctx, t.person); err != nil {
+			if name, err = s.nameOf(ctx, t.person); err != nil {
 				return nil, seamError(op, "the name lookup", err)
 			}
 		}
@@ -194,7 +194,7 @@ func (rc *renderCache) siteFor(ctx context.Context, lang Language) (Site, error)
 	if st, ok := rc.sites[lang]; ok {
 		return st, nil
 	}
-	st, err := rc.s.site.Site(ctx, lang)
+	st, err := rc.s.siteOf(ctx, lang)
 	if err != nil {
 		return Site{}, seamError("notify.Site", "the site settings", err)
 	}

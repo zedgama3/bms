@@ -130,7 +130,10 @@ func newIRig(t *testing.T, realIdentity bool, mods ...func(*people.Options)) *ir
 	wantNoErr(t, err)
 
 	o, r := validOptions(t, spy)
+	idLookup, err := identity.NewLookup(identity.LookupOptions{DB: pool, Tracer: idCap.Tracer("identity")})
+	wantNoErr(t, err)
 	idSvc, err := identity.New(identity.Options{
+		Lookup:   idLookup,
 		DB:       pool,
 		Clock:    clock.Real(),
 		Logger:   idCap.Logger(),

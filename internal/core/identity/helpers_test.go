@@ -277,7 +277,10 @@ func validOptions(t *testing.T, d db.DB) (identity.Options, *rig) {
 	rec := audittest.NewFake("identity")
 	bus, err := signalstest.NewFake("identity", []signals.Name{identity.SignalAccountCreated}, nil)
 	wantNoErr(t, err)
+	lookup, err := identity.NewLookup(identity.LookupOptions{DB: d, Tracer: c.Tracer("identity")})
+	wantNoErr(t, err)
 	o := identity.Options{
+		Lookup:   lookup,
 		DB:       d,
 		Clock:    clk,
 		Logger:   c.Logger(),

@@ -21,6 +21,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/authz/authztest"
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/notify"
+	"github.com/zedgama3/bms/internal/core/regional"
 	"github.com/zedgama3/bms/internal/core/settings"
 	"github.com/zedgama3/bms/internal/core/settings/settingstest"
 	"github.com/zedgama3/bms/internal/core/telemetry/telemetrytest"
@@ -225,26 +226,47 @@ func (s *smtpSrc) Secret(ctx context.Context, k string) (secret.Secret, error) {
 	return f.Secret(ctx, k) //nolint:wrapcheck // test shim: the settingstest.Fake answer is the point
 }
 
+// siteSrc is the regional's profile (notify.RegionalSource) and its terms (notify.TermSource)
+// in one fake. calls counts Profile reads; asked records the language each TermsFor was
+// asked in; fail makes both fail.
 type siteSrc struct {
-	mu    sync.Mutex
-	site  notify.Site
-	err   error
-	calls atomic.Int64
-	langs []notify.Language
+	mu      sync.Mutex
+	profile regional.Profile
+	terms   map[string]settings.Forms
+	err     error
+	calls   atomic.Int64
+	asked   []string
 }
 
-func (s *siteSrc) Site(_ context.Context, l notify.Language) (notify.Site, error) {
+var (
+	_ notify.RegionalSource = (*siteSrc)(nil)
+	_ notify.TermSource     = (*siteSrc)(nil)
+)
+
+func (s *siteSrc) Profile(context.Context) (regional.Profile, error) {
 	s.calls.Add(1)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.langs = append(s.langs, l)
-	return s.site, s.err
+	return s.profile, s.err
+}
+
+func (s *siteSrc) TermsFor(_ context.Context, lang string) (map[string]settings.Forms, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.asked = append(s.asked, lang)
+	return s.terms, s.err
 }
 
 func (s *siteSrc) fail(err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.err = err
+}
+
+func (s *siteSrc) languagesAsked() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.asked...)
 }
 
 // retSrc sets the retention the smtpSrc reader answers.
@@ -256,6 +278,7 @@ func (r *retSrc) set(d time.Duration) {
 	r.s.keep = d
 }
 
+// addrSrc is notify.Accounts: the login address of a person; NotFound when there is none.
 type addrSrc struct {
 	mu    sync.Mutex
 	m     map[model.PersonID]model.Email
@@ -263,7 +286,9 @@ type addrSrc struct {
 	calls atomic.Int64
 }
 
-func (s *addrSrc) AddressOf(_ context.Context, p model.PersonID) (model.Email, error) {
+var _ notify.Accounts = (*addrSrc)(nil)
+
+func (s *addrSrc) EmailOf(_ context.Context, p model.PersonID) (model.Email, error) {
 	s.calls.Add(1)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -272,7 +297,7 @@ func (s *addrSrc) AddressOf(_ context.Context, p model.PersonID) (model.Email, e
 	}
 	e, ok := s.m[p]
 	if !ok {
-		return "", errs.E("test.AddressOf", errs.NotFound, errors.New("no address"))
+		return "", errs.E("test.EmailOf", errs.NotFound, errors.New("no account"))
 	}
 	return e, nil
 }
@@ -287,14 +312,42 @@ func (s *addrSrc) set(p model.PersonID, e model.Email) {
 	s.m[p] = e
 }
 
-type langSrc struct {
+// contactSrc holds the contact addresses of profiles; NotFound when a person has no profile.
+type contactSrc struct {
 	mu    sync.Mutex
-	m     map[model.PersonID]notify.Language
+	m     map[model.PersonID]model.Email
 	err   error
 	calls atomic.Int64
 }
 
-func (s *langSrc) LanguageOf(_ context.Context, p model.PersonID) (notify.Language, error) {
+func (s *contactSrc) get(p model.PersonID) (model.Email, error) {
+	s.calls.Add(1)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.err != nil {
+		return "", s.err
+	}
+	e, ok := s.m[p]
+	if !ok {
+		return "", errs.E("test.ContactEmailOf", errs.NotFound, errors.New("no profile"))
+	}
+	return e, nil
+}
+
+func (s *contactSrc) set(p model.PersonID, e model.Email) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.m[p] = e
+}
+
+type langSrc struct {
+	mu    sync.Mutex
+	m     map[model.PersonID]string
+	err   error
+	calls atomic.Int64
+}
+
+func (s *langSrc) get(p model.PersonID) (string, error) {
 	s.calls.Add(1)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -314,7 +367,7 @@ type nameSrc struct {
 	calls atomic.Int64
 }
 
-func (s *nameSrc) PlayaNameOf(_ context.Context, p model.PersonID) (string, error) {
+func (s *nameSrc) get(p model.PersonID) (string, error) {
 	s.calls.Add(1)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -325,6 +378,28 @@ func (s *nameSrc) fail(err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.err = err
+}
+
+// profSrc is notify.Profiles over the three maps above: the playa name, the saved language
+// and the contact address. A failure set on one is that one's only.
+type profSrc struct {
+	names    *nameSrc
+	langs    *langSrc
+	contacts *contactSrc
+}
+
+var _ notify.Profiles = (*profSrc)(nil)
+
+func (p *profSrc) PlayaNameOf(_ context.Context, id model.PersonID) (string, error) {
+	return p.names.get(id)
+}
+
+func (p *profSrc) LanguageOf(_ context.Context, id model.PersonID) (string, error) {
+	return p.langs.get(id)
+}
+
+func (p *profSrc) ContactEmailOf(_ context.Context, id model.PersonID) (model.Email, error) {
+	return p.contacts.get(id)
 }
 
 // chanFake is a scriptable notify.Channel. fn, when set, decides each Send.
@@ -428,6 +503,7 @@ type rig struct {
 	addrs *addrSrc
 	langs *langSrc
 	names *nameSrc
+	conts *contactSrc
 	ch    *chanFake
 	vol   notify.Notifier // scoped "volunteers"
 	ppl   notify.Notifier // scoped "people"
@@ -448,20 +524,25 @@ func newRigOptions(t *testing.T, d db.DB) (*rig, notify.Options) {
 	r := &rig{
 		t: t, clk: clock.NewFake(epoch), cap: c,
 		rec: audittest.NewFake("notify"), az: authztest.NewFake(),
-		smtp:  smtp,
-		site:  &siteSrc{site: notify.Site{Name: "Test Burn", URL: siteURL, DefaultLanguage: "en", Terms: map[string]string{"shift": "duty"}}},
+		smtp: smtp,
+		site: &siteSrc{
+			profile: regional.Profile{Name: "Test Burn", PublicURL: siteURL, Language: "en"},
+			terms: map[string]settings.Forms{"shift": {
+				Singular: "duty", Plural: "duties", SingularTitle: "Duty", PluralTitle: "Duties"}},
+		},
 		ret:   &retSrc{s: smtp},
 		addrs: &addrSrc{m: map[model.PersonID]model.Email{}},
-		langs: &langSrc{m: map[model.PersonID]notify.Language{}},
+		langs: &langSrc{m: map[model.PersonID]string{}},
 		names: &nameSrc{m: map[model.PersonID]string{}},
+		conts: &contactSrc{m: map[model.PersonID]model.Email{}},
 		ch:    &chanFake{},
 	}
 	r.az.SetActor(actorFn)
 	o := notify.Options{
 		DB: d, Clock: r.clk, Logger: c.Logger(), Tracer: c.Tracer("notify"), Meter: c.Meter("notify"),
 		Audit: r.rec, Authz: r.az, Actor: actorFn,
-		Settings: r.smtp, Site: r.site,
-		Addresses: r.addrs, Languages: r.langs, Names: r.names,
+		Settings: r.smtp, Regional: r.site, Terms: r.site,
+		Accounts: r.addrs, Profiles: &profSrc{names: r.names, langs: r.langs, contacts: r.conts},
 		Channel: r.ch.factory, Hostname: testHostname,
 	}
 	return r, o
@@ -600,3 +681,6 @@ func closedPort(t testing.TB) int {
 func ignore(...any) {}
 
 func errOf[T any](_ T, err error) error { return err }
+
+// set is used by the integration tests only.
+var _ = (*contactSrc).set

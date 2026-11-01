@@ -493,7 +493,10 @@ func validOptions(t *testing.T, d db.DB) (people.Options, *rig) {
 		t: t, clk: clk, rec: rec, bus: bus, az: az, cap: c, log: log,
 		accts: newFakeAccounts(log), access: newFakeAccess(log), counter: &fakeCounter{}, pol: newPolicySrc(),
 	}
+	lookup, err := people.NewLookup(people.LookupOptions{DB: d, Tracer: c.Tracer("people")})
+	wantNoErr(t, err)
 	o := people.Options{
+		Lookup:     lookup,
 		DB:         d,
 		Clock:      clk,
 		Logger:     c.Logger(),

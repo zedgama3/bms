@@ -12,8 +12,9 @@ import (
 )
 
 // identityPart is the identity core part: local accounts, sessions and the break-glass superuser. It
-// is built after audit, whose recorder it takes (audit.md Proposed change 1), and after
-// settings, whose "accounts" Reader it takes (boundaries step 5).
+// is built after audit, whose recorder it takes (audit.md Proposed change 1), after
+// settings, whose "accounts" Reader it takes (boundaries step 5), and after notify, whose
+// Notifier it takes (step 8).
 var identityPart = part{
 	name:    "identity",
 	declare: declareIdentity,
@@ -43,12 +44,16 @@ func declareIdentity(a *assembly) error {
 // buildIdentity constructs the service (no I/O: it succeeds against db.None() and on a
 // read-only copy), hands the shell its Authenticator and mounts the accounts routes. The
 // permission checker and the permission lister are the authz.Lookup, built before it, and
-// the policy is read through the "accounts" settings Reader; the name source is a lazy
-// adapter, because people is built after identity.
+// the policy is read through the "accounts" settings Reader; the name source is the
+// people.Lookup and the Notifier the one notify scoped for "identity", both built before it.
 func buildIdentity(_ context.Context, a *assembly) error {
 	const op = "app.identity.build"
-	if a.deps.audit == nil || a.authzLookup == nil || a.settings == nil {
-		return errs.E(op, errs.Internal, errors.New("identity is built after audit, the authz lookup and settings"))
+	if a.deps.audit == nil || a.authzLookup == nil || a.settings == nil || a.identityLookup == nil || a.peopleLookup == nil {
+		return errs.E(op, errs.Internal, errors.New("identity is built after audit, the authz lookup, settings and the identity and people lookups"))
+	}
+	notifier, ok := a.notifiers[accountsOwner]
+	if !ok {
+		return errs.E(op, errs.Internal, errors.New("identity is built after notify, which scopes its Notifier"))
 	}
 	reader, err := a.settings.Scoped(accountsSettings)
 	if err != nil {
@@ -78,11 +83,12 @@ func buildIdentity(_ context.Context, a *assembly) error {
 		Signals:        bus,
 		Permissions:    a.authzLookup,
 		Lister:         a.authzLookup,
-		Names:          lazyNames{a: a},
+		Names:          a.peopleLookup,
 		Settings:       reader,
-		Notify:         lazyNotifier{a: a, owner: accountsOwner},
+		Notify:         notifier,
 		Alerter:        lazyAlerter{a: a},
 		Guard:          demoGuard(a), // nil unless demo mode
+		Lookup:         a.identityLookup,
 	})
 	if err != nil {
 		return err //nolint:wrapcheck // identity.New names itself

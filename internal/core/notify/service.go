@@ -90,12 +90,12 @@ type Service struct {
 	authz  authz.Authorizer
 	actorF authz.ActorFunc
 
-	settings  settings.Reader
-	site      SiteSource
-	addresses AddressSource
-	languages LanguageSource
-	names     NameSource
-	channel   ChannelFactory
+	settings settings.Reader
+	regional RegionalSource
+	terms    TermSource
+	accounts Accounts
+	profiles Profiles
+	channel  ChannelFactory
 
 	poll, lease, sendTimeout time.Duration
 	hostname                 string
@@ -143,8 +143,8 @@ func newService(o Options, st store) (*Service, error) {
 	}
 	s := &Service{
 		store: st, db: o.DB, clock: o.Clock, logger: o.Logger, tracer: o.Tracer, audit: o.Audit,
-		authz: o.Authz, actorF: o.Actor, settings: o.Settings, site: o.Site,
-		addresses: o.Addresses, languages: o.Languages, names: o.Names, channel: o.Channel,
+		authz: o.Authz, actorF: o.Actor, settings: o.Settings,
+		regional: o.Regional, terms: o.Terms, accounts: o.Accounts, profiles: o.Profiles, channel: o.Channel,
 		poll: o.PollInterval, lease: o.Lease, sendTimeout: o.SendTimeout, hostname: o.Hostname,
 		cat: newCatalogue(), stop: make(chan struct{}),
 	}

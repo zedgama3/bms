@@ -178,11 +178,14 @@ type Options struct {
 	// notice. Holders says who gets it; optional: nil means no notice.
 	Notify  notify.Notifier
 	Holders Holders
+	// Lookup is the five system-level reads (NamesOf, PlayaNameOf, LanguageOf, ConsentOf,
+	// ContactEmailOf); built before notify and identity; required.
+	Lookup *Lookup
 }
 
 // Validate fails errs.Invalid joining a validate.FieldError per nil dependency (fields
 // people.db, people.clock, people.logger, people.tracer, people.audit, people.signals,
-// people.authz, people.actor, people.session, people.accounts, people.access, people.audit_count, people.settings).
+// people.authz, people.actor, people.session, people.accounts, people.access, people.audit_count, people.settings, people.lookup).
 func (o Options) Validate() error {
 	v := validate.Errors{Op: "people.Options.Validate"}
 	for _, d := range []struct {
@@ -202,6 +205,7 @@ func (o Options) Validate() error {
 		{"people.access", o.Access == nil},
 		{"people.audit_count", o.AuditCount == nil},
 		{"people.settings", o.Settings == nil},
+		{"people.lookup", o.Lookup == nil},
 	} {
 		if d.nil {
 			v.Addf(d.field, codeRequired, "must be set")
@@ -235,6 +239,7 @@ type Service struct {
 	settings   settings.Reader
 	notify     notify.Notifier
 	holders    Holders
+	lookup     *Lookup
 	metrics    metrics
 	linked     atomic.Pointer[linkState]
 	cooldown   *cooldown
@@ -244,6 +249,31 @@ var (
 	_ Directory           = (*Service)(nil)
 	_ identity.NameSource = (*Service)(nil)
 )
+
+// NamesOf is Lookup.NamesOf.
+func (s *Service) NamesOf(ctx context.Context, ids []model.PersonID) (map[model.PersonID]string, error) {
+	return s.lookup.NamesOf(ctx, ids) //nolint:wrapcheck // the Lookup names itself
+}
+
+// ConsentOf is Lookup.ConsentOf.
+func (s *Service) ConsentOf(ctx context.Context, person model.PersonID, purpose Purpose) (bool, error) {
+	return s.lookup.ConsentOf(ctx, person, purpose) //nolint:wrapcheck // the Lookup names itself
+}
+
+// PlayaNameOf is Lookup.PlayaNameOf.
+func (s *Service) PlayaNameOf(ctx context.Context, person model.PersonID) (string, error) {
+	return s.lookup.PlayaNameOf(ctx, person) //nolint:wrapcheck // the Lookup names itself
+}
+
+// LanguageOf is Lookup.LanguageOf.
+func (s *Service) LanguageOf(ctx context.Context, person model.PersonID) (string, error) {
+	return s.lookup.LanguageOf(ctx, person) //nolint:wrapcheck // the Lookup names itself
+}
+
+// ContactEmailOf is Lookup.ContactEmailOf.
+func (s *Service) ContactEmailOf(ctx context.Context, person model.PersonID) (model.Email, error) {
+	return s.lookup.ContactEmailOf(ctx, person) //nolint:wrapcheck // the Lookup names itself
+}
 
 // New validates o, builds the service over postgres.Store and subscribes the
 // identity.account-created handler on Options.Signals. No I/O: it works against db.None()
@@ -277,7 +307,7 @@ func newService(o Options, st store) (*Service, error) {
 	s := &Service{
 		store: st, db: o.DB, clock: o.Clock, logger: o.Logger, tracer: o.Tracer, audit: o.Audit,
 		signals: o.Signals, authz: o.Authz, actorFn: o.Actor, sessionFn: o.Session, accounts: o.Accounts, access: o.Access,
-		auditCount: o.AuditCount, settings: o.Settings, notify: o.Notify, holders: o.Holders, metrics: m, cooldown: newCooldown(),
+		auditCount: o.AuditCount, settings: o.Settings, notify: o.Notify, holders: o.Holders, lookup: o.Lookup, metrics: m, cooldown: newCooldown(),
 	}
 	if err := o.Signals.Subscribe(identity.SignalAccountCreated, s.handleAccountCreated); err != nil {
 		return nil, fmt.Errorf("%s: subscribe: %w", op, err)

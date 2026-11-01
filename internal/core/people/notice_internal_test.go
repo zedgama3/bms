@@ -90,6 +90,11 @@ func newNoticeRig(t *testing.T, mods ...func(*Options)) *noticeRig {
 		Actor: actor, Session: identity.SessionFrom, Accounts: &wbAccounts{has: true}, Access: wbAccess{}, AuditCount: wbCounter{},
 		Settings: settingstest.NewFake("people", Settings), Notify: nf, Holders: h,
 	}
+	lk, err := newLookup(LookupOptions{DB: dbtest.NewFake(), Tracer: c.Tracer("people")}, st)
+	if err != nil {
+		t.Fatalf("newLookup: %v", err)
+	}
+	o.Lookup = lk
 	for _, m := range mods {
 		m(&o)
 	}
