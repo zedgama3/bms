@@ -36,7 +36,11 @@ func TestRun_HandlerContext_CarriesTheSystemMarker(t *testing.T) {
 		Actor: func(context.Context) (audit.Actor, bool) { return audit.Actor{}, false },
 	})
 	wantNoErr(t, err)
-	t.Cleanup(func() { _ = log.Close(context.Background()) }) //nolint:errcheck // cleanup
+	t.Cleanup(func() {
+		if err := log.Close(context.Background()); err != nil {
+			t.Errorf("Close: %v", err)
+		}
+	})
 
 	rec, err := log.Scoped("identity")
 	wantNoErr(t, err)
@@ -57,7 +61,7 @@ func TestRun_HandlerContext_CarriesTheSystemMarker(t *testing.T) {
 	}
 	for i, err := range recordErrs {
 		if err != nil {
-			t.Errorf("run %d: Record = %v (the ctx has no system marker?)", i, err)
+			t.Errorf("run %d: Record = %v, want nil", i, err)
 		}
 	}
 	files, err := filepath.Glob(filepath.Join(dir, filepath.FromSlash(audit.SpoolDirName), "*"))
@@ -68,6 +72,7 @@ func TestRun_HandlerContext_CarriesTheSystemMarker(t *testing.T) {
 		wantNoErr(t, err)
 		all.Write(b)
 	}
+	// A missing marker would not fail Record: the entry would spool as an anonymous actor.
 	if n := strings.Count(all.String(), `"kind":"system"`); n != 2 {
 		t.Errorf("%d system entries spooled, want 2:\n%s", n, all.String())
 	}

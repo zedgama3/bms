@@ -263,9 +263,9 @@ func sortRows(ws []*row) {
 	})
 }
 
-// Run calls the handler registered for name with j (jobs.InJob true, no transaction) and
-// returns its error unchanged. It fills j.Name when empty. Fails errs.NotFound when no
-// handler is registered for name. A row Run drives is tracked like an enqueued one: when
+// Run calls the handler registered for name with j (jobs.InJob true, the audit system marker
+// set as the runner sets it, no transaction) and returns its error unchanged. It fills j.Name
+// when empty. Fails errs.NotFound when no handler is registered for name. A row Run drives is tracked like an enqueued one: when
 // j.Key is set the key's row is running during the call (a Key with no row, because a test
 // drove the handler directly, gets one, which Queued then shows while it waits); a keyless j
 // finds its row by j.ID when it has one, else has none. The row leaves running as the queue

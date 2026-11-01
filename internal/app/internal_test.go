@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
@@ -841,8 +840,9 @@ func TestLazyPermissions_DeniesUntilAuthzSetsTheChecker(t *testing.T) {
 	}
 }
 
-// The built route sets, not hand-made input: only accounts' GET /session is public (the
-// shell asks it before anyone has signed in), and every audit route is signed in.
+// The built route sets, not hand-made input: every accounts route is public exactly when
+// identity marks it public (the shell asks GET /session before anyone has signed in; sign-in,
+// sign-up and the password flows are public too), and every audit route is signed in.
 func TestAccountRoutes_PublicMapsToAccessPublic(t *testing.T) {
 	a := builtCore(t)
 	sets := map[string]module.ModuleRoutes{}
@@ -853,26 +853,32 @@ func TestAccountRoutes_PublicMapsToAccessPublic(t *testing.T) {
 	if !ok || len(acc.Routes) == 0 {
 		t.Fatalf("no accounts route set among %d sets", len(a.routeSets))
 	}
-	var public []string
+	src := a.identity.Routes()
+	if len(acc.Routes) != len(src) {
+		t.Fatalf("accounts set has %d routes, identity has %d", len(acc.Routes), len(src))
+	}
+	built := map[string]module.Access{}
 	for _, r := range acc.Routes {
-		if r.Access == module.AccessPublic {
-			public = append(public, r.Method+" "+r.Pattern)
+		built[r.Method+" "+r.Pattern] = r.Access
+	}
+	var public int
+	for _, r := range src {
+		want := module.AccessSignedIn
+		if r.Public {
+			want = module.AccessPublic
+			public++
 		}
-	}
-	if !slices.Contains(public, "GET /session") {
-		t.Errorf("public accounts routes = %v, want GET /session among them", public)
-	}
-	var signedIn bool
-	for _, r := range acc.Routes {
-		if r.Method == http.MethodGet && r.Pattern == "/session" {
+		got, ok := built[r.Method+" "+r.Pattern]
+		if !ok {
+			t.Errorf("route %s %s missing from the accounts set", r.Method, r.Pattern)
 			continue
 		}
-		if r.Access == module.AccessSignedIn {
-			signedIn = true
+		if got != want {
+			t.Errorf("route %s %s is %v, want %v", r.Method, r.Pattern, got, want)
 		}
 	}
-	if !signedIn {
-		t.Error("no accounts route other than GET /session is signed-in")
+	if public == 0 || public == len(src) {
+		t.Errorf("%d of %d identity routes public; the check needs both kinds", public, len(src))
 	}
 	aud, ok := sets["audit"]
 	if !ok || len(aud.Routes) == 0 {
@@ -888,16 +894,7 @@ func TestAccountRoutes_PublicMapsToAccessPublic(t *testing.T) {
 // builtCore builds the real parts over a database that refuses everything (the openapi path).
 func builtCore(t *testing.T) *assembly {
 	t.Helper()
-	a, _ := provisionAssembly(t)
-	a.cfg = config.Default()
-	a.cfg.Instance.Name = "zqtest"
-	a.cfg.Data.Dir = t.TempDir()
-	a.cfg.Session.Key = secret.New(placeholderSessionKey)
-	a.corePerms, a.parts = nil, coreParts
-	if err := a.buildParts(context.Background()); err != nil {
-		t.Fatalf("buildParts over db.None(): %v", err)
-	}
-	return a
+	return builtCoreWith(t, func(*config.Config) {})
 }
 
 func TestBuildParts_AgainstNoDatabase_SetsAuthenticatorRoutesAndRunnable(t *testing.T) {
