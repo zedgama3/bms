@@ -429,7 +429,7 @@ func (r *checkReport) api(ctx context.Context, a *assembly) {
 }
 
 // jobs prints, under a "jobs" heading, each job name this build registers with its owner and
-// schedule (jobs.md): the runner's own, audit.purge and what each module registers in Start.
+// schedule (jobs.md): the runner's own, auditlog's audit.purge and what each module registers in Start.
 // It starts the built modules to learn that (Start does no I/O and succeeds on a database that
 // refuses every statement; closeQuiet stops them) and reads no database. A module whose Start
 // fails is shown in the section, beside the jobs registered so far, and does not fail the

@@ -141,7 +141,9 @@ func (k ActorKind) String() string {
 	}
 }
 
-func parseActorKind(s string) (ActorKind, bool) {
+// ParseActorKind returns the ActorKind named s ("person", "anonymous", "operator", "system"),
+// and false for any other text. Pure.
+func ParseActorKind(s string) (ActorKind, bool) {
 	for k := ActorPerson; k <= ActorSystem; k++ {
 		if actorKindNames[k] == s {
 			return k, true

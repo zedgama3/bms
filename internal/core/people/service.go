@@ -113,7 +113,7 @@ type Access interface {
 	DeletePerson(ctx context.Context, person model.PersonID) (int, error)
 }
 
-// AuditCounter is audit.Log's CountAbout, for the deletion report.
+// AuditCounter is auditlog.Service's CountAbout, for the deletion report.
 type AuditCounter interface {
 	CountAbout(ctx context.Context, person model.PersonID) (int, error)
 }

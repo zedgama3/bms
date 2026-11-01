@@ -9766,16 +9766,20 @@
       "name": "volunteers"
     },
     {
-      "description": "The audit log: who did what and who saw what.",
-      "name": "audit"
-    },
-    {
       "description": "Roles, grants and separation-of-duties rules: who may do what.",
       "name": "access"
     },
     {
       "description": "What the regional configures while bms runs: values, terminology and the public document.",
       "name": "settings"
+    },
+    {
+      "description": "Background work: what is registered, what ran last, what waits and what failed, and three admin actions. Every route needs a signed-in person; the permission is noted per route.",
+      "name": "jobs"
+    },
+    {
+      "description": "The audit log: who did what and who saw what.",
+      "name": "audit"
     },
     {
       "description": "Who is signed in, and the local accounts: sign-up, sign-in, passwords and the account admin.",
@@ -9792,10 +9796,6 @@
     {
       "description": "The events the regional puts on: dates and zone, kinds, schedule, closing, and the modules' set-up.",
       "name": "events"
-    },
-    {
-      "description": "Background work: what is registered, what ran last, what waits and what failed, and three admin actions. Every route needs a signed-in person; the permission is noted per route.",
-      "name": "jobs"
     },
     {
       "description": "Notifications: template wording, a test message and the outbox. Every route needs a signed-in person; the permission is noted per route.",

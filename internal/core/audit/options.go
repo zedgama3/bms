@@ -6,11 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/zedgama3/bms/internal/core/authz/perm"
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/telemetry"
 	"github.com/zedgama3/bms/internal/lib/clock"
-	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/lib/validate"
 	"github.com/zedgama3/bms/internal/model"
 )
@@ -62,26 +60,18 @@ type TitleSource interface {
 	TitlesOf(ctx context.Context, person model.PersonID) ([]string, error)
 }
 
-// PermissionChecker decides one site-wide permission for the actor in ctx: the same shape
-// as api.PermissionChecker. authz implements it (M2); nil denies everything with
-// errs.Permission, so Search and Export fail closed in M1.
-type PermissionChecker interface {
-	Allow(ctx context.Context, p perm.Permission) error
-}
-
 // Options builds the log. app copies config.Instance.Name and config.Data.Dir in.
 type Options struct {
 	DB             db.DB
 	Clock          clock.Clock
 	Logger         *slog.Logger
 	Tracer         telemetry.Tracer
-	Meter          telemetry.Meter   // optional: nil records no metrics
-	Instance       string            // config instance.name grammar: 1..64, [a-z0-9]([a-z0-9-]*[a-z0-9])?
-	DataDir        string            // the spool lives in filepath.Join(DataDir, SpoolDirName)
-	Actor          ActorFunc         // required
-	Titles         TitleSource       // the authz.Lookup; required
-	Permissions    PermissionChecker // optional (M1: nil, deny)
-	ImportInterval time.Duration     // 0 = DefaultImportInterval; else 1s..10m
+	Meter          telemetry.Meter // optional: nil records no metrics
+	Instance       string          // config instance.name grammar: 1..64, [a-z0-9]([a-z0-9-]*[a-z0-9])?
+	DataDir        string          // the spool lives in filepath.Join(DataDir, SpoolDirName)
+	Actor          ActorFunc       // required
+	Titles         TitleSource     // the authz.Lookup; required
+	ImportInterval time.Duration   // 0 = DefaultImportInterval; else 1s..10m
 }
 
 // Validate fails errs.Invalid joining a validate.FieldError per problem: "audit.db",
@@ -126,11 +116,4 @@ func (o Options) interval() time.Duration {
 		return DefaultImportInterval
 	}
 	return o.ImportInterval
-}
-
-// denyAll is the PermissionChecker used when Options.Permissions is nil: it fails closed.
-type denyAll struct{}
-
-func (denyAll) Allow(context.Context, perm.Permission) error {
-	return errs.E("audit.denyAll.Allow", errs.Permission, errNoChecker)
 }

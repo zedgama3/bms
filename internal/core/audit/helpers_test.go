@@ -18,7 +18,6 @@ import (
 	"github.com/jackc/pgx/v5/pgconn" //nolint:depguard // flakyDB must implement db.DB, whose Exec returns pgconn.CommandTag
 
 	"github.com/zedgama3/bms/internal/core/audit"
-	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/db/dbtest"
 	"github.com/zedgama3/bms/internal/core/telemetry/telemetrytest"
@@ -68,7 +67,7 @@ func superuser(p model.PersonID) audit.Actor {
 	return audit.Actor{Kind: audit.ActorPerson, Person: p, Superuser: true}
 }
 
-// --- fake TitleSource and PermissionChecker ---------------------------------------------
+// --- fake TitleSource ---------------------------------------------
 
 type fakeTitles struct {
 	mu     sync.Mutex
@@ -91,28 +90,6 @@ func (f *fakeTitles) callCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return len(f.calls)
-}
-
-type fakePerms struct {
-	mu    sync.Mutex
-	allow map[authz.Permission]bool
-	asked []authz.Permission
-}
-
-func (f *fakePerms) Allow(_ context.Context, p authz.Permission) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.asked = append(f.asked, p)
-	if f.allow[p] {
-		return nil
-	}
-	return errs.E("test.fakePerms.Allow", errs.Permission, errors.New("denied"))
-}
-
-func (f *fakePerms) askedFor() []authz.Permission {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return append([]authz.Permission(nil), f.asked...)
 }
 
 // --- fault-injecting DB -----------------------------------------------------------------
@@ -140,12 +117,6 @@ func (f *flakyDB) setExecHook(h func(sql string, args []any) error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.execHook = h
-}
-
-func (f *flakyDB) queryCount() int {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.queries
 }
 
 func (f *flakyDB) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
@@ -210,7 +181,6 @@ type fx struct {
 	dir    string
 	cap    *telemetrytest.Capture
 	titles *fakeTitles
-	perms  *fakePerms
 	// imported receives one signal per "audit spool imported" log line.
 	imported chan struct{}
 }
@@ -224,20 +194,18 @@ func newFx(t testing.TB, mods ...func(*audit.Options)) *fx {
 		dir:      t.TempDir(),
 		cap:      telemetrytest.New(t),
 		titles:   &fakeTitles{titles: map[model.PersonID][]string{}},
-		perms:    &fakePerms{allow: map[authz.Permission]bool{}},
 		imported: make(chan struct{}, 64),
 	}
 	f.opts = audit.Options{
-		DB:          f.db,
-		Clock:       f.clk,
-		Logger:      slog.New(notifyHandler{inner: f.cap.Logger().Handler(), ch: f.imported}),
-		Tracer:      f.cap.Tracer("audit"),
-		Meter:       f.cap.Meter("audit"),
-		Instance:    "test-copy",
-		DataDir:     f.dir,
-		Actor:       sessionActor,
-		Titles:      f.titles,
-		Permissions: f.perms,
+		DB:       f.db,
+		Clock:    f.clk,
+		Logger:   slog.New(notifyHandler{inner: f.cap.Logger().Handler(), ch: f.imported}),
+		Tracer:   f.cap.Tracer("audit"),
+		Meter:    f.cap.Meter("audit"),
+		Instance: "test-copy",
+		DataDir:  f.dir,
+		Actor:    sessionActor,
+		Titles:   f.titles,
 	}
 	for _, m := range mods {
 		m(&f.opts)

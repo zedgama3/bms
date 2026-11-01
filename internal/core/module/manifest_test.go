@@ -72,7 +72,7 @@ func TestReservedNames_Pinned(t *testing.T) {
 	reserved := []string{
 		// core areas
 		"core", "people", "accounts", "access", "identity", "authz", "departments", "events",
-		"signals", "notify", "audit", "files", "jobs", "settings", "telemetry", "db", "module", "modules",
+		"signals", "notify", "audit", "auditlog", "files", "jobs", "settings", "telemetry", "db", "module", "modules",
 		// shell packages
 		"api", "app", "config", "web", "admin", "client", "regional",
 		// PostgreSQL

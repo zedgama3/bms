@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/zedgama3/bms/internal/core/audit/auditsettings"
+	"github.com/zedgama3/bms/internal/core/auditlog"
 	"github.com/zedgama3/bms/internal/core/files/filesettings"
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/notify"
@@ -32,7 +32,7 @@ const settingsArea = "settings"
 const (
 	accountsSettings = accountsArea // identity's keys, accounts.*
 	peopleSettings   = peopleArea   // people's keys, people.*
-	auditSettings    = auditsettings.Area
+	auditSettings    = auditlog.Area
 )
 
 // declareSettings adds the settings migration set and permissions. No I/O.
@@ -95,7 +95,7 @@ func settingsAreas(a *assembly) []settings.Area {
 	areas := []settings.Area{
 		{Name: accountsSettings, Core: true, Decls: identity.Settings, Check: identity.CheckSettings},
 		{Name: peopleSettings, Core: true, Decls: people.Settings},
-		{Name: auditSettings, Core: true, Decls: auditsettings.Settings},
+		{Name: auditSettings, Core: true, Decls: auditlog.Settings},
 		{Name: notifySettings, Core: true, Decls: notify.Settings},
 		{Name: filesSettings, Core: true, Decls: filesettings.Settings},
 	}

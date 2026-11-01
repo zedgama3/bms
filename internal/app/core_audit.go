@@ -24,18 +24,17 @@ var auditPart = part{
 	build:   buildAudit,
 }
 
-// declareAudit adds the audit migration set and permissions. No I/O.
+// declareAudit adds the audit migration set. No I/O.
 func declareAudit(a *assembly) error {
 	if err := a.addCoreSet(audit.Set); err != nil {
 		return err
 	}
-	a.corePerms = append(a.corePerms, audit.Permissions...)
 	return nil
 }
 
 // buildAudit constructs the log (no I/O: it succeeds against db.None() and on a read-only
-// copy), keeps it unscoped in a.deps for provision to scope per module, adds the "audit"
-// route set, and registers the importer as a runnable. The Close closer is a.closers().
+// copy), keeps it unscoped in a.deps for provision to scope per module, and registers the
+// importer as a runnable. The Close closer is a.closers().
 func buildAudit(_ context.Context, a *assembly) error {
 	if a.authzLookup == nil {
 		return errs.E("app.audit.build", errs.Internal, errors.New("audit is built after the authz lookup"))
@@ -45,24 +44,20 @@ func buildAudit(_ context.Context, a *assembly) error {
 		return err
 	}
 	log, err := audit.New(audit.Options{
-		DB:          a.dbc,
-		Clock:       a.clock,
-		Logger:      a.component("audit"),
-		Tracer:      tr,
-		Meter:       m,
-		Instance:    a.cfg.Instance.Name,
-		DataDir:     a.cfg.Data.Dir,
-		Actor:       identity.AuditActor,
-		Titles:      a.authzLookup,
-		Permissions: a.authzLookup,
+		DB:       a.dbc,
+		Clock:    a.clock,
+		Logger:   a.component("audit"),
+		Tracer:   tr,
+		Meter:    m,
+		Instance: a.cfg.Instance.Name,
+		DataDir:  a.cfg.Data.Dir,
+		Actor:    identity.AuditActor,
+		Titles:   a.authzLookup,
 	})
 	if err != nil {
 		return err //nolint:wrapcheck // audit.New names itself
 	}
 	a.deps.audit = log
-	if err := a.addCoreRoutes("audit", log.Routes(), log.OpenAPI()); err != nil {
-		return err
-	}
 	im := &importer{
 		log:    log,
 		logger: a.component("audit"),

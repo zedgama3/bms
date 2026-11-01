@@ -18,8 +18,6 @@ import (
 	"github.com/zedgama3/bms/internal/lib/errs"
 )
 
-var errNoChecker = errors.New("no permission checker is wired, so audit access is denied")
-
 // Instrument names (telemetry.md).
 const (
 	metricRecorded       = "bms.audit.recorded"
@@ -28,17 +26,10 @@ const (
 	metricSpoolFiles     = "bms.audit.spool_files"
 )
 
-// The areas and actions audit records for itself.
+// Span names, and the labels of the record metric and the failed-spool subtype.
 const (
-	ownArea       = "audit"
-	actionSearch  = Action("audit.searched")
-	actionExport  = Action("audit.exported")
-	actionPurged  = Action("audit.purged")
 	spanRecord    = "audit.record"
-	spanSearch    = "audit.search"
-	spanExport    = "audit.export"
 	spanImport    = "audit.import"
-	spanPurge     = "audit.purge"
 	viaDB         = "db"
 	viaSpool      = "spool"
 	subtypeFailed = "failed"
@@ -51,7 +42,6 @@ type Log struct {
 	logger   *slog.Logger
 	tracer   telemetry.Tracer
 	store    *postgres.Store
-	perms    PermissionChecker
 	spoolDir string
 	spool    *spool
 	encode   func(wireRecord) ([]byte, error) // the line encoder; a seam for fault injection in tests
@@ -114,14 +104,10 @@ func New(o Options) (*Log, error) {
 		logger:   o.Logger,
 		tracer:   o.Tracer,
 		store:    store,
-		perms:    o.Permissions,
 		spoolDir: dir,
 		encode:   encodeWire,
 		stop:     make(chan struct{}),
 		importMu: make(chan struct{}, 1),
-	}
-	if l.perms == nil {
-		l.perms = denyAll{}
 	}
 	l.spool = newSpool(dir, o.Clock, o.Logger)
 	if o.Meter != nil {

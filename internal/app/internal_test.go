@@ -241,7 +241,7 @@ func TestAssembly_CorePermsStartWithModulesRead(t *testing.T) {
 
 // coreOrder is the order in which the core's services plug in (app.md "How later core
 // services plug in"); coreParts must be a subsequence of it.
-var coreOrder = []string{"audit", "authz", "settings", "identity", "people", "departments", "events", "jobs", "notify", "files", "demo"}
+var coreOrder = []string{"audit", "authz", "settings", "jobs", "auditlog", "identity", "people", "departments", "events", "notify", "files", "demo"}
 
 func TestParts_OrderAndNames_Pinned(t *testing.T) {
 	pos := -1
@@ -734,13 +734,14 @@ func TestCoreParts_Declare_SetsPermissionsSignalAndCommand(t *testing.T) {
 	for _, d := range a.corePerms {
 		perms = append(perms, string(d.Name))
 	}
-	want := "core.modules.read,audit.search,audit.export," +
+	want := "core.modules.read," +
 		"access.roles.read,access.roles.manage,access.rules.manage,access.grants.read,access.grants.manage,access.department-grants.manage," +
 		"settings.read,settings.manage," +
+		"jobs.read,jobs.manage," +
+		"audit.search,audit.export," +
 		"accounts.read,accounts.manage," +
 		"people.directory.read,people.contacts.read,people.profiles.manage,people.data.export,people.data.delete," +
 		"departments.manage,departments.details.manage,events.manage," +
-		"jobs.read,jobs.manage," +
 		"notify.templates.manage,notify.outbox.manage"
 	if got := strings.Join(perms, ","); got != want {
 		t.Errorf("corePerms = %s, want %s (api first, then each part's in part order)", got, want)
@@ -885,8 +886,8 @@ func TestBuildParts_AgainstNoDatabase_SetsAuthenticatorRoutesAndRunnable(t *test
 			t.Errorf("route set %s has %d routes and %d bytes of fragment", rs.Module, len(rs.Routes), len(rs.OpenAPI))
 		}
 	}
-	if strings.Join(areas, ",") != "audit,access,settings,accounts,people,departments,events,jobs,notify" {
-		t.Errorf("route sets = %v, want audit, access, settings, accounts, people, departments, events, jobs, notify", areas)
+	if strings.Join(areas, ",") != "access,settings,jobs,audit,accounts,people,departments,events,notify" {
+		t.Errorf("route sets = %v, want access, settings, jobs, audit, accounts, people, departments, events, notify", areas)
 	}
 	var runnables []string
 	for _, r := range a.runnables {

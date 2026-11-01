@@ -25,7 +25,7 @@ copy and can fork it. Features are modules.
 ## Status
 
 - **Phase:** 1, first module (core M0–M4 done 2026-10-23)
-- **Last updated:** 2026-10-31
+- **Last updated:** 2026-11-01
 - **Done 2026-10-16:**
   - Repo scaffolded: plan, agents, skills, lint rules, dev compose. Methodology carried over
     from Sojourn (D7).

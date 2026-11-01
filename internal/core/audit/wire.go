@@ -79,6 +79,17 @@ func toWire(r Record) wireRecord {
 	return w
 }
 
+// MarshalJSON renders r in the wire form: the spool line format, one element of a search
+// response, one line of a views export. It holds names and IDs only. Cannot fail in practice;
+// the error is encoding/json's.
+func (r Record) MarshalJSON() ([]byte, error) {
+	b, err := json.Marshal(toWire(r))
+	if err != nil {
+		return nil, fmt.Errorf("encode record: %w", err)
+	}
+	return b, nil
+}
+
 // encodeWire is the default spool/export line encoder: one JSON object, no trailing newline.
 func encodeWire(w wireRecord) ([]byte, error) {
 	b, err := json.Marshal(w)
@@ -137,7 +148,7 @@ func fromWire(w wireRecord) (Record, error) {
 	if rec.Outcome, err = ParseOutcome(w.Outcome); err != nil {
 		return Record{}, badField("outcome")
 	}
-	kind, ok := parseActorKind(w.Actor.Kind)
+	kind, ok := ParseActorKind(w.Actor.Kind)
 	if !ok {
 		return Record{}, badField("actor.kind")
 	}
@@ -198,44 +209,4 @@ func toRow(r Record) postgres.Row {
 		row.Level = r.Level.String()
 	}
 	return row
-}
-
-// fromRow converts a stored row back to a record. A value the schema's CHECK constraints
-// should have refused fails errs.Internal (a broken invariant, not bad input).
-func fromRow(row postgres.Row) (Record, error) {
-	const op = "audit.fromRow"
-	rec := Record{
-		ID:       row.ID,
-		At:       row.At.UTC(),
-		Instance: row.Instance,
-		TraceID:  row.TraceID,
-		Spooled:  row.Spooled,
-		Entry: Entry{
-			Action:  Action(row.Action),
-			Subject: row.Subject,
-			Record:  Ref{Kind: row.RecordKind, ID: row.RecordID},
-			Fields:  row.Fields,
-			Reason:  row.Reason,
-			Actor: Actor{
-				Person:    row.ActorPerson,
-				Superuser: row.ActorSuperuser,
-				Titles:    row.ActorTitles,
-			},
-		},
-	}
-	var err error
-	if rec.Outcome, err = ParseOutcome(row.Outcome); err != nil {
-		return Record{}, errs.E(op, errs.Internal, errors.New("stored outcome is unknown"))
-	}
-	kind, ok := parseActorKind(row.ActorKind)
-	if !ok {
-		return Record{}, errs.E(op, errs.Internal, errors.New("stored actor kind is unknown"))
-	}
-	rec.Actor.Kind = kind
-	if row.Level != "" {
-		if rec.Level, err = model.ParseSensitivity(row.Level); err != nil {
-			return Record{}, errs.E(op, errs.Internal, errors.New("stored level is unknown"))
-		}
-	}
-	return rec, nil
 }

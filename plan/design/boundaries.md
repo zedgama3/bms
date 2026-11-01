@@ -238,10 +238,10 @@ type Options struct {
     Clock    clock.Clock
     Logger   *slog.Logger
     Tracer   telemetry.Tracer
-    Meter    telemetry.Meter
     Authz    authz.Authorizer // the Lookup
     Actor    authz.ActorFunc  // identity.Actor
     Settings settings.Reader  // scoped "audit"
+    Audit    audit.Recorder   // scoped "audit"; required
     Jobs     jobs.Registrar   // scoped "audit": Start registers audit.purge
 }
 
@@ -672,8 +672,8 @@ No screen changes. Paths the web calls change in two steps: `web/src/shell` (`pu
 | 3 | `authz.NewLookup` | db, declared permissions, departments.Lookup, `identity.Actor` |
 | 4 | `audit.New` | db, `identity.AuditActor`, authz.Lookup (titles) |
 | 5 | `authz.New` | audit, signals, authz.Lookup |
-| 6 | `jobs.New` | audit, authz.Lookup, the dispatcher |
-| 7 | `settings.New` | audit, authz.Lookup, the areas (declarations only) |
+| 6 | `settings.New` | audit, authz.Lookup, the areas (declarations only) |
+| 7 | `jobs.New` | audit, authz.Lookup, the dispatcher |
 | 8 | `auditlog.New` | audit (none at build: its own store), authz.Lookup, settings "audit", jobs "audit" |
 | 9 | `departments.New`, `events.New` | audit, signals, authz.Lookup, departments.Lookup |
 | 10 | `files.New` | audit, authz.Lookup, settings "files", objects, jobs "files", `demo.FileCeiling` when demo mode |
@@ -824,7 +824,7 @@ None. Q1–Q6 were answered by the owner on 2026-10-31 and are decisions 12 (Q1)
 Applied by `spec-editor` after approval, in the step that needs each.
 
 1. *(applied 2026-10-31)* **`plan/00-principles.md`**, Engineering tenets: add **5. App wires, it never decides** and **6. No hidden two-way dependencies**, with the two paragraphs under Behavior, "The tenets" (shortened to the principle and one sentence of consequence each).
-2. **`plan/07-abstractions.md`** *(rules 11 and 12 and the "Late-bound seams" section applied 2026-10-31; the entry edits and new entries pending: land with their steps)*:
+2. **`plan/07-abstractions.md`** *(rules 11 and 12 and the "Late-bound seams" section applied 2026-10-31; partly applied 2026-11-01, step 6: the new **auditlog** entry, the **audit** entry losing search, export, retention and the settings, and `auditlog` in the core diagram; the rest of the entry edits and the new entries pending: land with their steps)*:
    - rule 11 (app wires) and rule 12 (no hidden two-way dependencies; the seam table) under "Layers and dependency rules";
    - a new section **"Late-bound seams"** with the table (18 rows at step 1, 19 after A1, "None." at step 13);
    - the **app** entry: "Doesn't do: anything any assembled package does; parse a setting; implement a package's seam except by forwarding";
@@ -837,14 +837,14 @@ Applied by `spec-editor` after approval, in the step that needs each.
 6. **`.golangci.yml`**: depguard rule `app-no-stores` (Behavior). **`Makefile`**: `imports` runs the seam test; new `arch-report` target. **`scripts/arch-report.sh`**: new.
 7. *(applied 2026-10-31)* **`.claude/skills/design-spec/SKILL.md`**, checklist: "- [ ] For each dependency: what does this need that is built after it? (If anything, the design names the split; nothing is late-bound.)" and "- [ ] Does any of this belong in app? (Only constructors, forwarding and lifecycle may.)". **`.claude/agents/architect.md`**, Rules: the same two questions as bullets.
 8. *(applied 2026-10-31)* **`.claude/agents/go-reviewer.md`**, check 3 Boundaries: "- new code in `internal/app` that is not a constructor call, a shape conversion, a declaration collection or lifecycle (app wires, it never decides)" and "- a new type in `internal/app` that reads the assembly after construction, or a func literal capturing it, that is not in the seam table of `07-abstractions.md`".
-9. **`.claude/skills/go-conventions/SKILL.md`**, Layers *(the sentence "A core package reads its own settings area…" applied 2026-11-01, step 5; the rest lands with its steps)*: add `internal/core/auditlog`, `regional`, `datarights` to the core list; the sentence "A core package reads its own settings area through a `settings.Reader` in its `Options`; it never receives a parsed policy from app." and "A core area's `Routes()` returns `[]httpx.Route`; app converts with `module.CoreRoutes`."
+9. **`.claude/skills/go-conventions/SKILL.md`**, Layers *(the sentence "A core package reads its own settings area…" applied 2026-11-01, step 5; partly applied 2026-11-01, step 6: `auditlog` added to the core list, which is an open-ended example list, so `regional` and `datarights` join it with their steps; the rest lands with its steps)*: add `internal/core/auditlog`, `regional`, `datarights` to the core list; the sentence "A core package reads its own settings area through a `settings.Reader` in its `Options`; it never receives a parsed policy from app." and "A core area's `Routes()` returns `[]httpx.Route`; app converts with `module.CoreRoutes`."
    - *(applied 2026-10-31)* "a core package takes a seam as an `Options` or `Decl` field, never as a method argument it retains" (A1). The rest of this item lands with its steps.
 10. **`plan/design/app.md`**: remove "The superuser alert", the four lazy amendments (2026-10-19, 2026-10-21, the demo adapters of 2026-10-28), `authzActor`/`auditActor`; replace "How later core services plug in" with the build order table above; the Imports section drops `core/demo/postgres`, `core/notify/postgres`, `core/notify/smtp`, `core/notify/channel` and adds `core/auditlog`, `core/regional`, `core/datarights`; narratives go to `history/app.md`.
-11. **`plan/design/audit.md`**: the recorder keeps F1–F14 and the spool; Search, Export, CountAbout, retention, `audit.search|export`, the settings and the routes move to a new section "The log reader (`auditlog`)" with F15–F22 unchanged; `Options.Permissions` removed, `Titles` required; `WithSystem`, `WithOperator` and the actor order added.
+11. *(applied 2026-11-01, step 6; the reader's text lives in `auditlog.md` and `audit.md` keeps a pointer section; the failure rows that moved are F23 to F31, F40, F41, F44, not F15 to F22, which are the recorder's)* **`plan/design/audit.md`**: the recorder keeps F1–F14 and the spool; Search, Export, CountAbout, retention, `audit.search|export`, the settings and the routes move to a new section "The log reader (`auditlog`)" with F15–F22 unchanged; `Options.Permissions` removed, `Titles` required; `WithSystem`, `WithOperator` and the actor order added.
 12. (applied 2026-11-01, step 4; see E2) **`plan/design/authz.md`**: `Lookup` and `LookupOptions`; `Departments` moves to the Lookup; the Service forwards decisions; F1–F16, F67–F71 are the Lookup's.
 13. *(partly applied 2026-11-01, step 5: `Options.Settings` replaces `PolicySource`; the rest lands with steps 8–9)* **`plan/design/identity.md`**: `Lookup`, `Actor`, `AuditActor`; `Options.Settings` replaces `PolicySource`; `Holders` and `Alerts` replace `Alerter`; "The superuser alert" section moved in from app.md verbatim; identity built after notify and authz.
 14. *(partly applied 2026-11-01, step 5: `Options.Settings` replaces `Policy`/`PolicySource`; the rest lands with step 8)* **`plan/design/people.md`**: `Lookup`; the data-rights sections (export, deletion, requests, the notice, the two commands, their routes, F40–F58, the signal `people.deletion-requested`) move to datarights.md; people answers as a `PeopleSource`; `Options` loses `Access`, `AuditCount`, `Notify`, `Holders`, `Policy` and gains `Lookup`, `Settings`.
-15. **New `plan/design/datarights.md`**, **`regional.md`**, **`auditlog.md`**: written by `spec-editor` from the moved sections and this spec's Interface, each with its own Summary; README rows added as Approved-on-approval-of-this-spec.
+15. *(partly applied 2026-11-01, step 6: `auditlog.md` and its README row written; `datarights.md` and `regional.md` pending)* **New `plan/design/datarights.md`**, **`regional.md`**, **`auditlog.md`**: written by `spec-editor` from the moved sections and this spec's Interface, each with its own Summary; README rows added as Approved-on-approval-of-this-spec.
 16. *(partly applied 2026-11-01, step 5: `Settings` replaces `SMTPSource` and `RetentionSource`, `SMTPFromSettings` exported; the rest lands with steps 6–10)* **`plan/design/notify.md`**: the six seams replaced by `Settings`, `Regional`, `Terms`, `Accounts`, `Profiles`, `Channel`; `AlertSender`, `Alerts`, `Probe`; the delivery rules moved in; the imports line gains `core/regional` and `core/settings`.
 17. **`plan/design/settings.md`**: regional profile, public document, theme, logo and the `regional` area move to regional.md; `Options.Files` removed; routes reduced to four.
 18. **`plan/design/files.md`**: `Settings`, `Options.Settings`, `Options.Ceiling`, `Options.Jobs`, `Purge`; `PolicySource` removed; `filesettings` removed.
@@ -865,3 +865,5 @@ Applied by `spec-editor` after approval, in the step that needs each.
 - **E2, 2026-11-01** (erratum): the Lookup's failure modes are authz.md's decision rows (F1–F16, F67–F71); the earlier text cited F20 and F21, which are `CreateRole` rows.
 - **D2, 2026-11-01** (owner, from step 4's review): `authz.Options` keeps only Logger, Tracer, Audit, Signals and Lookup; the Service uses the Lookup's DB, clock, actor and catalogue, so the two cannot diverge.
 - **D3, 2026-11-01** (staging, forced by an import cycle): the files part of step 5 (`files.Settings`, `files.Options.Settings`, removing `filesPolicy` and `filesettings`) moves to step 7, because files cannot import settings until regional takes the logo out of settings. Step 5 also exports `notify.SMTPFromSettings` for `bms check` until step 10.
+- **E3, 2026-11-01** (erratum): item 11's F15–F22 are `Record` rows; the reader's rows are F23–F31, F40, F41, F44. `auditlog.Options` also has `Audit audit.Recorder` (scoped "audit", required), which build-order row 8 implies and the Options list omitted.
+- **D4, 2026-11-01** (step 6 review): `auditlog`'s purge is unexported (job-only) and `auditlog.Options` drops the unused `Meter`; the build-order table lists settings before jobs, as built.

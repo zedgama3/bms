@@ -1,10 +1,10 @@
--- Store search (Log.Search): an actor is set (served by audit_entry_actor_idx).
+-- Store search (Service.Search): an actor is set (served by audit_entry_actor_idx).
 -- Newest first, keyset on (at, id). Every filter is optional: pass NULL for "any". Pass
 -- limit = Query.Limit + 1; when limit rows come back, Page.Next is the at and id of the
 -- last row *returned* (row Query.Limit), and the extra row is dropped.
 --
 -- Four files share one signature and differ only in the equality that opens the index
--- (search_entries.sql: none; _by_actor, _by_subject, _by_record). Log.Search picks the first
+-- (search_entries.sql: none; _by_actor, _by_subject, _by_record). Service.Search picks the first
 -- that applies: record, then subject, then actor, else none, and passes every filter to
 -- it, so combined filters work. The key must be non-NULL in its file. They are separate so
 -- the plan does not depend on the driver's plan cache: an "$n IS NULL OR col = $n" test

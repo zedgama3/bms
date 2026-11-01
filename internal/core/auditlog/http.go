@@ -1,4 +1,4 @@
-package audit
+package auditlog
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/lib/httpx"
 	"github.com/zedgama3/bms/internal/lib/validate"
@@ -29,17 +30,17 @@ const (
 
 // reader is the part of *Log the handlers call, so they are tested over a fake.
 type reader interface {
-	Search(ctx context.Context, q Query) (Page, error)
+	Search(ctx context.Context, q audit.Query) (audit.Page, error)
 	Export(ctx context.Context, person model.PersonID, w io.Writer) (int, error)
 }
 
 // Routes lists GET /entries and GET /people/{person}/views. Handlers are thin: parse the
 // query, call Search or Export, httpx.Fail on error. Cannot fail.
-func (l *Log) Routes() []httpx.Route { return routesOver(l, l.logger) }
+func (s *Service) Routes() []httpx.Route { return routesOver(s, s.logger) }
 
 // OpenAPI returns the fragment for those routes. Cannot fail (embedded; a test proves it
 // parses and names exactly the routes).
-func (l *Log) OpenAPI() []byte { return append([]byte(nil), openAPIFragment...) }
+func (s *Service) OpenAPI() []byte { return append([]byte(nil), openAPIFragment...) }
 
 func routesOver(r reader, logger *slog.Logger) []httpx.Route {
 	return []httpx.Route{
@@ -50,8 +51,8 @@ func routesOver(r reader, logger *slog.Logger) []httpx.Route {
 
 // pageBody is the JSON body of GET /entries.
 type pageBody struct {
-	Records []wireRecord `json:"records"`
-	Next    string       `json:"next,omitempty"`
+	Records []audit.Record `json:"records"`
+	Next    string         `json:"next,omitempty"`
 }
 
 func entriesHandler(svc reader) http.Handler {
@@ -66,9 +67,9 @@ func entriesHandler(svc reader) http.Handler {
 			httpx.Fail(w, r, err)
 			return
 		}
-		body := pageBody{Records: make([]wireRecord, len(page.Records)), Next: string(page.Next)}
-		for i, rec := range page.Records {
-			body.Records[i] = toWire(rec)
+		body := pageBody{Records: page.Records, Next: string(page.Next)}
+		if body.Records == nil {
+			body.Records = []audit.Record{}
 		}
 		if err := httpx.WriteJSON(w, http.StatusOK, body); err != nil && !errs.Is(err, errs.Canceled) {
 			httpx.Fail(w, r, err)
@@ -77,10 +78,10 @@ func entriesHandler(svc reader) http.Handler {
 }
 
 // parseQuery reads the query string, reporting every bad parameter under "query.<name>".
-func parseQuery(vals url.Values) (Query, error) {
-	const op = "audit.parseQuery"
+func parseQuery(vals url.Values) (audit.Query, error) {
+	const op = "auditlog.parseQuery"
 	var (
-		q Query
+		q audit.Query
 		v = validate.Errors{Op: op}
 	)
 	id := func(name string) model.PersonID {
@@ -90,39 +91,39 @@ func parseQuery(vals url.Values) (Query, error) {
 		}
 		p, err := model.ParseID[model.PersonID](s)
 		if err != nil {
-			v.Addf("query."+name, codeMalformed, "must be a UUID")
+			v.Addf("query."+name, validate.CodeMalformed, "must be a UUID")
 		}
 		return p
 	}
 	for name, v2 := range vals {
 		if len(v2) > 1 {
-			v.Addf("query."+name, codeMalformed, "may be given once")
+			v.Addf("query."+name, validate.CodeMalformed, "may be given once")
 		}
 	}
 	q.Actor = id("actor")
 	q.Subject = id("subject")
 	q.Record.Kind = vals.Get("record_kind")
 	if s := vals.Get("record_id"); s != "" {
-		rid, err := model.ParseID[RecordID](s)
+		rid, err := model.ParseID[audit.RecordID](s)
 		if err != nil {
-			v.Addf("query.record_id", codeMalformed, "must be a UUID")
+			v.Addf("query.record_id", validate.CodeMalformed, "must be a UUID")
 		}
 		q.Record.ID = rid
 	}
 	q.Area = vals.Get("area")
-	q.Action = Action(vals.Get("action"))
-	q.After = Cursor(vals.Get("after"))
+	q.Action = audit.Action(vals.Get("action"))
+	q.After = audit.Cursor(vals.Get("after"))
 	if s := vals.Get("superuser"); s != "" {
 		b, err := strconv.ParseBool(s)
 		if err != nil {
-			v.Addf("query.superuser", codeMalformed, "must be true or false")
+			v.Addf("query.superuser", validate.CodeMalformed, "must be true or false")
 		}
 		q.SuperuserOnly = b
 	}
 	if s := vals.Get("limit"); s != "" {
 		n, err := strconv.Atoi(s)
 		if err != nil {
-			v.Addf("query.limit", codeMalformed, "must be a whole number")
+			v.Addf("query.limit", validate.CodeMalformed, "must be a whole number")
 		}
 		q.Limit = n
 	}
@@ -132,7 +133,7 @@ func parseQuery(vals url.Values) (Query, error) {
 	}
 	q.Within = model.TimeRange{Start: from, End: to}
 	if err := v.Err(); err != nil {
-		return Query{}, err //nolint:wrapcheck // Err already carries Op and errs.Invalid
+		return audit.Query{}, err //nolint:wrapcheck // Err already carries Op and errs.Invalid
 	}
 	// The same rules Search applies, answered here under the parameter names.
 	if fields := validate.Fields(q.Validate()); len(fields) > 0 {
@@ -141,7 +142,7 @@ func parseQuery(vals url.Values) (Query, error) {
 				Field: "query." + queryParam(fe.Field), Code: fe.Code, Params: fe.Params, Reason: fe.Reason,
 			}))
 		}
-		return Query{}, v.Err() //nolint:wrapcheck // Err already carries Op and errs.Invalid
+		return audit.Query{}, v.Err() //nolint:wrapcheck // Err already carries Op and errs.Invalid
 	}
 	return q, nil
 }
@@ -165,7 +166,7 @@ func queryTime(v *validate.Errors, vals url.Values, name string) time.Time {
 	}
 	t, err := time.Parse(time.RFC3339, s)
 	if err != nil {
-		v.Addf("query."+name, codeMalformed, "must be an RFC 3339 time")
+		v.Addf("query."+name, validate.CodeMalformed, "must be an RFC 3339 time")
 	}
 	return t
 }
@@ -202,7 +203,7 @@ func viewsHandler(svc reader, logger *slog.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		person, err := model.ParseID[model.PersonID](r.PathValue("person"))
 		if err != nil {
-			httpx.Fail(w, r, fieldErr("audit.viewsHandler", "person", codeMalformed, "must be a UUID"))
+			httpx.Fail(w, r, fieldErr("auditlog.viewsHandler", "person", validate.CodeMalformed, "must be a UUID"))
 			return
 		}
 		sw := &streamWriter{w: w, filename: viewsFilePrefix + person.String() + viewsFileSuffix}

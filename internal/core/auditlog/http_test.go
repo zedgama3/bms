@@ -1,4 +1,4 @@
-package audit_test
+package auditlog_test
 
 import (
 	"encoding/json"
@@ -9,7 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/zedgama3/bms/internal/core/audit"
+	"github.com/zedgama3/bms/internal/core/auditlog"
+	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/lib/httpx"
 	"github.com/zedgama3/bms/internal/model"
@@ -17,12 +18,12 @@ import (
 
 const apiBase = "/api/audit"
 
-// muxFor mounts the audit routes where app does, on a ServeMux with no Failer, so
-// httpx.Fail writes its fallback status table. A request carries the session actor given.
-func muxFor(t *testing.T, l *audit.Log) *http.ServeMux {
+// muxFor mounts the routes where app does, on a ServeMux with no Failer, so httpx.Fail writes
+// its fallback status table. A request carries the session actor given.
+func muxFor(t *testing.T, s *auditlog.Service) *http.ServeMux {
 	t.Helper()
 	mux := http.NewServeMux()
-	for _, r := range l.Routes() {
+	for _, r := range s.Routes() {
 		if r.Handler == nil {
 			t.Fatalf("route %s %s has no handler", r.Method, r.Pattern)
 		}
@@ -31,7 +32,7 @@ func muxFor(t *testing.T, l *audit.Log) *http.ServeMux {
 	return mux
 }
 
-func get(t *testing.T, h http.Handler, target string, a *audit.Actor) *httptest.ResponseRecorder {
+func get(t *testing.T, h http.Handler, target string, a *authz.Actor) *httptest.ResponseRecorder {
 	t.Helper()
 	ctx := t.Context()
 	if a != nil {
@@ -57,7 +58,7 @@ func problemOf(t *testing.T, rec *httptest.ResponseRecorder) httpx.Problem {
 func TestRoutes_AreTheTwoSpecified(t *testing.T) {
 	f := newFx(t)
 	var got []string
-	for _, r := range f.log.Routes() {
+	for _, r := range f.svc.Routes() {
 		got = append(got, r.Method+" "+r.Pattern)
 	}
 	sort.Strings(got)
@@ -67,16 +68,25 @@ func TestRoutes_AreTheTwoSpecified(t *testing.T) {
 	}
 }
 
+func TestRoutes_AreSignedIn(t *testing.T) {
+	f := newFx(t)
+	for _, r := range f.svc.Routes() {
+		if r.Public {
+			t.Errorf("%s %s is public; the audit log is for signed-in readers only", r.Method, r.Pattern)
+		}
+	}
+}
+
 func TestOpenAPI_ParsesAndNamesExactlyTheRoutes(t *testing.T) {
 	f := newFx(t)
 	var frag struct {
 		Paths map[string]map[string]json.RawMessage `json:"paths"`
 	}
-	if err := json.Unmarshal(f.log.OpenAPI(), &frag); err != nil {
+	if err := json.Unmarshal(f.svc.OpenAPI(), &frag); err != nil {
 		t.Fatalf("fragment is not JSON: %v", err)
 	}
 	want := map[string]string{}
-	for _, r := range f.log.Routes() {
+	for _, r := range f.svc.Routes() {
 		want[r.Pattern] = strings.ToLower(r.Method)
 	}
 	if len(frag.Paths) != len(want) {
@@ -92,12 +102,12 @@ func TestOpenAPI_ParsesAndNamesExactlyTheRoutes(t *testing.T) {
 			t.Errorf("path %s operations = %v, want only %s", p, keys(ops), m)
 		}
 	}
-	a := f.log.OpenAPI()
+	a := f.svc.OpenAPI()
 	if len(a) == 0 {
 		t.Fatal("empty fragment")
 	}
 	a[0] = 'X'
-	if b := f.log.OpenAPI(); b[0] == 'X' {
+	if b := f.svc.OpenAPI(); b[0] == 'X' {
 		t.Error("OpenAPI shares its backing array with callers")
 	}
 }
@@ -112,9 +122,8 @@ func keys[V any](m map[string]V) []string {
 }
 
 func TestHandlers_NoSession_Return401_NoPermission_Return403(t *testing.T) {
-	// M1: with a nil PermissionChecker the routes are mounted and answer 403.
-	f := newFx(t, func(o *audit.Options) { o.Permissions = nil })
-	mux := muxFor(t, f.log)
+	f := newFx(t) // nobody holds audit.search or audit.export
+	mux := muxFor(t, f.svc)
 	targets := []string{apiBase + "/entries", apiBase + "/people/" + bob.String() + "/views"}
 	for _, target := range targets {
 		t.Run(target, func(t *testing.T) {
@@ -128,12 +137,7 @@ func TestHandlers_NoSession_Return401_NoPermission_Return403(t *testing.T) {
 			a := person(alice)
 			rec = get(t, mux, target, &a)
 			if rec.Code != http.StatusForbidden {
-				t.Errorf("signed in, nil checker: status %d, want 403", rec.Code)
-			}
-			su := superuser(alice)
-			rec = get(t, mux, target, &su)
-			if rec.Code != http.StatusForbidden {
-				t.Errorf("superuser, nil checker: status %d, want 403 (fail closed)", rec.Code)
+				t.Errorf("signed in without the permission: status %d, want 403", rec.Code)
 			}
 			if p := problemOf(t, rec); p.Code != errs.Permission.String() {
 				t.Errorf("code = %q", p.Code)
@@ -144,7 +148,7 @@ func TestHandlers_NoSession_Return401_NoPermission_Return403(t *testing.T) {
 
 func TestEntriesHandler_Allowed_Returns200Json(t *testing.T) {
 	f := readerFx(t)
-	mux := muxFor(t, f.log)
+	mux := muxFor(t, f.svc)
 	a := person(carol)
 	q := url.Values{"subject": {bob.String()}, "limit": {"10"}}
 	rec := get(t, mux, apiBase+"/entries?"+q.Encode(), &a)
@@ -158,14 +162,14 @@ func TestEntriesHandler_Allowed_Returns200Json(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("body is not a JSON object: %v", err)
 	}
-	if n := len(entriesNamed(t, f, "audit.searched")); n != 1 {
+	if n := len(f.recorded("audit.searched")); n != 1 {
 		t.Errorf("audit.searched entries = %d, want 1", n)
 	}
 }
 
 func TestEntriesHandler_BadQuery_Returns400(t *testing.T) {
 	f := readerFx(t)
-	mux := muxFor(t, f.log)
+	mux := muxFor(t, f.svc)
 	a := person(carol)
 	for _, tc := range []struct{ name, query, field string }{
 		{"limit not a number", "limit=abc", "query.limit"},
@@ -197,14 +201,14 @@ func TestEntriesHandler_BadQuery_Returns400(t *testing.T) {
 			}
 		})
 	}
-	if n := len(f.spoolLines(t)); n != 0 {
+	if n := len(f.recorded("audit.searched")); n != 0 {
 		t.Errorf("bad queries left %d audit entries", n)
 	}
 }
 
 func TestViewsHandler_Allowed_ReturnsJSONLinesAttachment(t *testing.T) {
 	f := readerFx(t)
-	mux := muxFor(t, f.log)
+	mux := muxFor(t, f.svc)
 	a := person(carol)
 	rec := get(t, mux, apiBase+"/people/"+bob.String()+"/views", &a)
 	if rec.Code != http.StatusOK {
@@ -216,14 +220,14 @@ func TestViewsHandler_Allowed_ReturnsJSONLinesAttachment(t *testing.T) {
 	if cd := rec.Header().Get("Content-Disposition"); !strings.HasPrefix(cd, "attachment") {
 		t.Errorf("Content-Disposition = %q, want an attachment", cd)
 	}
-	if got := entriesNamed(t, f, "audit.exported"); len(got) != 1 || str(got[0]["subject"]) != bob.String() {
-		t.Errorf("audit.exported entries = %v", got)
+	if got := f.recorded("audit.exported"); len(got) != 1 || got[0].Subject != bob {
+		t.Errorf("audit.exported entries = %+v", got)
 	}
 }
 
 func TestViewsHandler_BadPerson_Returns400(t *testing.T) {
 	f := readerFx(t)
-	mux := muxFor(t, f.log)
+	mux := muxFor(t, f.svc)
 	a := person(carol)
 	for _, p := range []string{"not-a-uuid", (model.PersonID{}).String()} {
 		rec := get(t, mux, apiBase+"/people/"+p+"/views", &a)
@@ -231,7 +235,7 @@ func TestViewsHandler_BadPerson_Returns400(t *testing.T) {
 			t.Errorf("person %q: status %d, want 400", p, rec.Code)
 		}
 	}
-	if n := len(entriesNamed(t, f, "audit.exported")); n != 0 {
+	if n := len(f.recorded("audit.exported")); n != 0 {
 		t.Errorf("a rejected export was recorded %d times", n)
 	}
 }

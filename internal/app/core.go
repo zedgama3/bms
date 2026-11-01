@@ -98,9 +98,10 @@ type runnable struct {
 }
 
 // coreParts are the core services that plug in, in dependency order (audit, authz, settings,
-// identity, people, departments, events, jobs, notify, files, demo; app.md "How later core
-// services plug in"). Each later core spec adds one file core_<name>.go and one line here.
-var coreParts = []part{auditPart, authzPart, settingsPart, identityPart, peoplePart, departmentsPart, eventsPart, jobsPart, notifyPart, filesPart, demoPart}
+// jobs, auditlog, identity, people, departments, events, notify, files, demo; the build
+// order in plan/design/boundaries.md). Each later core spec adds one file core_<name>.go and
+// one line here.
+var coreParts = []part{auditPart, authzPart, settingsPart, jobsPart, auditlogPart, identityPart, peoplePart, departmentsPart, eventsPart, notifyPart, filesPart, demoPart}
 
 // declare runs every part's declare, in order (F28).
 func (a *assembly) declare() error {

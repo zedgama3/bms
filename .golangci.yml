@@ -175,6 +175,17 @@ linters:
               desc: "only app picks the disk object store (files.md)"
             - pkg: github.com/zedgama3/bms/internal/core/objects/s3
               desc: "only app picks the S3 object store (files.md)"
+        auditlog-seam:
+          # boundaries.md decision 3 (auditlog.md): the audit log reader is built by app and
+          # handed to datarights; nothing else reads the log, so nothing else imports it.
+          files:
+            - "$all"
+            - "!**/internal/app/**"
+            - "!**/internal/core/auditlog/**"
+            - "!**/internal/core/datarights/**"
+          deny:
+            - pkg: github.com/zedgama3/bms/internal/core/auditlog
+              desc: "only app and datarights import auditlog (boundaries.md decision 3)"
         api:
           files: ["**/internal/api/**"]
           deny:

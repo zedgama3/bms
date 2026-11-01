@@ -16,7 +16,7 @@ internal/lib/<x>            shared helpers (errs, clock,  imports: stdlib (and e
 internal/model              shared value types            imports: lib
 internal/config             process configuration         imports: lib
 internal/core/<c>           core contracts (module, db,   imports: model, lib, other core contracts (acyclic)
-                            identity, authz, people, ...)
+                            identity, authz, people, auditlog, ...)
 internal/core/<c>/<impl>    implementations (oidc, email) imports: own contract, model, lib, 3rd-party driver
 internal/modules/<m>/...    feature modules               imports: core contracts, model, lib. NEVER another module
 internal/api                HTTP shell                    imports: core contracts, model, lib

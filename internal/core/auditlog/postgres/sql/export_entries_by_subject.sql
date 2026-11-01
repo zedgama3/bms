@@ -1,4 +1,4 @@
--- Store export (Log.Export): every entry whose subject is one person, oldest first, in
+-- Store export (Service.Export): every entry whose subject is one person, oldest first, in
 -- batches (keyset on (at, id), ascending; run it with limit = audit.MaxPageSize until fewer
 -- rows than the limit come back). Served by audit_entry_subject_idx scanned backwards.
 --

@@ -37,7 +37,6 @@ func TestNew_Valid_DoesNoIO(t *testing.T) {
 func TestNew_OptionalDependenciesMayBeNil(t *testing.T) {
 	o := validOptions(t)
 	o.Meter = nil
-	o.Permissions = nil
 	o.ImportInterval = 0
 	_, err := audit.New(o)
 	wantNoErr(t, err)

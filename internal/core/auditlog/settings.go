@@ -1,10 +1,12 @@
-// Package auditsettings declares the audit.* settings (audit.md, "Settings"; D39).
+// Package auditlog reads and expires the audit log (plan/design/auditlog.md; boundaries.md,
+// "auditlog: reading and expiring the log"). audit keeps the recorder; this package searches
+// and exports what it recorded, counts the entries about a person, serves /api/audit/ and
+// runs the retention job audit.purge. It declares the audit.* settings and the audit.search
+// and audit.export permissions.
 //
-// The spec has audit export Settings itself, but core/settings imports core/audit (its
-// Options.Audit is an audit.Recorder), so core/audit cannot import core/settings: the
-// declarations live in this leaf package instead, which imports settings and nothing of
-// audit. app passes Settings to settings.New as the core area "audit".
-package auditsettings
+// It imports audit, authz, settings, jobs, db, telemetry, lib and model. Only app imports it
+// (and, later, datarights).
+package auditlog
 
 import (
 	"strconv"
@@ -16,7 +18,8 @@ import (
 	"github.com/zedgama3/bms/internal/lib/validate"
 )
 
-// Area is the name of the settings area, the prefix of the keys.
+// Area is the name of the settings area, the prefix of the keys, and the area of the route
+// set, the audit scope and the job.
 const Area = "audit"
 
 // Retention bounds, written in hours because the Duration kind is time.ParseDuration
@@ -26,12 +29,12 @@ const (
 	MaxRetention = 876000 * time.Hour // 100 years
 )
 
-// Settings declares the two audit keys. Titles and descriptions are the catalogue keys
-// core.audit.setting.<key>.title|description (and .option.<opt> for self_view).
+// Settings declares the two audit keys (audit.md, "Settings"; D39). Titles and descriptions
+// are the catalogue keys core.audit.setting.<key>.title|description (and .option.<opt> for self_view).
 //
 //   - retention: how long an entry is kept; 0 keeps entries forever (D30), otherwise
-//     8760h..876000h. The retention job (jobs, M4) reads it through
-//     Scoped("audit").Duration("retention") and purges on the writing copy only.
+//     8760h..876000h. The retention job (Start) reads it through
+//     Options.Settings and purges on the writing copy only.
 //   - self_view: what a person is told of who read their data (D22); off until the Later
 //     ViewsOf feature ships, read by that feature only.
 var Settings = []settings.Decl{

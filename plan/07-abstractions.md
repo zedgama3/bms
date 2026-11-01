@@ -28,7 +28,7 @@ is tracked in [design/README.md](design/README.md).
      ┌──────────────────────────────────────────────────────────────────────────┐
      │ core contracts: module · db · identity · authz · people · departments ·  │   core
      │ events · signals · notify · audit · files · jobs · settings · privacy ·  │
-     │ telemetry · demo                                                         │
+     │ telemetry · demo · auditlog                                              │
      └──────────────────────────────────┬───────────────────────────────────────┘
                                         │ implemented by
        local, oidc (identity) · email (notify) · disk, s3-compatible (objects) · postgres (db)
@@ -230,8 +230,13 @@ A row is one type in `internal/app` (or one top-level function, for a closure th
 
 ### audit: who did what, and who saw what
 - **Purpose:** append-only record of sensitive reads and of changes.
-- **Owns:** the `Entry` vocabulary, `Recorder` (scoped per area), the table and its guard, the read-only spool and its importer, `Search`/`Export` behind `audit.search`/`audit.export`, settings `audit.retention` and `audit.self_view`.
-- **Doesn't do:** authorization, analytics.
+- **Owns:** the `Entry` vocabulary, `Recorder` (scoped per area), the table and its guard, the read-only spool and its importer, the ctx markers `WithSystem` and `WithOperator` and the actor order. Spec: `plan/design/audit.md`.
+- **Doesn't do:** authorization, analytics, search, export, retention or the `audit.*` settings (`auditlog`).
+
+### auditlog: reading and expiring the log
+- **Purpose:** let the right people read, export and expire what the audit recorder wrote.
+- **Owns:** `Search`, `Export` and `CountAbout` behind `audit.search` and `audit.export`; the settings `audit.retention` and `audit.self_view` (it replaces the deleted `auditsettings`); the `audit.purge` job (0 keeps forever, otherwise purge older than now minus the retention, writing copy only); the routes `GET /api/audit/entries` and `GET /api/audit/people/{person}/views`. Split from `audit` because it needs `authz.Lookup`, `settings` and `jobs`, which are built after the recorder. Spec: `plan/design/auditlog.md`.
+- **Doesn't do:** write entries, the spool, the table or its guard (`audit`); decide permissions (`authz`); schedule jobs (`jobs`); export and deletion across modules (`datarights`, which calls `Export` and `CountAbout`).
 
 ### files: attachments
 - **Purpose:** keep the bytes a module attaches to one of its records, with the record's permissions deciding who may read them.

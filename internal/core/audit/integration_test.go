@@ -3,9 +3,7 @@
 package audit_test
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -18,7 +16,6 @@ import (
 	"github.com/jackc/pgx/v5/pgconn" //nolint:depguard // roDB must implement db.DB, whose Exec returns pgconn.CommandTag
 
 	"github.com/zedgama3/bms/internal/core/audit"
-	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/db/dbtest"
 	"github.com/zedgama3/bms/internal/core/telemetry/telemetrytest"
@@ -38,7 +35,6 @@ type ifx struct {
 	dir    string
 	cap    *telemetrytest.Capture
 	titles *fakeTitles
-	perms  *fakePerms
 }
 
 func newIfx(t *testing.T, wrap ...func(*db.Pool) db.DB) *ifx {
@@ -57,11 +53,10 @@ func newIfx(t *testing.T, wrap ...func(*db.Pool) db.DB) *ifx {
 		dir:    t.TempDir(),
 		cap:    telemetrytest.New(t),
 		titles: &fakeTitles{titles: map[model.PersonID][]string{}},
-		perms:  &fakePerms{allow: map[authz.Permission]bool{audit.PermissionSearch: true, audit.PermissionExport: true}},
 	}
 	f.opts = audit.Options{
 		DB: pool, Clock: f.clk, Logger: f.cap.Logger(), Tracer: f.cap.Tracer("audit"), Meter: f.cap.Meter("audit"),
-		Instance: "test-copy", DataDir: f.dir, Actor: sessionActor, Titles: f.titles, Permissions: f.perms,
+		Instance: "test-copy", DataDir: f.dir, Actor: sessionActor, Titles: f.titles,
 	}
 	for _, w := range wrap {
 		f.opts.DB = w(pool)
@@ -106,11 +101,67 @@ func (f *ifx) count(t *testing.T, where string, args ...any) int {
 
 func (f *ifx) spoolDir() string { return filepath.Join(f.dir, filepath.FromSlash(audit.SpoolDirName)) }
 
-func (f *ifx) search(t *testing.T, q audit.Query) audit.Page {
+// storedRecords reads the identity-area rows straight from the table, newest first: audit
+// has no read path any more (auditlog owns it), so these tests look at the table itself.
+func (f *ifx) storedRecords(t *testing.T, area string) []audit.Record {
 	t.Helper()
-	p, err := f.log.Search(withSession(ctxT(t), person(carol)), q)
-	wantNoErr(t, err)
-	return p
+	rows, err := f.pool.Query(ctxT(t), `SELECT at, instance, coalesce(trace_id, ''), spooled, action, outcome, actor_kind,
+		coalesce(actor_person_id::text, ''), actor_superuser, actor_titles, coalesce(subject_person_id::text, ''),
+		coalesce(record_kind, ''), coalesce(record_id::text, ''), fields, coalesce(level, ''), coalesce(reason, '')
+		FROM core.audit_entry WHERE action LIKE $1 ORDER BY at DESC, id DESC`, area+".%")
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	defer rows.Close()
+	var out []audit.Record
+	for rows.Next() {
+		var r audit.Record
+		var action, outcome, kind, actorID, subjectID, recKind, recID, level string
+		if err := rows.Scan(&r.At, &r.Instance, &r.TraceID, &r.Spooled, &action, &outcome, &kind,
+			&actorID, &r.Actor.Superuser, &r.Actor.Titles, &subjectID, &recKind, &recID, &r.Fields, &level, &r.Reason); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		r.Action = audit.Action(action)
+		r.ID = model.NewID[audit.RecordID]() // the id is not compared; non-zero for the "found" check
+		o, perr := audit.ParseOutcome(outcome)
+		wantNoErr(t, perr)
+		r.Outcome = o
+		switch kind {
+		case "person":
+			r.Actor.Kind = audit.ActorPerson
+		case "anonymous":
+			r.Actor.Kind = audit.ActorAnonymous
+		case "operator":
+			r.Actor.Kind = audit.ActorOperator
+		case "system":
+			r.Actor.Kind = audit.ActorSystem
+		}
+		if actorID != "" {
+			p, perr := model.ParseID[model.PersonID](actorID)
+			wantNoErr(t, perr)
+			r.Actor.Person = p
+		}
+		if subjectID != "" {
+			p, perr := model.ParseID[model.PersonID](subjectID)
+			wantNoErr(t, perr)
+			r.Subject = p
+		}
+		if recKind != "" {
+			id, perr := model.ParseID[model.AccountID](recID)
+			wantNoErr(t, perr)
+			r.Record = audit.RefOf(recKind, id)
+		}
+		r.Level = model.Sensitivity(0)
+		switch level {
+		case "personal":
+			r.Level = model.SensitivityPersonal
+		case "sensitive":
+			r.Level = model.SensitivitySensitive
+		}
+		out = append(out, r)
+	}
+	wantNoErr(t, rows.Err())
+	return out
 }
 
 // roDB makes a pool look like a read-only copy: writes are refused as db does.
@@ -150,12 +201,12 @@ func TestRecord_StoresStampedAndResolvedEntry(t *testing.T) {
 	}
 	wantNoErr(t, f.scoped(t, "identity").Record(ctx, e, loginEntry()))
 
-	page := f.search(t, audit.Query{Area: "identity"})
-	if len(page.Records) != 2 {
-		t.Fatalf("records = %d, want 2", len(page.Records))
+	records := f.storedRecords(t, "identity")
+	if len(records) != 2 {
+		t.Fatalf("records = %d, want 2", len(records))
 	}
 	var got audit.Record
-	for _, r := range page.Records {
+	for _, r := range records {
 		if r.Action == "identity.account.read" {
 			got = r
 		}
@@ -185,7 +236,7 @@ func TestRecord_StoresStampedAndResolvedEntry(t *testing.T) {
 	if a.Kind != audit.ActorPerson || a.Person != carol || !a.Superuser || strings.Join(a.Titles, "|") != "Audit reviewer|Medic" {
 		t.Errorf("Actor = %+v", a)
 	}
-	for _, r := range page.Records {
+	for _, r := range records {
 		if r.Actor.Kind == 0 {
 			t.Error("a returned Actor has a zero Kind")
 		}
@@ -278,159 +329,6 @@ func TestRecord_Concurrent32_AllStored(t *testing.T) {
 	}
 }
 
-func TestSearch_KeysetOrderAndCursorContinuity_250RowsWithEqualAt(t *testing.T) {
-	f := newIfx(t)
-	rec := f.scoped(t, "identity")
-	batch := make([]audit.Entry, 250)
-	for i := range batch {
-		batch[i] = loginEntry()
-	}
-	wantNoErr(t, rec.Record(ctxT(t), batch...)) // one instant for every row
-	q := audit.Query{Area: "identity", Limit: 100}
-	seen := map[audit.RecordID]bool{}
-	var order []audit.Record
-	pages := 0
-	for {
-		p := f.search(t, q)
-		pages++
-		if pages > 5 {
-			t.Fatal("cursor never ends")
-		}
-		for _, r := range p.Records {
-			if seen[r.ID] {
-				t.Fatalf("record %s appears on two pages", r.ID)
-			}
-			seen[r.ID] = true
-			order = append(order, r)
-		}
-		if p.Next == "" {
-			break
-		}
-		if len(p.Records) != 100 {
-			t.Fatalf("a full page has %d records", len(p.Records))
-		}
-		q.After = p.Next
-	}
-	if len(order) != 250 || pages != 3 {
-		t.Fatalf("got %d records in %d pages, want 250 in 3", len(order), pages)
-	}
-	for i := 1; i < len(order); i++ {
-		a, b := order[i-1], order[i]
-		if a.At.Before(b.At) || (a.At.Equal(b.At) && bytes.Compare(a.ID[:], b.ID[:]) <= 0) {
-			t.Fatalf("not newest first at %d: (%v %s) then (%v %s)", i, a.At, a.ID, b.At, b.ID)
-		}
-	}
-}
-
-func TestSearch_LimitDefaultsAndLastPageHasNoCursor(t *testing.T) {
-	f := newIfx(t)
-	rec := f.scoped(t, "identity")
-	batch := make([]audit.Entry, audit.DefaultPageSize+1)
-	for i := range batch {
-		batch[i] = loginEntry()
-	}
-	wantNoErr(t, rec.Record(ctxT(t), batch...))
-	p := f.search(t, audit.Query{Area: "identity"})
-	if len(p.Records) != audit.DefaultPageSize || p.Next == "" {
-		t.Errorf("default page: %d records, next %q", len(p.Records), p.Next)
-	}
-	exact := f.search(t, audit.Query{Area: "identity", Limit: audit.DefaultPageSize + 1})
-	if len(exact.Records) != audit.DefaultPageSize+1 || exact.Next != "" {
-		t.Errorf("exactly-full page must have no cursor: %d records, next %q", len(exact.Records), exact.Next)
-	}
-	full := f.search(t, audit.Query{Area: "identity", Limit: audit.MaxPageSize})
-	if len(full.Records) != audit.DefaultPageSize+1 || full.Next != "" {
-		t.Errorf("max limit page: %d / %q", len(full.Records), full.Next)
-	}
-}
-
-func TestSearch_Filters(t *testing.T) {
-	f := newIfx(t)
-	idRec := f.scoped(t, "identity")
-	ppl := f.scoped(t, "people")
-	acct := audit.RefOf("identity.account", model.AccountID{8})
-
-	put := func(r audit.Recorder, ctx context.Context, es ...audit.Entry) {
-		t.Helper()
-		wantNoErr(t, r.Record(ctx, es...))
-	}
-	in := func(a audit.Actor) context.Context { return withSession(ctxT(t), a) }
-
-	put(idRec, in(person(alice)), audit.Entry{Action: "identity.login", Outcome: audit.Succeeded})
-	advance(t, f.clk, time.Hour)
-	put(idRec, in(superuser(bob)), audit.Entry{Action: "identity.account.read", Outcome: audit.Succeeded, Subject: alice, Record: acct,
-		Fields: []string{"email"}, Level: model.SensitivityPersonal})
-	advance(t, f.clk, time.Hour)
-	put(ppl, in(person(bob)), audit.Entry{Action: "people.person.read", Outcome: audit.Succeeded, Subject: alice})
-	advance(t, f.clk, time.Hour)
-	put(idRec, in(audit.Actor{}), audit.Entry{Action: "identity.login-failed", Outcome: audit.Failed, Actor: audit.Actor{Kind: audit.ActorAnonymous}})
-
-	t0 := epochMicro
-	tests := []struct {
-		name string
-		q    audit.Query
-		want int
-	}{
-		{"area identity", audit.Query{Area: "identity"}, 3},
-		{"area people", audit.Query{Area: "people"}, 1},
-		{"area prefix does not match", audit.Query{Area: "ident"}, 0},
-		{"action exact", audit.Query{Action: "identity.login"}, 1},
-		{"action no prefix match", audit.Query{Action: "identity.account"}, 0},
-		{"actor", audit.Query{Area: "identity", Actor: bob}, 1},
-		{"actor across areas", audit.Query{Actor: bob}, 2},
-		{"subject", audit.Query{Area: "identity", Subject: alice}, 1},
-		{"subject across areas", audit.Query{Subject: alice}, 2},
-		{"record", audit.Query{Record: acct}, 1},
-		{"superuser only", audit.Query{Area: "identity", SuperuserOnly: true}, 1},
-		{"within includes start", audit.Query{Area: "identity", Within: model.TimeRange{Start: t0, End: t0.Add(time.Hour)}}, 1},
-		{"within excludes end", audit.Query{Area: "identity", Within: model.TimeRange{Start: t0.Add(time.Hour), End: t0.Add(2 * time.Hour)}}, 1},
-		{"within the whole", audit.Query{Area: "identity", Within: model.TimeRange{Start: t0, End: t0.Add(4 * time.Hour)}}, 3},
-		{"within empty window", audit.Query{Area: "identity", Within: model.TimeRange{Start: t0.Add(10 * time.Hour), End: t0.Add(11 * time.Hour)}}, 0},
-		{"combined", audit.Query{Area: "identity", Actor: bob, Subject: alice, SuperuserOnly: true}, 1},
-		{"combined, none", audit.Query{Area: "people", SuperuserOnly: true}, 0},
-		{"anonymous actor is reachable by action", audit.Query{Action: "identity.login-failed"}, 1},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			// Search records audit.searched in area audit, so area-less queries must not
-			// count it: filter the page rather than the query where the filter is empty.
-			p := f.search(t, tc.q)
-			n := 0
-			for _, r := range p.Records {
-				if r.Action.Area() != "audit" {
-					n++
-				}
-			}
-			if n != tc.want {
-				t.Errorf("matched %d, want %d", n, tc.want)
-			}
-		})
-	}
-}
-
-func TestSearch_RecordsItselfInTheTable(t *testing.T) {
-	f := newIfx(t)
-	q := audit.Query{Subject: bob, Record: audit.RefOf("identity.account", model.AccountID{3})}
-	f.search(t, q)
-	if n := f.count(t, "action = 'audit.searched' AND actor_person_id = $1::uuid AND subject_person_id = $2::uuid AND record_id = $3::uuid",
-		carol.String(), bob.String(), (model.AccountID{3}).String()); n != 1 {
-		t.Errorf("audit.searched rows = %d, want 1", n)
-	}
-	f.search(t, audit.Query{})
-	if n := f.count(t, "action = 'audit.searched'"); n != 2 {
-		t.Errorf("audit.searched rows = %d, want 2", n)
-	}
-}
-
-func TestSearch_PoolClosed_ReturnsUnavailable(t *testing.T) {
-	f := newIfx(t)
-	if err := f.pool.Close(ctxT(t)); err != nil {
-		t.Fatal(err)
-	}
-	_, err := f.log.Search(withSession(ctxT(t), person(carol)), audit.Query{})
-	wantKind(t, err, errs.Unavailable)
-}
-
 // --- the spool, end to end ----------------------------------------------------------------
 
 func TestSpool_ReadOnlyCopyThenImport_StoresOnceWithOriginalTime(t *testing.T) {
@@ -470,9 +368,8 @@ func TestSpool_ReadOnlyCopyThenImport_StoresOnceWithOriginalTime(t *testing.T) {
 	if !created.After(at) {
 		t.Error("created_at must be the insert time, after the original at")
 	}
-	page, err := w.Search(withSession(ctxT(t), person(carol)), audit.Query{Area: "identity"})
-	wantNoErr(t, err)
-	for _, r := range page.Records {
+	records := (&ifx{pool: f.pool}).storedRecords(t, "identity")
+	for _, r := range records {
 		if !r.Spooled || r.Actor.Person != alice || strings.Join(r.Actor.Titles, "") != "Gate lead" {
 			t.Errorf("record = %+v", r)
 		}
@@ -634,219 +531,6 @@ func (w *failAfter) Write(p []byte) (int, error) {
 		return 0, w.err
 	}
 	return len(p), nil
-}
-
-func TestExport_StreamsOldestFirst_InBatches_AndRecordsFirst(t *testing.T) {
-	f := newIfx(t)
-	rec := f.scoped(t, "people")
-	total := 0
-	for round := 0; round < 3; round++ {
-		batch := make([]audit.Entry, 150) // 450 rows: more than one MaxPageSize batch
-		for i := range batch {
-			batch[i] = audit.Entry{Action: "people.person.read", Outcome: audit.Succeeded, Subject: bob}
-		}
-		wantNoErr(t, rec.Record(ctxT(t), batch...))
-		total += len(batch)
-		advance(t, f.clk, time.Minute)
-	}
-	// Rows about someone else must not appear.
-	wantNoErr(t, rec.Record(ctxT(t), audit.Entry{Action: "people.person.read", Outcome: audit.Succeeded, Subject: alice}))
-
-	var out bytes.Buffer
-	ctx := withSession(ctxT(t), person(carol))
-	checked := false
-	w := writerFunc(func(p []byte) (int, error) {
-		if !checked {
-			checked = true
-			// The first line is about to be written: the export is already on record.
-			if n := f.count(t, "action = 'audit.exported' AND subject_person_id = $1::uuid", bob.String()); n != 1 {
-				t.Errorf("audit.exported rows at the first write = %d, want 1", n)
-			}
-		}
-		return out.Write(p) //nolint:wrapcheck // test
-	})
-	n, err := f.log.Export(ctx, bob, w)
-	wantNoErr(t, err)
-	// The export's own audit.exported entry (Subject bob) is recorded first, so it is part of
-	// what the export streams.
-	total++
-	if n != total {
-		t.Fatalf("Export returned %d, want %d", n, total)
-	}
-	lines := strings.Split(strings.TrimSuffix(out.String(), "\n"), "\n")
-	if len(lines) != total {
-		t.Fatalf("lines = %d, want %d", len(lines), total)
-	}
-	var prev time.Time
-	ids := map[string]bool{}
-	for _, l := range lines {
-		var r struct {
-			ID string    `json:"id"`
-			At time.Time `json:"at"`
-		}
-		if err := json.Unmarshal([]byte(l), &r); err != nil {
-			t.Fatalf("line is not JSON: %v", err)
-		}
-		if r.At.Before(prev) {
-			t.Fatal("export is not oldest first")
-		}
-		prev = r.At
-		ids[r.ID] = true
-		if strings.Contains(l, alice.String()+`"`) && strings.Contains(l, `"subject":"`+alice.String()) {
-			t.Fatal("an entry about another person was exported")
-		}
-	}
-	if len(ids) != total {
-		t.Errorf("distinct ids = %d", len(ids))
-	}
-	if n := f.count(t, "action = 'audit.exported'"); n != 1 {
-		t.Errorf("audit.exported rows = %d, want exactly 1", n)
-	}
-}
-
-type writerFunc func([]byte) (int, error)
-
-func (w writerFunc) Write(p []byte) (int, error) { return w(p) }
-
-func TestExport_WriterFails_ReturnsCanceled(t *testing.T) {
-	f := newIfx(t)
-	rec := f.scoped(t, "people")
-	batch := make([]audit.Entry, 300)
-	for i := range batch {
-		batch[i] = audit.Entry{Action: "people.person.read", Outcome: audit.Succeeded, Subject: bob}
-	}
-	wantNoErr(t, rec.Record(ctxT(t), batch...))
-	boom := errors.New("client went away")
-	for _, after := range []int{0, 5, 250} { // first line, mid-batch, in the second batch
-		w := &failAfter{n: after, err: boom}
-		_, err := f.log.Export(withSession(ctxT(t), person(carol)), bob, w)
-		wantKind(t, err, errs.Canceled)
-		if !errors.Is(err, boom) {
-			t.Errorf("after %d lines: the write error is not wrapped", after)
-		}
-	}
-	if n := f.count(t, "action = 'audit.exported'"); n != 3 {
-		t.Errorf("audit.exported rows = %d: a failed export is still on record", n)
-	}
-}
-
-func TestExport_SpoolUnwritable_WritesNothing(t *testing.T) {
-	f := newIfx(t)
-	rec := f.scoped(t, "people")
-	wantNoErr(t, rec.Record(ctxT(t), audit.Entry{Action: "people.person.read", Outcome: audit.Succeeded, Subject: bob}))
-	// Unwritable spool on a read-only copy: the entry for the export cannot be recorded.
-	blocker := filepath.Join(t.TempDir(), "file")
-	wantNoErr(t, os.WriteFile(blocker, []byte("x"), 0o600))
-	o := f.opts
-	o.DB = roDB{DB: f.pool}
-	o.DataDir = blocker
-	l := f.build(t, o)
-	var out bytes.Buffer
-	_, err := l.Export(withSession(ctxT(t), person(carol)), bob, &out)
-	wantKind(t, err, errs.Unavailable)
-	if out.Len() != 0 {
-		t.Error("export wrote lines though its entry could not be recorded")
-	}
-}
-
-func TestExport_ReadOnlyCopy_WorksAndSpoolsItsEntry(t *testing.T) {
-	f := newIfx(t)
-	wantNoErr(t, f.scoped(t, "people").Record(ctxT(t), audit.Entry{Action: "people.person.read", Outcome: audit.Succeeded, Subject: bob}))
-	o := f.opts
-	o.DB = roDB{DB: f.pool}
-	l := f.build(t, o)
-	var out bytes.Buffer
-	n, err := l.Export(withSession(ctxT(t), person(carol)), bob, &out)
-	wantNoErr(t, err)
-	if n != 1 {
-		t.Errorf("exported %d, want 1", n)
-	}
-	files := globSorted(t, filepath.Join(f.spoolDir(), "*.jsonl"))
-	if len(files) != 1 {
-		t.Errorf("spool files = %v: the export's own entry should be spooled", files)
-	}
-}
-
-// --- CountAbout and Purge ---------------------------------------------------------------------
-
-func TestCountAbout_ActorOrSubject(t *testing.T) {
-	f := newIfx(t)
-	idRec := f.scoped(t, "identity")
-	in := func(a audit.Actor) context.Context { return withSession(ctxT(t), a) }
-	wantNoErr(t, idRec.Record(in(person(alice)), loginEntry()))                                                                           // actor only
-	wantNoErr(t, idRec.Record(in(person(bob)), audit.Entry{Action: "identity.account.read", Outcome: audit.Succeeded, Subject: alice}))   // subject only
-	wantNoErr(t, idRec.Record(in(person(alice)), audit.Entry{Action: "identity.account.read", Outcome: audit.Succeeded, Subject: alice})) // both: one row
-	wantNoErr(t, idRec.Record(in(person(bob)), loginEntry()))                                                                             // neither
-	n, err := f.log.CountAbout(ctxT(t), alice)
-	wantNoErr(t, err)
-	if n != 3 {
-		t.Errorf("CountAbout(alice) = %d, want 3", n)
-	}
-	n, err = f.log.CountAbout(ctxT(t), carol)
-	wantNoErr(t, err)
-	if n != 0 {
-		t.Errorf("CountAbout(carol) = %d, want 0", n)
-	}
-}
-
-func TestPurge_DeletesOlderRows_RecordsAuditPurged(t *testing.T) {
-	f := newIfx(t)
-	rec := f.scoped(t, "identity")
-	for i := range 3 {
-		wantNoErr(t, rec.Record(ctxT(t), loginEntry(), loginEntry()))
-		if i < 2 {
-			advance(t, f.clk, 24*time.Hour)
-		}
-	}
-	// rows at day 0 (2), day 1 (2), day 2 (2). Purge everything before day 1 00:00.
-	advance(t, f.clk, time.Hour)
-	before := epochMicro.Add(24 * time.Hour)
-	n, err := f.log.Purge(ctxT(t), before)
-	wantNoErr(t, err)
-	if n != 2 {
-		t.Errorf("Purge returned %d, want 2", n)
-	}
-	if left := f.count(t, "action = 'identity.login'"); left != 4 {
-		t.Errorf("identity rows left = %d, want 4", left)
-	}
-	var kind string
-	var superuser bool
-	if err := f.pool.QueryRow(ctxT(t), "SELECT actor_kind, actor_superuser FROM core.audit_entry WHERE action = 'audit.purged'").Scan(&kind, &superuser); err != nil {
-		t.Fatalf("no audit.purged row: %v", err)
-	}
-	if kind != "system" || superuser {
-		t.Errorf("audit.purged actor = %s superuser %v", kind, superuser)
-	}
-	// Purging again records another entry; the guard is closed again afterwards.
-	if _, err := f.pool.Exec(ctxT(t), "DELETE FROM core.audit_entry"); err == nil {
-		t.Error("a plain DELETE succeeded after Purge")
-	}
-	n, err = f.log.Purge(ctxT(t), before)
-	wantNoErr(t, err)
-	if n != 0 {
-		t.Errorf("second Purge deleted %d", n)
-	}
-	if c := f.count(t, "action = 'audit.purged'"); c != 2 {
-		t.Errorf("audit.purged rows = %d, want 2", c)
-	}
-}
-
-func TestPurge_FutureOrZero_ReturnsInvalid_NothingDeleted(t *testing.T) {
-	f := newIfx(t)
-	wantNoErr(t, f.scoped(t, "identity").Record(ctxT(t), loginEntry()))
-	_, err := f.log.Purge(ctxT(t), time.Time{})
-	wantKind(t, err, errs.Invalid)
-	_, err = f.log.Purge(ctxT(t), epochMicro.Add(time.Hour))
-	wantKind(t, err, errs.Invalid)
-	if n := f.count(t, ""); n != 1 {
-		t.Errorf("rows = %d", n)
-	}
-}
-
-func TestPurge_ReadOnlyPool_ReturnsErrReadOnly(t *testing.T) {
-	f := newIfx(t, func(p *db.Pool) db.DB { return roDB{DB: p} })
-	_, err := f.log.Purge(ctxT(t), epochMicro.Add(-time.Hour))
-	wantReadOnly(t, err)
 }
 
 func TestGuard_ThroughTheLogsPool_RefusesUpdateDeleteTruncate(t *testing.T) {

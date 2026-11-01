@@ -14,6 +14,7 @@ import (
 
 	"github.com/zedgama3/bms/internal/api"
 	"github.com/zedgama3/bms/internal/config"
+	"github.com/zedgama3/bms/internal/core/auditlog"
 	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/demo"
@@ -123,6 +124,7 @@ type assembly struct {
 	events            *events.Service            // the events part's service; nil before its build
 	notify            *notify.Service            // the notify part's service (the alert, the outbox in export); nil before its build
 	files             *files.Service             // the files part's service (the Start probe, bms check, bms files verify); nil before its build
+	auditlog          *auditlog.Service          // the auditlog part's service (people's deletion report, the audit routes); nil before its build
 	jobs              *jobs.Runner               // the jobs part's runner (lazyDeferrer, audit.purge, bms check); nil before its build
 	notifiers         map[string]notify.Notifier // the Notifiers notify scoped for identity and people (Scoped fails once Run started); nil before its build
 	stdout            io.Writer                  // the command's standard output (migrate's seed line)
