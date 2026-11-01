@@ -28,6 +28,9 @@ func TestNew_Table(t *testing.T) {
 		{"nil tracer", func(o *identity.Options) { o.Tracer = nil }, "identity.tracer"},
 		{"nil audit", func(o *identity.Options) { o.Audit = nil }, "identity.audit"},
 		{"nil signals", func(o *identity.Options) { o.Signals = nil }, "identity.signals"},
+		{"nil holders", func(o *identity.Options) { o.Holders = nil }, "identity.holders"},
+		{"nil notify", func(o *identity.Options) { o.Notify = nil }, "identity.notify"},
+		{"nil alerts", func(o *identity.Options) { o.Alerts = nil }, "identity.alerts"},
 		{"nil lookup", func(o *identity.Options) { o.Lookup = nil }, "identity.lookup"},
 		{"unset key", func(o *identity.Options) { o.Key = secret.Secret{} }, "session.key"},
 		{"empty key", func(o *identity.Options) { o.Key = secret.New("") }, "session.key"},
@@ -46,9 +49,20 @@ func TestNew_Table(t *testing.T) {
 	}
 }
 
+// B14
+func TestNew_NilAlerts_ReturnsInvalid(t *testing.T) {
+	o, _ := validOptions(t, dbtest.NewFake())
+	o.Alerts = nil
+	svc, err := identity.New(o)
+	wantField(t, err, "identity.alerts", "")
+	if svc != nil {
+		t.Error("New returned a service with an error")
+	}
+}
+
 func TestNew_ZeroOptions_ReportsEveryProblemAtOnce(t *testing.T) {
 	err := identity.Options{}.Validate()
-	for _, f := range []string{"identity.db", "identity.clock", "identity.logger", "identity.tracer", "identity.audit", "identity.signals", "identity.settings", "identity.lookup", "session.key"} {
+	for _, f := range []string{"identity.db", "identity.clock", "identity.logger", "identity.tracer", "identity.audit", "identity.signals", "identity.settings", "identity.holders", "identity.notify", "identity.alerts", "identity.lookup", "session.key"} {
 		wantField(t, err, f, "")
 	}
 }
@@ -56,7 +70,7 @@ func TestNew_ZeroOptions_ReportsEveryProblemAtOnce(t *testing.T) {
 func TestNew_OptionalSeamsNil_Succeeds(t *testing.T) {
 	o, _ := validOptions(t, dbtest.NewFake())
 	o.Meter = nil
-	o.Permissions, o.Lister, o.Names, o.Alerter = nil, nil, nil, nil
+	o.Permissions, o.Lister, o.Names = nil, nil, nil
 	if _, err := identity.New(o); err != nil {
 		t.Fatalf("New: %v", err)
 	}

@@ -6,6 +6,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/zedgama3/bms/internal/core/notify"
+	"github.com/zedgama3/bms/internal/core/notify/notifytest"
 	"log/slog"
 	"net/netip"
 	"strings"
@@ -143,6 +145,7 @@ func newIRig(t *testing.T, realIdentity bool, mods ...func(*people.Options)) *ir
 		Audit:    idRec,
 		Signals:  idBus,
 		Settings: settingstest.NewFake("accounts", identity.Settings),
+		Holders:  idleHolders{}, Notify: notifytest.NewFake("identity"), Alerts: idleAlerts{},
 	})
 	wantNoErr(t, err)
 	if realIdentity {
@@ -449,4 +452,18 @@ func allMarkers() []string {
 func viewerOf(ctx context.Context) model.PersonID {
 	p, _ := identity.PersonFrom(ctx)
 	return p
+}
+
+// idleHolders and idleAlerts are the superuser alert's seams for a rig that signs no
+// superuser in: nobody holds the permission and no alert address is configured.
+type idleHolders struct{}
+
+func (idleHolders) HoldersOf(context.Context, authz.Permission) ([]model.PersonID, error) {
+	return nil, nil
+}
+
+type idleAlerts struct{}
+
+func (idleAlerts) SendAlert(context.Context, notify.Message) error {
+	return errs.E("test.SendAlert", errs.Unsupported, errors.New("no alert address"))
 }

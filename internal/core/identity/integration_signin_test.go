@@ -5,7 +5,6 @@ package identity_test
 import (
 	"bytes"
 	"context"
-	"log/slog"
 	"sort"
 	"sync"
 	"testing"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/identity"
+	"github.com/zedgama3/bms/internal/core/notify/notifytest"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/model"
@@ -399,13 +399,18 @@ func TestSignIn_TemporaryPassword_RestrictedSession(t *testing.T) {
 	}
 }
 
-// F27
+// F27: every alert path fails (the holders lookup, the holders' send, the alert addresses'
+// send) and the sign-in still succeeds, is audited and is counted.
 func TestSignIn_Superuser_AlerterFailureDoesNotFail(t *testing.T) {
-	al := &alerter{err: errs.E("test.alert", errs.Unavailable, errDown)}
-	p := newPoolRig(t, func(o *identity.Options) { o.Alerter = al })
+	down := errs.E("test.alert", errs.Unavailable, errDown)
+	hf := &holdersFake{ids: []model.PersonID{model.NewID[model.PersonID]()}}
+	nf := notifytest.NewFake("identity")
+	nf.Fail(down)
+	af := &alertSenderFake{err: down}
+	p := newPoolRig(t, func(o *identity.Options) { o.Holders, o.Notify, o.Alerts = hf, nf, af })
 	res, iss := p.superuser("root.operator@example.org")
-	if al.count() != 1 || al.calls[0] != res.Person {
-		t.Errorf("alerter calls = %v", al.calls)
+	if af.calls() != 1 || len(hf.permissions()) != 1 {
+		t.Errorf("alert sends = %d, holder lookups = %d, want one each", af.calls(), len(hf.permissions()))
 	}
 	if !iss.Session.Superuser {
 		t.Error("session is not marked superuser")
@@ -423,24 +428,9 @@ func TestSignIn_Superuser_AlerterFailureDoesNotFail(t *testing.T) {
 	if got := p.measured(metricLogins, map[string]string{"outcome": "superuser"}); got != 1 {
 		t.Errorf("logins{superuser} = %v", got)
 	}
-}
-
-func TestSignIn_Superuser_NilAlerter_OneWarnLogWithPersonID(t *testing.T) {
-	p := newPoolRig(t)
-	res, _ := p.superuser("root.operator@example.org")
-	warns := 0
-	for _, rec := range p.cap.Records() {
-		if rec.Level >= slog.LevelWarn && rec.Message == "superuser signed in" {
-			warns++
-			if rec.Attrs["person_id"] != res.Person.String() {
-				t.Errorf("person_id = %q", rec.Attrs["person_id"])
-			}
-		}
+	if got := p.measured("bms.identity.alert_failures", nil); got != 1 {
+		t.Errorf("alert_failures = %v, want 1 (one failed alert, however many parts failed)", got)
 	}
-	if warns != 1 {
-		t.Errorf("%d warn lines, want 1", warns)
-	}
-	p.noLeak("root.operator")
 }
 
 func TestSignIn_Superuser_SessionLifetimeFollowsPolicy(t *testing.T) {

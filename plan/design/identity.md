@@ -2,7 +2,7 @@
 
 - **Status:** Implemented (2026-10-18); Approved (2026-10-18; owner approved every recommended answer)
 - **Package:** `internal/core/identity` (service, `Authenticator`, tokens, handlers), `internal/core/identity/account` (the record type), `internal/core/identity/postgres` (store, `sql/`, `migrations/`)   **UI:** `web/src/core/accounts/`
-- **Depends on specs:** `model`, `lib-errs`, `lib-core`, `lib-secret`, `config` (through `app`), `db`, `signals`, `settings` (`Decl`, D39), `notify` (`Notifier`, D39), `telemetry`, `api` (the `Authenticator` seam, `httpx`, the cookie rules), `audit` (Approved; the `Recorder`), `web-shell`, `app`
+- **Depends on specs:** `model`, `lib-errs`, `lib-core`, `lib-secret`, `config` (through `app`), `db`, `signals`, `settings` (`Decl`, D39), `notify` (`Notifier`, `AlertSender`, `ErrNoAlertAddress`, D39), `authz` (`HoldersOf` through the `Lookup`), `telemetry`, `api` (the `Authenticator` seam, `httpx`, the cookie rules), `audit` (Approved; the `Recorder`), `web-shell`, `app`
 - **Used by:** `api` (`Authenticator`), `app` (part 2, after audit; the `create-superuser` command, the audit actor closure), `audit` (`ActorFunc`, through `app`), every module and core service that needs the actor (`PersonFrom`), `web-shell` (the session endpoint, the sign-in flow), later `authz` (the actor and the superuser flag), `people` (`identity.account-created`, export and deletion;
   `Session.IssuedAt` through `SessionFrom` for the once-per-session first-sign-in prompt, people decision 34, D58: it must stay the server time at sign-in, fixed for the session's life, and a new session after a password change or "sign out everywhere else" carries a new one), `settings` (`Reader`, `Decl`), `notify` (`Alerter`)
 
@@ -34,10 +34,11 @@
   - `PermissionChecker{Allow(ctx, authz.Permission) error}` (authz, M2 [deny; the superuser is allowed before the seam is asked]).
   - `PermissionLister{PermissionsOf(ctx, model.PersonID) ([]string, error)}` (authz, M2 [empty]).
   - `NameSource{PlayaNameOf(ctx, model.PersonID) (string, error)}` (people, M2 [""]).
-  - `Alerter{SuperuserSignedIn(ctx, model.PersonID) error}` (notify, M4 [one warn log line]).
-  - `Notify notify.Notifier` (scoped `identity`, D39 [nil: the reset routes answer `Unsupported`]).
+  - `HolderSource{HoldersOf(ctx, authz.Permission) ([]model.PersonID, error)}` (the `authz.Lookup`; required, step 9): who holds `accounts.manage`, for the superuser alert.
+  - `Notify notify.Notifier` (scoped `identity`, D39; required from step 9: the superuser alert sends through it).
+  - `Alerts notify.AlertSender` (scoped `identity`, from `notify.Service.Alerts("identity")`; required, step 9): the alert addresses. There is no `Alerter` seam and no nil behaviour.
   - `Guard{Protected(ctx, AccountID) (bool, error)}` (demo mode, D53 [nil: nothing protected]); a protected account's password, address, disabling and deletion refuse `Permission` field `account` code `protected`.
-- `Options{DB, Clock, Logger, Tracer, Meter, Key secret.Secret, AllowPlaintext bool, Audit audit.Recorder, Signals signals.Bus, Settings settings.Reader, Lookup *Lookup (required, step 8), Permissions, Lister, Names, Alerter, Notify notify.Notifier, Guard Guard}` (+`Validate`); `New(Options) (*Service, error)` (no I/O; works against `db.None()`).
+- `Options{DB, Clock, Logger, Tracer, Meter, Key secret.Secret, AllowPlaintext bool, Audit audit.Recorder, Signals signals.Bus, Settings settings.Reader, Lookup *Lookup (required, step 8), Permissions, Lister, Names, Holders HolderSource, Notify notify.Notifier (required), Alerts notify.AlertSender, Guard Guard}` (+`Validate`); `New(Options) (*Service, error)` (no I/O; works against `db.None()`).
 - `*Service` (safe for concurrent use, nothing to close):
   - Sessions: `Authenticate(ctx, *http.Request) (context.Context, model.PersonID, error)` (= `api.Authenticator`); `SessionInfo(ctx) (SessionInfo, error)`; `SignUp(ctx, Credentials) (Issued, error)`; `SignIn(ctx, Credentials) (Issued, error)`; `SignOut(ctx) error`; `ChangePassword(ctx, PasswordChange) (Issued, error)`; `EndOtherSessions(ctx) (Issued, error)`.
   - Forgotten password (D39): `RequestPasswordReset(ctx, model.Email) error`; `CompletePasswordReset(ctx, token, newPassword string) error`.
@@ -136,7 +137,7 @@ Say who is making a request.
 - Passwords: the policy (minimum length, the common-password list, no composition rules), Argon2id hashing and verification, change by the person.
 - Sessions: the signed token, the cookie, `Authenticate` for the api shell, the principal in the request context (`SessionFrom`, `PersonFrom`), "sign out" and "sign out everywhere else" through the per-account generation, short sessions for the superuser.
 - Failed-login limits per client address and per submitted address.
-- The break-glass superuser (D23): `bms create-superuser <email>`, the flag the audit log and `authz` read, the alert on every sign-in.
+- The break-glass superuser (D23): `bms create-superuser <email>`, the flag the audit log and `authz` read, the alert on every sign-in (`identity/alert.go`, step 9: holders of `accounts.manage` and the alert addresses, through `Holders`, `Notify` and `Alerts`).
 - Audit entries for every login, failed login, logout, account change, password change and admin read of an account.
 - The signal `identity.account-created`, so `people` (M2) can create the person's profile row.
 - The forgotten-password flow (D39): the single-use reset token, `RequestPasswordReset`, `CompletePasswordReset` and their two screens.
@@ -151,7 +152,7 @@ Say who is making a request.
 |---|---|
 | Who the person is beyond the login: playa name, legal name, contacts, consent | `people` (M2). Identity mints the `PersonID` at sign-up and tells `people` through `identity.account-created`; the session's `playa_name` comes from `people` through `NameSource` |
 | What the person may do; roles, grants, separation of duties; the starter role "Account admin" | `authz` (M2). Identity checks its own two permissions through `PermissionChecker` and allows the superuser first; `authz`'s own `Allow` does the same with the flag `app` hands it |
-| Delivering anything: the reset e-mail, confirming a changed address, the superuser alert | `notify` (M4) through `Notify` (the reset: decision 19) and `Alerter`; identity decides when to send and what the link carries, notify delivers |
+| Delivering anything: the reset e-mail, confirming a changed address, the superuser alert | `notify` (M4) through `Notify` (the reset: decision 19) and `Alerts` (the alert addresses); identity decides when to send and what the link carries, notify delivers |
 | Changing the login address | identity, from M4, once the new address can be confirmed; not in M1 |
 | Invitations when `accounts.signup` is `invitation` (who invites, the token, the screen) | a later identity amendment; M1 only refuses open sign-up in that mode |
 | Listing a person's sessions on a screen | Later (decision 3); M1 ships "sign out everywhere else" |
@@ -172,7 +173,7 @@ Say who is making a request.
 | Sessions | Turn a valid login into a token and a token into a principal, without writing. | `token.go` (sign, verify), `cookie.go` (read, write, clear), `Authenticate`, `SignIn`, `SignOut`, `ChangePassword`, `EndOtherSessions`, `SessionFrom`, `PersonFrom` |
 | Login limiter | Slow down guessing by address and by submitted address. | `limiter.go`: two bounded maps for sign-in, and (D40) a second pair of the same type for password-reset requests, a fake-clock-friendly sweep on access; the limits and the window are arguments of each `reserve`, read from the `Policy` by the use case (D41), never held by the limiter |
 | Password reset | Let a person who forgot their password set a new one by an e-mailed single-use link (D39). | `RequestPasswordReset`, `CompletePasswordReset`, `core.password_reset`, the two reset screens |
-| Superuser | Create or reset the break-glass account by command and mark its sessions. | `EnsureSuperuser`, the `create-superuser` command (in `app`), the short lifetime, the alert |
+| Superuser | Create or reset the break-glass account by command and mark its sessions. | `EnsureSuperuser`, the `create-superuser` command (in `app`), the short lifetime, the alert (`alert.go`) |
 | Accounts screens | Let a person sign in, sign up and change their password, and an account admin manage accounts, on a phone. | `web/src/core/accounts/` |
 
 ## Interface
@@ -393,12 +394,10 @@ type NameSource interface {
 	PlayaNameOf(ctx context.Context, person model.PersonID) (string, error)
 }
 
-// Alerter tells the maintainers and the site admins that the superuser signed in (D23).
-// notify implements it (M4); nil means one warn log line with the person ID. An Alerter
-// failure is logged and counted, never fails the sign-in (F27): the audit entry is the
-// record of the event.
-type Alerter interface {
-	SuperuserSignedIn(ctx context.Context, person model.PersonID) error
+// HolderSource names the people who hold a permission site-wide: the superuser alert's
+// recipients (holders of accounts.manage). *authz.Lookup implements it; required (step 9).
+type HolderSource interface {
+	HoldersOf(ctx context.Context, p authz.Permission) ([]model.PersonID, error)
 }
 
 // Guard says which accounts are shared and must stay usable by everyone (D53, demo mode
@@ -452,14 +451,15 @@ type Options struct {
 	Permissions    PermissionChecker
 	Lister         PermissionLister
 	Names          NameSource
-	Alerter        Alerter
-	Notify         notify.Notifier // scoped to "identity" (D39); nil means no reset: both reset routes answer Unsupported
+	Holders        HolderSource    // the authz.Lookup; required (field identity.holders, step 9)
+	Notify         notify.Notifier // scoped to "identity" (D39); required (field identity.notify, step 9)
+	Alerts         notify.AlertSender // scoped to "identity"; required (field identity.alerts, step 9)
 	Guard          Guard // optional; nil protects nothing (D53, demo mode only)
 }
 
 // Validate fails errs.Invalid joining a validate.FieldError per problem: "identity.db",
 // "identity.clock", "identity.logger", "identity.tracer", "identity.audit",
-// "identity.signals", "identity.settings", "identity.lookup" (nil) and "session.key" (unset).
+// "identity.signals", "identity.settings", "identity.lookup" (nil), "identity.holders" (nil), "identity.notify" (nil), "identity.alerts" (nil) and "session.key" (unset).
 func (o Options) Validate() error
 
 // New validates o, derives the signing key (HKDF-SHA256, info "bms identity session v1"),
@@ -949,11 +949,17 @@ The `core.accounts.setting.login_failure_window.description` reads: "Failed sign
 - **The command.** `bms create-superuser <email>`: loads configuration like `serve` (needs `Session.Key`, app F6), builds the assembly through `check`'s path (so a schema behind exits 3 and a read-only copy exits 1 with "this copy is read-only;
   run it against the writing copy"), calls `EnsureSuperuser`, prints to stdout exactly: `Superuser account created.` or `Superuser account reset; its sessions have ended.`, then `Password (shown once, not stored anywhere else): <password>`, then `Sign in at /sign-in and keep this password in your password manager.` It never prints the address (the operator typed it).
   Exit 2 for a missing or invalid argument or a participant address (`Invalid`, `Conflict` with a line telling the operator to use another address), 1 otherwise.
-- **Superuser sign-in.** The token's lifetime is `SuperuserSessionLifetime`; the audit action is `identity.superuser.login`; `Alerter.SuperuserSignedIn` is called (nil: `logger.WarnContext(ctx, "superuser signed in", slog.String("person_id", ...))`); the metric counts `outcome=superuser`.
+- **Superuser sign-in.** The token's lifetime is `SuperuserSessionLifetime`; the audit action is `identity.superuser.login`; the unexported `alert(ctx, person)` runs (below); the metric counts `outcome=superuser`.
 - **Password verification timing.** When no account matches, the service verifies the submitted password against a fixed dummy hash with the same parameters so the response time does not reveal the difference; the limiter still counts the attempt under both keys.
 - **Rehash on login.** When a stored hash's parameters are weaker than the current constants, `SignIn` re-hashes and `Rehash`es (compare-and-swap) on a writing copy (ignored on read-only), so parameters can be raised in a later release without a migration.
 - **Telemetry.** One `SpanInternal` span per use case, `identity.<use-case>`, attributes `telemetry.Token("outcome", ...)` and `telemetry.ID("account_id", ...)` only; `person_id` is on the request span already.
   Metrics: `bms.identity.logins{outcome: ok|superuser|bad_credentials|disabled|rate_limited|restricted}`, `bms.identity.sessions_rejected{reason: malformed|expired|revoked|disabled|unknown}`, `bms.identity.rate_limited{bucket: address|email|reset_address|reset_email}`. Never an address, a token or a password.
+
+### The superuser alert (D39)
+
+Moved here from `app.md` (boundaries step 9), the rule verbatim. Read `internal/app/alert.go` as `internal/core/identity/alert.go` and `identity.Alerter` as the unexported `alert(ctx, person)`; the paragraph below is otherwise unchanged. The three Options fields are the test seams, served by hand-written fakes in identity's tests: `holdersFake` for `Holders`, `alertSenderFake` for `Alerts`, and the notifier fake for `Notify`. Only `notify.ErrNoAlertAddress` (wrapped by `SendAlert`'s `Unsupported`) counts as "nobody to tell"; any other `Unsupported`, such as `ErrNotConfigured`, is a failure, logged and counted (F27). The holders go by `Notify.Send`, the alert addresses by `Alerts.SendAlert`; the detached deadline is the constant `alertTimeout` (5s); failures are joined under the first kind, in this order: holders lookup, holders send, then `SendAlert` (which reads the addresses, then sends). This differs from app's old order only when the holders send and the address read both fail: the first kind is then the holders-send kind (boundaries D5). The eight `TestAlert_*` of app move here with their names and assertions.
+
+**The superuser alert (D39).** `internal/app/alert.go` implements `identity.Alerter`: (implementation, 2026-10-19) the recipients are `authz.HoldersOf("accounts.manage")` plus every `notify.alert_addresses` entry; of the notify settings it reads only `alert_addresses`, never the whole SMTP config, so it never unseals the password. It sends `identity.superuser-signed-in` through the `identity`-scoped `Notifier` (`Send` to the holders, `SendTo` per alert address) under a short detached deadline; with no recipients it returns `Unsupported`. The alert's `Key` is always empty: at sign-in `ctx` can carry an old, unrelated session from the request's cookie, so a session-based key would let a reused cookie suppress later alerts. Errors return to identity, which logs and counts them (identity F27); on a read-only copy the send fails and the audit entry remains the record.
 
 ### Forgotten-password flow (D39, D40, D41)
 
@@ -1042,7 +1048,7 @@ The `core.accounts.setting.login_failure_window.description` reads: "Failed sign
 | F24 | `SignOut` | `Record` fails | its kind; the handler already cleared the cookie | the shell resets anyway | `TestSignOut_AuditFails_CookieStillCleared` (handler test) |
 | F25 | `ChangePassword` | no session | Unauthenticated | sign in | `TestChangePassword_NoSession_Unauthenticated` |
 | F26 | `ChangePassword` | current password wrong | Invalid (`current_password`: `incorrect`); no generation change | field error | `TestChangePassword_WrongCurrent_Invalid` |
-| F27 | `SignIn` (superuser) | `Alerter` fails | logged, counted; login succeeds | — | `TestSignIn_Superuser_AlerterFailureDoesNotFail` |
+| F27 | `SignIn` (superuser) | `alert` fails (`Notify.Send`, `Alerts.SendAlert` or `Holders` fails, or nobody to tell: `Unsupported`) | logged, counted; login succeeds | — | `TestSignIn_Superuser_AlerterFailureDoesNotFail` (name kept) |
 | F28 | `ChangePassword` | read-only copy | Unavailable wrapping `db.ErrReadOnly` | 503 | `TestChangePassword_ReadOnly_Unavailable` |
 | F29 | `EndOtherSessions` | no session, or a restricted session | Unauthenticated | sign in / change password first | `TestEndOtherSessions_Restricted_Unauthenticated` |
 | F30 | `EndOtherSessions` | read-only copy | Unavailable wrapping `db.ErrReadOnly` | 503 | `TestEndOtherSessions_ReadOnly_Unavailable` |
@@ -1139,7 +1145,7 @@ Later providers (OIDC) must be implementable against Dex (D13 compose profile `o
 
 ## Test plan
 
-- **Unit** (`identity`): a hand-written fake `store`, `clock.NewFake`, `audittest.NewFake("identity")`, `signalstest.NewFake("identity", []signals.Name{SignalAccountCreated}, nil)`, `telemetrytest.New(t)`; a fake `settings.Reader` (`settingstest.NewFake`), `PermissionChecker` (allow/deny), `PermissionLister`, `NameSource`, `Alerter`. Table tests per failure mode above.
+- **Unit** (`identity`): a hand-written fake `store`, `clock.NewFake`, `audittest.NewFake("identity")`, `signalstest.NewFake("identity", []signals.Name{SignalAccountCreated}, nil)`, `telemetrytest.New(t)`; a fake `settings.Reader` (`settingstest.NewFake`), `PermissionChecker` (allow/deny), `PermissionLister`, `NameSource`, `holdersFake` and `alertSenderFake` (the alert's seams). Table tests per failure mode above.
   Token tests tamper each region and check constant-time behaviour by construction (`hmac.Equal`). Limiter tests advance the fake clock. Every test puts an invented address and password through the service and asserts `!c.Contains(address)` and `!c.Contains(password)` across logs, spans, the fake recorder's entries (`Reason`, `Fields`) and error strings; the capture fails on any violation at cleanup.
 - **Handlers** (`httptest`): each route with `httpx.Fail`'s fallback statuses, the cookie attributes (F53), `no-store` on `/session` and `/temporary-password`, `bms_session_dev` under both of decision 24's conditions and refused otherwise, sign-out clears the cookie even when the recorder fails (F24).
 - **Permission tests:** F31, F32, F37-F40, F55; the superuser passes with a nil checker; a denying checker is honoured even for `accounts.read` on one's own account (the person is not special on the admin routes).
@@ -1172,6 +1178,8 @@ Later providers (OIDC) must be implementable against Dex (D13 compose profile `o
 Every amendment to this spec is folded into the text above: the forgotten-password flow (D39), the uniform reset answers when e-mail is off (D40), the reset limits as settings (D41, D43), `EnsureAccount` and the `Guard` (D53, D56) and `SessionInfo.Protected` (D58), with the earlier build deviations and approvals of 2026-10-18 to 2026-10-20.
 - **2026-11-01, boundaries step 5:** `Options.Settings` (a `settings.Reader` scoped to `accounts`, required) replaces `Policy PolicySource`; the `PolicySource` type is removed and identity's own `policyFrom` maps the eleven keys (moved from `app`'s `settingsPolicy`). Holders, Alerts and the alert (step 9) and Names (step 8) are unchanged here.
 - **2026-11-01, boundaries step 8:** `identity.NewLookup` (`LookupOptions{DB, Tracer}`) builds `EmailOf` over `core.account` alone, with no permission and no audit; notify takes it as `Accounts`. Test: `TestLookup_EmailOf_NoAccount_ReturnsNotFound` (F64's kind, on the Lookup). `Holders`, `Alerts` and the alert stay for step 9; `Service.EmailOf` now forwards to the Lookup, and `Options.Lookup` is required (field `identity.lookup`). The `Names` seam is not changed by this step. `Actor` and `AuditActor` (applied in code at step 3, `internal/core/identity/session.go`) are documented here at step 8 (Summary, Exported).
+
+- **2026-11-01, boundaries step 9:** the superuser alert moves in from `app.md` as `identity/alert.go` ("The superuser alert", Behavior). `Options` gains `Holders` (`HolderSource`, the `authz.Lookup`) and `Alerts` (`notify.AlertSender` scoped `identity`), and `Notify` becomes required; `Alerter` and its nil behaviour (one warn log line) are removed, as are `app`'s `lazyAlerter` and `alert.go`. Validation fields: `identity.holders`, `identity.notify`, `identity.alerts`. F27 now covers any part of the alert failing; its test keeps its name. identity is built after notify and authz.
 
 Their narratives, the reasons for each choice, what the reviews found, the superseded wording and the answered open questions are in `plan/design/history/identity.md`.
 

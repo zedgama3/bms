@@ -24,6 +24,8 @@ import (
 	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/identity"
+	"github.com/zedgama3/bms/internal/core/notify"
+	"github.com/zedgama3/bms/internal/core/notify/notifytest"
 	"github.com/zedgama3/bms/internal/core/settings"
 	"github.com/zedgama3/bms/internal/core/settings/settingstest"
 	"github.com/zedgama3/bms/internal/core/signals"
@@ -290,6 +292,9 @@ func validOptions(t *testing.T, d db.DB) (identity.Options, *rig) {
 		Audit:    rec,
 		Signals:  bus,
 		Settings: settingstest.NewFake("accounts", identity.Settings),
+		Holders:  &holdersFake{},
+		Notify:   notifytest.NewFake("identity"),
+		Alerts:   &alertSenderFake{},
 	}
 	return o, &rig{t: t, clk: clk, rec: rec, bus: bus, cap: c}
 }
@@ -615,3 +620,55 @@ func keep(err error) error {
 
 // isRateLimited reports whether err wraps httpx.ErrRateLimited.
 func isRateLimited(err error) bool { return errors.Is(err, httpx.ErrRateLimited) }
+
+// ---- the superuser alert's three seams (Options.Holders, Notify, Alerts) ----------------
+
+// holdersFake is an identity.HolderSource: it answers ids (or err) and runs onCall, if set,
+// with the ctx it was given.
+type holdersFake struct {
+	mu     sync.Mutex
+	ids    []model.PersonID
+	err    error
+	asked  []authz.Permission
+	onCall func(context.Context)
+}
+
+func (h *holdersFake) HoldersOf(ctx context.Context, p authz.Permission) ([]model.PersonID, error) {
+	h.mu.Lock()
+	h.asked = append(h.asked, p)
+	ids, err, f := h.ids, h.err, h.onCall
+	h.mu.Unlock()
+	if f != nil {
+		f(ctx)
+	}
+	return ids, err
+}
+
+// alertSenderFake is a notify.AlertSender: it records each message with the state of the ctx
+// it was called with, and fails with err when set.
+type alertSenderFake struct {
+	mu        sync.Mutex
+	err       error
+	noAddress bool // SendAlert answers Unsupported wrapping notify.ErrNoAlertAddress
+	msgs      []notify.Message
+	ctxErrs   []error
+	deadlines []time.Time // zero when the ctx had none
+}
+
+var _ notify.AlertSender = (*alertSenderFake)(nil)
+
+func (a *alertSenderFake) SendAlert(ctx context.Context, m notify.Message) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	dl, _ := ctx.Deadline()
+	a.ctxErrs = append(a.ctxErrs, ctx.Err())
+	a.deadlines = append(a.deadlines, dl)
+	if a.err != nil {
+		return a.err
+	}
+	if a.noAddress {
+		return errs.E("test.SendAlert", errs.Unsupported, notify.ErrNoAlertAddress)
+	}
+	a.msgs = append(a.msgs, m)
+	return nil
+}

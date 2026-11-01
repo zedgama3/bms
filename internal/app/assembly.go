@@ -124,7 +124,7 @@ type assembly struct {
 	peopleLookup      *people.Lookup             // built by buildLookups; notify takes it as Profiles, identity as its names, people forwards to it; nil before it
 	authzLookup       *authz.Lookup              // built by buildLookups; audit, identity, settings and api take it; nil before it
 	events            *events.Service            // the events part's service; nil before its build
-	notify            *notify.Service            // the notify part's service (the alert, the outbox in export); nil before its build
+	notify            *notify.Service            // the notify part's service (identity's AlertSender, the outbox in export); nil before its build
 	regional          *regional.Service          // the regional part's service (notify's site source); nil before its build
 	files             *files.Service             // the files part's service (the Start probe, bms check, bms files verify); nil before its build
 	auditlog          *auditlog.Service          // the auditlog part's service (people's deletion report, the audit routes); nil before its build

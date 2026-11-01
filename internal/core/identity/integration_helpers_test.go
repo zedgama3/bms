@@ -10,15 +10,16 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"context"
+	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/db/dbtest"
 	"github.com/zedgama3/bms/internal/core/identity"
+	"github.com/zedgama3/bms/internal/core/notify"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/lib/httpx"
 	"github.com/zedgama3/bms/internal/model"
@@ -187,25 +188,6 @@ func (p *prig) accountCount() int {
 	return n
 }
 
-type alerter struct {
-	mu    sync.Mutex
-	err   error
-	calls []model.PersonID
-}
-
-func (a *alerter) SuperuserSignedIn(_ context.Context, p model.PersonID) error {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.calls = append(a.calls, p)
-	return a.err
-}
-
-func (a *alerter) count() int {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return len(a.calls)
-}
-
 // callPlain runs a route handler without a Failer, so httpx.Fail writes its own fallback
 // problem body: what two responses carry can then be compared byte for byte.
 func callPlain(t testing.TB, rt httpx.Route, ctx context.Context, body string) *httptest.ResponseRecorder { //nolint:revive // ctx is deliberately second: the route is the subject
@@ -261,3 +243,21 @@ func (f *faultDB) statements() []string {
 
 // defaultCooldown is the policy default (5m), read from DefaultPolicy rather than a constant.
 var defaultCooldown = identity.DefaultPolicy().PasswordResetCooldown
+
+func (h *holdersFake) permissions() []authz.Permission {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]authz.Permission(nil), h.asked...)
+}
+
+func (a *alertSenderFake) calls() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return len(a.ctxErrs)
+}
+
+func (a *alertSenderFake) sent() []notify.Message {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return append([]notify.Message(nil), a.msgs...)
+}

@@ -109,12 +109,10 @@ type NameSource interface {
 	PlayaNameOf(ctx context.Context, person model.PersonID) (string, error)
 }
 
-// Alerter tells the maintainers and the site admins that the superuser signed in (D23).
-// notify implements it (M4); nil means one warn log line with the person ID. An Alerter
-// failure is logged and counted, never fails the sign-in (F27): the audit entry is the
-// record of the event.
-type Alerter interface {
-	SuperuserSignedIn(ctx context.Context, person model.PersonID) error
+// HolderSource lists who holds a permission. authz.Lookup implements it. The superuser alert
+// reads it for the holders of accounts.manage.
+type HolderSource interface {
+	HoldersOf(ctx context.Context, p authz.Permission) ([]model.PersonID, error)
 }
 
 // policy reads the current policy from the "accounts" settings area, validated. A key that

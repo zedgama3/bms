@@ -81,7 +81,6 @@ A row is one type in `internal/app` (or one top-level function, for a closure th
 
 | Type | Waits for | Reason |
 |---|---|---|
-| `lazyAlerter` | notify, authz and settings, resolved when called | the alert is identity's reaction to its own event; notify is now built before identity (step 8), so the late binding is left over until the alert moves into identity and app's adapter goes; removed in step 9. |
 | `lazyGuard` | a.demo, which the demo part sets last | identity asks demo whether an account is protected, and demo creates accounts through identity (identity ↔ demo); removed in step 10. |
 | `lazyFilesPolicy` | a.demo, which the demo part sets last | files takes demo's cap, and demo's reset clears files (files ↔ demo); removed in step 10. |
 | `lazyDeferrer` | a.jobs, which the jobs part sets after signals is built | the dispatcher defers through jobs, and the jobs runner redelivers through the dispatcher (signals ↔ jobs); removed in step 11. |
@@ -165,7 +164,7 @@ A row is one type in `internal/app` (or one top-level function, for a closure th
 ### identity: who is this?
 - **Purpose:** authenticate a person and manage their session.
 - **Owns:** local accounts keyed by e-mail (D21), the password policy and Argon2id, the signed session token and cookie checked without a write, the `Authenticator` and the principal accessors (`SessionFrom`, `PersonFrom`), per-account revocation, failed-login and password-reset limits, the superuser and `bms create-superuser` (D23), the `accounts` routes and screens, `identity.account-created`, `identity.NewLookup` (`EmailOf` over `core.account` alone: no permission, no audit; notify's `Accounts`); providers (OIDC, trusted header; D15) Later behind the same service.
-- **Doesn't do:** decide what they may do (`authz`), hold their profile or the playa name (`people`), invitations until their milestone, e-mail delivery (`notify`). The forgotten-password flow (token, routes, screens; D39) is identity's, the e-mail is notify's.
+- **Doesn't do:** decide what they may do (`authz`), hold their profile or the playa name (`people`), invitations until their milestone, e-mail delivery (`notify`). The superuser alert is identity's own (`identity/alert.go`, boundaries step 9): the holders of `accounts.manage` through `Holders` (the `authz.Lookup`) and `Notify`, the alert addresses through `Alerts` (`notify.AlertSender`), all required. The forgotten-password flow (token, routes, screens; D39) is identity's, the e-mail is notify's.
 
 ### authz: may they do this?
 - **Purpose:** decide whether a person may perform an action on a resource.
@@ -222,7 +221,7 @@ A row is one type in `internal/app` (or one top-level function, for a closure th
 
 ### notify: tell someone something
 - **Purpose:** deliver a notification to a person through a channel.
-- **Owns:** the `Notifier` contract (scoped per owner; `Send`, `Configured`) and `AddressSender`; templates per language with regional overrides; the outbox (`core.notify_message`) written on the caller's transaction; the sender loop on the writing copy with retries; the SMTP channel (stdlib; Mailpit in development); the `notify` routes and screens; permissions `notify.templates.manage`, `notify.outbox.manage`; settings `notify.*`; the delivery rules (the login address, else the contact address, else undeliverable; the language fallback; the four term forms), read through `Accounts`, `Profiles`, `Regional` and `Terms`, so it is built before identity and people (boundaries step 8). E-mail first, others later behind the same `Channel`.
+- **Owns:** the `Notifier` contract (scoped per owner; `Send`, `Configured`), `AddressSender` and `AlertSender` (`Service.Alerts(owner)`: one message to every `notify.alert_addresses` entry, for the superuser alert); templates per language with regional overrides; the outbox (`core.notify_message`) written on the caller's transaction; the sender loop on the writing copy with retries; the SMTP channel (stdlib; Mailpit in development); the `notify` routes and screens; permissions `notify.templates.manage`, `notify.outbox.manage`; settings `notify.*`; the delivery rules (the login address, else the contact address, else undeliverable; the language fallback; the four term forms), read through `Accounts`, `Profiles`, `Regional` and `Terms`, so it is built before identity and people (boundaries step 8). E-mail first, others later behind the same `Channel`.
 - **Doesn't do:** decide who needs telling (modules do), subscribe to signals or pick recipients; HTML, attachments, SMS (Later behind `Channel`).
 
 ### audit: who did what, and who saw what

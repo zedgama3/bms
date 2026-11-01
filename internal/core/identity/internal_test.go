@@ -14,8 +14,11 @@ import (
 	"time"
 
 	"github.com/zedgama3/bms/internal/core/audit/audittest"
+	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/db/dbtest"
 	"github.com/zedgama3/bms/internal/core/identity/account"
+	"github.com/zedgama3/bms/internal/core/notify"
+	"github.com/zedgama3/bms/internal/core/notify/notifytest"
 	"github.com/zedgama3/bms/internal/core/settings/settingstest"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/signals/signalstest"
@@ -46,11 +49,26 @@ func bareService(t *testing.T) (*Service, *clock.Fake) {
 		DB:     dbtest.NewFake(), Clock: clk, Logger: c.Logger(), Tracer: c.Tracer("identity"),
 		Key: secret.New("internal-test-session-key-0123456789abcdef"), Audit: audittest.NewFake("identity"), Signals: bus,
 		Settings: settingstest.NewFake("accounts", Settings),
+		Holders:  idleHolders{}, Notify: notifytest.NewFake("identity"), Alerts: idleAlerts{},
 	}, struct{ store }{})
 	if err != nil {
 		t.Fatalf("newService: %v", err)
 	}
 	return s, clk
+}
+
+// idleHolders and idleAlerts are the superuser alert's seams for a service that never signs a
+// superuser in: nobody holds the permission and nothing is sent.
+type idleHolders struct{}
+
+func (idleHolders) HoldersOf(context.Context, authz.Permission) ([]model.PersonID, error) {
+	return nil, nil
+}
+
+type idleAlerts struct{}
+
+func (idleAlerts) SendAlert(context.Context, notify.Message) error {
+	return errs.E("test.SendAlert", errs.Unsupported, errors.New("no alert address"))
 }
 
 func TestTokenRoundTrip_SignThenVerify(t *testing.T) {

@@ -256,7 +256,7 @@ func (s *Service) SignIn(ctx context.Context, c Credentials) (_ Issued, err erro
 	s.metrics.login(ctx, outcome)
 	span.SetAttrs(telemetry.Token("outcome", outcome))
 	if rec.Superuser {
-		s.alertSuperuser(ctx, rec.Person)
+		s.alert(ctx, rec.Person)
 	}
 	return s.issue(sid, rec.ID, rec.Person, rec.Superuser, rec.PasswordChangeRequired, rec.Generation, pol.lifetime(rec.Superuser)), nil
 }
@@ -287,20 +287,6 @@ func (s *Service) rehash(ctx context.Context, rec account.Record, pw string) {
 	if err != nil && !errors.Is(err, db.ErrReadOnly) {
 		s.logger.WarnContext(ctx, "could not upgrade a password hash",
 			slog.String("account_id", rec.ID.String()), slog.String("error.kind", errs.KindOf(err).String()))
-	}
-}
-
-// alertSuperuser tells the Alerter, or logs one warn line when there is none. A failure
-// is logged and counted and never fails the sign-in (F27): the audit entry is the record.
-func (s *Service) alertSuperuser(ctx context.Context, person model.PersonID) {
-	if s.alerter == nil {
-		s.logger.WarnContext(ctx, "superuser signed in", slog.String("person_id", person.String()))
-		return
-	}
-	if err := s.alerter.SuperuserSignedIn(ctx, person); err != nil {
-		s.metrics.alertFailure(ctx)
-		s.logger.WarnContext(ctx, "could not alert about a superuser sign-in",
-			slog.String("person_id", person.String()), slog.String("error.kind", errs.KindOf(err).String()))
 	}
 }
 

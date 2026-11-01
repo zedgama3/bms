@@ -5,6 +5,11 @@ package api_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"github.com/zedgama3/bms/internal/core/notify"
+	"github.com/zedgama3/bms/internal/core/notify/notifytest"
+	"github.com/zedgama3/bms/internal/lib/errs"
+	"github.com/zedgama3/bms/internal/model"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -64,6 +69,7 @@ func newFlowRig(t *testing.T) *flowRig {
 		DB:     pool, Clock: r.clk, Logger: r.cap.Logger(), Tracer: r.cap.Tracer("identity"), Meter: r.cap.Meter("identity"),
 		Key: secret.New(flowKey), AllowPlaintext: true, Audit: audittest.NewFake("identity"), Signals: bus,
 		Permissions: allowAll{}, Settings: settingstest.NewFake("accounts", identity.Settings),
+		Holders: idleHolders{}, Notify: notifytest.NewFake("identity"), Alerts: idleAlerts{},
 	})
 	if err != nil {
 		t.Fatalf("identity.New: %v", err)
@@ -241,4 +247,18 @@ func TestFlow_SignUp_TakenAddress_409NamesEmailField(t *testing.T) {
 			t.Error("the body echoes the address")
 		}
 	}
+}
+
+// idleHolders and idleAlerts are the superuser alert's seams for a rig that signs no
+// superuser in: nobody holds the permission and no alert address is configured.
+type idleHolders struct{}
+
+func (idleHolders) HoldersOf(context.Context, authz.Permission) ([]model.PersonID, error) {
+	return nil, nil
+}
+
+type idleAlerts struct{}
+
+func (idleAlerts) SendAlert(context.Context, notify.Message) error {
+	return errs.E("test.SendAlert", errs.Unsupported, errors.New("no alert address"))
 }

@@ -309,7 +309,7 @@ func probeCount(p *probeNotifier) int {
 
 // ---- F71, F72, F91 ---------------------------------------------------------------------
 
-// F71 (replaced): Notify nil, or Configured false: Unsupported before any lookup, for any
+// F71 (replaced): Configured false (Notify itself is required from step 9): Unsupported before any lookup, for any
 // address alike.
 func TestRequestPasswordReset_NotConfigured_UnsupportedForAnyAddress(t *testing.T) {
 	addrs := []string{"known.one@example.org", "unknown.two@example.org", "disabled.three@example.org", "root.four@example.org"}
@@ -317,7 +317,6 @@ func TestRequestPasswordReset_NotConfigured_UnsupportedForAnyAddress(t *testing.
 		name string
 		mod  func() func(*identity.Options)
 	}{
-		{"Notify nil", func() func(*identity.Options) { return func(*identity.Options) {} }},
 		{"Configured false", func() func(*identity.Options) {
 			n := notifytest.NewFake("identity")
 			n.SetConfigured(false)
@@ -735,8 +734,10 @@ func TestResetHandler_Statuses(t *testing.T) {
 			t.Errorf("status = %d, want 429", w.Code)
 		}
 	})
-	t.Run("no Notify is 501", func(t *testing.T) {
-		r := newRig(t, dbtest.NewFake())
+	t.Run("unconfigured Notify is 501", func(t *testing.T) {
+		n := notifytest.NewFake("identity")
+		n.SetConfigured(false)
+		r := newRig(t, dbtest.NewFake(), withNotify(n))
 		w, _ := call(t, handlerFor(t, r.svc, "POST", "/password-reset"), from(ctxT(t), resetClient), emailJSON(resetUnk))
 		if w.Code != http.StatusNotImplemented {
 			t.Errorf("status = %d, want 501", w.Code)

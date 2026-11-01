@@ -37,7 +37,6 @@ const (
 )
 
 var (
-	errNoNotify    = errors.New("password reset by e-mail is not set up in this deployment")
 	errSendRefused = errors.New("the reset e-mail could not be queued")
 )
 
@@ -125,9 +124,6 @@ func (s *Service) RequestPasswordReset(ctx context.Context, email model.Email) (
 	rv.keep()
 
 	// Asked before the lookup, so the answer cannot depend on the address (F71, F91).
-	if s.notify == nil {
-		return errs.E(op, errs.Unsupported, errNoNotify)
-	}
 	configured, err := s.notify.Configured(ctx)
 	if err != nil {
 		return fmt.Errorf("%s: is e-mail configured: %w", op, err)

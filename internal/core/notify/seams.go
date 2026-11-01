@@ -72,3 +72,15 @@ type Notifier interface {
 type AddressSender interface {
 	SendTo(ctx context.Context, to model.Email, m Message) error
 }
+
+// AlertSender sends one message to every notify.alert_addresses entry, each in the site's
+// default language (core only: the superuser alert; never in module.Deps). The template must
+// belong to the owner the sender was scoped for. Fails errs.Unsupported wrapping
+// ErrNoAlertAddress when no address is configured (and errs.Unsupported wrapping
+// ErrNotConfigured when SMTP is unset: the two differ), errs.Invalid for a template of
+// another owner, else as Send (errs.Unavailable wrapping db.ErrReadOnly on a read-only copy). A failure for one address does not stop the rest; the failures are joined
+// under the first kind. It does not tell the holders of a permission: that stays with
+// Notifier.Send, and the caller combines the two.
+type AlertSender interface {
+	SendAlert(ctx context.Context, m Message) error
+}

@@ -101,15 +101,16 @@ type Options struct {
 	Permissions    PermissionChecker
 	Lister         PermissionLister
 	Names          NameSource
-	Alerter        Alerter
-	Notify         notify.Notifier // scoped to "identity"; nil means no reset: RequestPasswordReset answers Unsupported
-	Guard          Guard           // optional; nil protects nothing (D53, demo mode only)
-	Lookup         *Lookup         // EmailOf; built before notify; required
+	Holders        HolderSource       // the authz.Lookup; required: the superuser alert's holders of accounts.manage
+	Notify         notify.Notifier    // scoped to "identity"; required: the password reset and the alert's holders
+	Alerts         notify.AlertSender // scoped to "identity"; required: the superuser alert's alert addresses
+	Guard          Guard              // optional; nil protects nothing (D53, demo mode only)
+	Lookup         *Lookup            // EmailOf; built before notify; required
 }
 
 // Validate fails errs.Invalid joining a validate.FieldError per problem: "identity.db",
 // "identity.clock", "identity.logger", "identity.tracer", "identity.audit",
-// "identity.signals", "identity.settings", "identity.lookup" (nil) and "session.key" (unset).
+// "identity.signals", "identity.settings", "identity.holders", "identity.notify", "identity.alerts", "identity.lookup" (nil) and "session.key" (unset).
 func (o Options) Validate() error {
 	v := validate.Errors{Op: "identity.Options.Validate"}
 	if o.DB == nil {
@@ -132,6 +133,15 @@ func (o Options) Validate() error {
 	}
 	if o.Settings == nil {
 		v.Addf("identity.settings", codeRequired, "must be set")
+	}
+	if o.Holders == nil {
+		v.Addf("identity.holders", codeRequired, "must be set")
+	}
+	if o.Notify == nil {
+		v.Addf("identity.notify", codeRequired, "must be set")
+	}
+	if o.Alerts == nil {
+		v.Addf("identity.alerts", codeRequired, "must be set")
 	}
 	if o.Lookup == nil {
 		v.Addf("identity.lookup", codeRequired, "must be set")
@@ -157,8 +167,9 @@ type Service struct {
 	perms          PermissionChecker
 	lister         PermissionLister
 	names          NameSource
-	alerter        Alerter
+	holders        HolderSource
 	notify         notify.Notifier
+	alerts         notify.AlertSender
 	guard          Guard
 	lookup         *Lookup
 
@@ -215,8 +226,8 @@ func newService(o Options, st store) (*Service, error) {
 	return &Service{
 		store: st, db: o.DB, clock: o.Clock, logger: o.Logger, tracer: o.Tracer,
 		key: key, allowPlaintext: o.AllowPlaintext, audit: o.Audit, signals: o.Signals,
-		settings: o.Settings, perms: o.Permissions, lister: o.Lister, names: o.Names, alerter: o.Alerter,
-		notify: o.Notify, guard: o.Guard, lookup: o.Lookup,
+		settings: o.Settings, perms: o.Permissions, lister: o.Lister, names: o.Names,
+		holders: o.Holders, notify: o.Notify, alerts: o.Alerts, guard: o.Guard, lookup: o.Lookup,
 		common: common, dummy: dummyHash(), limiter: newLimiter(), resetLimiter: newResetLimiter(), sem: make(chan struct{}, HashConcurrency),
 		rand: rand.Reader, metrics: m,
 	}, nil
@@ -281,7 +292,7 @@ func newMetrics(m telemetry.Meter) (metrics, error) {
 		return metrics{}, fmt.Errorf("identity.New: %w", err)
 	}
 	if out.alertFailed, err = m.Counter("bms.identity.alert_failures", telemetry.WithUnit("{alert}"),
-		telemetry.WithDescription("Superuser sign-in alerts the Alerter failed to send.")); err != nil {
+		telemetry.WithDescription("Superuser sign-in alerts that could not be sent.")); err != nil {
 		return metrics{}, fmt.Errorf("identity.New: %w", err)
 	}
 	return out, nil

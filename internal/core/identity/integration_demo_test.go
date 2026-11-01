@@ -183,7 +183,7 @@ type guardRig struct {
 func newGuardRig(t *testing.T) *guardRig {
 	t.Helper()
 	g := newFakeGuard()
-	p := newPoolRig(t, withGuard(g), func(o *identity.Options) { o.Notify = nil })
+	p := newPoolRig(t, withGuard(g))
 	r := &guardRig{prig: p, g: g}
 	r.target = p.signUpAs("participant@demo.invalid", demoPW)
 	r.boss = p.signUp("boss.lady")

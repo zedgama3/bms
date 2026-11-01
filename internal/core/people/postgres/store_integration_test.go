@@ -4,7 +4,11 @@ package postgres_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"github.com/zedgama3/bms/internal/core/authz"
+	"github.com/zedgama3/bms/internal/core/notify"
+	"github.com/zedgama3/bms/internal/core/notify/notifytest"
 	"log/slog"
 	"testing"
 	"time"
@@ -126,6 +130,7 @@ func TestBackfill_OnePersonRowPerExistingAccount(t *testing.T) {
 		Key: secret.New("people-pg-test-session-key-0123456789abcdef"), Audit: audittest.NewFake("identity"),
 		Signals:  mustBus(t),
 		Settings: settingstest.NewFake("accounts", identity.Settings),
+		Holders:  idleHolders{}, Notify: notifytest.NewFake("identity"), Alerts: idleAlerts{},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -376,4 +381,18 @@ func mustBus(t *testing.T) signals.Bus {
 		t.Fatal(err)
 	}
 	return b
+}
+
+// idleHolders and idleAlerts are the superuser alert's seams for a rig that signs no
+// superuser in: nobody holds the permission and no alert address is configured.
+type idleHolders struct{}
+
+func (idleHolders) HoldersOf(context.Context, authz.Permission) ([]model.PersonID, error) {
+	return nil, nil
+}
+
+type idleAlerts struct{}
+
+func (idleAlerts) SendAlert(context.Context, notify.Message) error {
+	return errs.E("test.SendAlert", errs.Unsupported, errors.New("no alert address"))
 }
