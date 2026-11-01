@@ -20,7 +20,6 @@ import (
 	"github.com/zedgama3/bms/internal/core/demo/rows"
 	"github.com/zedgama3/bms/internal/core/departments"
 	"github.com/zedgama3/bms/internal/core/events"
-	"github.com/zedgama3/bms/internal/core/files"
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/people"
 	"github.com/zedgama3/bms/internal/core/settings"
@@ -120,7 +119,8 @@ type Accounts interface {
 	EnsureAccount(ctx context.Context, c identity.Credentials) (identity.AccountResult, error)
 }
 
-// Access is the seed's slice of authz.
+// Access is the seed's slice of authz: the signatures of authz.Service, which satisfies it
+// directly.
 type Access interface {
 	// EnsureGrant is authz's writer-only bootstrap grant (no actor); it returns an existing
 	// grant with false.
@@ -139,12 +139,13 @@ type Addresses interface {
 	EmailOf(ctx context.Context, person model.PersonID) (model.Email, error)
 }
 
-// Profiles is the seed's slice of people.
+// Profiles is the seed's slice of people: the signatures of people.Service, which satisfies
+// it directly.
 type Profiles interface {
 	// UpdateMe fills the signed-in account's own profile (creating a missing row).
-	UpdateMe(ctx context.Context, in people.ProfileInput) (people.Person, error)
+	UpdateMe(ctx context.Context, in people.ProfileInput) (people.Profile, error)
 	// Create makes a person without an account (a walk-on), as the demo account-admin.
-	Create(ctx context.Context, in people.ProfileInput) (people.Person, error)
+	Create(ctx context.Context, in people.ProfileInput) (people.Profile, error)
 }
 
 // Departments is the seed's slice of departments.
@@ -169,10 +170,10 @@ type Schema interface {
 	Migrate(ctx context.Context) error
 }
 
-// Objects clears every object of every bucket and the files temp dir; app builds it over
-// objects.Store and cfg.Files.Dir.
+// Objects empties the object store and the files temp directory: files.Service.Purge, which
+// satisfies it directly.
 type Objects interface {
-	Clear(ctx context.Context) (deleted int, err error)
+	Purge(ctx context.Context) (deleted int, err error)
 }
 
 // Contributor pairs a module name with its provider (from Set.Contributors(demoseed.Point)).
@@ -194,10 +195,9 @@ type Options struct {
 	Clock              clock.Clock
 	Logger             *slog.Logger
 	Tracer             telemetry.Tracer
-	Meter              telemetry.Meter    // optional: without one nothing is counted
-	Audit              audit.Recorder     // scoped "demo"
-	Actor              authz.ActorFunc    // ListMail's viewer (the signed-in person)
-	Files              files.PolicySource // the inner (settings-backed) source Policy caps
+	Meter              telemetry.Meter // optional: without one nothing is counted
+	Audit              audit.Recorder  // scoped "demo"
+	Actor              authz.ActorFunc // ListMail's viewer (the signed-in person)
 	Accounts           Accounts
 	Access             Access
 	Addresses          Addresses
@@ -230,7 +230,6 @@ func (o Options) Validate() error {
 		{"demo.tracer", o.Tracer == nil},
 		{"demo.audit", o.Audit == nil},
 		{"demo.actor", o.Actor == nil},
-		{"demo.files", o.Files == nil},
 		{"demo.accounts", o.Accounts == nil},
 		{"demo.access", o.Access == nil},
 		{"demo.addresses", o.Addresses == nil},
@@ -296,9 +295,6 @@ type store interface {
 	BeginSeed(ctx context.Context, st rows.State) error
 	MarkSeeded(ctx context.Context, at time.Time) error
 	AddAccount(ctx context.Context, a rows.Account) error
-	Protected(ctx context.Context, id model.AccountID) (bool, error)
-	// Capture inserts the mail and trims to the newest keep rows in one Write transaction.
-	Capture(ctx context.Context, m rows.Mail, keep int) error
 	ListMail(ctx context.Context, address string, limit int) ([]rows.Mail, error)
 	DropSchemas(ctx context.Context, schemas []string) error
 }
@@ -389,29 +385,6 @@ func (s *Service) Info() Info {
 		out.Accounts[i] = AccountInfo{Key: a.key, Email: a.key + "@" + Domain, Roles: append([]string(nil), a.roles...)}
 	}
 	return out
-}
-
-// State returns the marker for `bms check`: found false when there is no row. It fails with
-// the store's kind.
-func (s *Service) State(ctx context.Context) (seededAt time.Time, found bool, err error) {
-	st, err := s.store.State(ctx)
-	if errs.Is(err, errs.NotFound) {
-		return time.Time{}, false, nil
-	}
-	if err != nil {
-		return time.Time{}, false, fmt.Errorf("demo.Service.State: %w", err)
-	}
-	return st.SeededAt, true, nil
-}
-
-// Protected answers whether an account is a demo account (a row in core.demo_account).
-// false, nil for an unknown account. Fails with the store's kind (identity fails closed).
-func (s *Service) Protected(ctx context.Context, a model.AccountID) (bool, error) {
-	ok, err := s.store.Protected(ctx, a)
-	if err != nil {
-		return false, fmt.Errorf("demo.Service.Protected: %w", err)
-	}
-	return ok, nil
 }
 
 // say writes operator text to w (nothing when w is nil); a failed write to the terminal has

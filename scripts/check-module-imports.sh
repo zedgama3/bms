@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Fails if any package under internal/modules/<a> imports internal/modules/<b> (a != b).
+# Fails if any package under internal/modules/<a> imports internal/modules/<b> (a != b),
+# or if internal/app's production code imports a core package's store (internal/core/<x>/postgres).
 # Modules talk through core contracts and domain events (plan/07-abstractions.md).
 set -euo pipefail
 mod=$(go list -m)
@@ -18,4 +19,17 @@ while read -r pkg imports; do
     fi
   done
 done <<< "$listing"
+
+# app wires services and never reaches into a package's store (boundaries.md "depguard
+# app-no-stores"). depguard lists today's stores by name; this catches a new package's
+# internal/core/<x>/postgres that nobody added to that list. core/db is the shared database.
+app_listing=$(go list -f '{{.ImportPath}} {{join .Imports " "}}' "./internal/app/...")
+while read -r pkg imports; do
+  for imp in $imports; do
+    if [[ "$imp" =~ ^$mod/internal/core/[^/]+/postgres$ && "$imp" != "$mod/internal/core/db/postgres" ]]; then
+      echo "$pkg imports $imp: app never imports a package's store"
+      fail=1
+    fi
+  done
+done <<< "$app_listing"
 exit $fail

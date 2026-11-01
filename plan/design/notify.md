@@ -7,7 +7,8 @@
 - **Amended 2026-10-20 (owner, D40):** the reset e-mail's template receives the lifetime as a number of minutes (`lifetime_minutes`) and each language words the unit (Proposed change 1); the dev Mailpit accepts any SMTP AUTH so integration tests cover AUTH (Proposed change 14, applied in `deploy/compose/docker-compose.yml`); the outbox screen translates error tokens and template names and words the bare-address recipient (UI, "Outbox").
 - **Amendment 2026-10-28 (approved, owner, D53, demo.md Proposed change 8):** note only, no interface change: `app` may supply a `ChannelFactory` that ignores `SMTPConfig` (demo mode); `Configured` is unchanged.
 - **Amendment 2026-10-30 (owner, D57):** a message whose recipient has no e-mail address (`no_address`) ends `Skipped`, a fifth status, not `Failed`; it is counted in `Sent.Skipped`, shown on the outbox screen as "Skipped" with its reason, and the outbox status line in demo mode says mail is captured for the demo (decision 6, F22, F45, Data, Behavior, UI). Confirmed 2026-10-30 (D58): a skipped row's end instant is stored in the existing `failed_at` column (no new column), `Purge` covers it, a skipped row offers no Retry or Cancel (both refuse `Conflict` field `status`, F48, F49), and its delivery metric outcome is `skipped` (reason `no_address` on the span). D58 review: existing `failed` rows with `last_error = no_address` are left as they are, with no backfill, because D58 changes only future sends and those rows may still be retried within their window. Migration `0002` adds its CHECK constraints `NOT VALID`: existing rows satisfy them by construction and the outbox can be large (retention defaults to keep-forever), so a validating scan is avoided.
-- **Amendment 2026-11-01 (boundaries step 5):** `Options.Settings` (a `settings.Reader` scoped to `notify`, required) replaces `SMTPSource` and `RetentionSource`, which are removed; the SMTP mapping is `notify.SMTPFromSettings(ctx, settings.Reader)`, exported for `bms check` until step 10's `Probe`; retention 0 still deletes nothing. `Site`, `Address`, `Language`, `Name` sources, `Channel`, `Regional`, `Terms`, `Accounts`, `Profiles`, `AlertSender` and `Probe` are later steps.
+- **Amendment 2026-11-01 (boundaries step 10, item 16, the rest):** `Options.Channel Channel` (optional; nil builds the SMTP channel from the settings per batch, as before) replaces `Options.Channel ChannelFactory`, so demo mode passes `demo.NewCapture`'s `Capture` with no factory and no `SMTPConfig` ignored; `Configured` is unchanged and still answers from the SMTP settings. `Probe(ctx, db.DB, settings.Reader) (EmailState, error)` is `bms check`'s e-mail line (whether SMTP is configured and how, the outbox counts, whether the server accepts a conversation) over its own store; it never returns an address, a user name or a password; a schema behind is `Unavailable`. The D53 note below (an `app`-supplied `ChannelFactory`) is superseded. New tests `TestProbe_NothingSet_IsNotConfigured`, `TestProbe_NeverReturnsAnAddress`, `TestNew_ChannelOption_ReplacesSMTP`. `SMTPFromSettings` is unexported (`smtpFromSettings`; tests use `export_test.go`). `Probe` takes the instance hostname, `Probe(ctx, d, r, hostname)`, so `bms check` greets the server with the same EHLO name as delivery (boundaries D6). `EmailState{Known, Configured, Host, Port, Security, Outbox/OutboxErr, Pinged/PingErr}`. `ChannelFactory` and `notifytest.Channel.Factory()` are gone. Probe maps `42P01`, `42703` and `3F000` to `Unavailable` (F79); `bms check` prints `outbox: unavailable: unavailable` for it (was `internal`).
+- **Amendment 2026-11-01 (boundaries step 5):** `Options.Settings` (a `settings.Reader` scoped to `notify`, required) replaces `SMTPSource` and `RetentionSource`, which are removed; the SMTP mapping is `smtpFromSettings(ctx, settings.Reader)` (exported as `SMTPFromSettings` until step 10, unexported then; tests reach it through `export_test.go`; `bms check` uses `Probe`); retention 0 still deletes nothing. `Site`, `Address`, `Language`, `Name` sources, `Channel`, `Regional`, `Terms`, `Accounts`, `Profiles`, `AlertSender` and `Probe` are later steps.
 - **Amendment 2026-11-01 (boundaries step 8):** `Options` gains `Regional` (`RegionalSource`), `Terms` (`TermSource`), `Accounts` and `Profiles`, replacing `Site`, `Addresses`, `Languages` and `Names` (`SiteSource`, `AddressSource`, `LanguageSource`, `NameSource` are removed); app's delivery rules move into notify (address, language and term-form rules, below); notify is built before identity and people, and `lazyNotifier` and `lazyNames` go. `Channel` and `Probe` are step 10; `AlertSender` is step 9 (next amendment).
 - **Amendment 2026-11-01 (boundaries step 9):** `AlertSender{SendAlert(ctx, Message) error}` and `(*Service).Alerts(owner)` are added (Interface, Summary): one message to every `notify.alert_addresses` entry, `Unsupported` wrapping the exported `ErrNoAlertAddress` when none is set (SMTP unset is `Unsupported` wrapping `ErrNotConfigured`; identity treats only `ErrNoAlertAddress` as "no address"), `Invalid` for a template of another owner, else as `Send`; the superuser alert itself (recipients, `Key`, deadline) is identity's (`identity.md`, "The superuser alert"), and `app`'s `alert.go` and `lazyAlerter` go. `Channel`, `Probe` stay for step 10. Tests: `TestSendAlert_NoAddress_ReturnsUnsupported`, `TestSendAlert_OtherOwnersTemplate_ReturnsInvalid`.
 - **Package:** `internal/core/notify` (contract, catalogue, outbox, sender, handlers), `internal/core/notify/message` (the record type), `internal/core/notify/postgres` (store, `sql/`, `migrations/`), `internal/core/notify/smtp` (the SMTP channel; the only package importing `net/smtp`), `internal/core/notify/notifytest` (fakes)   **UI:** `web/src/core/notify/`
@@ -24,11 +25,11 @@
 - `Message{Template, To []model.PersonID, Key string, Vars map[string]string, Link string, TTL time.Duration}` (+`Validate`): what a caller sends. `Key` is an optional idempotency key per (owner, key, recipient); `TTL` (0 = `MaxAge`; above `MaxAge` is `Invalid`) bounds how long the row keeps its text.
 - `Notifier{Send(ctx, Message) error; Configured(ctx) (bool, error)}` = `module.Deps.Notify`, scoped to one owner by `(*Service).Scoped(owner)`; `AddressSender{SendTo(ctx, model.Email, Message) error}` (core only: identity's e-mail change confirmation; one explicit address, `To` empty); `AlertSender{SendAlert(ctx, Message) error}` (core only: the superuser alert; one message to every `notify.alert_addresses` entry; `Unsupported` wrapping the exported `ErrNoAlertAddress` when none is set, `Invalid` for a template of another owner), obtained by `(*Service).Alerts(owner)`.
 - `Record{ID, Owner, Template, Person model.PersonID, Language, Status, Attempts int, NextAttemptAt, LeasedUntil, CreatedAt, SentAt, FailedAt time.Time, LastError string, Subject string}` (`LogValue` = ID only); `Rendered{Subject, Body string}`; `TemplateInfo{Name Template, Vars []string, Languages []LanguageInfo}`, `LanguageInfo{Language, Overridden bool, UpdatedAt time.Time}`; `TemplateText{Subject, Body string}`; `TemplateView{Name, Language, Default, Current TemplateText, Overridden bool, Vars []string}`; `OutboxView{Configured bool, Counts map[Status]int, Recent []Record}`; `Sent{Sent, Retried, Failed, Skipped int}`.
-- Channel seam: `Envelope{From Address, ReplyTo *Address, To model.Email, Subject, Body, MessageID string}`, `Address{Name string, Email model.Email}`; `Channel{Send(ctx, Envelope) error; Ping(ctx) error}`; `ChannelFactory func(SMTPConfig) (Channel, error)` (default `smtp.New`; in demo mode `app` supplies one that ignores the config and returns the capture channel, D53; `Configured` unchanged); `ErrRejected` (permanent rejection, `Invalid`).
-- Settings seams: `SMTPConfig{Host string, Port int, Security Security, Username string, Password secret.Secret, Sender Address, ReplyTo *Address, AlertAddresses []model.Email}` (+`Validate`, `Configured()`), `Security` (`StartTLS`, `TLS`, `None`); `SMTPFromSettings(ctx, settings.Reader) (SMTPConfig, error)` (exported for `bms check` until `Probe`, step 10; no `SMTPSource`); `Site{Name, URL string, DefaultLanguage Language, Terms map[string]string}` (the template data, built by notify per send from `Regional.Profile` and `Terms.TermsFor`; `SiteSource` is removed, step 8); `RegionalSource{Profile(ctx) (regional.Profile, error)}` (= `*regional.Service`); `TermSource{TermsFor(ctx, lang string) (map[string]settings.Forms, error)}` (= `*settings.Service`); `ErrNotConfigured` (`Unsupported`).
+- Channel seam: `Envelope{From Address, ReplyTo *Address, To model.Email, Subject, Body, MessageID string}`, `Address{Name string, Email model.Email}`; `Channel{Send(ctx, Envelope) error; Ping(ctx) error}`; `Options.Channel Channel` (nil: the SMTP channel built from the settings per batch with `smtp.New`; in demo mode `app` passes `demo.NewCapture`'s channel, D53, step 10; `Configured` unchanged); `ErrRejected` (permanent rejection, `Invalid`).
+- Settings seams: `SMTPConfig{Host string, Port int, Security Security, Username string, Password secret.Secret, Sender Address, ReplyTo *Address, AlertAddresses []model.Email}` (+`Validate`, `Configured()`), `Security` (`StartTLS`, `TLS`, `None`); `smtpFromSettings(ctx, settings.Reader) (SMTPConfig, error)` (unexported since step 10; `bms check` uses `Probe`; no `SMTPSource`); `Site{Name, URL string, DefaultLanguage Language, Terms map[string]string}` (the template data, built by notify per send from `Regional.Profile` and `Terms.TermsFor`; `SiteSource` is removed, step 8); `RegionalSource{Profile(ctx) (regional.Profile, error)}` (= `*regional.Service`); `TermSource{TermsFor(ctx, lang string) (map[string]settings.Forms, error)}` (= `*settings.Service`); `ErrNotConfigured` (`Unsupported`).
 - Recipient seams (step 8; `AddressSource`, `LanguageSource` and `NameSource` are removed): `Accounts{EmailOf(ctx, model.PersonID) (model.Email, error)}` (= `*identity.Lookup`; `NotFound` when the person has no account); `Profiles{PlayaNameOf, LanguageOf(ctx, model.PersonID) (string, error); ContactEmailOf(ctx, model.PersonID) (model.Email, error)}` (= `*people.Lookup`; `NotFound` when the person has no profile). The delivery rules are notify's own ("Delivery rules", below).
-- `Options{DB, Clock, Logger, Tracer, Meter, Audit audit.Recorder (scoped "notify"), Authz authz.Authorizer, Actor authz.ActorFunc, Settings settings.Reader (scoped "notify", required), Regional RegionalSource, Terms TermSource, Accounts Accounts, Profiles Profiles (all four required), Channel ChannelFactory, PollInterval, Lease, SendTimeout time.Duration, Hostname string}` (+`Validate`); `New(Options) (*Service, error)` (no I/O; works against `db.None()`).
-- `CheckTemplates(owner string, defaults fs.FS) error` (package function; Register's checks without a Service; used by moduletest's `templates_register` and the core packages' template tests (implementation, 2026-10-19)); `*Service` (safe for concurrent use): `Register(owner string, defaults fs.FS) error` (build time, before `Run`); `Scoped(owner) (Notifier, error)`; `Alerts(owner) (AlertSender, error)` (`Invalid` for a bad owner, `Internal` after `Run` started); `AddressSender` (unscoped, core only); `Run(ctx) error` (the sender loop, an `app` runnable); `SendOnce(ctx) (Sent, error)`; `Ping(ctx) error`; `ListTemplates`, `GetTemplate`, `PutTemplate`, `ResetTemplate`, `Preview`, `SendTest`, `Outbox`, `Retry`, `Cancel`, `ExpireStale(ctx) (int64, error)`, `Configured(ctx) (bool, error)`; `ExportPerson(ctx, model.PersonID) (json.RawMessage, error)`; `DeletePerson(ctx, model.PersonID) (int, error)`; `Routes() []Route`; `OpenAPI() []byte`; `Close(ctx) error` (idempotent). `Route{Method, Pattern string, Handler http.Handler}` (all signed-in; `app` converts).
+- `Options{DB, Clock, Logger, Tracer, Meter, Audit audit.Recorder (scoped "notify"), Authz authz.Authorizer, Actor authz.ActorFunc, Settings settings.Reader (scoped "notify", required), Regional RegionalSource, Terms TermSource, Accounts Accounts, Profiles Profiles (all four required), Channel Channel (optional), PollInterval, Lease, SendTimeout time.Duration, Hostname string}` (+`Validate`); `New(Options) (*Service, error)` (no I/O; works against `db.None()`).
+- `Probe(ctx, db.DB, settings.Reader, hostname string) (EmailState, error)` (step 10; `EmailState{Known, Configured, Host, Port, Security, Outbox/OutboxErr, Pinged/PingErr}`: `bms check`'s e-mail line; never an address, a user name or a password); `CheckTemplates(owner string, defaults fs.FS) error` (package function; Register's checks without a Service; used by moduletest's `templates_register` and the core packages' template tests (implementation, 2026-10-19)); `*Service` (safe for concurrent use): `Register(owner string, defaults fs.FS) error` (build time, before `Run`); `Scoped(owner) (Notifier, error)`; `Alerts(owner) (AlertSender, error)` (`Invalid` for a bad owner, `Internal` after `Run` started); `AddressSender` (unscoped, core only); `Run(ctx) error` (the sender loop, an `app` runnable); `SendOnce(ctx) (Sent, error)`; `Ping(ctx) error`; `ListTemplates`, `GetTemplate`, `PutTemplate`, `ResetTemplate`, `Preview`, `SendTest`, `Outbox`, `Retry`, `Cancel`, `ExpireStale(ctx) (int64, error)`, `Configured(ctx) (bool, error)`; `ExportPerson(ctx, model.PersonID) (json.RawMessage, error)`; `DeletePerson(ctx, model.PersonID) (int, error)`; `Routes() []Route`; `OpenAPI() []byte`; `Close(ctx) error` (idempotent). `Route{Method, Pattern string, Handler http.Handler}` (all signed-in; `app` converts).
 - Constants: `MaxRecipients = 100`, `MaxVars = 32`, `MaxVarKeyBytes = 32`, `MaxVarBytes = 1024`, `MaxLinkBytes = 1024`, `MaxKeyBytes = 128`, `MaxTemplateBytes = 16384`, `MaxSubjectBytes = 256`, `MaxAttempts = 8`, `MaxBatch = 50`, `MaxOutboxList = 50`, `DefaultPollInterval = 5s`, `DefaultLease = 2m`, `DefaultSendTimeout = 30s`, `PurgeInterval = 1h`, `MaxAge = 7 days`, `MinRetention = 7 days`, `TemplateFileExt = ".tmpl"`, `DefaultLanguage = "en"`.
 - Permissions `notify.templates.manage`, `notify.outbox.manage` (site, reach `internal`, starter role `settings-admin`); `Permissions []authz.PermissionDecl`. No signals. Settings (core area `notify`, `Settings []settings.Decl`) `notify.smtp_host|smtp_port|smtp_security|smtp_username|smtp_password`, `notify.sender_address|sender_name`, `notify.reply_to`, `notify.alert_addresses`, `notify.retention` (stored by `settings`; the password lives in settings, sealed: owner, 2026-10-19, D39). Audit actions `notify.template.changed|reset`, `notify.test.sent`, `notify.message.retried|canceled`. `postgres.Migrations fs.FS`; `Set = db.Set{Name: "notify", Schema: "core"}`. Templates: `Templates fs.FS` (`notify.test`).
 - `notifytest.NewFake(owner) *Fake` (a `Notifier` that validates like the real one, records `Sent() []Message` after commit, `Fail(err)`); `notifytest.Channel` (an in-memory `Channel` with `Envelopes()`, `Fail(err)`, `Reject()`).
@@ -201,12 +202,11 @@ type Channel interface {
 	Ping(ctx context.Context) error
 }
 
-// ChannelFactory builds the channel for the current SMTP settings; smtp.New by default.
-// app may supply one that ignores cfg (demo mode returns a capture channel, D53); Configured
-// is unchanged and still answers from the SMTP settings.
-// Fails Invalid when cfg does not validate. Consumers: the sender (per tick), Ping, tests
-// (notifytest.Channel).
-type ChannelFactory func(cfg SMTPConfig) (Channel, error)
+// Since boundaries step 10 Options.Channel is a Channel, not a factory: nil means notify
+// builds the SMTP channel (smtp.New) from the current SMTP settings per batch; demo mode
+// passes demo.NewCapture's channel, which replaces SMTP whatever the settings say.
+// Configured is unchanged and still answers from the SMTP settings. Consumers of a Channel
+// value: the sender (per tick), Ping, tests (notifytest.Channel).
 
 // ErrRejected marks a permanent rejection (Invalid). Check with errors.Is.
 var ErrRejected = errors.New("message rejected by the server")
@@ -236,9 +236,10 @@ type SMTPConfig struct {
 func (c SMTPConfig) Validate() error
 func (c SMTPConfig) Configured() bool
 
-// SMTPFromSettings maps the notify.smtp_* keys read from r to an SMTPConfig. notify's own
-// reads use it per send; it is exported only for `bms check` until Probe (step 10).
-func SMTPFromSettings(ctx context.Context, r settings.Reader) (SMTPConfig, error)
+// smtpFromSettings maps the notify.smtp_* keys read from r to an SMTPConfig. notify's own
+// reads use it per send; unexported at step 10 (bms check uses Probe; tests reach it through
+// export_test.go).
+func smtpFromSettings(ctx context.Context, r settings.Reader) (SMTPConfig, error)
 
 // Site is what every template may use: the regional's name, the public URL (no trailing
 // slash), the default language and the terminology for lang (key -> word).
@@ -292,7 +293,7 @@ type Options struct {
 	Terms        TermSource      // required
 	Accounts     Accounts        // required
 	Profiles     Profiles        // required
-	Channel      ChannelFactory  // nil means smtp.New
+	Channel      Channel         // optional; nil builds the SMTP channel from the settings per batch (smtp.New); demo.NewCapture in demo mode
 	PollInterval time.Duration   // 1s..5m; DefaultPollInterval
 	Lease        time.Duration   // 30s..30m; DefaultLease
 	SendTimeout  time.Duration   // 5s..5m; DefaultSendTimeout (one SMTP conversation)
@@ -339,6 +340,13 @@ type AlertSender interface {
 // Alerts returns the AlertSender of owner (scoped like Scoped; fails Invalid for a bad
 // owner, Internal once Run has started). Consumer: app's constructor wiring for identity.
 func (s *Service) Alerts(owner string) (AlertSender, error)
+
+// Probe is bms check's e-mail line over a real database: whether SMTP is configured and
+// how, the outbox counts, and whether the server accepts a conversation. It reads through
+// its own store on d and never returns an address, a user name or a password. Fails with
+// the store's and the channel's kinds; a schema behind (42P01, 42703, 3F000) is errs.Unavailable. hostname is the instance hostname, the EHLO name delivery uses. Consumer: app's
+// check.go (step 10). EmailState{Known, Configured bool; Host string; Port int; Security; Outbox counts / OutboxErr; Pinged bool / PingErr} is its result.
+func Probe(ctx context.Context, d db.DB, r settings.Reader, hostname string) (EmailState, error)
 
 // SendTo implements AddressSender (unscoped; app wires it to identity).
 func (s *Service) SendTo(ctx context.Context, to model.Email, m Message) error
@@ -395,7 +403,7 @@ func (s *Service) Close(ctx context.Context) error
 ```go
 package smtp // internal/core/notify/smtp
 
-// New builds a notify.Channel for cfg (notify.ChannelFactory). Fails Invalid when cfg
+// New builds a notify.Channel for cfg (what Options.Channel == nil gets per batch). Fails Invalid when cfg
 // does not validate or is not configured. Options: SendTimeout, Hostname, Clock.
 func New(cfg notify.SMTPConfig, opts Options) (notify.Channel, error)
 ```
@@ -417,7 +425,6 @@ func NewChannel() *Channel
 func (c *Channel) Envelopes() []notify.Envelope
 func (c *Channel) Fail(err error) // every Send fails with err until cleared
 func (c *Channel) Reject()        // every Send fails Invalid wrapping ErrRejected
-func (c *Channel) Factory() notify.ChannelFactory
 ```
 
 ### Method table
@@ -682,6 +689,9 @@ Between `Configured` and `Send` a settings admin may clear the host; `Send` then
 | F74 | `SendAlert` | a template of another owner (boundaries B12) | `Invalid` | fail (a programming error) | `TestSendAlert_OtherOwnersTemplate_ReturnsInvalid` |
 | F75 | `SendAlert` | read-only copy | `Unavailable` wrapping `db.ErrReadOnly` | identity logs and counts (F27) | `TestSendAlert_ReadOnlyCopy_ReturnsUnavailableWrappingReadOnly` |
 | F76 | `SendAlert` | SMTP not configured | `Unsupported` wrapping `ErrNotConfigured` (not `ErrNoAlertAddress`) | identity treats it as a failure (F27) | `TestSendAlert_NotConfigured_ReturnsUnsupportedWrappingErrNotConfigured` |
+| F77 | `Probe` | nothing set | `EmailState` says not configured; nil error | `check` prints it as off | `TestProbe_NothingSet_IsNotConfigured` |
+| F78 | `Probe` | any state | no address, user name or password in the result | — | `TestProbe_NeverReturnsAnAddress` |
+| F79 | `Probe` | schema behind (42P01, 42703, 3F000), store down | `Unavailable` | `check` prints `outbox: unavailable: unavailable` | `TestProbe_SchemaBehind_ReturnsUnavailable` |
 
 **Test plan (added).** `Configured` is covered in the unit tests over the fixed `SMTPConfig` seam fake; `Conformance` is unchanged (a module need not call it). The identity end-to-end run (Mailpit) adds: with `notify.smtp_host` cleared, `POST /api/accounts/password-reset` answers `501` for a known and an unknown address alike, with identical bodies.
 

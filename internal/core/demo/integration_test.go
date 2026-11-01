@@ -100,9 +100,9 @@ func (r *irig) insertAccount(email string, superuser bool) (model.AccountID, mod
 
 // ---- Protected (F25, F26) ---------------------------------------------------------------
 
-func TestProtected_Unknown_False(t *testing.T) {
+func TestGuard_UnknownAccount_IsFalse(t *testing.T) {
 	r := newIRig(t)
-	ok, err := r.svc.Protected(ctxT(t), model.NewID[model.AccountID]())
+	ok, err := r.guard().Protected(ctxT(t), model.NewID[model.AccountID]())
 	wantNoErr(t, err)
 	if ok {
 		t.Error("an unknown account is protected")
@@ -115,12 +115,12 @@ func TestProtected_DemoAccountTrue_OthersFalse(t *testing.T) {
 	other, _ := r.insertAccount("tester.one@demo.invalid", false)
 	r.exec("INSERT INTO core.demo_account (account_id, person_id, key, email, position) VALUES ($1, $2, 'participant', 'participant@demo.invalid', 0)",
 		[16]byte(demoAcc), [16]byte(demoPerson))
-	ok, err := r.svc.Protected(ctxT(t), demoAcc)
+	ok, err := r.guard().Protected(ctxT(t), demoAcc)
 	wantNoErr(t, err)
 	if !ok {
 		t.Error("a demo account is not protected")
 	}
-	ok, err = r.svc.Protected(ctxT(t), other)
+	ok, err = r.guard().Protected(ctxT(t), other)
 	wantNoErr(t, err)
 	if ok {
 		t.Error("a self-signed-up tester is protected")
@@ -140,7 +140,7 @@ func TestProtected_WorksOnAReadOnlyCopy(t *testing.T) {
 		t.Fatalf("warm the pool: %v", err)
 	}
 	ro := newRig(t, readOnlyDB{r.pool})
-	if _, err := ro.svc.Protected(ctxT(t), model.NewID[model.AccountID]()); err != nil {
+	if _, err := ro.guard().Protected(ctxT(t), model.NewID[model.AccountID]()); err != nil {
 		t.Fatalf("Protected on a read-only copy: %v", err)
 	}
 }
@@ -158,7 +158,7 @@ func (r *irig) send(to, subject string) {
 	e.To = model.Email(to)
 	e.Subject = subject
 	e.MessageID = fmt.Sprintf("m%d@demo.invalid", r.clk.Now().UnixNano())
-	wantNoErr(r.t, r.svc.Channel().Send(ctxT(r.t), e))
+	wantNoErr(r.t, r.capture().Send(ctxT(r.t), e))
 	wantNoErr(r.t, r.clk.Advance(time.Second))
 }
 
@@ -883,7 +883,7 @@ func TestReset_ObjectsFail_LeavesDatabase(t *testing.T) {
 	r := newIRig(t)
 	r.insertMarker(true)
 	r.spoolFile("a.json")
-	r.objects.err = errs.E("objects.Clear", errs.Unavailable, errors.New("store down"))
+	r.objects.err = errs.E("objects.Purge", errs.Unavailable, errors.New("store down"))
 	_, err := r.svc.Reset(ctxT(t), &strings.Builder{})
 	wantKind(t, err, errs.Unavailable)
 	if r.markerRows() != 1 {
@@ -1025,7 +1025,7 @@ func TestReset_Success_WipesAndSeedsAgain(t *testing.T) {
 			idx[c.Seam+"."+c.Method] = i
 		}
 	}
-	if idx["objects.Clear"] >= idx["schema.Migrate"] || idx["schema.Migrate"] >= idx["accounts.EnsureAccount"] {
+	if idx["objects.Purge"] >= idx["schema.Migrate"] || idx["schema.Migrate"] >= idx["accounts.EnsureAccount"] {
 		t.Errorf("wrong order: %v", idx)
 	}
 	if prov.calls != 2 {
@@ -1068,7 +1068,7 @@ func TestCapture_Send_NeverLogsAddressSubjectOrBody(t *testing.T) {
 	e.To = "ZQ9ADDRESS@demo.invalid"
 	e.Subject = "ZQ9SUBJECT"
 	e.Body = "ZQ9BODY https://demo.example.org/accounts/password-reset?token=ZQ9TOKEN"
-	wantNoErr(t, r.svc.Channel().Send(ctxT(t), e))
+	wantNoErr(t, r.capture().Send(ctxT(t), e))
 	for _, m := range []string{"ZQ9ADDRESS", "ZQ9SUBJECT", "ZQ9BODY", "ZQ9TOKEN"} {
 		if r.cap.Contains(m) {
 			t.Errorf("a log, span or metric contains %q", m)
@@ -1083,7 +1083,7 @@ func TestReset_Canceled_ReturnsCanceled(t *testing.T) {
 	cancel()
 	_, err := r.svc.Reset(ctx, &strings.Builder{})
 	wantKind(t, err, errs.Canceled)
-	if n := len(r.log.byMethod("objects", "Clear")); n != 0 {
+	if n := len(r.log.byMethod("objects", "Purge")); n != 0 {
 		t.Error("objects were cleared after cancellation")
 	}
 }
@@ -1142,4 +1142,95 @@ func TestSeed_TableValidates(t *testing.T) {
 	var out strings.Builder
 	_, err := bad.svc.Seed(ctxT(t), &out)
 	wantKind(t, err, errs.Invalid)
+}
+
+// ---- Capture stores instead of sending (boundaries step 10) ------------------------------
+
+// The Capture is a notify.Channel whose Send keeps the envelope in core.demo_mail, whatever
+// it is asked to deliver: the row holds the envelope's recipient, subject and body, the
+// clock's instant, and nothing else happens (no network, no other table). Ping answers nil.
+func TestCapture_StoresInsteadOfSending(t *testing.T) {
+	r := newIRig(t)
+	var ch notify.Channel = r.capture()
+	e := goodEnvelope()
+	e.To = "tester.two@demo.invalid"
+	e.Subject = "Welcome to Ember Flats"
+	e.Body = "Your invented body."
+	wantNoErr(t, ch.Send(ctxT(t), e))
+	wantNoErr(t, ch.Ping(ctxT(t)))
+	if r.mailRows() != 1 {
+		t.Fatalf("%d mail rows, want 1", r.mailRows())
+	}
+	if r.count("SELECT count(*) FROM core.demo_mail WHERE lower(to_address) = 'tester.two@demo.invalid' AND subject = 'Welcome to Ember Flats'") != 1 {
+		t.Error("the row does not hold the envelope's recipient and subject")
+	}
+	var captured time.Time
+	if err := r.pool.QueryRow(ctxT(t), "SELECT captured_at FROM core.demo_mail").Scan(&captured); err != nil {
+		t.Fatalf("captured_at: %v", err)
+	}
+	if !captured.Equal(r.clk.Now()) {
+		t.Errorf("captured_at = %v, want the injected clock's %v", captured, r.clk.Now())
+	}
+}
+
+// Trimmed to the newest MaxMail rows by the Capture itself, with no Service involved.
+func TestCapture_Trims_ToMaxMail(t *testing.T) {
+	r := newIRig(t)
+	ch := r.capture()
+	for i := 0; i < demo.MaxMail+3; i++ {
+		e := goodEnvelope()
+		e.MessageID = fmt.Sprintf("trim%d@demo.invalid", i)
+		wantNoErr(t, ch.Send(ctxT(t), e))
+		wantNoErr(t, r.clk.Advance(time.Second))
+	}
+	if got := r.mailRows(); got != demo.MaxMail {
+		t.Errorf("%d mail rows, want %d", got, demo.MaxMail)
+	}
+}
+
+// ---- StateOf ------------------------------------------------------------------------------
+
+func TestStateOf_NoMarker_ReturnsNotFound(t *testing.T) {
+	r := newIRig(t)
+	_, err := demo.StateOf(ctxT(t), r.pool)
+	wantKind(t, err, errs.NotFound)
+}
+
+func TestStateOf_Seeded_ReturnsTheInstant(t *testing.T) {
+	r := newIRig(t)
+	r.insertMarker(true)
+	st, err := demo.StateOf(ctxT(t), r.pool)
+	wantNoErr(t, err)
+	if st.SeededAt.IsZero() {
+		t.Error("SeededAt is zero for a seeded marker")
+	}
+}
+
+// A marker without seeded_at is a seed in progress (or one that failed): found, with a zero
+// instant, so bms check can say "seeding".
+func TestStateOf_Seeding_HasNoSeededAt(t *testing.T) {
+	r := newIRig(t)
+	r.insertMarker(false)
+	st, err := demo.StateOf(ctxT(t), r.pool)
+	wantNoErr(t, err)
+	if !st.SeededAt.IsZero() {
+		t.Errorf("SeededAt = %v for an unfinished seed, want zero", st.SeededAt)
+	}
+}
+
+// bms check reads the marker on a read-only copy too.
+func TestStateOf_WorksOnAReadOnlyCopy(t *testing.T) {
+	r := newIRig(t)
+	r.insertMarker(true)
+	if _, err := demo.StateOf(ctxT(t), readOnlyDB{r.pool}); err != nil {
+		t.Fatalf("StateOf on a read-only copy: %v", err)
+	}
+}
+
+func TestStateOf_Canceled_ReturnsCanceled(t *testing.T) {
+	r := newIRig(t)
+	ctx, cancel := context.WithCancel(ctxT(t))
+	cancel()
+	_, err := demo.StateOf(ctx, r.pool)
+	wantKind(t, err, errs.Canceled)
 }

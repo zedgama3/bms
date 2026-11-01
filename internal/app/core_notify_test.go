@@ -12,7 +12,6 @@ import (
 
 	"github.com/zedgama3/bms/internal/core/notify"
 	"github.com/zedgama3/bms/internal/lib/errs"
-	"github.com/zedgama3/bms/internal/lib/secret"
 	"github.com/zedgama3/bms/internal/model"
 )
 
@@ -158,43 +157,48 @@ func TestNotifyRunner_RunDoesNotEnd_StopFailsWhenCtxEnds(t *testing.T) {
 
 // ---- bms check's e-mail lines ----
 
-func emailLines(t *testing.T, st emailState) (string, int) {
+func emailLines(t *testing.T, st notify.EmailState, err error) (string, int) {
 	t.Helper()
 	var out bytes.Buffer
 	r := &checkReport{out: &out}
-	r.printEmail(st)
+	r.printEmail(st, err)
 	return out.String(), r.problems
 }
 
 func TestPrintEmail_Table(t *testing.T) {
-	configured := notify.SMTPConfig{
-		Host: "mail.example.org", Port: 587, Security: notify.StartTLS, Username: "outbox-user",
-		Password: secret.New("pw-for-the-test"), Sender: notify.Address{Email: "bms@example.org"},
-		AlertAddresses: []model.Email{"desk@example.org"},
-	}
+	// The state holds what Probe may return: a host, a port, a security and counts; the
+	// leak list below proves the printer adds nothing else.
+	configured := notify.EmailState{Known: true, Configured: true, Host: "mail.example.org", Port: 587, Security: notify.StartTLS}
 	none := configured
 	none.Security = notify.None
 	counts := map[notify.Status]int{notify.Queued: 2, notify.StatusSent: 5, notify.Failed: 1}
+	with := func(st notify.EmailState, f func(*notify.EmailState)) notify.EmailState {
+		f(&st)
+		return st
+	}
 	for _, tc := range []struct {
 		name string
-		st   emailState
+		st   notify.EmailState
+		err  error
 		want []string
 	}{
-		{"not configured", emailState{cfg: notify.SMTPConfig{Port: 587, Security: notify.StartTLS}, counts: counts},
+		{"not configured", notify.EmailState{Known: true, Port: 587, Security: notify.StartTLS, Outbox: counts}, nil,
 			[]string{"e-mail: not configured\n", "outbox: queued 2, sending 0, sent 5, failed 1\n"}},
-		{"configured and reachable", emailState{cfg: configured, counts: counts, pinged: true},
+		{"configured and reachable", with(configured, func(s *notify.EmailState) { s.Outbox, s.Pinged = counts, true }), nil,
 			[]string{"e-mail: configured mail.example.org:587 (starttls)\n", "smtp: ok\n"}},
-		{"security none warns", emailState{cfg: none, counts: counts, pinged: true},
+		{"security none warns", with(none, func(s *notify.EmailState) { s.Outbox, s.Pinged = counts, true }), nil,
 			[]string{"e-mail: configured mail.example.org:587 (none)\n", "warning: security is none", "smtp: ok\n"}},
-		{"the server is unreachable", emailState{cfg: configured, counts: counts, pinged: true, pingErr: errs.E("test", errs.Unavailable, errors.New("refused"))},
-			[]string{"smtp: unavailable\n"}},
-		{"settings cannot be read", emailState{cfgErr: errs.E("test", errs.Unavailable, errors.New("no schema"))},
+		{"the server is unreachable", with(configured, func(s *notify.EmailState) {
+			s.Outbox, s.Pinged, s.PingErr = counts, true, errs.E("test", errs.Unavailable, errors.New("refused"))
+		}), nil, []string{"smtp: unavailable\n"}},
+		{"settings cannot be read", notify.EmailState{}, errs.E("test", errs.Unavailable, errors.New("no schema")),
 			[]string{"e-mail: unknown: unavailable: "}},
-		{"the outbox cannot be counted", emailState{cfg: configured, countErr: errs.E("test", errs.Unavailable, errors.New("down"))},
-			[]string{"outbox: unavailable: unavailable\n"}},
+		{"the outbox cannot be counted", with(configured, func(s *notify.EmailState) {
+			s.OutboxErr = errs.E("test", errs.Unavailable, errors.New("down"))
+		}), nil, []string{"outbox: unavailable: unavailable\n"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got, problems := emailLines(t, tc.st)
+			got, problems := emailLines(t, tc.st, tc.err)
 			for _, w := range tc.want {
 				if !strings.Contains(got, w) {
 					t.Errorf("output lacks %q:\n%s", w, got)

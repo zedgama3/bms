@@ -44,14 +44,10 @@ var Settings = []settings.Decl{
 	{Key: keyMaxPerRecord, Kind: settings.Int, Default: strconv.FormatInt(defaultMaxPerRecord, 10), Check: rangeCheck(minMaxPerRecord, maxMaxPerRecord)},
 }
 
-// PolicyFrom returns the PolicySource over r, a Reader scoped to the files area: the three
-// keys mapped onto Policy and read at every call, so a changed setting applies to the next
-// upload. It is the mapping the service itself uses on every use case. Fails with the
-// Reader's kind (errs.Invalid for a reader of another area, Unavailable, Timeout or Canceled
-// before settings' first load), naming the key.
-func PolicyFrom(r settings.Reader) PolicySource { return readerPolicy{r: r} }
-
-// readerPolicy is the PolicySource over a settings.Reader.
+// readerPolicy maps the three keys of a Reader scoped to the files area onto Policy, read
+// at every call so a changed setting applies to the next upload. Fails with the Reader's
+// kind (errs.Invalid for a reader of another area, Unavailable, Timeout or Canceled before
+// settings' first load), naming the key.
 type readerPolicy struct{ r settings.Reader }
 
 func (p readerPolicy) Policy(ctx context.Context) (Policy, error) {
@@ -68,6 +64,25 @@ func (p readerPolicy) Policy(ctx context.Context) (Policy, error) {
 		return Policy{}, fmt.Errorf("files.%s: %w", keyMaxPerRecord, err)
 	}
 	return Policy{MaxBytes: maxBytes, QuotaBytes: quota, MaxPerRecord: int(perRecord)}, nil
+}
+
+// capped lowers p to ceiling c: each non-zero field of c is a maximum, and a zero
+// (unlimited) QuotaBytes becomes c.QuotaBytes. It never raises a field, and a zero c changes
+// nothing.
+func (p Policy) capped(c Policy) Policy {
+	if c.MaxBytes > 0 {
+		p.MaxBytes = min(p.MaxBytes, c.MaxBytes)
+	}
+	if c.QuotaBytes > 0 {
+		if p.QuotaBytes <= 0 {
+			p.QuotaBytes = c.QuotaBytes
+		}
+		p.QuotaBytes = min(p.QuotaBytes, c.QuotaBytes)
+	}
+	if c.MaxPerRecord > 0 {
+		p.MaxPerRecord = min(p.MaxPerRecord, c.MaxPerRecord)
+	}
+	return p
 }
 
 // rangeCheck is a Check that fails with the "range" code and its min and max.

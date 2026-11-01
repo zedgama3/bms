@@ -495,7 +495,7 @@ func (r *run) walkOnsStep(ctx context.Context) (int, error) {
 		if err != nil {
 			return n - 1, fmt.Errorf("walk-on %02d: %w", n, err)
 		}
-		r.people[demoseed.WalkOnKey(n)] = p.ID
+		r.people[demoseed.WalkOnKey(n)] = p.Person.ID
 	}
 	return demoseed.WalkOns, nil
 }

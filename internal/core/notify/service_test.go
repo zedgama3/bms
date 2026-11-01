@@ -59,8 +59,8 @@ func TestConfigured_Table(t *testing.T) {
 			if n := seamCalls(r); n != 0 {
 				t.Fatalf("Configured looked at a recipient seam %d times", n)
 			}
-			if r.ch.factoryCalls() != 0 {
-				t.Fatal("Configured built a channel (it must not connect)")
+			if r.ch.pingCount() != 0 || len(r.ch.envelopes()) != 0 {
+				t.Fatal("Configured used the channel (it must not connect)")
 			}
 			if len(d.Calls()) != 0 {
 				t.Fatalf("Configured touched the database: %d statements", len(d.Calls()))
@@ -534,23 +534,28 @@ func TestPing_NotConfigured_Unsupported(t *testing.T) {
 	if !errors.Is(err, notify.ErrNotConfigured) {
 		t.Fatal("does not wrap ErrNotConfigured")
 	}
-	if r.ch.factoryCalls() != 0 {
-		t.Fatal("a channel was built for an unconfigured service")
+	if r.ch.pingCount() != 0 {
+		t.Fatal("the channel was pinged for an unconfigured service")
 	}
 }
 
 func TestPing_UsesCurrentSettings(t *testing.T) {
 	r := newRig(t, dbtest.NewFake())
 	wantNoErr(t, r.svc.Ping(ctxT(t)))
+	if r.ch.pingCount() != 1 {
+		t.Fatalf("pings = %d, want 1", r.ch.pingCount())
+	}
+	// The settings are read per call: unsetting the host is seen by the next ping, and the
+	// channel is not asked.
+	r.smtp.set(func(c *notify.SMTPConfig) { c.Host = "" })
+	wantKind(t, r.svc.Ping(ctxT(t)), errs.Unsupported)
+	if r.ch.pingCount() != 1 {
+		t.Fatalf("pings = %d after unsetting the host, want still 1", r.ch.pingCount())
+	}
 	r.smtp.set(func(c *notify.SMTPConfig) { c.Host = "other.invalid"; c.Port = 2626 })
 	wantNoErr(t, r.svc.Ping(ctxT(t)))
-	r.ch.mu.Lock()
-	defer r.ch.mu.Unlock()
-	if r.ch.pings != 2 || len(r.ch.cfgs) != 2 {
-		t.Fatalf("pings=%d factories=%d", r.ch.pings, len(r.ch.cfgs))
-	}
-	if r.ch.cfgs[1].Host != "other.invalid" || r.ch.cfgs[1].Port != 2626 {
-		t.Fatalf("second ping used stale settings: %+v", r.ch.cfgs[1])
+	if r.ch.pingCount() != 2 {
+		t.Fatalf("pings = %d, want 2", r.ch.pingCount())
 	}
 }
 
@@ -562,12 +567,6 @@ func TestPing_ChannelFails_ReturnsItsKind(t *testing.T) {
 			wantKind(t, r.svc.Ping(ctxT(t)), k)
 		})
 	}
-}
-
-func TestPing_FactoryInvalid_Invalid(t *testing.T) {
-	r := newRig(t, dbtest.NewFake())
-	r.ch.factErr = errs.E("test.factory", errs.Invalid, errors.New("bad config"))
-	wantKind(t, r.svc.Ping(ctxT(t)), errs.Invalid)
 }
 
 func TestPing_Unreachable_Unavailable(t *testing.T) {

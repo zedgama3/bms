@@ -24,7 +24,6 @@ import (
 	"github.com/zedgama3/bms/internal/core/demo"
 	"github.com/zedgama3/bms/internal/core/departments"
 	"github.com/zedgama3/bms/internal/core/events"
-	"github.com/zedgama3/bms/internal/core/files"
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/people"
 	"github.com/zedgama3/bms/internal/core/settings"
@@ -263,32 +262,32 @@ type fakeProfiles struct {
 	creates []people.ProfileInput
 }
 
-func (f *fakeProfiles) UpdateMe(ctx context.Context, in people.ProfileInput) (people.Person, error) {
+func (f *fakeProfiles) UpdateMe(ctx context.Context, in people.ProfileInput) (people.Profile, error) {
 	p, _ := identity.PersonFrom(ctx)
 	f.log.add(ctx, "profiles", "UpdateMe", deref(in.PlayaName))
 	if f.err != nil {
 		if err := f.err("UpdateMe", p); err != nil {
-			return people.Person{}, err
+			return people.Profile{}, err
 		}
 	}
 	f.mu.Lock()
 	f.updates = append(f.updates, in)
 	f.mu.Unlock()
-	return people.Person{ID: p}, nil
+	return people.Profile{Person: people.Person{ID: p}}, nil
 }
 
-func (f *fakeProfiles) Create(ctx context.Context, in people.ProfileInput) (people.Person, error) {
+func (f *fakeProfiles) Create(ctx context.Context, in people.ProfileInput) (people.Profile, error) {
 	f.log.add(ctx, "profiles", "Create", deref(in.PlayaName))
 	if f.err != nil {
 		p, _ := identity.PersonFrom(ctx)
 		if err := f.err("Create", p); err != nil {
-			return people.Person{}, err
+			return people.Profile{}, err
 		}
 	}
 	f.mu.Lock()
 	f.creates = append(f.creates, in)
 	f.mu.Unlock()
-	return people.Person{ID: model.NewID[model.PersonID]()}, nil
+	return people.Profile{Person: people.Person{ID: model.NewID[model.PersonID]()}}, nil
 }
 
 func deref(s *string) string {
@@ -376,21 +375,13 @@ type fakeObjects struct {
 	err error
 }
 
-func (f *fakeObjects) Clear(ctx context.Context) (int, error) {
-	f.log.add(ctx, "objects", "Clear", "")
+func (f *fakeObjects) Purge(ctx context.Context) (int, error) {
+	f.log.add(ctx, "objects", "Purge", "")
 	if f.err != nil {
 		return 0, f.err
 	}
 	return 3, nil
 }
-
-// fakePolicy is the inner files.PolicySource.
-type fakePolicy struct {
-	p   files.Policy
-	err error
-}
-
-func (f fakePolicy) Policy(context.Context) (files.Policy, error) { return f.p, f.err }
 
 // fakeProvider is a demoseed.Provider that records what it was given.
 type fakeProvider struct {
@@ -472,7 +463,6 @@ func newRig(t *testing.T, d db.DB, mods ...func(*demo.Options)) *rig {
 		Meter:              c.Meter("demo"),
 		Audit:              r.rec,
 		Actor:              actorFromSession,
-		Files:              fakePolicy{p: files.DefaultPolicy()},
 		Accounts:           r.accounts,
 		Access:             r.access,
 		Addresses:          r.addresses,
@@ -535,3 +525,27 @@ func (f *faultDB) Transact(context.Context, db.Mode, func(context.Context) error
 type errRow struct{ err error }
 
 func (r errRow) Scan(...any) error { return r.err }
+
+// guard builds the Guard over the rig's database and telemetry (boundaries step 10:
+// demo.NewGuard replaced Service.Protected).
+func (r *rig) guard() *demo.Guard {
+	r.t.Helper()
+	g, err := demo.NewGuard(demo.GuardOptions{DB: r.opts.DB, Tracer: r.opts.Tracer})
+	if err != nil {
+		r.t.Fatalf("demo.NewGuard: %v", err)
+	}
+	return g
+}
+
+// capture builds the Capture over the rig's database, clock and telemetry (boundaries step
+// 10: demo.NewCapture replaced Service.Channel).
+func (r *rig) capture() *demo.Capture {
+	r.t.Helper()
+	c, err := demo.NewCapture(demo.CaptureOptions{
+		DB: r.opts.DB, Clock: r.clk, Logger: r.opts.Logger, Tracer: r.opts.Tracer, Meter: r.opts.Meter,
+	})
+	if err != nil {
+		r.t.Fatalf("demo.NewCapture: %v", err)
+	}
+	return c
+}

@@ -71,6 +71,10 @@ func buildNotify(_ context.Context, a *assembly) error {
 	if err != nil {
 		return err
 	}
+	capture, err := demoCapture(a) // nil unless demo mode: notify then sends over SMTP
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
 	svc, err := notify.New(notify.Options{
 		DB:       a.dbc,
 		Clock:    a.clock,
@@ -86,7 +90,7 @@ func buildNotify(_ context.Context, a *assembly) error {
 		Accounts: a.identityLookup,
 		Profiles: a.peopleLookup,
 		Hostname: a.cfg.Instance.Name,
-		Channel:  demoChannelFactory(a), // nil unless demo mode: notify then sends over SMTP
+		Channel:  capture,
 	})
 	if err != nil {
 		return err //nolint:wrapcheck // notify.New names itself

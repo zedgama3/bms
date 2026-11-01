@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -17,8 +18,6 @@ import (
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/notify"
-	notifypg "github.com/zedgama3/bms/internal/core/notify/postgres"
-	"github.com/zedgama3/bms/internal/core/notify/smtp"
 	"github.com/zedgama3/bms/internal/core/settings"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/lib/secret"
@@ -457,101 +456,84 @@ func (r *checkReport) jobs(ctx context.Context, a *assembly) {
 
 // email prints the state of e-mail (notify.md "Concurrency and lifecycle"): whether SMTP is
 // configured and how the connection is secured, the outbox counts and whether the server
-// accepts a conversation. It reads the settings and the outbox through the real pool (the
-// services check built are on a database that refuses every statement), prints no address,
-// user name or password, and never fails the check: a missing database or schema or an
-// unreachable server is a line, not a problem.
+// accepts a conversation. notify.Probe reads the settings and the outbox through the real
+// pool (the services check built are on a database that refuses every statement); the lines
+// print no address, user name or password, and never fail the check: a missing database or
+// schema or an unreachable server is a line, not a problem.
 func (r *checkReport) email(ctx context.Context, a *assembly) {
 	if a.pool == nil || a.deps.audit == nil {
 		r.printf("e-mail: skipped (no database)\n")
 		return
 	}
-	var st emailState
-	st.cfg, st.cfgErr = r.smtpConfig(ctx, a)
-	if st.cfgErr == nil {
-		cctx, cancel := context.WithTimeout(ctx, checkTimeout)
-		defer cancel()
-		store, err := notifypg.NewStore(a.pool)
-		if err == nil {
-			st.counts, err = store.CountByStatus(cctx)
-		}
-		st.countErr = err
-		if st.cfg.Configured() {
-			ch, err := smtp.New(st.cfg, smtp.Options{SendTimeout: notify.DefaultSendTimeout, Hostname: a.cfg.Instance.Name, Clock: a.clock})
-			if err == nil {
-				err = ch.Ping(cctx)
-			}
-			st.pinged, st.pingErr = true, err
-		}
-	}
-	r.printEmail(st)
-}
-
-// emailState is what the e-mail step found.
-type emailState struct {
-	cfg      notify.SMTPConfig
-	cfgErr   error
-	counts   map[notify.Status]int
-	countErr error
-	pinged   bool // a conversation was tried
-	pingErr  error
-}
-
-// printEmail prints the e-mail lines for st. It prints the host, port and security, never
-// the user name, the password or an address, and never records a problem.
-func (r *checkReport) printEmail(st emailState) {
-	if st.cfgErr != nil {
-		r.printf("e-mail: unknown: %s: %s\n", errs.KindOf(st.cfgErr), indent(st.cfgErr.Error()))
+	rd, err := r.notifyReader(a)
+	if err != nil {
+		r.printEmail(notify.EmailState{}, err)
 		return
 	}
-	if !st.cfg.Configured() {
-		r.printf("e-mail: not configured\n")
-	} else {
-		r.printf("e-mail: configured %s:%d (%s)\n", st.cfg.Host, st.cfg.Port, st.cfg.Security)
-		if st.cfg.Security == notify.None {
-			r.printf("  warning: security is none; the connection and the password are not encrypted (use it only for a local relay)\n")
-		}
-	}
-	if st.countErr != nil {
-		r.printf("outbox: unavailable: %s\n", errs.KindOf(st.countErr))
-	} else {
-		r.printf("outbox: queued %d, sending %d, sent %d, failed %d\n",
-			st.counts[notify.Queued], st.counts[notify.Sending], st.counts[notify.StatusSent], st.counts[notify.Failed])
-	}
-	switch {
-	case !st.pinged:
-	case st.pingErr != nil:
-		r.printf("smtp: %s\n", errs.KindOf(st.pingErr))
-	default:
-		r.printf("smtp: ok\n")
-	}
+	cctx, cancel := context.WithTimeout(ctx, checkTimeout)
+	defer cancel()
+	st, err := notify.Probe(cctx, a.pool, rd, a.cfg.Instance.Name)
+	r.printEmail(st, err)
 }
 
-// smtpConfig reads the SMTP settings from the database through a settings service of its
-// own over the pool.
-func (r *checkReport) smtpConfig(ctx context.Context, a *assembly) (notify.SMTPConfig, error) {
+// notifyReader is a Reader scoped "notify" over a settings service of its own on the real
+// pool.
+func (r *checkReport) notifyReader(a *assembly) (settings.Reader, error) {
 	rec, err := a.deps.audit.Scoped(settingsArea)
 	if err != nil {
-		return notify.SMTPConfig{}, err //nolint:wrapcheck // printed with its kind
+		return nil, err //nolint:wrapcheck // printed with its kind
 	}
 	tr, m, err := a.scopes("settings")
 	if err != nil {
-		return notify.SMTPConfig{}, err
+		return nil, err
 	}
 	svc, err := settings.New(settings.Options{
 		DB: a.pool, Clock: a.clock, Logger: a.component("settings"), Tracer: tr, Meter: m, Audit: rec,
 		Authz: a.authzLookup, Actor: identity.Actor, Areas: settingsAreas(a), SealingKey: a.cfg.Settings.SealingKey,
 	})
 	if err != nil {
-		return notify.SMTPConfig{}, err //nolint:wrapcheck // printed with its kind
+		return nil, err //nolint:wrapcheck // printed with its kind
 	}
 	rd, err := svc.Scoped(notifySettings)
 	if err != nil {
-		return notify.SMTPConfig{}, err //nolint:wrapcheck // printed with its kind
+		return nil, err //nolint:wrapcheck // printed with its kind
 	}
-	sctx, cancel := context.WithTimeout(ctx, checkTimeout)
-	defer cancel()
-	return notify.SMTPFromSettings(sctx, rd) //nolint:wrapcheck // printed with its kind
+	return rd, nil
+}
+
+// printEmail prints the e-mail lines for st, the answer of notify.Probe (or, with a zero st,
+// the failure to build its reader), and err, what Probe reported. It prints the host, port
+// and security, never the user name, the password or an address, and never records a
+// problem.
+func (r *checkReport) printEmail(st notify.EmailState, err error) {
+	if !st.Known {
+		if err == nil {
+			err = errs.E("app.check.email", errs.Internal, errors.New("the probe found nothing and reported nothing"))
+		}
+		r.printf("e-mail: unknown: %s: %s\n", errs.KindOf(err), indent(err.Error()))
+		return
+	}
+	if !st.Configured {
+		r.printf("e-mail: not configured\n")
+	} else {
+		r.printf("e-mail: configured %s:%d (%s)\n", st.Host, st.Port, st.Security)
+		if st.Security == notify.None {
+			r.printf("  warning: security is none; the connection and the password are not encrypted (use it only for a local relay)\n")
+		}
+	}
+	if st.OutboxErr != nil {
+		r.printf("outbox: unavailable: %s\n", errs.KindOf(st.OutboxErr))
+	} else {
+		r.printf("outbox: queued %d, sending %d, sent %d, failed %d\n",
+			st.Outbox[notify.Queued], st.Outbox[notify.Sending], st.Outbox[notify.StatusSent], st.Outbox[notify.Failed])
+	}
+	switch {
+	case !st.Pinged:
+	case st.PingErr != nil:
+		r.printf("smtp: %s\n", errs.KindOf(st.PingErr))
+	default:
+		r.printf("smtp: ok\n")
+	}
 }
 
 // auditSpool prints how many audit spool files wait to be imported and how many the

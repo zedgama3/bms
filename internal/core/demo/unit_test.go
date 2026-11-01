@@ -21,6 +21,8 @@ import (
 	"github.com/zedgama3/bms/internal/core/demo"
 	"github.com/zedgama3/bms/internal/core/files"
 	"github.com/zedgama3/bms/internal/core/notify"
+	"github.com/zedgama3/bms/internal/core/telemetry/telemetrytest"
+	"github.com/zedgama3/bms/internal/lib/clock"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/lib/validate"
 	"github.com/zedgama3/bms/internal/model"
@@ -78,7 +80,6 @@ func TestNew_MissingDependency_ReturnsInvalid(t *testing.T) {
 		{"demo.tracer", func(o *demo.Options) { o.Tracer = nil }},
 		{"demo.audit", func(o *demo.Options) { o.Audit = nil }},
 		{"demo.actor", func(o *demo.Options) { o.Actor = nil }},
-		{"demo.files", func(o *demo.Options) { o.Files = nil }},
 		{"demo.accounts", func(o *demo.Options) { o.Accounts = nil }},
 		{"demo.access", func(o *demo.Options) { o.Access = nil }},
 		{"demo.addresses", func(o *demo.Options) { o.Addresses = nil }},
@@ -298,52 +299,106 @@ func TestSeed_Canceled_ReturnsCanceled(t *testing.T) {
 	}
 }
 
-// ---- Policy (F36, F37) ------------------------------------------------------------------
+// ---- FileCeiling (F37, F44) --------------------------------------------------------------
 
-func TestPolicy_CapsNeverRaise(t *testing.T) {
-	tests := []struct {
-		name string
-		in   files.Policy
-		want files.Policy
-	}{
-		{"defaults are lowered", files.Policy{MaxBytes: 25 << 20, QuotaBytes: 0, MaxPerRecord: 20},
-			files.Policy{MaxBytes: demo.MaxUploadBytes, QuotaBytes: demo.MaxQuotaBytes, MaxPerRecord: demo.MaxPerRecord}},
-		{"a settings-admin raising everything", files.Policy{MaxBytes: files.UploadCeiling, QuotaBytes: 1 << 40, MaxPerRecord: 100},
-			files.Policy{MaxBytes: demo.MaxUploadBytes, QuotaBytes: demo.MaxQuotaBytes, MaxPerRecord: demo.MaxPerRecord}},
-		{"lower values are kept", files.Policy{MaxBytes: 1 << 20, QuotaBytes: 10 << 20, MaxPerRecord: 2},
-			files.Policy{MaxBytes: 1 << 20, QuotaBytes: 10 << 20, MaxPerRecord: 2}},
-		{"exactly at the caps", files.Policy{MaxBytes: demo.MaxUploadBytes, QuotaBytes: demo.MaxQuotaBytes, MaxPerRecord: demo.MaxPerRecord},
-			files.Policy{MaxBytes: demo.MaxUploadBytes, QuotaBytes: demo.MaxQuotaBytes, MaxPerRecord: demo.MaxPerRecord}},
-		{"one above the caps", files.Policy{MaxBytes: demo.MaxUploadBytes + 1, QuotaBytes: demo.MaxQuotaBytes + 1, MaxPerRecord: demo.MaxPerRecord + 1},
-			files.Policy{MaxBytes: demo.MaxUploadBytes, QuotaBytes: demo.MaxQuotaBytes, MaxPerRecord: demo.MaxPerRecord}},
-		{"unlimited quota becomes the cap", files.Policy{MaxBytes: 1 << 20, QuotaBytes: 0, MaxPerRecord: 1},
-			files.Policy{MaxBytes: 1 << 20, QuotaBytes: demo.MaxQuotaBytes, MaxPerRecord: 1}},
+// F36 and F44 are gone with Service.Policy (no inner source to fail, no gap in the wiring:
+// the ceiling is a value); F37 lives in files' TestNew_CeilingNeverRaises.
+func TestFileCeiling_IsTheDemoCaps(t *testing.T) {
+	want := files.Policy{MaxBytes: demo.MaxUploadBytes, QuotaBytes: demo.MaxQuotaBytes, MaxPerRecord: demo.MaxPerRecord}
+	if demo.FileCeiling != want {
+		t.Errorf("FileCeiling = %+v, want %+v", demo.FileCeiling, want)
 	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			r := newRig(t, db.None(), func(o *demo.Options) { o.Files = fakePolicy{p: tc.in} })
-			got, err := r.svc.Policy(ctxT(t))
-			wantNoErr(t, err)
-			if got != tc.want {
-				t.Errorf("Policy = %+v, want %+v", got, tc.want)
-			}
-			// A settings change applies at the next call, never lifting the cap.
-			if got.MaxBytes > demo.MaxUploadBytes || got.QuotaBytes > demo.MaxQuotaBytes || got.QuotaBytes == 0 || got.MaxPerRecord > demo.MaxPerRecord {
-				t.Errorf("cap exceeded: %+v", got)
-			}
-		})
+	// Every field is set: a zero field would leave that limit to the settings.
+	if demo.FileCeiling.MaxBytes <= 0 || demo.FileCeiling.QuotaBytes <= 0 || demo.FileCeiling.MaxPerRecord <= 0 {
+		t.Errorf("a FileCeiling field is zero (no ceiling): %+v", demo.FileCeiling)
+	}
+	if err := demo.FileCeiling.Validate(); err != nil {
+		t.Errorf("FileCeiling.Validate: %v", err)
+	}
+	if demo.FileCeiling.MaxBytes > files.DefaultPolicy().MaxBytes {
+		t.Error("the demo cap is above files' own default: it would raise, not lower")
 	}
 }
 
-func TestPolicy_InnerFails_Passthrough(t *testing.T) {
-	for _, kind := range []errs.Kind{errs.Unavailable, errs.Timeout, errs.Canceled, errs.Internal} {
-		t.Run(kind.String(), func(t *testing.T) {
-			inner := errs.E("test.policy", kind, errors.New("inner source failed"))
-			r := newRig(t, db.None(), func(o *demo.Options) { o.Files = fakePolicy{err: inner} })
-			_, err := r.svc.Policy(ctxT(t))
-			wantKind(t, err, kind)
+// ---- NewGuard and NewCapture: nil dependencies --------------------------------------------
+
+func TestNewGuard_NilDB_ReturnsInvalid(t *testing.T) {
+	c := telemetrytest.New(t)
+	tests := []struct {
+		name string
+		o    demo.GuardOptions
+	}{
+		{"zero options", demo.GuardOptions{}},
+		{"no db", demo.GuardOptions{Tracer: c.Tracer("demo")}},
+		{"no tracer", demo.GuardOptions{DB: dbtest.NewFake()}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			g, err := demo.NewGuard(tc.o)
+			wantKind(t, err, errs.Invalid)
+			if g != nil {
+				t.Error("a Guard came back with the error")
+			}
 		})
 	}
+	g, err := demo.NewGuard(demo.GuardOptions{DB: db.None(), Tracer: c.Tracer("demo")})
+	wantNoErr(t, err) // no I/O: db.None() is fine
+	if g == nil {
+		t.Fatal("nil Guard")
+	}
+}
+
+func TestNewCapture_NilDependency_ReturnsInvalid(t *testing.T) {
+	c := telemetrytest.New(t)
+	full := func() demo.CaptureOptions {
+		return demo.CaptureOptions{DB: dbtest.NewFake(), Clock: clock.NewFake(seedDay), Logger: c.Logger(), Tracer: c.Tracer("demo")}
+	}
+	tests := []struct {
+		name string
+		mod  func(*demo.CaptureOptions)
+	}{
+		{"no db", func(o *demo.CaptureOptions) { o.DB = nil }},
+		{"no clock", func(o *demo.CaptureOptions) { o.Clock = nil }},
+		{"no logger", func(o *demo.CaptureOptions) { o.Logger = nil }},
+		{"no tracer", func(o *demo.CaptureOptions) { o.Tracer = nil }},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			o := full()
+			tc.mod(&o)
+			cp, err := demo.NewCapture(o)
+			wantKind(t, err, errs.Invalid)
+			if cp != nil {
+				t.Error("a Capture came back with the error")
+			}
+		})
+	}
+	wantKind(t, errOf(demo.NewCapture(demo.CaptureOptions{})), errs.Invalid)
+	// The meter is optional, and construction does no I/O.
+	cp, err := demo.NewCapture(full())
+	wantNoErr(t, err)
+	if cp == nil {
+		t.Fatal("nil Capture")
+	}
+	o := full()
+	o.DB = db.None()
+	_, err = demo.NewCapture(o)
+	wantNoErr(t, err)
+}
+
+func errOf[T any](_ T, err error) error { return err }
+
+// ---- StateOf -----------------------------------------------------------------------------
+
+func TestStateOf_NilDB_ReturnsInvalid(t *testing.T) {
+	_, err := demo.StateOf(ctxT(t), nil)
+	wantKind(t, err, errs.Invalid)
+}
+
+func TestStateOf_StoreDown_ReturnsUnavailable(t *testing.T) {
+	down := errs.E("test.down", errs.Unavailable, errors.New("database down"))
+	_, err := demo.StateOf(ctxT(t), &faultDB{DB: dbtest.NewFake(), err: down})
+	wantKind(t, err, errs.Unavailable)
 }
 
 // ---- Channel (F27 to F29) ---------------------------------------------------------------
@@ -372,7 +427,7 @@ func TestCapture_BadEnvelope_Rejected(t *testing.T) {
 			r := newRig(t, fake)
 			e := goodEnvelope()
 			tc.mod(&e)
-			err := r.svc.Channel().Send(ctxT(t), e)
+			err := r.capture().Send(ctxT(t), e)
 			wantKind(t, err, errs.Invalid)
 			if !errors.Is(err, notify.ErrRejected) {
 				t.Errorf("error does not wrap notify.ErrRejected: %v", err)
@@ -388,25 +443,25 @@ func TestCapture_Canceled(t *testing.T) {
 	r := newRig(t, dbtest.NewFake())
 	ctx, cancel := context.WithCancel(ctxT(t))
 	cancel()
-	wantKind(t, r.svc.Channel().Send(ctx, goodEnvelope()), errs.Canceled)
+	wantKind(t, r.capture().Send(ctx, goodEnvelope()), errs.Canceled)
 }
 
 func TestCapture_StoreDown_ReturnsUnavailable(t *testing.T) {
 	down := errs.E("test.down", errs.Unavailable, errors.New("database down"))
 	r := newRig(t, &faultDB{DB: dbtest.NewFake(), err: down})
-	wantKind(t, r.svc.Channel().Send(ctxT(t), goodEnvelope()), errs.Unavailable)
+	wantKind(t, r.capture().Send(ctxT(t), goodEnvelope()), errs.Unavailable)
 }
 
 func TestCapture_ReadOnly_ReturnsUnavailable(t *testing.T) {
 	fake := dbtest.NewFake()
 	fake.SetReadOnly(true)
 	r := newRig(t, fake)
-	wantReadOnly(t, r.svc.Channel().Send(ctxT(t), goodEnvelope()))
+	wantReadOnly(t, r.capture().Send(ctxT(t), goodEnvelope()))
 }
 
 func TestCapture_Ping_AnswersNil(t *testing.T) {
 	r := newRig(t, db.None()) // no database needed to answer a ping
-	wantNoErr(t, r.svc.Channel().Ping(ctxT(t)))
+	wantNoErr(t, r.capture().Ping(ctxT(t)))
 }
 
 // ---- ListMail (F30, F32 to F35) ---------------------------------------------------------
@@ -573,7 +628,7 @@ func TestRoutes_InfoPublic_MailSignedIn(t *testing.T) {
 func TestProtected_StoreDown_ReturnsUnavailable(t *testing.T) {
 	down := errs.E("test.down", errs.Unavailable, errors.New("database down"))
 	r := newRig(t, &faultDB{DB: dbtest.NewFake(), err: down})
-	ok, err := r.svc.Protected(ctxT(t), model.NewID[model.AccountID]())
+	ok, err := r.guard().Protected(ctxT(t), model.NewID[model.AccountID]())
 	wantKind(t, err, errs.Unavailable)
 	if ok {
 		t.Error("Protected = true on error; the caller fails closed on the error, but must never be told true by accident")

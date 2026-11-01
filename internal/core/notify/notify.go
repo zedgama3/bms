@@ -19,8 +19,6 @@ type (
 	Envelope = channel.Envelope
 	// Channel carries one envelope; see channel.Channel for its failure kinds.
 	Channel = channel.Channel
-	// ChannelFactory builds the channel for the current SMTP settings.
-	ChannelFactory = channel.Factory
 	// SMTPConfig is the current SMTP settings.
 	SMTPConfig = channel.SMTPConfig
 	// Security is how a connection is protected.

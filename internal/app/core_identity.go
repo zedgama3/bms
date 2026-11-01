@@ -77,6 +77,10 @@ func buildIdentity(_ context.Context, a *assembly) error {
 	if err != nil {
 		return err
 	}
+	guard, err := demoGuard(a) // nil unless demo mode
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
 	svc, err := identity.New(identity.Options{
 		DB:             a.dbc,
 		Clock:          a.clock,
@@ -94,7 +98,7 @@ func buildIdentity(_ context.Context, a *assembly) error {
 		Holders:        a.authzLookup,
 		Notify:         notifier,
 		Alerts:         alerts,
-		Guard:          demoGuard(a), // nil unless demo mode
+		Guard:          guard,
 		Lookup:         a.identityLookup,
 	})
 	if err != nil {

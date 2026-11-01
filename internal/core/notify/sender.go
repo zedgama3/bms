@@ -200,14 +200,14 @@ func (s *Service) SendOnce(ctx context.Context) (res Sent, err error) {
 	if s.db.ReadOnly() {
 		return Sent{}, readOnlyErr(op)
 	}
-	cfg, err := SMTPFromSettings(ctx, s.settings)
+	cfg, err := smtpFromSettings(ctx, s.settings)
 	if err != nil {
 		return Sent{}, seamError(op, "the SMTP settings", err)
 	}
 	if !cfg.Configured() {
 		return s.skipUnconfigured(ctx, op)
 	}
-	ch, err := s.channel(cfg)
+	ch, err := s.channelFor(cfg)
 	if err != nil {
 		return Sent{}, channelError(op, err)
 	}
@@ -434,14 +434,14 @@ func (s *Service) Ping(ctx context.Context) (err error) {
 	const op = "notify.Service.Ping"
 	ctx, span := s.start(ctx, "ping", telemetry.WithKind(telemetry.SpanClient))
 	defer endSpan(span, &err)
-	cfg, err := SMTPFromSettings(ctx, s.settings)
+	cfg, err := smtpFromSettings(ctx, s.settings)
 	if err != nil {
 		return seamError(op, "the SMTP settings", err)
 	}
 	if !cfg.Configured() {
 		return errs.E(op, errs.Unsupported, ErrNotConfigured)
 	}
-	ch, err := s.channel(cfg)
+	ch, err := s.channelFor(cfg)
 	if err != nil {
 		return channelError(op, err)
 	}

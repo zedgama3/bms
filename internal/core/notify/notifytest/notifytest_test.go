@@ -322,21 +322,6 @@ func TestChannel_Reject_InvalidWrappingErrRejected(t *testing.T) {
 	wantNoErr(t, c.Send(ctxT(t), env("a@example.org")))
 }
 
-func TestChannel_Factory_BuildsTheSameChannel(t *testing.T) {
-	c := notifytest.NewChannel()
-	f := c.Factory()
-	cfg := notify.SMTPConfig{Host: "h.example", Port: 25, Security: notify.None, Sender: notify.Address{Email: "burn@example.org"}}
-	ch, err := f(cfg)
-	wantNoErr(t, err)
-	wantNoErr(t, ch.Send(ctxT(t), env("a@example.org")))
-	ch2, err := f(cfg)
-	wantNoErr(t, err)
-	wantNoErr(t, ch2.Send(ctxT(t), env("b@example.org")))
-	if got := len(c.Envelopes()); got != 2 {
-		t.Fatalf("the factory's channels did not share the recorder: %d envelopes", got)
-	}
-}
-
 func TestChannel_CanceledContext_DoesNotRecord(t *testing.T) {
 	c := notifytest.NewChannel()
 	ctx, cancel := context.WithCancel(context.Background())

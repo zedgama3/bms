@@ -4,26 +4,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
-	"os"
-	"path/filepath"
 	"slices"
 	"time"
 
 	"github.com/zedgama3/bms/internal/contracts/demoseed"
 	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/authz"
+	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/demo"
-	demopg "github.com/zedgama3/bms/internal/core/demo/postgres"
-	"github.com/zedgama3/bms/internal/core/files"
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/module"
 	"github.com/zedgama3/bms/internal/core/notify"
-	"github.com/zedgama3/bms/internal/core/objects"
-	"github.com/zedgama3/bms/internal/core/people"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/lib/validate"
-	"github.com/zedgama3/bms/internal/model"
 )
 
 // demoPart is core part 11: the public demo's seed, reset, guard, mail capture and upload
@@ -67,7 +60,7 @@ func declareDemo(a *assembly) error {
 func buildDemo(_ context.Context, a *assembly) error {
 	const op = "app.demo.build"
 	if a.deps.audit == nil || a.authz == nil || a.settings == nil || a.identity == nil || a.people == nil ||
-		a.departments == nil || a.events == nil || a.filesReader == nil {
+		a.departments == nil || a.events == nil || a.files == nil {
 		return errs.E(op, errs.Internal, errors.New("demo is built after audit, identity, settings, authz, people, departments, events and files"))
 	}
 	rec, err := a.deps.audit.Scoped(demoArea)
@@ -89,16 +82,15 @@ func buildDemo(_ context.Context, a *assembly) error {
 		Meter:              m,
 		Audit:              rec,
 		Actor:              identity.Actor,
-		Files:              files.PolicyFrom(a.filesReader),
 		Accounts:           a.identity,
-		Access:             demoAccess{a: a},
+		Access:             a.authz,
 		Addresses:          a.identity,
-		Profiles:           demoProfiles{p: a.people},
+		Profiles:           a.people,
 		Departments:        a.departments,
 		Events:             a.events,
 		Settings:           a.settings,
-		Schema:             demoSchema{a: a},
-		Objects:            demoObjects{a: a},
+		Schema:             demoSchema{migrator: a.migrator, sets: demoSets(a), seeder: a.authz, declared: declaredPermissions(a)},
+		Objects:            a.files,
 		Schemas:            demoSchemas(a),
 		DataDir:            a.cfg.Data.Dir,
 		ContributorTimeout: demo.DefaultContributorTimeout,
@@ -117,17 +109,21 @@ func buildDemo(_ context.Context, a *assembly) error {
 	return nil
 }
 
-// demoSchemas is the schema of every migration set, deduplicated, in set order: "core" and
-// each enabled module with migrations.
-func demoSchemas(a *assembly) []string {
-	var (
-		out       []string
-		manifests []module.Manifest
-	)
+// demoSets is every migration set the plan runs: the core's and each enabled module's, in
+// set order.
+func demoSets(a *assembly) []db.Set {
+	var manifests []module.Manifest
 	if a.plan != nil { // a test builds the parts without resolving the modules
 		manifests = a.plan.Order()
 	}
-	for _, s := range a.setsFor(manifests) {
+	return a.setsFor(manifests)
+}
+
+// demoSchemas is the schema of every migration set, deduplicated, in set order: "core" and
+// each enabled module with migrations.
+func demoSchemas(a *assembly) []string {
+	var out []string
+	for _, s := range demoSets(a) {
 		name := s.Schema
 		if name == "" {
 			name = s.Name
@@ -164,161 +160,63 @@ func linkDemo(_ context.Context, a *assembly) error {
 	return a.demo.Link(out) //nolint:wrapcheck // Link names itself
 }
 
-// ---- the adapters demo mode wires, all inert unless cfg.Demo.Enabled ------------------------
+// ---- what demo mode wires into the parts built before it ------------------------------------
 
-// demoGuard is identity's Guard in demo mode and nil otherwise. It is lazy because demo is
-// built after identity; until then, and if the service is missing, it fails closed.
-func demoGuard(a *assembly) identity.Guard {
+// demoGuard is identity's Guard in demo mode and nil otherwise (build order row 13). It reads
+// core.demo_account alone, so identity needs nothing built after it.
+func demoGuard(a *assembly) (identity.Guard, error) {
 	if !a.cfg.Demo.Enabled {
-		return nil
+		return nil, nil
 	}
-	return lazyGuard{a: a}
+	tr, _, err := a.scopes(demoArea)
+	if err != nil {
+		return nil, err
+	}
+	g, err := demo.NewGuard(demo.GuardOptions{DB: a.dbc, Tracer: tr})
+	if err != nil {
+		return nil, err //nolint:wrapcheck // NewGuard names itself
+	}
+	return g, nil
 }
 
-type lazyGuard struct{ a *assembly }
-
-// Protected asks the demo service; it fails errs.Unavailable before demo is built, so a
-// protected account is never opened by a gap in the wiring.
-func (g lazyGuard) Protected(ctx context.Context, acc model.AccountID) (bool, error) {
-	if g.a.demo == nil {
-		return false, errs.E("app.lazyGuard.Protected", errs.Unavailable, errors.New("the demo service is not built yet"))
-	}
-	return g.a.demo.Protected(ctx, acc) //nolint:wrapcheck // the service's own error
-}
-
-// demoChannelFactory is notify's ChannelFactory in demo mode (every SMTPConfig yields the
-// capture channel) and nil otherwise, which leaves notify its SMTP channel.
-func demoChannelFactory(a *assembly) notify.ChannelFactory {
+// demoCapture is notify's Channel in demo mode and nil otherwise (build order row 14), which
+// leaves notify its SMTP channel. It writes core.demo_mail alone.
+func demoCapture(a *assembly) (notify.Channel, error) {
 	if !a.cfg.Demo.Enabled {
-		return nil
+		return nil, nil
 	}
-	return func(notify.SMTPConfig) (notify.Channel, error) {
-		if a.demo == nil {
-			return nil, errs.E("app.demoChannelFactory", errs.Unavailable, errors.New("the demo service is not built yet"))
-		}
-		return a.demo.Channel(), nil
+	tr, m, err := a.scopes(demoArea)
+	if err != nil {
+		return nil, err
 	}
-}
-
-// lazyFilesPolicy is files' policy override in demo mode (and only then: buildFiles passes
-// it only when demo mode is on, so other deployments use files' own mapping of its settings):
-// the settings-backed policy capped by the demo service. It is lazy because files is built
-// before demo.
-type lazyFilesPolicy struct{ a *assembly }
-
-func (l lazyFilesPolicy) Policy(ctx context.Context) (files.Policy, error) {
-	if l.a.demo == nil {
-		// Fail closed, like lazyGuard: an upload must not slip past the demo cap through a
-		// gap in the wiring.
-		return files.Policy{}, errs.E("app.lazyFilesPolicy.Policy", errs.Unavailable, errors.New("the demo service is not built yet"))
+	c, err := demo.NewCapture(demo.CaptureOptions{DB: a.dbc, Clock: a.clock, Logger: a.component(demoArea), Tracer: tr, Meter: m})
+	if err != nil {
+		return nil, err //nolint:wrapcheck // NewCapture names itself
 	}
-	return l.a.demo.Policy(ctx) //nolint:wrapcheck // the service's own error
-}
-
-// demoAccess is the seed's slice of authz.
-type demoAccess struct{ a *assembly }
-
-func (d demoAccess) EnsureGrant(ctx context.Context, in authz.GrantInput) (authz.Grant, bool, error) {
-	return d.a.authz.EnsureGrant(ctx, in) //nolint:wrapcheck // the service's own error
-}
-
-func (d demoAccess) Grant(ctx context.Context, in authz.GrantInput) (authz.Grant, error) {
-	return d.a.authz.Grant(ctx, in) //nolint:wrapcheck // the service's own error
-}
-
-// StarterRoleIDs is authz's actor-less, read-only lookup, which the seed uses before any
-// demo account holds a role.
-func (d demoAccess) StarterRoleIDs(ctx context.Context, keys []string) (map[string]authz.RoleID, error) {
-	return d.a.authz.StarterRoleIDs(ctx, keys) //nolint:wrapcheck // the service's own error
-}
-
-// demoProfiles is the seed's slice of people: the services answer a Profile, the seed needs
-// the Person.
-type demoProfiles struct{ p *people.Service }
-
-func (d demoProfiles) UpdateMe(ctx context.Context, in people.ProfileInput) (people.Person, error) {
-	pr, err := d.p.UpdateMe(ctx, in)
-	return pr.Person, err //nolint:wrapcheck // the service's own error
-}
-
-func (d demoProfiles) Create(ctx context.Context, in people.ProfileInput) (people.Person, error) {
-	pr, err := d.p.Create(ctx, in)
-	return pr.Person, err //nolint:wrapcheck // the service's own error
+	return c, nil
 }
 
 // demoSchema is the seed's migrate step: the migrator over every set, then authz's
-// starter-role seed, the same code path `bms migrate` runs.
-type demoSchema struct{ a *assembly }
+// starter-role seed, the same code path `bms migrate` runs. It holds its inputs, not the
+// assembly.
+type demoSchema struct {
+	migrator *db.Migrator // nil in openapi: a reset needs a real database
+	sets     []db.Set     // the plan's sets, in order
+	seeder   *authz.Service
+	declared []authz.PermissionDecl
+}
 
 func (d demoSchema) Migrate(ctx context.Context) error {
-	a := d.a
-	if a.migrator == nil || a.authz == nil {
+	if d.migrator == nil || d.seeder == nil {
 		return errs.E("app.demoSchema.Migrate", errs.Internal, errors.New("no migrator: demo reset runs against a real database"))
 	}
-	if _, err := a.migrator.Migrate(ctx, a.setsFor(a.plan.Order())); err != nil {
+	if _, err := d.migrator.Migrate(ctx, d.sets); err != nil {
 		return err //nolint:wrapcheck // the reset names the step
 	}
-	if _, err := a.authz.Seed(ctx, declaredPermissions(a)); err != nil {
+	if _, err := d.seeder.Seed(ctx, d.declared); err != nil {
 		return err //nolint:wrapcheck // the reset names the step
 	}
 	return nil
-}
-
-// demoObjects clears every bucket the plan names (settings' and each enabled module's) and
-// the files temp directory.
-type demoObjects struct{ a *assembly }
-
-func (d demoObjects) Clear(ctx context.Context) (int, error) {
-	const op = "app.demoObjects.Clear"
-	store, err := newObjectStore(d.a.cfg)
-	if err != nil {
-		return 0, err
-	}
-	buckets := []string{filesOwner}
-	for _, m := range d.a.plan.Order() {
-		if !slices.Contains(buckets, m.Name) {
-			buckets = append(buckets, m.Name)
-		}
-	}
-	deleted := 0
-	for _, name := range buckets {
-		b := objects.Bucket(name)
-		if err := b.Validate(); err != nil {
-			continue
-		}
-		var keys []objects.Key
-		err := store.List(ctx, b, "", func(e objects.Entry) error {
-			keys = append(keys, e.Key)
-			return nil
-		})
-		if err != nil && !errs.Is(err, errs.NotFound) {
-			return deleted, errs.E(op, errs.Unavailable, fmt.Errorf("list bucket %s: %w", name, err))
-		}
-		for _, k := range keys {
-			if err := store.Delete(ctx, b, k); err != nil {
-				return deleted, errs.E(op, errs.Unavailable, fmt.Errorf("delete in bucket %s: %w", name, err))
-			}
-			deleted++
-		}
-	}
-	dir, err := filesDir(d.a.cfg)
-	if err != nil {
-		return deleted, err
-	}
-	entries, err := os.ReadDir(filepath.Join(dir, "tmp"))
-	switch {
-	case errors.Is(err, fs.ErrNotExist):
-		return deleted, nil
-	case err != nil:
-		return deleted, errs.E(op, errs.Unavailable, fmt.Errorf("read the files temp directory: %w", err))
-	}
-	for _, e := range entries {
-		if err := os.RemoveAll(filepath.Join(dir, "tmp", e.Name())); err != nil {
-			return deleted, errs.E(op, errs.Unavailable, fmt.Errorf("remove a temp file: %w", err))
-		}
-		deleted++
-	}
-	return deleted, nil
 }
 
 // ---- the command ------------------------------------------------------------------------------
@@ -447,17 +345,12 @@ func (r *checkReport) demo(ctx context.Context, a *assembly) {
 		return
 	}
 	// The services check built sit on a database that refuses every statement, so the marker
-	// is read through a store on the real pool, as the e-mail step does.
-	store, err := demopg.NewStore(a.pool)
-	if err != nil {
-		r.printf("demo: on (state unknown: %s)\n", errs.KindOf(err))
-		return
-	}
+	// is read on the real pool, as the e-mail step does.
 	cctx, cancel := context.WithTimeout(ctx, checkTimeout)
 	defer cancel()
-	st, err := store.State(cctx)
+	st, err := demo.StateOf(cctx, a.pool)
 	switch {
-	case errs.Is(err, errs.NotFound): // no marker row: not seeded (Service.State maps it the same way)
+	case errs.Is(err, errs.NotFound): // no marker row: not seeded
 		r.printf("demo: on (not seeded)\n")
 	case err != nil:
 		r.printf("demo: on (state unknown: %s)\n", errs.KindOf(err))

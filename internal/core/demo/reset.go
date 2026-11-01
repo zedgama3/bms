@@ -78,7 +78,7 @@ func (s *Service) Reset(ctx context.Context, out io.Writer) (rep Report, err err
 		name string
 		fn   func(context.Context) (int, error)
 	}{
-		{"objects", s.o.Objects.Clear},
+		{"objects", s.o.Objects.Purge},
 		{"spool", s.clearSpool},
 		{"drop", s.drop},
 		{"migrate", s.migrate},

@@ -223,26 +223,26 @@ type FakeProfiles struct {
 }
 
 // UpdateMe records the input and returns the acting person.
-func (f *FakeProfiles) UpdateMe(ctx context.Context, in people.ProfileInput) (people.Person, error) {
+func (f *FakeProfiles) UpdateMe(ctx context.Context, in people.ProfileInput) (people.Profile, error) {
 	if f.Err != nil {
-		return people.Person{}, f.Err
+		return people.Profile{}, f.Err
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.Updated = append(f.Updated, in)
 	p, _ := identity.PersonFrom(ctx)
-	return people.Person{ID: p}, nil
+	return people.Profile{Person: people.Person{ID: p}}, nil
 }
 
 // Create records the input and returns a new person.
-func (f *FakeProfiles) Create(_ context.Context, in people.ProfileInput) (people.Person, error) {
+func (f *FakeProfiles) Create(_ context.Context, in people.ProfileInput) (people.Profile, error) {
 	if f.Err != nil {
-		return people.Person{}, f.Err
+		return people.Profile{}, f.Err
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.Created = append(f.Created, in)
-	return people.Person{ID: model.PersonID(idOf(7, len(f.Created)))}, nil
+	return people.Profile{Person: people.Person{ID: model.PersonID(idOf(7, len(f.Created)))}}, nil
 }
 
 // FakeDepartments is demo.Departments.
@@ -326,7 +326,7 @@ func (f *FakeSchema) Migrate(context.Context) error {
 	return f.Err
 }
 
-// FakeObjects is demo.Objects: it counts clears and reports Deleted objects each time.
+// FakeObjects is demo.Objects: it counts purges and reports Deleted objects each time.
 type FakeObjects struct {
 	Err     error
 	Deleted int
@@ -334,8 +334,8 @@ type FakeObjects struct {
 	Count   int
 }
 
-// Clear counts the call.
-func (f *FakeObjects) Clear(context.Context) (int, error) {
+// Purge counts the call.
+func (f *FakeObjects) Purge(context.Context) (int, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.Count++

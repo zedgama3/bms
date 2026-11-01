@@ -378,3 +378,61 @@ func (s *Service) Start(ctx context.Context) error {
 		slog.String("error.kind", errs.KindOf(err).String()), slog.String("store", s.objects.Kind().String()))
 	return nil
 }
+
+// Purge deletes every object of every bucket this service has scoped (Scoped was asked for
+// its owner) and every entry of the temp directory, and counts them. It leaves the file
+// rows alone: the demo reset that calls it drops the schema next. It runs on the writing
+// copy only: it fails errs.Unavailable wrapping db.ErrReadOnly on a read-only copy, and
+// errs.Unavailable when the object store or the temp directory cannot be listed or deleted
+// from; a canceled or expired ctx is errs.Canceled or errs.Timeout. A bucket the store has
+// not created yet counts as empty. On failure the count is what was deleted so far.
+func (s *Service) Purge(ctx context.Context) (deleted int, err error) {
+	const op = "files.Service.Purge"
+	ctx, span := s.tracer.Start(ctx, "files.purge")
+	defer span.End()
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+		}
+	}()
+	if s.db.ReadOnly() {
+		return 0, readOnlyErr(op)
+	}
+	for _, name := range s.knownOwners() {
+		if cerr := ctxDone(ctx, op); cerr != nil {
+			return deleted, cerr
+		}
+		b := objects.Bucket(name)
+		var keys []objects.Key
+		lerr := s.objects.List(ctx, b, "", func(e objects.Entry) error {
+			keys = append(keys, e.Key)
+			return nil
+		})
+		if lerr != nil && !errs.Is(lerr, errs.NotFound) {
+			return deleted, errs.E(op, errs.Unavailable, fmt.Errorf("list bucket %s: %w", name, lerr))
+		}
+		for _, k := range keys {
+			if cerr := ctxDone(ctx, op); cerr != nil {
+				return deleted, cerr
+			}
+			if derr := s.objects.Delete(ctx, b, k); derr != nil {
+				return deleted, errs.E(op, errs.Unavailable, fmt.Errorf("delete in bucket %s: %w", name, derr))
+			}
+			deleted++
+		}
+	}
+	ents, rerr := os.ReadDir(s.tempDir)
+	switch {
+	case errors.Is(rerr, os.ErrNotExist):
+		return deleted, nil
+	case rerr != nil:
+		return deleted, errs.E(op, errs.Unavailable, fmt.Errorf("read the temp directory: %w", rerr))
+	}
+	for _, e := range ents {
+		if derr := os.RemoveAll(filepath.Join(s.tempDir, e.Name())); derr != nil {
+			return deleted, errs.E(op, errs.Unavailable, fmt.Errorf("remove a temp file: %w", derr))
+		}
+		deleted++
+	}
+	return deleted, nil
+}

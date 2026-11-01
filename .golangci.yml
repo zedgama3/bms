@@ -209,6 +209,42 @@ linters:
               desc: "regional never imports identity (boundaries.md decision 4)"
             - pkg: github.com/zedgama3/bms/internal/core/people
               desc: "regional never imports people (boundaries.md decision 4)"
+        app-no-stores:
+          # boundaries.md "depguard app-no-stores" (Proposed change 6): app wires services and
+          # never reaches into a package's store or delivery channel. core/db and the object
+          # store implementations (configuration app picks) stay allowed.
+          files:
+            - "**/internal/app/**"
+            - "!$test"
+          deny:
+            - pkg: github.com/zedgama3/bms/internal/core/audit/postgres
+              desc: "app never imports a package's store (boundaries.md app-no-stores)"
+            - pkg: github.com/zedgama3/bms/internal/core/auditlog/postgres
+              desc: "app never imports a package's store (boundaries.md app-no-stores)"
+            - pkg: github.com/zedgama3/bms/internal/core/authz/postgres
+              desc: "app never imports a package's store (boundaries.md app-no-stores)"
+            - pkg: github.com/zedgama3/bms/internal/core/demo/postgres
+              desc: "app never imports a package's store (boundaries.md app-no-stores)"
+            - pkg: github.com/zedgama3/bms/internal/core/departments/postgres
+              desc: "app never imports a package's store (boundaries.md app-no-stores)"
+            - pkg: github.com/zedgama3/bms/internal/core/events/postgres
+              desc: "app never imports a package's store (boundaries.md app-no-stores)"
+            - pkg: github.com/zedgama3/bms/internal/core/files/postgres
+              desc: "app never imports a package's store (boundaries.md app-no-stores)"
+            - pkg: github.com/zedgama3/bms/internal/core/identity/postgres
+              desc: "app never imports a package's store (boundaries.md app-no-stores)"
+            - pkg: github.com/zedgama3/bms/internal/core/jobs/postgres
+              desc: "app never imports a package's store (boundaries.md app-no-stores)"
+            - pkg: github.com/zedgama3/bms/internal/core/notify/postgres
+              desc: "app never imports a package's store (boundaries.md app-no-stores)"
+            - pkg: github.com/zedgama3/bms/internal/core/people/postgres
+              desc: "app never imports a package's store (boundaries.md app-no-stores)"
+            - pkg: github.com/zedgama3/bms/internal/core/settings/postgres
+              desc: "app never imports a package's store (boundaries.md app-no-stores)"
+            - pkg: github.com/zedgama3/bms/internal/core/notify/smtp
+              desc: "app never builds notify's delivery channel (boundaries.md app-no-stores)"
+            - pkg: github.com/zedgama3/bms/internal/core/notify/channel
+              desc: "app never builds notify's delivery channel (boundaries.md app-no-stores)"
         settings-no-files:
           # boundaries.md decision 4: the logo moved to regional, so settings is only the store.
           files:

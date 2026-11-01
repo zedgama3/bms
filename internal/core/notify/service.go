@@ -12,6 +12,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/db"
+	"github.com/zedgama3/bms/internal/core/notify/channel"
 	"github.com/zedgama3/bms/internal/core/notify/message"
 	"github.com/zedgama3/bms/internal/core/notify/postgres"
 	"github.com/zedgama3/bms/internal/core/notify/smtp"
@@ -95,7 +96,8 @@ type Service struct {
 	terms    TermSource
 	accounts Accounts
 	profiles Profiles
-	channel  ChannelFactory
+	fixed    Channel         // Options.Channel; nil means the SMTP channel from factory
+	factory  channel.Factory // builds the SMTP channel for the current settings, per batch
 
 	poll, lease, sendTimeout time.Duration
 	hostname                 string
@@ -144,7 +146,7 @@ func newService(o Options, st store) (*Service, error) {
 	s := &Service{
 		store: st, db: o.DB, clock: o.Clock, logger: o.Logger, tracer: o.Tracer, audit: o.Audit,
 		authz: o.Authz, actorF: o.Actor, settings: o.Settings,
-		regional: o.Regional, terms: o.Terms, accounts: o.Accounts, profiles: o.Profiles, channel: o.Channel,
+		regional: o.Regional, terms: o.Terms, accounts: o.Accounts, profiles: o.Profiles, fixed: o.Channel,
 		poll: o.PollInterval, lease: o.Lease, sendTimeout: o.SendTimeout, hostname: o.Hostname,
 		cat: newCatalogue(), stop: make(chan struct{}),
 	}
@@ -159,9 +161,7 @@ func newService(o Options, st store) (*Service, error) {
 	}
 	// A lease must outlast at least one send, or the sender could never start one.
 	s.lease = max(s.lease, 2*s.sendTimeout)
-	if s.channel == nil {
-		s.channel = smtp.Factory(smtp.Options{SendTimeout: s.sendTimeout, Hostname: s.hostname, Clock: s.clock})
-	}
+	s.factory = smtp.Factory(smtp.Options{SendTimeout: s.sendTimeout, Hostname: s.hostname, Clock: s.clock})
 	m, err := newMetrics(o.Meter, s)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", op, err)
@@ -171,6 +171,15 @@ func newService(o Options, st store) (*Service, error) {
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 	return s, nil
+}
+
+// channelFor is the channel that carries a batch under cfg: Options.Channel when one was
+// given, else the SMTP channel for cfg. Fails as channel.Factory does.
+func (s *Service) channelFor(cfg SMTPConfig) (Channel, error) {
+	if s.fixed != nil {
+		return s.fixed, nil
+	}
+	return s.factory(cfg)
 }
 
 // ownerNotify is the owner of notify's own template and audit area.

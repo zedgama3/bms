@@ -404,14 +404,11 @@ func (p *profSrc) ContactEmailOf(_ context.Context, id model.PersonID) (model.Em
 
 // chanFake is a scriptable notify.Channel. fn, when set, decides each Send.
 type chanFake struct {
-	mu        sync.Mutex
-	envs      []notify.Envelope
-	fn        func(notify.Envelope) error
-	pingErr   error
-	pings     int
-	factories int
-	cfgs      []notify.SMTPConfig
-	factErr   error
+	mu      sync.Mutex
+	envs    []notify.Envelope
+	fn      func(notify.Envelope) error
+	pingErr error
+	pings   int
 }
 
 func (c *chanFake) Send(ctx context.Context, e notify.Envelope) error {
@@ -439,27 +436,16 @@ func (c *chanFake) Ping(context.Context) error {
 	return c.pingErr
 }
 
-func (c *chanFake) factory(cfg notify.SMTPConfig) (notify.Channel, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.factories++
-	c.cfgs = append(c.cfgs, cfg)
-	if c.factErr != nil {
-		return nil, c.factErr
-	}
-	return c, nil
-}
-
 func (c *chanFake) envelopes() []notify.Envelope {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return append([]notify.Envelope(nil), c.envs...)
 }
 
-func (c *chanFake) factoryCalls() int {
+func (c *chanFake) pingCount() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.factories
+	return c.pings
 }
 
 // ---- templates ---------------------------------------------------------------------------
@@ -543,7 +529,7 @@ func newRigOptions(t *testing.T, d db.DB) (*rig, notify.Options) {
 		Audit: r.rec, Authz: r.az, Actor: actorFn,
 		Settings: r.smtp, Regional: r.site, Terms: r.site,
 		Accounts: r.addrs, Profiles: &profSrc{names: r.names, langs: r.langs, contacts: r.conts},
-		Channel: r.ch.factory, Hostname: testHostname,
+		Channel: r.ch, Hostname: testHostname,
 	}
 	return r, o
 }

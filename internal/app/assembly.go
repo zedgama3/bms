@@ -135,9 +135,8 @@ type assembly struct {
 	started           []runnable
 	srv               httpServer
 	uiVersion         string
-	demo              *demo.Service   // the demo part's service (demo seed|reset, the lazy adapters); nil before its build
-	filesReader       settings.Reader // the reader scoped "files"; the demo part caps the policy mapped from it when enabled
-	forDocument       bool            // the openapi command: the client services are built off and empty (usage.go)
+	demo              *demo.Service // the demo part's service (demo seed|reset); nil before its build
+	forDocument       bool          // the openapi command: the client services are built off and empty (usage.go)
 }
 
 // newAssembly returns the assembly of one command run over cfg. Telemetry and everything

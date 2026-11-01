@@ -30,6 +30,9 @@ func TestNew_MissingDependency_ReturnsInvalid(t *testing.T) {
 		{"files.actor", func(o *files.Options) { o.Actor = nil }},
 		{"files.objects", func(o *files.Options) { o.Objects = nil }},
 		{"files.temp_dir", func(o *files.Options) { o.TempDir = "" }},
+		{"files.ceiling", func(o *files.Options) { o.Ceiling = files.Policy{MaxBytes: -1} }},
+		{"files.ceiling", func(o *files.Options) { o.Ceiling = files.Policy{QuotaBytes: -1} }},
+		{"files.ceiling", func(o *files.Options) { o.Ceiling = files.Policy{MaxPerRecord: -1} }},
 	}
 	for _, tc := range tests {
 		t.Run(tc.field, func(t *testing.T) {

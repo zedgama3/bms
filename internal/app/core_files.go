@@ -13,6 +13,7 @@ import (
 
 	"github.com/zedgama3/bms/internal/config"
 	"github.com/zedgama3/bms/internal/core/audit"
+	"github.com/zedgama3/bms/internal/core/demo"
 	"github.com/zedgama3/bms/internal/core/files"
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/jobs"
@@ -128,7 +129,6 @@ func buildFiles(_ context.Context, a *assembly) error {
 	if err != nil {
 		return err
 	}
-	a.filesReader = rd
 	opts := files.Options{
 		DB:       a.dbc,
 		Clock:    a.clock,
@@ -142,9 +142,7 @@ func buildFiles(_ context.Context, a *assembly) error {
 		Settings: rd,
 	}
 	if a.cfg.Demo.Enabled {
-		// Transitional: the same settings, capped by the demo service (core_demo.go);
-		// Options.Ceiling replaces it in step 10. Without demo mode files maps its settings itself.
-		opts.Policy = lazyFilesPolicy{a: a}
+		opts.Ceiling = demo.FileCeiling // the demo's caps, whatever the settings say
 	}
 	svc, err := files.New(opts)
 	if err != nil {

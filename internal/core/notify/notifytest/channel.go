@@ -84,9 +84,4 @@ func (c *Channel) Reject() {
 	c.Fail(errs.E("notifytest.Channel.Send", errs.Invalid, notify.ErrRejected))
 }
 
-// Factory returns a notify.ChannelFactory that always returns c, whatever the settings.
-func (c *Channel) Factory() notify.ChannelFactory {
-	return func(notify.SMTPConfig) (notify.Channel, error) { return c, nil }
-}
-
 func errsIsRejected(err error) bool { return errors.Is(err, notify.ErrRejected) }

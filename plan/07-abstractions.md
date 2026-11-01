@@ -81,13 +81,7 @@ A row is one type in `internal/app` (or one top-level function, for a closure th
 
 | Type | Waits for | Reason |
 |---|---|---|
-| `lazyGuard` | a.demo, which the demo part sets last | identity asks demo whether an account is protected, and demo creates accounts through identity (identity ↔ demo); removed in step 10. |
-| `lazyFilesPolicy` | a.demo, which the demo part sets last | files takes demo's cap, and demo's reset clears files (files ↔ demo); removed in step 10. |
 | `lazyDeferrer` | a.jobs, which the jobs part sets after signals is built | the dispatcher defers through jobs, and the jobs runner redelivers through the dispatcher (signals ↔ jobs); removed in step 11. |
-| `demoAccess` | a.authz, which authz's part sets | the demo seed uses a slice of authz in a shape authz does not offer; demo is built last, so this is forwarding, not a runtime pair (F1); removed in step 10. |
-| `demoObjects` | a.cfg and a.plan for the buckets to clear | demo's reset needs files to clear every owner's objects, and files holds the demo cap (files ↔ demo); removed in step 10. |
-| `demoSchema` | a.migrator, a.plan and a.authz | the reset's migrate step is `bms migrate` re-run, which needs the authz seeder built before demo runs; it holds the assembly only because of that (F1); removed in step 10. |
-| `demoChannelFactory` | a.demo, which the demo part sets last | notify takes demo's capture channel, and demo is built after notify (notify ↔ demo); removed in step 10. |
 ---
 
 ## Foundation
@@ -221,7 +215,7 @@ A row is one type in `internal/app` (or one top-level function, for a closure th
 
 ### notify: tell someone something
 - **Purpose:** deliver a notification to a person through a channel.
-- **Owns:** the `Notifier` contract (scoped per owner; `Send`, `Configured`), `AddressSender` and `AlertSender` (`Service.Alerts(owner)`: one message to every `notify.alert_addresses` entry, for the superuser alert); templates per language with regional overrides; the outbox (`core.notify_message`) written on the caller's transaction; the sender loop on the writing copy with retries; the SMTP channel (stdlib; Mailpit in development); the `notify` routes and screens; permissions `notify.templates.manage`, `notify.outbox.manage`; settings `notify.*`; the delivery rules (the login address, else the contact address, else undeliverable; the language fallback; the four term forms), read through `Accounts`, `Profiles`, `Regional` and `Terms`, so it is built before identity and people (boundaries step 8). E-mail first, others later behind the same `Channel`.
+- **Owns:** the `Notifier` contract (scoped per owner; `Send`, `Configured`), `AddressSender` and `AlertSender` (`Service.Alerts(owner)`: one message to every `notify.alert_addresses` entry, for the superuser alert); templates per language with regional overrides; the outbox (`core.notify_message`) written on the caller's transaction; the sender loop on the writing copy with retries; the SMTP channel (stdlib; Mailpit in development); the `notify` routes and screens; permissions `notify.templates.manage`, `notify.outbox.manage`; settings `notify.*`; the delivery rules (the login address, else the contact address, else undeliverable; the language fallback; the four term forms), read through `Accounts`, `Profiles`, `Regional` and `Terms`, so it is built before identity and people (boundaries step 8). `Options.Channel` (a `Channel`; nil builds the SMTP channel from the settings, demo mode passes its capture) and `Probe`, `bms check`'s e-mail line (boundaries step 10). E-mail first, others later behind the same `Channel`.
 - **Doesn't do:** decide who needs telling (modules do), subscribe to signals or pick recipients; HTML, attachments, SMS (Later behind `Channel`).
 
 ### audit: who did what, and who saw what
@@ -241,7 +235,7 @@ A row is one type in `internal/app` (or one top-level function, for a closure th
 
 ### files: attachments
 - **Purpose:** keep the bytes a module attaches to one of its records, with the record's permissions deciding who may read them.
-- **Owns:** the object-store contract `objects.Store` (a simplified S3: bucket, key, Put/Get/Head/Delete/List, SHA-256 verified at Put; never the database, D43) with the `disk` (default) and `s3` implementations and their conformance suite; the `Store` seam modules get as `Deps.Files`; the metadata (`core.file`, `core.file_tombstone`); the catalogue of accepted kinds (images and PDF), metadata stripping, the safe `Serve`, the audit of content reads, the person-data export and deletion backstop, the reap and sweep jobs, `bms files verify`, the settings `files.max_bytes|quota_bytes|max_per_record` (it declares them as `files.Settings`, replacing the deleted `filesettings`, and reads them through its own `settings.Reader`), config `files.*`. Spec: `plan/design/files.md`.
+- **Owns:** the object-store contract `objects.Store` (a simplified S3: bucket, key, Put/Get/Head/Delete/List, SHA-256 verified at Put; never the database, D43) with the `disk` (default) and `s3` implementations and their conformance suite; the `Store` seam modules get as `Deps.Files`; the metadata (`core.file`, `core.file_tombstone`); the catalogue of accepted kinds (images and PDF), metadata stripping, the safe `Serve`, the audit of content reads, the person-data export and deletion backstop, the reap and sweep jobs, `bms files verify`, the settings `files.max_bytes|quota_bytes|max_per_record` (it declares them as `files.Settings`, replacing the deleted `filesettings`, and reads them through its own `settings.Reader`), `Options.Ceiling` (maximums over the settings-derived policy; `demo.FileCeiling` in demo mode) and `Purge` (every scoped bucket and the temp dir; demo's reset), config `files.*`. Spec: `plan/design/files.md`.
 - **Doesn't do:** permissions (the owning module), routes and screens (the owner; the logo is `regional`'s), retention (the owner's job), running a store over the network (MinIO, Garage, SeaweedFS, Ceph through `s3`), keeping a copy's objects in sync (the operator; later `switchover`), virus scanning, thumbnails.
 
 ### jobs: background work
@@ -275,7 +269,7 @@ A row is one type in `internal/app` (or one top-level function, for a closure th
 
 ### demo: a safe public copy (D53)
 - **Purpose:** let strangers use a public copy of bms safely: made-up data in, nothing real out.
-- **Owns:** the switch `demo.enabled` (`BMS_DEMO_ENABLED`, off by default) and `demo.public_url`; the seed, which builds one fictional regional through the services as ten demo accounts and asks each module for its data through the extension point `demo.seed` (`contracts/demoseed`); `bms demo seed|reset`; the `Guard` that keeps the shared accounts usable; the mail capture channel and a screen showing each signed-in account only the mail addressed to it; the upload caps; the tables `core.demo_state`, `core.demo_account`, `core.demo_mail`. Spec: `plan/design/demo.md`.
+- **Owns:** the switch `demo.enabled` (`BMS_DEMO_ENABLED`, off by default) and `demo.public_url`; the seed, which builds one fictional regional through the services as ten demo accounts and asks each module for its data through the extension point `demo.seed` (`contracts/demoseed`); `bms demo seed|reset`; `demo.NewGuard`, the `Guard` that keeps the shared accounts usable (built over `core.demo_account` alone, below identity); `demo.NewCapture`, the mail capture channel (built below notify), and a screen showing each signed-in account only the mail addressed to it; the upload caps (`demo.FileCeiling`, passed as files' `Options.Ceiling`); `demo.StateOf`, the marker `bms check` reads; the tables `core.demo_state`, `core.demo_account`, `core.demo_mail`. Spec: `plan/design/demo.md`.
 - **Doesn't do:** change permissions, audit, the privacy filter or validation in demo mode, client telemetry (`telemetry`), scheduling the reset (the operator's timer), seeding a module's data (the module), send mail (`notify`).
 
 ### settings: what a regional configures at runtime

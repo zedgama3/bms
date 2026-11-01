@@ -10,6 +10,7 @@
   api, web-shell, telemetry (names only; a parallel spec designs client telemetry)
   **Used by:** `app` (the part, the commands, the adapters), the project's public demo
   instance, every module that contributes seed data (volunteers first)
+- **Amended 2026-11-01 (boundaries step 10, item 19):** the three adapters `app` built are packages' own constructors. `NewGuard(GuardOptions)` builds identity's `Guard` over `core.demo_account` alone and `NewCapture(CaptureOptions)` builds notify's `Channel` over `core.demo_mail`; both are built below identity and notify and are inert unless demo mode. `FileCeiling` (a `files.Policy` of the three caps) is passed as `files.Options.Ceiling`. `StateOf(ctx, db)` reads the marker for `bms check`. `Service.Protected`, `Service.Channel` and `Service.Policy` are removed (F25 to F29, F36, F37 and F44 move with them to `Guard`, `Capture` and files' `Ceiling`; F44 is deleted: no gap exists). The seams `Access`, `Profiles` and `Objects` take the services' own shapes (`authz.Service`, `people.Service`, `files.Service` satisfy them directly; `Objects` is `files.Purge`); `Options.Files` is removed. `Schema` is still app's migrate step. New tests in the Test plan.
 - **Amendment 2026-10-30 (owner, D58; Q-DEMO6 answered):** the session answer carries `Protected bool` (`protected`), set from identity's `Guard` (identity.md amendment 2026-10-30 (D58, in `plan/design/history/identity.md`), `SessionInfo.Protected`); the password screen reads it to show the notice and disable the form; on a `Guard` error the session answer says `protected: false` and logs a warning, the server refusal staying the backstop (F46, identity F110).
 - **Amendment 2026-10-30 (owner, D57):** the sign-in table shows one short label per account (built from a per-account catalogue key; the lead's departments joined), the password screen shows the protected-account notice up front with the form disabled, and in demo mode the notify outbox status says mail is captured; see the sign-in page, the password screen and Mail capture.
 - **Amendment D1 (raised 2026-10-28, Approved 2026-10-29, D56; Q-DEMO5: one lead for five departments): what the volunteers provider build found.** The `lead` holds `department-admin` at the five departments the demo gives volunteer data (Rangers, Gate, Greeters, Medical, DPW), not Rangers only; the pending self-upload is the participant's, not a walk-on's; the lead has no verified records and holds Khaki by a recorded self-waiver; DPW gets the "Inventory Crew" position; the conformance rule `demoseed_provider_valid` starts the module and gives the fake event dates, so a provider never invents dates; the walk-on bookings the table left open are fixed. Section "Amendment D1" before Open questions; the volunteers table changes are in `plan/design/history/module-volunteers.md`, "Amendment D1 changes".
@@ -20,8 +21,8 @@
 A core part (`internal/core/demo`, part 11 after `files`) plus the contract
 `contracts/demoseed`. Imports `model`, `lib`, `core/db`, `core/audit`, `core/authz`,
 `core/identity` (`Credentials`, `Session`, `WithSession`), `core/people`, `core/departments`,
-`core/events`, `core/settings`, `core/notify` (`Channel`, `Envelope`), `core/files` (`Policy`,
-`PolicySource`), `core/telemetry`, `contracts/demoseed`. Never `core/module`, `api`, `app`,
+`core/events`, `core/settings`, `core/notify` (`Channel`, `Envelope`), `core/files` (`Policy`),
+`core/telemetry`, `contracts/demoseed`. Never `core/module`, `api`, `app`,
 `config` or a module; only `app` imports it. With `demo.enabled` false (the default) the part
 declares its empty tables and nothing else: production installs never see it.
 
@@ -34,13 +35,11 @@ the six `Dept*` keys, `WalkOns = 12`, `WalkOnKey(n)`.
 `AccountInfo{Key, Email, Roles}` (the table's Role column shows one short label built from `Key`, not the roles, D57); `Report{Steps []Step}`, `Step{Name, Items}`; `MailID`,
 `Mail{ID, To, Subject, Body, CapturedAt}`, `MailQuery{Limit}`; seams `Accounts`, `Access`,
 `Addresses`, `Profiles`, `Departments`, `Events`, `Settings`, `Schema`, `Objects` (one to three methods
-each, filled by `app`); `Contributor{Module, Provider}`; `Options{Enabled, PublicURL, DB, Clock,
-Logger, Tracer, Meter, Audit (scoped "demo"), Actor, Files files.PolicySource, the seams,
+each; `Access`, `Profiles` and `Objects` are the shapes of `authz.Service`, `people.Service` and `files.Service` (`Purge`), so `app` passes the services; `Schema` is app's migrate step); `FileCeiling` (`files.Policy`); `NewGuard(GuardOptions{DB, Tracer}) (*Guard, error)` (`Guard.Protected`, identity's seam); `NewCapture(CaptureOptions{DB, Clock, Logger, Tracer, Meter (optional; keeps bms.demo.mail_captured)}) (*Capture, error)` (notify's `Channel`); `State{SeededAt}`, `StateOf(ctx, db.DB) (State, error)` (`NotFound` when not seeded); `Contributor{Module, Provider}`; `Options{Enabled, PublicURL, DB, Clock,
+Logger, Tracer, Meter, Audit (scoped "demo"), Actor, the seams,
 Schemas []string, DataDir, ContributorTimeout}` (+`Validate`); `New(Options) (*Service, error)`
 (no I/O); `Link([]Contributor) error`; `Enabled() bool`; `Info() Info` (no I/O); `Seed(ctx, out
-io.Writer) (Report, error)`; `Reset(ctx, out) (Report, error)`; `Protected(ctx, model.AccountID)
-(bool, error)` (identity's proposed `Guard`); `Channel() notify.Channel`; `Policy(ctx)
-(files.Policy, error)` (the capped `files.PolicySource`; the wired policy fails closed with `Unavailable` when demo is enabled but the service is missing); `ListMail(ctx, MailQuery) ([]Mail,
+io.Writer) (Report, error)`; `Reset(ctx, out) (Report, error)`; `ListMail(ctx, MailQuery) ([]Mail,
 error)`; `Routes()`, `OpenAPI()`. Constants `Password = "burn-demo-password"`, `Regional =
 "Ember Flats"`, `Domain = "demo.invalid"`, `Zone`, the caps (2 MiB, 256 MiB, 5), `MaxMail` 200,
 `MaxMailList` 50, `SeedVersion` 1, `DefaultContributorTimeout` 2 min, `SessionLifetime` 1 h;
@@ -63,11 +62,10 @@ unless `demo.enabled`, and reset refuses without the marker row (`core.demo_stat
 writes first. 9 identity consults a `Guard`: a demo account cannot change or reset its password
 or address, be disabled, deleted or linked to a person (`Permission`, field `account`, code `protected`); anything
 else a tester breaks, the next reset repairs (owner, 2026-10-28); the password screen tells a protected account's holder up front and disables the form, the server refusal stays the backstop (D57), and it knows from `SessionInfo.Protected`, which identity sets from this `Guard` (Q-DEMO6, D58); the sign-in table shows one short label per account (D57), with an optional one-line description under it (D60). 10 demo never sends mail: the capture `Channel`
-stores envelopes in `core.demo_mail` (newest `MaxMail`), shown on `/demo/mail` only to the
+stores envelopes in `core.demo_mail` (newest `MaxMail`; `demo.Capture`, built by `NewCapture`), shown on `/demo/mail` only to the
 signed-in account they were addressed to (login address; no one else's, no admin override, no
 permission, not audited: it is the viewer's own mail; owner, 2026-10-28); the sign-up form in
-demo mode says to use a made-up address. 11 uploads are capped by wrapping
-files' `PolicySource`. 12 the data is a constant table (fictional "Ember Flats", `.invalid`
+demo mode says to use a made-up address. 11 uploads are capped by `files.Options.Ceiling` = `demo.FileCeiling`. 12 the data is a constant table (fictional "Ember Flats", `.invalid`
 addresses, 555-01xx phones, invented playa names) with dates relative to the clock; IDs differ.
 13 ten accounts, one per starter role plus the empty-profile newcomer, one shared password, printed on the sign-in page (owner, 2026-10-28). 14 `Info` does no I/O. 15 a failed seed
 step fails the command and leaves the marker in `seeding`; `reset` is the recovery.
@@ -76,9 +74,9 @@ step fails the command and leaves the marker in `seeding`; `reset` is the recove
 `Unavailable` wrapping `db.ErrReadOnly`, `Permission` (a demo actor lacks a permission: the
 starter roles or the table are wrong), `Timeout` (contributor), any seam's or contributor's
 kind wrapped with the step. `Reset`: `Unsupported`, `Conflict not_demo`, `Unavailable` wrapping
-`db.ErrReadOnly`, the migrator's and store kinds. `Protected`: store kinds (identity fails
-closed). `Channel.Send`: `Invalid` wrapping `notify.ErrRejected`, `Unavailable`. `ListMail`:
-`Unauthenticated`, `Unsupported`, `Invalid` (`limit` `range`), store kinds. `Policy`: the inner kind. `Info`, `Enabled`, `Channel` cannot fail. `New`/`Link`:
+`db.ErrReadOnly`, the migrator's and store kinds. `Guard.Protected`: store kinds (identity fails
+closed). `Capture.Send`: `Invalid` wrapping `notify.ErrRejected`, `Unavailable`. `ListMail`:
+`Unauthenticated`, `Unsupported`, `Invalid` (`limit` `range`), store kinds. `StateOf`: `NotFound` (not seeded), store kinds. `NewGuard`/`NewCapture`: `Invalid` (nil dependency). `Info`, `Enabled` and `FileCeiling` cannot fail. `New`/`Link`:
 `Invalid`, `Internal`. Exit statuses: `Unsupported` (off) and Conflict `seeded`, `not_empty`, `not_demo` → 2; any other Conflict → 1; reset's migrate step uses the migrate command's own mapping (schema → 3), a failed migrate wrapped as `demo.ErrMigrate`; else 1. `bms demo` checks `BMS_DEMO_ENABLED` right after config load, before telemetry or the database (exit 2, naming the key). `Options.Validate` rejects the `public` schema in `Schemas`, and the drop excludes it.
 
 **Owns.** Tables `core.demo_state`, `core.demo_account`, `core.demo_mail`; set `db.Set{Name:
@@ -91,8 +89,7 @@ settings, signals or jobs.
 
 **Expects of dependencies** (each a numbered Proposed change): identity `EnsureAccount`, `Guard`,
 `WithSession`; authz `EnsureGrant`, `Grant`, `StarterRoleIDs`; people `UpdateMe`, `Create`, `Conflict
-protected` (delete and link); departments/events/settings `Create`, `AddScheduleItem`, `Set`; notify a swappable
-`ChannelFactory`; files `PolicySource`; api `Options.NoIndex`; web-shell the banner, `useDemo()`;
+protected` (delete and link); departments/events/settings `Create`, `AddScheduleItem`, `Set`; notify `Options.Channel` (since step 10); files `Options.Ceiling` and `Purge` (since step 10); api `Options.NoIndex`; web-shell the banner, `useDemo()`;
 module-contract `demo` reserved, `demo.seed` core point; volunteers a `Provider`; db the set order.
 
 ## Purpose
@@ -138,9 +135,9 @@ Let strangers use a public copy of bms safely.
 | Mode | Say whether this process is a demo. | `Enabled`, `Info`; no I/O |
 | Seed | Build the fictional regional through the services as the demo accounts. | `Seed`, `demoseed.Point`, `Actors` |
 | Reset | Return a demo database to the seeded state. | `Reset`; the marker guard |
-| Guard | Keep a shared demo account usable by everyone. | `Protected`; identity's seam |
-| Mail capture | Keep every notification inside the demo. | `Channel`, `ListMail`, `/demo/mail` |
-| Upload cap | Bound what a stranger can upload whatever the settings say. | `Policy` over files' `PolicySource` |
+| Guard | Keep a shared demo account usable by everyone. | `NewGuard`, `Guard.Protected`; identity's seam |
+| Mail capture | Keep every notification inside the demo. | `NewCapture`, `ListMail`, `/demo/mail` |
+| Upload cap | Bound what a stranger can upload whatever the settings say. | `FileCeiling` as files' `Options.Ceiling` |
 
 ## Interface
 
@@ -276,7 +273,10 @@ type Mail struct {
 type MailQuery struct{ Limit int }
 
 // Seams app fills from the real services. Each is the smallest slice of the service the
-// seed uses; tests use demotest fakes.
+// seed uses; since boundaries step 10 Access, Profiles and Objects have the services' own
+// method shapes (authz.Service, people.Service, files.Service satisfy them directly, with no
+// adapter in app); `Access` keeps the signatures below (authz.Service's own), `Profiles` returns
+// people.Profile and `Objects` is Purge(ctx) (int, error). Tests use demotest fakes.
 type Accounts interface {
 	// EnsureAccount is identity's proposed writer-only method (Proposed change 3).
 	EnsureAccount(ctx context.Context, c identity.Credentials) (identity.AccountResult, error)
@@ -292,8 +292,8 @@ type Addresses interface {
 	EmailOf(ctx context.Context, person model.PersonID) (model.Email, error)
 }
 type Profiles interface {
-	UpdateMe(ctx context.Context, in people.ProfileInput) (people.Person, error) // as each demo account
-	Create(ctx context.Context, in people.ProfileInput) (people.Person, error)   // the walk-ons, as account-admin
+	UpdateMe(ctx context.Context, in people.ProfileInput) (people.Profile, error) // as each demo account
+	Create(ctx context.Context, in people.ProfileInput) (people.Profile, error)   // the walk-ons, as account-admin
 }
 type Departments interface {
 	Create(ctx context.Context, in departments.CreateInput) (departments.Department, error) // as steward
@@ -310,10 +310,10 @@ type Settings interface {
 type Schema interface {
 	Migrate(ctx context.Context) error
 }
-// Objects clears every object of every bucket and the files temp dir; app builds it over
-// objects.Store (List + Delete per bucket named by the plan) and cfg.Files.Dir.
+// Objects clears every object of every bucket the files service scoped and its temp dir:
+// files.Service.Purge satisfies it directly (boundaries step 10).
 type Objects interface {
-	Clear(ctx context.Context) (deleted int, err error)
+	Purge(ctx context.Context) (deleted int, err error)
 }
 
 // Contributor pairs a module name with its provider (from Set.Contributors(demoseed.Point)).
@@ -323,7 +323,7 @@ type Contributor struct {
 }
 
 // Options. Validate fails Invalid naming the field (demo.db, demo.clock, demo.logger,
-// demo.tracer, demo.audit, demo.actor, demo.files, demo.accounts, demo.access, demo.addresses,
+// demo.tracer, demo.audit, demo.actor, demo.accounts, demo.access, demo.addresses,
 // demo.profiles, demo.departments, demo.events, demo.settings, demo.schema, demo.objects,
 // demo.schemas (empty, a name outside the db schema grammar, or `public`), demo.data_dir,
 // demo.contributor_timeout (outside 10s..30m), demo.public_url (not canonical per settings
@@ -338,7 +338,6 @@ type Options struct {
 	Meter              telemetry.Meter
 	Audit              audit.Recorder    // scoped "demo"
 	Actor              authz.ActorFunc   // ListMail's viewer (the signed-in person)
-	Files              files.PolicySource // the inner (settings-backed) source Policy caps
 	Accounts           Accounts
 	Access             Access
 	Addresses          Addresses
@@ -375,19 +374,24 @@ func (s *Service) Seed(ctx context.Context, out io.Writer) (Report, error)
 // then Seed. Refuses without the marker. Consumer: bms demo reset.
 func (s *Service) Reset(ctx context.Context, out io.Writer) (Report, error)
 
-// Protected answers whether an account is a demo account (a row in core.demo_account).
-// false, nil for an unknown account. Consumer: identity through its Guard seam.
-func (s *Service) Protected(ctx context.Context, a model.AccountID) (bool, error)
+// FileCeiling is files.Policy{MaxBytes: MaxUploadBytes, QuotaBytes: MaxQuotaBytes,
+// MaxPerRecord: MaxPerRecord}; app passes it as files.Options.Ceiling when Enabled.
+var FileCeiling files.Policy
 
-// Channel returns the capture channel: Send stores the envelope in core.demo_mail (and
-// trims to MaxMail), Ping answers nil. Cannot fail. Consumer: app's ChannelFactory when
-// Enabled.
-func (s *Service) Channel() notify.Channel
+// NewGuard builds identity's Guard over core.demo_account alone. Protected answers whether
+// an account is a demo account; false, nil for an unknown account; fails only with the
+// store's kinds, never "not built". Fails errs.Invalid for a nil DB.
+func NewGuard(o GuardOptions) (*Guard, error) // GuardOptions{DB, Tracer}
+func (g *Guard) Protected(ctx context.Context, a model.AccountID) (bool, error)
 
-// Policy answers the inner policy with MaxBytes <= MaxUploadBytes, QuotaBytes <=
-// MaxQuotaBytes (0 becomes MaxQuotaBytes) and MaxPerRecord <= MaxPerRecord. Consumer:
-// app passes the service as files' PolicySource when Enabled.
-func (s *Service) Policy(ctx context.Context) (files.Policy, error)
+// NewCapture builds notify's Channel that stores each envelope in core.demo_mail (and trims
+// to MaxMail) instead of sending it; Ping answers nil. Fails errs.Invalid for a nil
+// dependency. app passes it as notify.Options.Channel when Enabled.
+func NewCapture(o CaptureOptions) (*Capture, error) // CaptureOptions{DB, Clock, Logger, Tracer, Meter}; Meter optional, records bms.demo.mail_captured
+
+// StateOf reads the marker: bms check's demo line. NotFound when not seeded (no row).
+// State{SeededAt}. Replaces Service.State.
+func StateOf(ctx context.Context, d db.DB) (State, error)
 
 // ListMail lists captured mail addressed to the signed-in account's login address, newest
 // first; never another address's mail, whoever asks. Needs a session, no permission, and
@@ -405,16 +409,16 @@ Pre- and post-conditions per method are in Behavior; failure modes in the table.
 ## Types
 
 Defined here: `Info`, `AccountInfo`, `Report`, `Step`, `MailID`, `Mail`, `MailQuery`, the seams,
-`Contributor`, `Options`, `Route`. Uses `model.AccountID`, `PersonID`, `DepartmentID`,
+`Contributor`, `Options`, `Route`, `Guard`, `GuardOptions`, `Capture`, `CaptureOptions`, `State`, `FileCeiling`. Uses `model.AccountID`, `PersonID`, `DepartmentID`,
 `EventID`, `Email`; `identity.Credentials`, `AccountResult` (proposed), `Session`;
-`authz.GrantInput`, `Grant`, `Role`; `people.ProfileInput`, `Person`; `departments.CreateInput`;
+`authz.GrantInput`, `Grant`, `Role`; `people.ProfileInput`, `Profile`; `departments.CreateInput`;
 `events.CreateInput`, `ScheduleInput`, `Created`; `settings.Changes`; `notify.Channel`,
-`Envelope`; `identity.EmailOf` (as `Addresses`); `files.Policy`; `audit.Entry`, `Ref`.
+`Envelope`; `identity.EmailOf` (as `Addresses`); `files.Policy` (`FileCeiling`); `audit.Entry`, `Ref`.
 
 ## Data
 
 Set `db.Set{Name: "demo", Schema: "core"}`, migrated on every install (the tables are empty
-and unread when demo is off; a conditional set would make `Protected` undefined).
+and unread when demo is off; a conditional set would make `Guard.Protected` undefined).
 
 | Table | Columns | Sensitivity | Retention |
 |---|---|---|---|
@@ -434,8 +438,8 @@ is the viewer's own (people's `UpdateMe` is the same shape), so a permission wou
 role that could widen it; the recipient filter is in the query, not in a grant (owner,
 2026-10-28, Q-DEMO2: self only, no admin override). `GET /api/demo` needs none (public by design). `Seed` and `Reset` are commands: the operator has
 the database; audited as `ActorOperator` (`demo.seed.ran`, `demo.reset.ran`) with each step's
-own entries recorded by the demo account that performed it. `Protected` and `Policy` are system
-reads (no actor). `Channel.Send` runs inside notify's sender loop (system).
+own entries recorded by the demo account that performed it. `Guard.Protected` is a system
+read (no actor). `Capture.Send` runs inside notify's sender loop (system).
 
 ## Signals
 
@@ -503,7 +507,7 @@ reloaded). `Info` with `Enabled` false is `{enabled: false}`; with true it lists
 accounts from the seed table in `position` order, with `Password` and `Regional`. It reads
 nothing, so the banner stands even while the database is down. `serve` logs
 `demo mode on` (warn) after "bms starting"; `bms check` prints `demo: off` or
-`demo: on (seeded <time>|not seeded|seeding)`, reading `core.demo_state` (a failed read prints
+`demo: on (seeded <time>|not seeded|seeding)`, reading `core.demo_state` through `demo.StateOf` (a failed read prints
 `demo: on (state unknown: <kind>)` and is not a check failure).
 
 **What demo mode never changes.** Permissions and starter roles, the authorizer, audit
@@ -605,7 +609,7 @@ the same names, counts, times and relationships. `SeedVersion` changes when the 
 read-only copy; refuses `Conflict not_demo` when `core.demo_state` has no row, checked before
 anything is touched). Order, each a `Step`:
 
-1. *objects*: `Objects.Clear` (every bucket, then `<files.dir>/tmp`); derived data first,
+1. *objects*: `Objects.Purge` (files' `Purge`: every bucket the service scoped, then its temp dir); derived data first,
    so a failure here leaves the database intact and `reset` can rerun.
 2. *spool*: delete every file under `<data.dir>/audit/spool` (a failed import of strangers'
    entries must not resurrect them).
@@ -632,7 +636,7 @@ job leases and in-flight requests. A jobs-hosted reset was not chosen: it would 
 table under itself, needs the whole migration step inside a serving process, and cannot stop
 the HTTP shell. The owner can run `bms demo reset` by hand at any time.
 
-**Guard.** `Protected` is one indexed read of `core.demo_account`. identity consults its
+**Guard.** `Guard.Protected` (built by `NewGuard`, below identity) is one indexed read of `core.demo_account`. identity consults its
 `Guard` (nil in production) in `ChangePassword`, `SetTemporaryPassword`, `DisableAccount`,
 `DeletePerson`, `LinkAccount` (after the superuser check), `RequestPasswordReset` (answers nil and sends nothing, as for a superuser
 address), `CompletePasswordReset` (no token can exist) and any later e-mail change; the
@@ -643,8 +647,7 @@ can revoke the lead's role; the last-access-admin rule still holds), settings, d
 (archiving), the event (closing), profiles (a `people.profiles.manage` tester can rename
 Marbles). All are repaired by the reset.
 
-**Mail capture.** app's `ChannelFactory` returns `demo.Channel()` for any `SMTPConfig` when
-`Enabled`; notify's loop runs as in production (leases, retries, `Sent`). `Send` inserts the
+**Mail capture.** When `Enabled`, app passes `demo.NewCapture`'s `Capture` as `notify.Options.Channel`, so it replaces the SMTP channel whatever the SMTP settings say; notify's loop runs as in production (leases, retries, `Sent`). `Send` inserts the
 envelope (`To`, `Subject`, `Body`, `MessageID`) in its own short `Write` transaction, then
 deletes rows beyond the newest `MaxMail`; records `bms.demo.mail_captured`; a malformed
 envelope (zero `To`, empty subject) is `Invalid` wrapping `notify.ErrRejected` so notify ends
@@ -655,8 +658,7 @@ the row `rejected` instead of retrying; a store failure is `Unavailable` and not
 (`WHERE lower(to_address) = $1`, the viewer's address lower-cased; there is no other filter and
 no parameter or role that widens it) → return. No audit entry: the rows are the viewer's own. Never logs an address or a subject.
 
-**Upload cap.** `Policy` calls the inner source and lowers each field to the constant; it
-never raises one. The constants are not settings: a demo settings-admin must not be able to
+**Upload cap.** `FileCeiling` is passed as `files.Options.Ceiling`; files lowers each setting-derived field to the constant and never raises one (a zero quota setting becomes the cap). The constants are not settings: a demo settings-admin must not be able to
 lift them.
 
 **Concurrency and lifecycle.** `*Service` is safe for concurrent use; nothing to close; no
@@ -699,30 +701,30 @@ is covered by the integration test, so a column rename breaks the build, not the
 | F18 | `Reset` | `Enabled` false | Unsupported | exit 2 | `TestReset_DemoOff_ReturnsUnsupported` |
 | F19 | `Reset` | no marker row | Conflict `not_demo` | exit 2, nothing touched | `TestReset_NoMarker_ReturnsConflict_TouchesNothing` |
 | F20 | `Reset` | read-only copy | Unavailable wrapping `db.ErrReadOnly` | exit 1 | `TestReset_ReadOnly_ReturnsUnavailable` |
-| F21 | `Reset` | `Objects.Clear` fails | Unavailable | exit 1; database intact; rerun | `TestReset_ObjectsFail_LeavesDatabase` |
+| F21 | `Reset` | `Objects.Purge` fails | Unavailable | exit 1; database intact; rerun | `TestReset_ObjectsFail_LeavesDatabase` |
 | F22 | `Reset` | spool dir unreadable | Unavailable | exit 1; rerun | `TestReset_SpoolUnreadable_ReturnsUnavailable` |
 | F23 | `Reset` | drop refused by the server (privilege) | the store's kind (Permission/Unavailable) | exit 1; marker stays | `TestReset_DropFails_KeepsMarker` (integration) |
 | F24 | `Reset` | `Schema.Migrate` fails | the migrator's kind (`Conflict` → exit 3) | exit by the migrate command's mapping (3 behind, ahead or busy; else 1, see F43); say "run `bms migrate`, then `bms demo seed`" | `TestReset_MigrateFails_SaysHowToRecover` |
-| F25 | `Protected` | store unavailable | Unavailable | identity fails the change (closed) | `TestProtected_StoreDown_ReturnsUnavailable` |
-| F26 | `Protected` | unknown account | — (`false, nil`) | proceed | `TestProtected_Unknown_False` |
-| F27 | `Channel.Send` | zero `To` or empty subject | Invalid wrapping `notify.ErrRejected` | notify ends the row `rejected` | `TestCapture_BadEnvelope_Rejected` |
-| F28 | `Channel.Send` | store down or read-only | Unavailable (+ `db.ErrReadOnly`) | notify retries | `TestCapture_StoreDown_ReturnsUnavailable` |
-| F29 | `Channel.Send` | ctx canceled | Canceled | notify releases | `TestCapture_Canceled` |
+| F25 | `Guard.Protected` | store unavailable | Unavailable | identity fails the change (closed) | `TestProtected_StoreDown_ReturnsUnavailable` |
+| F26 | `Guard.Protected` | unknown account | — (`false, nil`) | proceed | `TestGuard_UnknownAccount_IsFalse` |
+| F27 | `Capture.Send` | zero `To` or empty subject | Invalid wrapping `notify.ErrRejected` | notify ends the row `rejected` | `TestCapture_BadEnvelope_Rejected` |
+| F28 | `Capture.Send` | store down or read-only | Unavailable (+ `db.ErrReadOnly`) | notify retries | `TestCapture_StoreDown_ReturnsUnavailable` |
+| F29 | `Capture.Send` | ctx canceled | Canceled | notify releases | `TestCapture_Canceled` |
 | F30 | `ListMail` | no actor | Unauthenticated | 401 | `TestListMail_NoActor_ReturnsUnauthenticated` |
 | F31 | `ListMail` | mail exists for other addresses (including a demo account's) | — (not listed; no kind) | show only the viewer's own | `TestListMail_OtherAccountsMail_NotListed` |
 | F32 | `ListMail` | `Enabled` false | Unsupported | 501, "not a demo" | `TestListMail_DemoOff_ReturnsUnsupported` |
 | F33 | `ListMail` | `Limit` outside 1..`MaxMailList` | Invalid `limit` `range` | 400 | `TestListMail_BadLimit_ReturnsInvalid` |
 | F34 | `ListMail` | the viewer has no account address (`EmailOf` NotFound) | — (empty list) | show the empty state | `TestListMail_NoAccountAddress_Empty` |
 | F35 | `ListMail` | store down | Unavailable | 503 | `TestListMail_StoreDown_ReturnsUnavailable` |
-| F36 | `Policy` | inner source fails | the inner kind | files answers it | `TestPolicy_InnerFails_Passthrough` |
-| F37 | `Policy` | inner values above the caps | — (lowered) | — | `TestPolicy_CapsNeverRaise` |
+| F36 | (removed, step 10) | `Service.Policy` no longer exists; there is no inner source to fail | — | — | — |
+| F37 | `files.Options.Ceiling` | settings above the caps | — (lowered, never raised) | — | `TestNew_CeilingNeverRaises` (files) |
 | F38 | `bms demo <x>` | unknown subcommand or extra arguments | — (usage) | exit 2 | `TestDemoCommand_Usage_Exit2` |
 
 | F40 | `Options.Validate` | `Schemas` contains `public` | Invalid `demo.schemas` | exit 2 | `TestOptions_PublicSchema_ReturnsInvalid` |
 | F41 | `Reset` | the drop statement's schema count differs from `Schemas` | Internal | exit 1; marker stays | `TestReset_DropCountMismatch_ReturnsInternal` |
 | F42 | `bms demo <x>` | `BMS_DEMO_ENABLED` off, checked right after config load | — (usage-style) | exit 2, name the key; telemetry and the database untouched | `TestDemoCommand_Disabled_Exit2_NamesKey` |
 | F43 | `Reset` | `Schema.Migrate` fails | `demo.ErrMigrate` wrapping the migrator's kind | exit by the migrate command's mapping | `TestReset_MigrateFails_WrapsErrMigrate` |
-| F44 | files policy wiring | demo enabled but the demo service is missing | Unavailable (fail closed) | files answers it | `TestDemoPolicy_ServiceMissing_FailsClosed` |
+| F44 | (removed, step 10) | the files cap no longer depends on the demo service being built: `FileCeiling` is a value | — | — | `TestDemoPolicy_ServiceMissing_FailsClosed` deleted |
 | F45a | password screen (web) | a protected demo account opens it (D57) | notice above the form, fields and button disabled | read the notice | `demo.test.tsx` "password screen shows the protected notice and disables the form" (and "a 403 protected still shows the notice") |
 | F46 | session answer (`identity.SessionInfo`) | `Guard.Protected` fails (store down) | none: the call succeeds | answers `protected: false` and logs a warning (owner, D58 revision); the form may show for a protected account and the server's refusal stays the fail-closed backstop | identity `TestSessionInfo_GuardError_AnswersUnprotectedAndLogs` |
 | F45 | sign-in page (web) | a one-click "Sign in as" is refused or fails | the form's normal `ApiError` | the form shows its own error and clears its busy state; the tester may press another row or type | `demo.test.tsx` "sign in as failure shows the form's error" |
@@ -743,6 +745,7 @@ timer is a systemd unit; cron or a compose sidecar does the same (`docs/operatin
   `TestSeed_Deterministic` runs twice with a fixed clock and compares everything but IDs);
   `Info` from constants; the cap; the capture's trim to `MaxMail`; the marker rule;
   `TestDemo_ChangesOnlyTheListed`.
+- **Boundaries step 10:** `TestGuard_UnknownAccount_IsFalse`, `TestNewGuard_NilDB_ReturnsInvalid`, `TestCapture_StoresInsteadOfSending`, `TestStateOf_NoMarker_ReturnsNotFound`; the integration tests (seed, reset, protected accounts, capture, caps) run through the real services with no adapter in app.
 - **Permission tests.** F11, F30; F31 (`TestListMail_OtherAccountsMail_NotListed`: with mail
   captured for two accounts, each sees only its own; a superuser and an `account-admin` see
   only their own; no query parameter widens it); the leak test below covers the rest; the guard through identity's tests (Proposed change
@@ -783,7 +786,7 @@ Verified against the code and accepted:
 
 - Only the `en` catalogue exists; there is no `es` yet (the "`en` and `es`" above is the target, not the build).
 - `Options.Instance string`: the marker's instance name, `demo` when empty (a valid ident otherwise, else `Invalid`).
-- `Service.State(ctx) (seededAt time.Time, found bool, err error)`: the marker for `bms check`; `found` is false when there is no row.
+- `Service.State(ctx) (seededAt time.Time, found bool, err error)`: the marker for `bms check`; `found` is false when there is no row. Superseded 2026-11-01 (boundaries step 10) by the package function `StateOf(ctx, db.DB) (State, error)`, `NotFound` when there is no row.
 - The command's usage is `seed|reset` (`bms demo seed|reset`).
 - Audit and span `Fields` use normalised step names (lower case, runs of non-alphanumerics become `_`): `walk_ons`, `module_volunteers`.
 - A contributor that exceeds `ContributorTimeout` returns `Timeout` (not `Internal`), wrapped with the module name.

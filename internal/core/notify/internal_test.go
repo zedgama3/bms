@@ -205,7 +205,7 @@ func newRig(t *testing.T, mutate ...func(*Options, *fakeStore, *testChannel, *ri
 		Actor:    func(context.Context) (authz.Actor, bool) { return authz.Actor{}, false },
 		Settings: rigSettings(),
 		Regional: siteSrc{}, Terms: siteSrc{}, Accounts: addrSrc{email: "someone@example.org"}, Profiles: profSrc{},
-		Channel: func(SMTPConfig) (Channel, error) { return r.ch, nil }, Hostname: "bms.example.org",
+		Channel: r.ch, Hostname: "bms.example.org",
 		Lease: 30 * time.Second, SendTimeout: 5 * time.Second,
 	}
 	for _, m := range mutate {

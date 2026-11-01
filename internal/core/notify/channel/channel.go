@@ -51,7 +51,7 @@ type Channel interface {
 }
 
 // Factory builds the channel for the current SMTP settings. Fails errs.Invalid when cfg
-// does not validate. notify re-exports it as ChannelFactory.
+// does not validate. notify uses it internally to build the SMTP channel per batch.
 type Factory func(cfg SMTPConfig) (Channel, error)
 
 // ErrRejected marks a permanent rejection (errs.Invalid). Check with errors.Is.

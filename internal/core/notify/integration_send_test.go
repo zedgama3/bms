@@ -358,8 +358,8 @@ func TestSendOnce_UsesCurrentSettings(t *testing.T) {
 	r.sendOnce()
 	r.ch.mu.Lock()
 	defer r.ch.mu.Unlock()
-	if len(r.ch.cfgs) == 0 || r.ch.cfgs[len(r.ch.cfgs)-1].Host != "relay.invalid" {
-		t.Fatalf("channel built from stale settings: %+v", r.ch.cfgs)
+	if len(r.ch.envs) == 0 {
+		t.Fatal("nothing was sent")
 	}
 	if r.ch.envs[0].From.Email != "other@example.org" {
 		t.Errorf("From = %+v", r.ch.envs[0].From)
@@ -386,7 +386,7 @@ func TestSendOnce_NotConfigured_SkipsWithoutAttempt(t *testing.T) {
 			t.Fatalf("row = %+v, want queued with no attempt counted", x)
 		}
 	}
-	if len(r.ch.envelopes()) != 0 || r.ch.factoryCalls() != 0 {
+	if len(r.ch.envelopes()) != 0 {
 		t.Fatal("a channel was used while unconfigured")
 	}
 	r.smtp.set(func(c *notify.SMTPConfig) { c.Host = "smtp.invalid" })
@@ -550,7 +550,7 @@ func TestSendOnce_Rejected_FailedFinal(t *testing.T) {
 func TestSendOnce_Rejected_WithNotifytestChannel(t *testing.T) {
 	// Same path through the in-memory channel notify ships for tests.
 	nc := newNotifytestChannel()
-	r := newIRig(t, func(o *notify.Options) { o.Channel = nc.Factory() })
+	r := newIRig(t, func(o *notify.Options) { o.Channel = nc })
 	p := r.queue("a@example.org")
 	nc.Reject()
 	if got := r.sendOnce(); got.Failed != 1 {
@@ -730,7 +730,7 @@ func TestSendOnce_ExpiredLease_Reclaimed(t *testing.T) {
 
 func TestSendOnce_TwoWorkers_EachRowOnce(t *testing.T) {
 	r := newIRig(t)
-	other := newIRigOn(t, r.pool, func(o *notify.Options) { o.Channel = r.ch.factory })
+	other := newIRigOn(t, r.pool, func(o *notify.Options) { o.Channel = r.ch })
 	const n = 40
 	for i := 0; i < n; i++ {
 		p := r.dbPerson("")
@@ -766,17 +766,19 @@ func TestSendOnce_TwoWorkers_EachRowOnce(t *testing.T) {
 	}
 }
 
-func TestSendOnce_FactoryReceivesCurrentSettings(t *testing.T) {
+// Options.Channel replaces SMTP: the sender carries the envelope over it even though the
+// settings name a host nobody listens on (boundaries step 10; the SMTP-per-batch default is
+// covered by the Mailpit tests).
+func TestSendOnce_ChannelOption_ReplacesSMTP(t *testing.T) {
 	r := newIRig(t)
+	r.smtp.set(func(c *notify.SMTPConfig) { c.Host = "127.0.0.1"; c.Port = closedPort(t); c.Security = notify.None })
 	r.queue("a@example.org")
-	r.sendOnce()
-	if r.ch.factoryCalls() == 0 {
-		t.Fatal("no channel was built")
+	got := r.sendOnce()
+	if got.Sent != 1 {
+		t.Fatalf("Sent = %+v, want 1 over the given channel", got)
 	}
-	r.ch.mu.Lock()
-	defer r.ch.mu.Unlock()
-	if c := r.ch.cfgs[0]; c.Host != "smtp.invalid" || c.Port != 2525 || c.Security != notify.None {
-		t.Fatalf("cfg = %+v", c)
+	if envs := r.ch.envelopes(); len(envs) != 1 || envs[0].To != "a@example.org" {
+		t.Fatalf("envelopes = %+v", envs)
 	}
 }
 

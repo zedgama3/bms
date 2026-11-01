@@ -49,9 +49,11 @@ type Options struct {
 	Terms    TermSource
 	Accounts Accounts
 	Profiles Profiles
-	// Channel builds the channel for the current SMTP settings; nil means the SMTP channel
-	// of notify/smtp, built with SendTimeout, Hostname and Clock.
-	Channel      ChannelFactory
+	// Channel carries every envelope instead of SMTP; optional. Nil builds the SMTP channel
+	// of notify/smtp from the current settings for each batch, with SendTimeout, Hostname
+	// and Clock. Demo mode passes demo.Capture, which stores the mail instead of sending
+	// it; the SMTP settings still decide Configured and whether the sender loop runs.
+	Channel      Channel
 	PollInterval time.Duration // 1s..5m; DefaultPollInterval when 0
 	Lease        time.Duration // 30s..30m; DefaultLease when 0; raised to twice SendTimeout when shorter
 	SendTimeout  time.Duration // 5s..5m; DefaultSendTimeout when 0 (one SMTP conversation)

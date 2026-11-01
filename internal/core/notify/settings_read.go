@@ -9,15 +9,14 @@ import (
 	"github.com/zedgama3/bms/internal/core/settings"
 )
 
-// SMTPFromSettings reads the notify.* SMTP keys through r, a Reader scoped "notify", and
+// smtpFromSettings reads the notify.* SMTP keys through r, a Reader scoped "notify", and
 // maps them onto SMTPConfig. The password is the sealed smtp_password, unsealed per read and
 // never logged. A key that was never set reads as settings' declared default. It fails with
 // the Reader's kinds, and errs.Invalid for a stored value notify cannot read (settings
-// validated it, so that is a bug). The service calls it per use case and never caches the
-// answer; app's `bms check` calls it until notify.Probe replaces that line (boundaries
-// step 10).
-func SMTPFromSettings(ctx context.Context, r settings.Reader) (SMTPConfig, error) {
-	const op = "notify.SMTPFromSettings"
+// validated it, so that is a bug). The service and Probe call it per use case and never
+// cache the answer. export_test.go exposes it to the black-box tests.
+func smtpFromSettings(ctx context.Context, r settings.Reader) (SMTPConfig, error) {
+	const op = "notify.smtpFromSettings"
 	var (
 		cfg  SMTPConfig
 		text = func(key string) (string, error) {

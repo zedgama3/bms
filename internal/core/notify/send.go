@@ -46,7 +46,7 @@ func (n scoped) Configured(ctx context.Context) (bool, error) { return n.s.Confi
 // a sender are set. It reads the settings (no SMTP connection) and looks at no recipient.
 // Fails with the settings Reader's kind.
 func (s *Service) Configured(ctx context.Context) (bool, error) {
-	cfg, err := SMTPFromSettings(ctx, s.settings)
+	cfg, err := smtpFromSettings(ctx, s.settings)
 	if err != nil {
 		return false, seamError("notify.Service.Configured", "the SMTP settings", err)
 	}
