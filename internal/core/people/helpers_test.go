@@ -20,12 +20,15 @@ import (
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/people"
+	"github.com/zedgama3/bms/internal/core/settings"
+	"github.com/zedgama3/bms/internal/core/settings/settingstest"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/signals/signalstest"
 	"github.com/zedgama3/bms/internal/core/telemetry/telemetrytest"
 	"github.com/zedgama3/bms/internal/lib/clock"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/lib/httpx"
+	"github.com/zedgama3/bms/internal/lib/secret"
 	"github.com/zedgama3/bms/internal/lib/validate"
 	"github.com/zedgama3/bms/internal/model"
 )
@@ -354,19 +357,71 @@ func (f *fakeCounter) CountAbout(context.Context, model.PersonID) (int, error) {
 	return f.n, f.err
 }
 
-// policySrc is a people.PolicySource a test can change.
+// policySrc is a settings.Reader for the "people" area that a test can change as a
+// people.Policy (set, in the integration helpers) or make fail (err). Reads are answered
+// from a settingstest.Fake loaded with the current policy, so people's own key mapping is
+// what the tests exercise.
 type policySrc struct {
 	mu  sync.Mutex
 	p   people.Policy
 	err error
 }
 
+var _ settings.Reader = (*policySrc)(nil)
+
 func newPolicySrc() *policySrc { return &policySrc{p: people.DefaultPolicy()} }
 
-func (s *policySrc) Policy(context.Context) (people.Policy, error) {
+func (s *policySrc) fake() (*settingstest.Fake, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.p, s.err
+	if s.err != nil {
+		return nil, s.err
+	}
+	f := settingstest.NewFake("people", people.Settings)
+	f.Set("legal_name", s.p.LegalName.String())
+	f.Set("phone", s.p.Phone.String())
+	f.Set("emergency_contacts", s.p.EmergencyContacts.String())
+	return f, nil
+}
+
+func (s *policySrc) Bool(ctx context.Context, k string) (bool, error) {
+	f, err := s.fake()
+	if err != nil {
+		return false, err
+	}
+	return f.Bool(ctx, k) //nolint:wrapcheck // test shim: the settingstest.Fake answer is the point
+}
+
+func (s *policySrc) Int(ctx context.Context, k string) (int64, error) {
+	f, err := s.fake()
+	if err != nil {
+		return 0, err
+	}
+	return f.Int(ctx, k) //nolint:wrapcheck // test shim: the settingstest.Fake answer is the point
+}
+
+func (s *policySrc) Duration(ctx context.Context, k string) (time.Duration, error) {
+	f, err := s.fake()
+	if err != nil {
+		return 0, err
+	}
+	return f.Duration(ctx, k) //nolint:wrapcheck // test shim: the settingstest.Fake answer is the point
+}
+
+func (s *policySrc) Text(ctx context.Context, k string) (string, error) {
+	f, err := s.fake()
+	if err != nil {
+		return "", err
+	}
+	return f.Text(ctx, k) //nolint:wrapcheck // test shim: the settingstest.Fake answer is the point
+}
+
+func (s *policySrc) Secret(ctx context.Context, k string) (secret.Secret, error) {
+	f, err := s.fake()
+	if err != nil {
+		return secret.Secret{}, err
+	}
+	return f.Secret(ctx, k) //nolint:wrapcheck // test shim: the settingstest.Fake answer is the point
 }
 
 // fakeSource is one module's PersonData.
@@ -452,7 +507,7 @@ func validOptions(t *testing.T, d db.DB) (people.Options, *rig) {
 		Accounts:   r.accts,
 		Access:     r.access,
 		AuditCount: r.counter,
-		Policy:     r.pol,
+		Settings:   r.pol,
 	}
 	return o, r
 }

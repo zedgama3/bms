@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -23,6 +24,8 @@ import (
 	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/identity"
+	"github.com/zedgama3/bms/internal/core/settings"
+	"github.com/zedgama3/bms/internal/core/settings/settingstest"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/signals/signalstest"
 	"github.com/zedgama3/bms/internal/core/telemetry/telemetrytest"
@@ -120,24 +123,90 @@ func wantField(t testing.TB, err error, field, code string) {
 
 // ---- seams -----------------------------------------------------------------------------
 
+// policySource is a settings.Reader for the "accounts" area that a test can change as an
+// identity.Policy (set) or make fail (err). Every read is answered from a settingstest.Fake
+// loaded with the current policy, so identity's own key mapping is what the tests exercise.
 type policySource struct {
 	mu  sync.Mutex
 	p   identity.Policy
 	err error
 }
 
-func newPolicySource() *policySource { return &policySource{p: identity.DefaultPolicy()} }
+var _ settings.Reader = (*policySource)(nil)
 
-func (s *policySource) Policy(context.Context) (identity.Policy, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.p, s.err
-}
+func newPolicySource() *policySource { return &policySource{p: identity.DefaultPolicy()} }
 
 func (s *policySource) set(mod func(*identity.Policy)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	mod(&s.p)
+}
+
+// fake returns a Fake carrying the current policy, or the injected error.
+func (s *policySource) fake() (*settingstest.Fake, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.err != nil {
+		return nil, s.err
+	}
+	return accountsFake(s.p), nil
+}
+
+// accountsFake is a settingstest.Fake for "accounts" holding p's eleven values.
+func accountsFake(p identity.Policy) *settingstest.Fake {
+	f := settingstest.NewFake("accounts", identity.Settings)
+	f.Set("signup", string(p.SignupMode))
+	f.Set("session_lifetime", p.SessionLifetime.String())
+	f.Set("superuser_session_lifetime", p.SuperuserSessionLifetime.String())
+	f.Set("password_min_length", strconv.Itoa(p.PasswordMinLength))
+	f.Set("login_failure_limit", strconv.Itoa(p.LoginFailureLimit))
+	f.Set("client_failure_limit", strconv.Itoa(p.ClientFailureLimit))
+	f.Set("login_failure_window", p.LoginFailureWindow.String())
+	f.Set("password_reset_lifetime", p.PasswordResetLifetime.String())
+	f.Set("password_reset_client_limit", strconv.Itoa(p.PasswordResetClientLimit))
+	f.Set("password_reset_address_limit", strconv.Itoa(p.PasswordResetAddressLimit))
+	f.Set("password_reset_cooldown", p.PasswordResetCooldown.String())
+	return f
+}
+
+func (s *policySource) Bool(ctx context.Context, k string) (bool, error) {
+	f, err := s.fake()
+	if err != nil {
+		return false, err
+	}
+	return f.Bool(ctx, k) //nolint:wrapcheck // test shim: the settingstest.Fake answer is the point
+}
+
+func (s *policySource) Int(ctx context.Context, k string) (int64, error) {
+	f, err := s.fake()
+	if err != nil {
+		return 0, err
+	}
+	return f.Int(ctx, k) //nolint:wrapcheck // test shim: the settingstest.Fake answer is the point
+}
+
+func (s *policySource) Duration(ctx context.Context, k string) (time.Duration, error) {
+	f, err := s.fake()
+	if err != nil {
+		return 0, err
+	}
+	return f.Duration(ctx, k) //nolint:wrapcheck // test shim: the settingstest.Fake answer is the point
+}
+
+func (s *policySource) Text(ctx context.Context, k string) (string, error) {
+	f, err := s.fake()
+	if err != nil {
+		return "", err
+	}
+	return f.Text(ctx, k) //nolint:wrapcheck // test shim: the settingstest.Fake answer is the point
+}
+
+func (s *policySource) Secret(ctx context.Context, k string) (secret.Secret, error) {
+	f, err := s.fake()
+	if err != nil {
+		return secret.Secret{}, err
+	}
+	return f.Secret(ctx, k) //nolint:wrapcheck // test shim: the settingstest.Fake answer is the point
 }
 
 type permChecker struct {
@@ -209,14 +278,15 @@ func validOptions(t *testing.T, d db.DB) (identity.Options, *rig) {
 	bus, err := signalstest.NewFake("identity", []signals.Name{identity.SignalAccountCreated}, nil)
 	wantNoErr(t, err)
 	o := identity.Options{
-		DB:      d,
-		Clock:   clk,
-		Logger:  c.Logger(),
-		Tracer:  c.Tracer("identity"),
-		Meter:   c.Meter("identity"),
-		Key:     secret.New(sessionKeyText),
-		Audit:   rec,
-		Signals: bus,
+		DB:       d,
+		Clock:    clk,
+		Logger:   c.Logger(),
+		Tracer:   c.Tracer("identity"),
+		Meter:    c.Meter("identity"),
+		Key:      secret.New(sessionKeyText),
+		Audit:    rec,
+		Signals:  bus,
+		Settings: settingstest.NewFake("accounts", identity.Settings),
 	}
 	return o, &rig{t: t, clk: clk, rec: rec, bus: bus, cap: c}
 }
@@ -240,8 +310,8 @@ func withPerms(p identity.PermissionChecker) func(*identity.Options) {
 	return func(o *identity.Options) { o.Permissions = p }
 }
 
-func withPolicy(p identity.PolicySource) func(*identity.Options) {
-	return func(o *identity.Options) { o.Policy = p }
+func withPolicy(p settings.Reader) func(*identity.Options) {
+	return func(o *identity.Options) { o.Settings = p }
 }
 
 func withPlaintext(o *identity.Options) { o.AllowPlaintext = true }

@@ -4,8 +4,8 @@ import "github.com/zedgama3/bms/internal/core/settings"
 
 // Settings declares the people.* keys for the settings core area "people" (people.md,
 // "Settings"; D39): how the profile's legal name, phone and emergency contacts are treated.
-// app passes them to settings.New and implements PolicySource over the area's scoped
-// Reader. Titles and descriptions are the catalogue keys
+// app passes them to settings.New; the service reads them through Options.Settings, a
+// Reader scoped to the area. Titles and descriptions are the catalogue keys
 // core.people.setting.<key>.title|description|option.<opt>.
 //
 // emergency_contacts lists hidden and optional only, so the declaration is the rule and

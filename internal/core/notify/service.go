@@ -15,6 +15,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/notify/message"
 	"github.com/zedgama3/bms/internal/core/notify/postgres"
 	"github.com/zedgama3/bms/internal/core/notify/smtp"
+	"github.com/zedgama3/bms/internal/core/settings"
 	"github.com/zedgama3/bms/internal/core/telemetry"
 	"github.com/zedgama3/bms/internal/lib/clock"
 	"github.com/zedgama3/bms/internal/lib/errs"
@@ -89,9 +90,8 @@ type Service struct {
 	authz  authz.Authorizer
 	actorF authz.ActorFunc
 
-	smtp      SMTPSource
+	settings  settings.Reader
 	site      SiteSource
-	retention RetentionSource
 	addresses AddressSource
 	languages LanguageSource
 	names     NameSource
@@ -143,7 +143,7 @@ func newService(o Options, st store) (*Service, error) {
 	}
 	s := &Service{
 		store: st, db: o.DB, clock: o.Clock, logger: o.Logger, tracer: o.Tracer, audit: o.Audit,
-		authz: o.Authz, actorF: o.Actor, smtp: o.SMTP, site: o.Site, retention: o.Retention,
+		authz: o.Authz, actorF: o.Actor, settings: o.Settings, site: o.Site,
 		addresses: o.Addresses, languages: o.Languages, names: o.Names, channel: o.Channel,
 		poll: o.PollInterval, lease: o.Lease, sendTimeout: o.SendTimeout, hostname: o.Hostname,
 		cat: newCatalogue(), stop: make(chan struct{}),

@@ -18,6 +18,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/notify"
 	"github.com/zedgama3/bms/internal/core/notify/notifytest"
 	"github.com/zedgama3/bms/internal/core/people/rows"
+	"github.com/zedgama3/bms/internal/core/settings/settingstest"
 	"github.com/zedgama3/bms/internal/core/signals/signalstest"
 	"github.com/zedgama3/bms/internal/core/telemetry/telemetrytest"
 	"github.com/zedgama3/bms/internal/lib/clock"
@@ -87,7 +88,7 @@ func newNoticeRig(t *testing.T, mods ...func(*Options)) *noticeRig {
 		DB: dbtest.NewFake(), Clock: clock.NewFake(time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)),
 		Logger: c.Logger(), Tracer: c.Tracer("people"), Audit: audittest.NewFake("people"), Signals: bus, Authz: az,
 		Actor: actor, Session: identity.SessionFrom, Accounts: &wbAccounts{has: true}, Access: wbAccess{}, AuditCount: wbCounter{},
-		Notify: nf, Holders: h,
+		Settings: settingstest.NewFake("people", Settings), Notify: nf, Holders: h,
 	}
 	for _, m := range mods {
 		m(&o)

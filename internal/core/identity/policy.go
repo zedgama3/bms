@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/zedgama3/bms/internal/core/authz"
+	"github.com/zedgama3/bms/internal/core/settings"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/lib/validate"
 	"github.com/zedgama3/bms/internal/model"
@@ -20,7 +21,7 @@ const (
 	SignupInvitation SignupMode = "invitation"
 )
 
-// Policy is what a regional may change. settings (M2) maps the accounts.* keys onto it.
+// Policy is what a regional may change: the accounts.* settings, mapped by policyFrom.
 type Policy struct {
 	SignupMode               SignupMode    // accounts.signup
 	SessionLifetime          time.Duration // accounts.session_lifetime
@@ -88,13 +89,6 @@ func (p Policy) lifetime(superuser bool) time.Duration {
 	return p.SessionLifetime
 }
 
-// PolicySource returns the current policy. settings implements it (M2); nil means
-// DefaultPolicy. A source that fails or returns an invalid Policy fails the use case with
-// its kind (F62): identity never falls back silently to the defaults once a source exists.
-type PolicySource interface {
-	Policy(ctx context.Context) (Policy, error)
-}
-
 // PermissionChecker decides one site-wide permission for the actor in ctx (the shape of
 // api.PermissionChecker). authz implements it (M2); nil denies with errs.Permission.
 // Identity allows the superuser before asking it (decision 7).
@@ -123,14 +117,13 @@ type Alerter interface {
 	SuperuserSignedIn(ctx context.Context, person model.PersonID) error
 }
 
-// policy reads the current policy: the source's, validated, or the defaults when there is
-// no source.
+// policy reads the current policy from the "accounts" settings area, validated. A key that
+// was never set reads as settings' declared default. A Reader that fails, or values that do
+// not validate, fail the use case with their kind (F62): identity never falls back silently
+// to the defaults.
 func (s *Service) policy(ctx context.Context) (Policy, error) {
 	const op = "identity.Service.policy"
-	if s.policySource == nil {
-		return DefaultPolicy(), nil
-	}
-	p, err := s.policySource.Policy(ctx)
+	p, err := policyFrom(ctx, s.settings)
 	if err != nil {
 		return Policy{}, fmt.Errorf("%s: %w", op, err)
 	}
@@ -138,4 +131,47 @@ func (s *Service) policy(ctx context.Context) (Policy, error) {
 		return Policy{}, errs.E(op, errs.Invalid, err)
 	}
 	return p, nil
+}
+
+// policyFrom maps the eleven accounts.* keys onto Policy, one read each. It fails with the
+// Reader's kinds and does not validate what it returns.
+func policyFrom(ctx context.Context, r settings.Reader) (Policy, error) {
+	const op = "identity.policyFrom"
+	var pol Policy
+	mode, err := r.Text(ctx, "signup")
+	if err != nil {
+		return Policy{}, fmt.Errorf("%s: accounts.signup: %w", op, err)
+	}
+	pol.SignupMode = SignupMode(mode)
+	for _, f := range []struct {
+		key string
+		dst *time.Duration
+	}{
+		{"session_lifetime", &pol.SessionLifetime},
+		{"superuser_session_lifetime", &pol.SuperuserSessionLifetime},
+		{"login_failure_window", &pol.LoginFailureWindow},
+		{"password_reset_lifetime", &pol.PasswordResetLifetime},
+		{"password_reset_cooldown", &pol.PasswordResetCooldown},
+	} {
+		if *f.dst, err = r.Duration(ctx, f.key); err != nil {
+			return Policy{}, fmt.Errorf("%s: accounts.%s: %w", op, f.key, err)
+		}
+	}
+	for _, f := range []struct {
+		key string
+		dst *int
+	}{
+		{"password_min_length", &pol.PasswordMinLength},
+		{"login_failure_limit", &pol.LoginFailureLimit},
+		{"client_failure_limit", &pol.ClientFailureLimit},
+		{"password_reset_client_limit", &pol.PasswordResetClientLimit},
+		{"password_reset_address_limit", &pol.PasswordResetAddressLimit},
+	} {
+		n, err := r.Int(ctx, f.key)
+		if err != nil {
+			return Policy{}, fmt.Errorf("%s: accounts.%s: %w", op, f.key, err)
+		}
+		*f.dst = int(n)
+	}
+	return pol, nil
 }

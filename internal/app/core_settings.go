@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"github.com/zedgama3/bms/internal/core/audit/auditsettings"
 	"github.com/zedgama3/bms/internal/core/files/filesettings"
@@ -16,7 +15,7 @@ import (
 	"github.com/zedgama3/bms/internal/lib/errs"
 )
 
-// settingsPart is core part 3: the typed, validated, audited values a regional configures
+// settingsPart is the settings core part: the typed, validated, audited values a regional configures
 // while bms runs (settings.md; app.md "How later core services plug in", row 3). It is
 // built after audit, whose recorder it takes, and after the authz.Lookup, which it takes as
 // its Authz.
@@ -47,9 +46,8 @@ func declareSettings(a *assembly) error {
 
 // buildSettings constructs the service (no I/O: it succeeds against db.None() and on a
 // read-only copy) over the core areas and the enabled modules' declarations, mounts the
-// settings routes and registers the refresher as a runnable. The PolicySource adapters of
-// identity and people resolve the service when called, because identity is built before
-// this part.
+// settings routes and registers the refresher as a runnable. Identity, people and notify,
+// built after it, read their own areas through Readers scoped from the service.
 func buildSettings(_ context.Context, a *assembly) error {
 	const op = "app.settings.build"
 	if a.deps.audit == nil || a.authzLookup == nil {
@@ -154,77 +152,4 @@ func (r *refresher) stop(ctx context.Context) error {
 	case <-ctx.Done():
 		return errs.E(op, errs.KindOf(ctx.Err()), fmt.Errorf("the settings refresher did not stop: %w", ctx.Err()))
 	}
-}
-
-// settingsPolicy is identity's PolicySource over the "accounts" area's scoped Reader: it
-// maps the accounts.* keys onto Policy, one read each. Identity validates what it returns.
-type settingsPolicy struct{ r settings.Reader }
-
-// Policy reads the eleven keys. It fails with the Reader's kinds.
-func (p settingsPolicy) Policy(ctx context.Context) (identity.Policy, error) {
-	const op = "app.settingsPolicy.Policy"
-	var pol identity.Policy
-	mode, err := p.r.Text(ctx, "signup")
-	if err != nil {
-		return identity.Policy{}, fmt.Errorf("%s: accounts.signup: %w", op, err)
-	}
-	pol.SignupMode = identity.SignupMode(mode)
-	for _, f := range []struct {
-		key string
-		dst *time.Duration
-	}{
-		{"session_lifetime", &pol.SessionLifetime},
-		{"superuser_session_lifetime", &pol.SuperuserSessionLifetime},
-		{"login_failure_window", &pol.LoginFailureWindow},
-		{"password_reset_lifetime", &pol.PasswordResetLifetime},
-		{"password_reset_cooldown", &pol.PasswordResetCooldown},
-	} {
-		if *f.dst, err = p.r.Duration(ctx, f.key); err != nil {
-			return identity.Policy{}, fmt.Errorf("%s: accounts.%s: %w", op, f.key, err)
-		}
-	}
-	for _, f := range []struct {
-		key string
-		dst *int
-	}{
-		{"password_min_length", &pol.PasswordMinLength},
-		{"login_failure_limit", &pol.LoginFailureLimit},
-		{"client_failure_limit", &pol.ClientFailureLimit},
-		{"password_reset_client_limit", &pol.PasswordResetClientLimit},
-		{"password_reset_address_limit", &pol.PasswordResetAddressLimit},
-	} {
-		n, err := p.r.Int(ctx, f.key)
-		if err != nil {
-			return identity.Policy{}, fmt.Errorf("%s: accounts.%s: %w", op, f.key, err)
-		}
-		*f.dst = int(n)
-	}
-	return pol, nil
-}
-
-// peoplePolicy is people's PolicySource over the "people" area's scoped Reader.
-type peoplePolicy struct{ r settings.Reader }
-
-// Policy reads the three field modes. It fails with the Reader's kinds, and errs.Invalid for
-// a mode people does not know.
-func (p peoplePolicy) Policy(ctx context.Context) (people.Policy, error) {
-	const op = "app.peoplePolicy.Policy"
-	var pol people.Policy
-	for _, f := range []struct {
-		key string
-		dst *people.FieldMode
-	}{
-		{"legal_name", &pol.LegalName},
-		{"phone", &pol.Phone},
-		{"emergency_contacts", &pol.EmergencyContacts},
-	} {
-		text, err := p.r.Text(ctx, f.key)
-		if err != nil {
-			return people.Policy{}, fmt.Errorf("%s: people.%s: %w", op, f.key, err)
-		}
-		if *f.dst, err = people.ParseFieldMode(text); err != nil {
-			return people.Policy{}, fmt.Errorf("%s: people.%s: %w", op, f.key, err)
-		}
-	}
-	return pol, nil
 }

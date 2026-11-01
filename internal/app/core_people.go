@@ -73,8 +73,12 @@ func declarePeople(a *assembly) error {
 // Link, which gives the service the modules' PersonData and page providers, comes later.
 func buildPeople(_ context.Context, a *assembly) error {
 	const op = "app.people.build"
-	if a.deps.audit == nil || a.identity == nil || a.authz == nil || a.deps.authz == nil {
-		return errs.E(op, errs.Internal, errors.New("people is built after audit, identity and authz"))
+	if a.deps.audit == nil || a.identity == nil || a.authz == nil || a.deps.authz == nil || a.settings == nil {
+		return errs.E(op, errs.Internal, errors.New("people is built after audit, settings, identity and authz"))
+	}
+	reader, err := a.settings.Scoped(peopleSettings)
+	if err != nil {
+		return fmt.Errorf("%s: settings scope: %w", op, err)
 	}
 	rec, err := a.deps.audit.Scoped(peopleArea)
 	if err != nil {
@@ -102,7 +106,7 @@ func buildPeople(_ context.Context, a *assembly) error {
 		Accounts:   a.identity,
 		Access:     a.authz,
 		AuditCount: a.deps.audit,
-		Policy:     lazyPeoplePolicy{a: a},
+		Settings:   reader,
 		Notify:     lazyNotifier{a: a, owner: peopleArea},
 		Holders:    a.authz,
 	})

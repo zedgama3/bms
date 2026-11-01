@@ -16,6 +16,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/identity/account"
 	"github.com/zedgama3/bms/internal/core/identity/postgres"
 	"github.com/zedgama3/bms/internal/core/notify"
+	"github.com/zedgama3/bms/internal/core/settings"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/telemetry"
 	"github.com/zedgama3/bms/internal/lib/clock"
@@ -96,7 +97,7 @@ type Options struct {
 	AllowPlaintext bool            // config HTTP.AllowPlaintext: may write DevCookieName (api decision 24)
 	Audit          audit.Recorder  // scoped to "identity"; required
 	Signals        signals.Bus     // scoped to "identity", publishes SignalAccountCreated; required
-	Policy         PolicySource    // optional
+	Settings       settings.Reader // scoped "accounts"; required; the policy is read per use case, never cached
 	Permissions    PermissionChecker
 	Lister         PermissionLister
 	Names          NameSource
@@ -107,7 +108,7 @@ type Options struct {
 
 // Validate fails errs.Invalid joining a validate.FieldError per problem: "identity.db",
 // "identity.clock", "identity.logger", "identity.tracer", "identity.audit",
-// "identity.signals" (nil) and "session.key" (unset).
+// "identity.signals", "identity.settings" (nil) and "session.key" (unset).
 func (o Options) Validate() error {
 	v := validate.Errors{Op: "identity.Options.Validate"}
 	if o.DB == nil {
@@ -128,6 +129,9 @@ func (o Options) Validate() error {
 	if o.Signals == nil {
 		v.Addf("identity.signals", codeRequired, "must be set")
 	}
+	if o.Settings == nil {
+		v.Addf("identity.settings", codeRequired, "must be set")
+	}
 	if !o.Key.IsSet() {
 		v.Addf("session.key", codeRequired, "must be set")
 	}
@@ -145,7 +149,7 @@ type Service struct {
 	allowPlaintext bool
 	audit          audit.Recorder
 	signals        signals.Bus
-	policySource   PolicySource
+	settings       settings.Reader
 	perms          PermissionChecker
 	lister         PermissionLister
 	names          NameSource
@@ -206,7 +210,7 @@ func newService(o Options, st store) (*Service, error) {
 	return &Service{
 		store: st, db: o.DB, clock: o.Clock, logger: o.Logger, tracer: o.Tracer,
 		key: key, allowPlaintext: o.AllowPlaintext, audit: o.Audit, signals: o.Signals,
-		policySource: o.Policy, perms: o.Permissions, lister: o.Lister, names: o.Names, alerter: o.Alerter,
+		settings: o.Settings, perms: o.Permissions, lister: o.Lister, names: o.Names, alerter: o.Alerter,
 		notify: o.Notify, guard: o.Guard,
 		common: common, dummy: dummyHash(), limiter: newLimiter(), resetLimiter: newResetLimiter(), sem: make(chan struct{}, HashConcurrency),
 		rand: rand.Reader, metrics: m,

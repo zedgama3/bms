@@ -18,6 +18,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/notify"
 	"github.com/zedgama3/bms/internal/core/people/postgres"
 	"github.com/zedgama3/bms/internal/core/people/rows"
+	"github.com/zedgama3/bms/internal/core/settings"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/telemetry"
 	"github.com/zedgama3/bms/internal/lib/clock"
@@ -92,11 +93,6 @@ type store interface {
 }
 
 var _ store = (*postgres.Store)(nil)
-
-// PolicySource is settings' seam (M2). nil means DefaultPolicy.
-type PolicySource interface {
-	Policy(ctx context.Context) (Policy, error)
-}
 
 // Accounts is identity's seam. EmailOf fails NotFound when the person has no account.
 // LinkAccount re-points the account with that address to person and returns the account ID
@@ -177,7 +173,7 @@ type Options struct {
 	Accounts   Accounts
 	Access     Access
 	AuditCount AuditCounter
-	Policy     PolicySource // optional; nil = DefaultPolicy
+	Settings   settings.Reader // scoped "people"; required; the field policy is read per use case, never cached
 	// Notify sends the deletion-request notice (scoped "people"); optional: nil means no
 	// notice. Holders says who gets it; optional: nil means no notice.
 	Notify  notify.Notifier
@@ -186,7 +182,7 @@ type Options struct {
 
 // Validate fails errs.Invalid joining a validate.FieldError per nil dependency (fields
 // people.db, people.clock, people.logger, people.tracer, people.audit, people.signals,
-// people.authz, people.actor, people.session, people.accounts, people.access, people.audit_count).
+// people.authz, people.actor, people.session, people.accounts, people.access, people.audit_count, people.settings).
 func (o Options) Validate() error {
 	v := validate.Errors{Op: "people.Options.Validate"}
 	for _, d := range []struct {
@@ -205,6 +201,7 @@ func (o Options) Validate() error {
 		{"people.accounts", o.Accounts == nil},
 		{"people.access", o.Access == nil},
 		{"people.audit_count", o.AuditCount == nil},
+		{"people.settings", o.Settings == nil},
 	} {
 		if d.nil {
 			v.Addf(d.field, codeRequired, "must be set")
@@ -235,7 +232,7 @@ type Service struct {
 	accounts   Accounts
 	access     Access
 	auditCount AuditCounter
-	policySrc  PolicySource
+	settings   settings.Reader
 	notify     notify.Notifier
 	holders    Holders
 	metrics    metrics
@@ -280,7 +277,7 @@ func newService(o Options, st store) (*Service, error) {
 	s := &Service{
 		store: st, db: o.DB, clock: o.Clock, logger: o.Logger, tracer: o.Tracer, audit: o.Audit,
 		signals: o.Signals, authz: o.Authz, actorFn: o.Actor, sessionFn: o.Session, accounts: o.Accounts, access: o.Access,
-		auditCount: o.AuditCount, policySrc: o.Policy, notify: o.Notify, holders: o.Holders, metrics: m, cooldown: newCooldown(),
+		auditCount: o.AuditCount, settings: o.Settings, notify: o.Notify, holders: o.Holders, metrics: m, cooldown: newCooldown(),
 	}
 	if err := o.Signals.Subscribe(identity.SignalAccountCreated, s.handleAccountCreated); err != nil {
 		return nil, fmt.Errorf("%s: subscribe: %w", op, err)
@@ -396,14 +393,12 @@ func (s *Service) selfOrManage(ctx context.Context, op string, a authz.Actor, pe
 	return false, s.require(ctx, op, PermissionProfilesManage)
 }
 
-// policy reads the regional's field policy. A nil source is DefaultPolicy; a failing or
-// invalid one fails the use case.
+// policy reads the regional's field policy from the "people" settings area. A key that was
+// never set reads as settings' declared default. A failing Reader or a policy that does
+// not validate fails the use case.
 func (s *Service) policy(ctx context.Context) (Policy, error) {
 	const op = "people.Service.policy"
-	if s.policySrc == nil {
-		return DefaultPolicy(), nil
-	}
-	p, err := s.policySrc.Policy(ctx)
+	p, err := policyFrom(ctx, s.settings)
 	if err != nil {
 		return Policy{}, fmt.Errorf("%s: %w", op, err)
 	}
@@ -411,6 +406,30 @@ func (s *Service) policy(ctx context.Context) (Policy, error) {
 		return Policy{}, fmt.Errorf("%s: %w", op, err)
 	}
 	return p, nil
+}
+
+// policyFrom reads the three field modes of the people.* keys. It fails with the Reader's
+// kinds, and errs.Invalid for a mode people does not know. It does not validate the Policy.
+func policyFrom(ctx context.Context, r settings.Reader) (Policy, error) {
+	const op = "people.policyFrom"
+	var pol Policy
+	for _, f := range []struct {
+		key string
+		dst *FieldMode
+	}{
+		{"legal_name", &pol.LegalName},
+		{"phone", &pol.Phone},
+		{"emergency_contacts", &pol.EmergencyContacts},
+	} {
+		text, err := r.Text(ctx, f.key)
+		if err != nil {
+			return Policy{}, fmt.Errorf("%s: people.%s: %w", op, f.key, err)
+		}
+		if *f.dst, err = ParseFieldMode(text); err != nil {
+			return Policy{}, fmt.Errorf("%s: people.%s: %w", op, f.key, err)
+		}
+	}
+	return pol, nil
 }
 
 // constraintOf returns the constraint name a database error carries, or "".

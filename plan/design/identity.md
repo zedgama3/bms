@@ -4,7 +4,7 @@
 - **Package:** `internal/core/identity` (service, `Authenticator`, tokens, handlers), `internal/core/identity/account` (the record type), `internal/core/identity/postgres` (store, `sql/`, `migrations/`)   **UI:** `web/src/core/accounts/`
 - **Depends on specs:** `model`, `lib-errs`, `lib-core`, `lib-secret`, `config` (through `app`), `db`, `signals`, `settings` (`Decl`, D39), `notify` (`Notifier`, D39), `telemetry`, `api` (the `Authenticator` seam, `httpx`, the cookie rules), `audit` (Approved; the `Recorder`), `web-shell`, `app`
 - **Used by:** `api` (`Authenticator`), `app` (part 2, after audit; the `create-superuser` command, the audit actor closure), `audit` (`ActorFunc`, through `app`), every module and core service that needs the actor (`PersonFrom`), `web-shell` (the session endpoint, the sign-in flow), later `authz` (the actor and the superuser flag), `people` (`identity.account-created`, export and deletion;
-  `Session.IssuedAt` through `SessionFrom` for the once-per-session first-sign-in prompt, people decision 34, D58: it must stay the server time at sign-in, fixed for the session's life, and a new session after a password change or "sign out everywhere else" carries a new one), `settings` (`PolicySource`), `notify` (`Alerter`)
+  `Session.IssuedAt` through `SessionFrom` for the once-per-session first-sign-in prompt, people decision 34, D58: it must stay the server time at sign-in, fixed for the session's life, and a new session after a password change or "sign out everywhere else" carries a new one), `settings` (`Reader`, `Decl`), `notify` (`Alerter`)
 
 ## Summary
 
@@ -29,9 +29,8 @@
 - Policy and settings:
   - `Policy{SignupMode, SessionLifetime, SuperuserSessionLifetime, PasswordMinLength, LoginFailureLimit, ClientFailureLimit, LoginFailureWindow, PasswordResetLifetime, PasswordResetClientLimit, PasswordResetAddressLimit, PasswordResetCooldown}` (+`Validate`), `DefaultPolicy()`, `SignupOpen|SignupInvitation`.
   - `Settings []settings.Decl` (the eleven `accounts.*` keys with their ranges as `Check`s) and `CheckSettings(map[string]string) error` (the cross-field rules `client_failure_limit >= login_failure_limit`, `password_reset_client_limit >= password_reset_address_limit`, `password_reset_cooldown <= password_reset_lifetime`; D41).
-  - `PolicySource` is implemented by `app` over a scoped settings `Reader` (D39).
+  - `Options.Settings` is a `settings.Reader` scoped to `accounts` (required, field `identity.settings`); identity maps the eleven keys to a `Policy` itself (unexported `policyFrom`), per use case, never cached (boundaries step 5). `app` no longer converts.
 - Seams (interfaces identity declares, filled later by `app`; nil means the M1 behaviour in brackets):
-  - `PolicySource{Policy(ctx) (Policy, error)}` (settings, M2 [`DefaultPolicy`]).
   - `PermissionChecker{Allow(ctx, authz.Permission) error}` (authz, M2 [deny; the superuser is allowed before the seam is asked]).
   - `PermissionLister{PermissionsOf(ctx, model.PersonID) ([]string, error)}` (authz, M2 [empty]).
   - `NameSource{PlayaNameOf(ctx, model.PersonID) (string, error)}` (people, M2 [""]).
@@ -366,12 +365,11 @@ func DefaultPolicy() Policy
 // (the cooldown's upper bound is never below 10m because PasswordResetLifetime's own floor is 10m).
 func (p Policy) Validate() error
 
-// PolicySource returns the current policy. settings implements it (M2); nil means
-// DefaultPolicy. A source that fails or returns an invalid Policy fails the use case with
-// its kind (F62): identity never falls back silently to the defaults once a source exists.
-type PolicySource interface {
-	Policy(ctx context.Context) (Policy, error)
-}
+// There is no PolicySource (removed, boundaries step 5): identity reads Options.Settings
+// (a settings.Reader scoped to "accounts") and builds the Policy itself with the unexported
+// policyFrom, once per use case. An unset key is the declared default; a read that fails or
+// a Policy that fails Validate fails the use case with its kind (F62): identity never falls
+// back silently to the defaults.
 
 // PermissionChecker decides one site-wide permission for the actor in ctx (the shape of
 // api.PermissionChecker). authz implements it (M2); nil denies with errs.Permission. Identity
@@ -447,7 +445,7 @@ type Options struct {
 	AllowPlaintext bool            // config HTTP.AllowPlaintext: may write DevCookieName (api decision 24)
 	Audit          audit.Recorder  // scoped to "identity"; required
 	Signals        signals.Bus     // scoped to "identity", publishes SignalAccountCreated; required
-	Policy         PolicySource    // optional
+	Settings       settings.Reader // scoped to "accounts"; required (field identity.settings)
 	Permissions    PermissionChecker
 	Lister         PermissionLister
 	Names          NameSource
@@ -869,7 +867,7 @@ Not published, on purpose: disable, enable, delete. No consumer is named yet; wh
 
 ## Settings
 
-Declared here, read through `PolicySource` (settings, M2); until then `DefaultPolicy()`.
+Declared here, read through `Options.Settings` (a `settings.Reader` scoped to `accounts`); an unset key is the declared default, which equals `DefaultPolicy()`.
 
 | Key | Type | Default | Valid range | Who can change it |
 |---|---|---|---|---|
@@ -970,7 +968,7 @@ The `core.accounts.setting.login_failure_window.description` reads: "Failed sign
 - **A change applies to the next request, no restart.** The limiter holds counts and timestamps, never a limit: each `reserve` takes the limits and the window as arguments (as sign-in's does today), so a changed value is compared on the very next request.
   Counts already in a bucket stay: lowering a limit below an address's current count limits it at once, raising it releases it; the window is also read per request, so shortening it forgets older entries on the next sweep. The cooldown is compared at request time against the newest reset row, so a shortened cooldown lets a waiting person ask again at once and a lengthened one applies to the account's next request.
   `settings` decision 10 (no signal on change, every consumer reads at use-case time) is what makes this free.
-- **Invalid policy.** As F62: a `PolicySource` that returns a policy failing `Validate` (a stored value outside its range after an upgrade cannot happen, since `settings` decision 5 yields the default, but a broken adapter can) fails the use case `Invalid`; identity never falls back silently.
+- **Invalid policy.** As F62: a settings read that yields a policy failing `Validate` (a stored value outside its range after an upgrade cannot happen, since `settings` decision 5 yields the default, but a broken adapter can) fails the use case `Invalid`; identity never falls back silently.
 - **Cooldown off.** With `PasswordResetCooldown == 0` step 5 skips the age comparison and always replaces the token and sends. The `ResetState` read and the account lock still happen, so the silent and the sending paths keep the same shape and no timing gap opens (D40's reasoning is unchanged).
 - **Privacy of the settings.** A setting's value never reaches a log, span or metric (settings decision 13); `bms.identity.rate_limited{bucket}` still counts only the bucket name.
 
@@ -1073,7 +1071,7 @@ The `core.accounts.setting.login_failure_window.description` reads: "Failed sign
 | F59 | `SignIn` | restricted account (temporary password) signs in | succeeds; `Issued.Session.PasswordChangeRequired` true; `Authenticate` then yields the zero person | shell redirects | `TestSignIn_TemporaryPassword_RestrictedSession` |
 | F60 | `hash` | more than `HashConcurrency` in flight and ctx done while waiting | Timeout/Canceled | 504 | `TestHash_WaitsOnSemaphore_CtxDone` |
 | F61 | `Authenticate` | the request has an `Authorization` header | ignored (no bearer scheme in M1) | — | `TestAuthenticate_IgnoresAuthorizationHeader` |
-| F62 | any | `PolicySource` returns an error or an invalid `Policy` | its kind / Invalid | 503/500 | `TestPolicy_SourceFailure_FailsUseCase` |
+| F62 | any | the `Settings` read returns an error or yields an invalid `Policy` | its kind / Invalid | 503/500 | `TestPolicy_SourceFailure_FailsUseCase` |
 | F63 | store (integration) | unique violations, generated column, keyset order, `TouchLogin` on read-only | as `db.Wrap` classifies | — | `TestStore_Integration_Table` (`dbtest.TempDB`) |
 | F64 | `EmailOf` | the person has no account | NotFound | people shows no login address | `TestEmailOf_NoAccount_NotFound` |
 | F65 | `LinkAccount` | no account has the address | NotFound (`email`: `unknown`) | field error, never more | `TestLinkAccount_UnknownEmail_NotFound` |
@@ -1081,7 +1079,7 @@ The `core.accounts.setting.login_failure_window.description` reads: "Failed sign
 | F67 | `LinkAccount` | the target person already has an account | Conflict (`has_account`) | refuse | `TestLinkAccount_PersonHasAccount_Conflict` |
 | F68 | `DeletePerson` | the person's account is a superuser's | Permission | people reports it, deletion rolls back | `TestDeletePerson_Superuser_Permission` |
 | F69 | `RequestPasswordReset` | e-mail empty or fails `ParseEmail` | Invalid (`email`: `required` / `malformed`) | field error | `TestRequestPasswordReset_BadEmail_Invalid` |
-| F70 | `RequestPasswordReset` | either reset bucket (client address, submitted address) at the limit; sign-in's buckets are not consulted | Unavailable wrapping `httpx.ErrRateLimited` | 429 | `TestRequestPasswordReset_RateLimited_Table` (per client, per address; the limits come from a fake `PolicySource`, not from constants; D41) |
+| F70 | `RequestPasswordReset` | either reset bucket (client address, submitted address) at the limit; sign-in's buckets are not consulted | Unavailable wrapping `httpx.ErrRateLimited` | 429 | `TestRequestPasswordReset_RateLimited_Table` (per client, per address; the limits come from a fake `settings.Reader` (`settingstest.NewFake`), not from constants; D41) |
 | F71 | `RequestPasswordReset` | `Notify` nil, or `Notify.Configured` is `false` | Unsupported, before the lookup, for a known, an unknown, a disabled and a superuser address alike; the store records no lookup | 501, the screen says it is not set up | `TestRequestPasswordReset_NotConfigured_UnsupportedForAnyAddress` (table over the four addresses; identical error kinds, no store call) |
 | F72 | `RequestPasswordReset` | `Configured` was `true` and `Send` answers Unsupported (the settings changed in between) | nil; nothing committed (no token, no message, no entry); one warn log without the address | show the uniform message | `TestRequestPasswordReset_UnconfiguredAfterProbe_SilentNil` |
 | F73 | `RequestPasswordReset` | unknown, disabled or superuser address | nil; nothing sent; entry Denied; the dummy hash was verified before the lookup, as for every address | show the uniform message | `TestRequestPasswordReset_UnknownDisabledSuperuser_SilentNil` |
@@ -1109,7 +1107,7 @@ The `core.accounts.setting.login_failure_window.description` reads: "Failed sign
 | F95 | `CheckSettings` | effective `password_reset_client_limit` below `password_reset_address_limit` | Invalid (`password_reset_client_limit`: `range`, `min` = the address limit) | the settings screen shows the field error on the client limit | `TestCheckSettings_ResetClientNotBelowAddress` |
 | F96 | `CheckSettings` | effective `password_reset_cooldown` above `password_reset_lifetime` | Invalid (`password_reset_cooldown`: `range`, `max` = the lifetime) | the settings screen shows the field error on the cooldown | `TestCheckSettings_CooldownNotAboveLifetime` |
 | F97 | `RequestPasswordReset` | `PasswordResetCooldown` is `0` and the account's newest reset row is seconds old | nil; a new token replaces the old, one message sent, one entry (never Reason `cooldown`); the `ResetState` read still happens | show the uniform message | `TestRequestPasswordReset_CooldownOff_AlwaysSends` |
-| F98 | `RequestPasswordReset` | the fake `PolicySource` lowers a reset limit below an address's current count, or shortens the cooldown below the newest row's age, between two requests | the next request is limited (429) or sends, respectively, with no restart and no limiter reset; raising the limit again releases the address | none | `TestRequestPasswordReset_PolicyChange_AppliesToNextRequest` |
+| F98 | `RequestPasswordReset` | the fake `settings.Reader` lowers a reset limit below an address's current count, or shortens the cooldown below the newest row's age, between two requests | the next request is limited (429) or sends, respectively, with no restart and no limiter reset; raising the limit again releases the address | none | `TestRequestPasswordReset_PolicyChange_AppliesToNextRequest` |
 | F99 | `EnsureAccount` | password fails the sign-up rules | Invalid | fix the seed table | `TestEnsureAccount_WeakPassword_ReturnsInvalid` |
 | F100 | `EnsureAccount` | the address is a superuser's | Conflict `superuser` | exit 1 | `TestEnsureAccount_SuperuserAddress_ReturnsConflict` |
 | F101 | `EnsureAccount` | read-only copy | Unavailable wrapping `db.ErrReadOnly` | exit 1 | `TestEnsureAccount_ReadOnly_ReturnsUnavailable` |
@@ -1135,7 +1133,7 @@ Later providers (OIDC) must be implementable against Dex (D13 compose profile `o
 
 ## Test plan
 
-- **Unit** (`identity`): a hand-written fake `store`, `clock.NewFake`, `audittest.NewFake("identity")`, `signalstest.NewFake("identity", []signals.Name{SignalAccountCreated}, nil)`, `telemetrytest.New(t)`; a fake `PolicySource`, `PermissionChecker` (allow/deny), `PermissionLister`, `NameSource`, `Alerter`. Table tests per failure mode above.
+- **Unit** (`identity`): a hand-written fake `store`, `clock.NewFake`, `audittest.NewFake("identity")`, `signalstest.NewFake("identity", []signals.Name{SignalAccountCreated}, nil)`, `telemetrytest.New(t)`; a fake `settings.Reader` (`settingstest.NewFake`), `PermissionChecker` (allow/deny), `PermissionLister`, `NameSource`, `Alerter`. Table tests per failure mode above.
   Token tests tamper each region and check constant-time behaviour by construction (`hmac.Equal`). Limiter tests advance the fake clock. Every test puts an invented address and password through the service and asserts `!c.Contains(address)` and `!c.Contains(password)` across logs, spans, the fake recorder's entries (`Reason`, `Fields`) and error strings; the capture fails on any violation at cleanup.
 - **Handlers** (`httptest`): each route with `httpx.Fail`'s fallback statuses, the cookie attributes (F53), `no-store` on `/session` and `/temporary-password`, `bms_session_dev` under both of decision 24's conditions and refused otherwise, sign-out clears the cookie even when the recorder fails (F24).
 - **Permission tests:** F31, F32, F37-F40, F55; the superuser passes with a nil checker; a denying checker is honoured even for `accounts.read` on one's own account (the person is not special on the admin routes).
@@ -1156,7 +1154,7 @@ Later providers (OIDC) must be implementable against Dex (D13 compose profile `o
 - **Handler test run twice (D40).** The "identical bodies and headers" case runs twice, with the fake configured and not; `TestPasswordReset_NoSecretsInTelemetry` covers the F72 warn line; the Mailpit end-to-end run clears `notify.smtp_host` and asserts `501` with identical bodies for a known and an unknown address, then restores it.
 - **Unit (`identity`).** `TestSettings_DeclarationsAreValidAndDefaultToDefaultPolicy` covers eleven keys (`"20"`, `"5"`, `"5m"` equal `DefaultPolicy()`'s fields); `TestSettings_Checks_AgreeWithPolicyValidate` covers the three new keys at `lo-1`, `lo`, `hi`, `hi+1`;
   `TestCheckSettings_ClientLimitNotBelowLoginLimit` gains the two new rules (F95, F96) and a case where two rules fail at once and both field errors are returned; F94 as a table including the dependent bounds (`client 4, address 5` fails on the client key; `cooldown 20m, lifetime 10m` fails on the cooldown key; `cooldown 0` passes);
-  `TestRequestPasswordReset_RateLimited_Table` and `TestResetLimiter_SeparateFromSignIn_Table` take their limits from a fake `PolicySource` returning a `Policy` with small values (for example client 3, address 2), so the tests no longer depend on the defaults; F97 and F98 with the fake clock and a fake `PolicySource` whose policy the test swaps between calls.
+  `TestRequestPasswordReset_RateLimited_Table` and `TestResetLimiter_SeparateFromSignIn_Table` take their limits from a fake `settings.Reader` holding small values (for example client 3, address 2), so the tests no longer depend on the defaults; F97 and F98 with the fake clock and a fake `settings.Reader` whose values the test swaps between calls.
   Every test still asserts `!c.Contains(address)` across logs, spans, entries and errors (`telemetrytest`).
 - **Catalogue (`internal/app`).** The existing core-area catalogue test fails until the six new `en` entries exist; it also checks the reworded `login_failure_window` description is present (any text).
 - **Integration, handlers, end to end:** no additions; nothing in the database or on the wire changes. The Mailpit end-to-end run may set `accounts.password_reset_cooldown` to `0` through `PUT /api/settings/values` before requesting two resets in a row and assert two e-mails arrive; recommended, not required.
@@ -1166,6 +1164,8 @@ Later providers (OIDC) must be implementable against Dex (D13 compose profile `o
 ## Amendments
 
 Every amendment to this spec is folded into the text above: the forgotten-password flow (D39), the uniform reset answers when e-mail is off (D40), the reset limits as settings (D41, D43), `EnsureAccount` and the `Guard` (D53, D56) and `SessionInfo.Protected` (D58), with the earlier build deviations and approvals of 2026-10-18 to 2026-10-20.
+- **2026-11-01, boundaries step 5:** `Options.Settings` (a `settings.Reader` scoped to `accounts`, required) replaces `Policy PolicySource`; the `PolicySource` type is removed and identity's own `policyFrom` maps the eleven keys (moved from `app`'s `settingsPolicy`). Holders, Alerts and the alert (step 9) and Names (step 8) are unchanged here.
+
 Their narratives, the reasons for each choice, what the reviews found, the superseded wording and the answered open questions are in `plan/design/history/identity.md`.
 
 ## Open questions

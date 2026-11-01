@@ -22,7 +22,7 @@
 - **Used by:** every module (`Deps.People`, the `people.person-page` point, the
   `people.person-deleted` signal), `identity` (`NameSource`), `authz` and `audit` (the
   `search` and `names` routes behind their screens), the web shell (the profile prompt and
-  the saved language), `app` (part 5, the `export` and `delete` commands), `notify` (`PlayaNameOf`, `LanguageOf`, `ContactEmailOf`, and its outbox as a `Source`), `settings` (`PolicySource`, `Settings`).
+  the saved language), `app` (part 5, the `export` and `delete` commands), `notify` (`PlayaNameOf`, `LanguageOf`, `ContactEmailOf`, and its outbox as a `Source`), `settings` (`Reader`, `Decl`).
 
 ## Summary
 
@@ -39,12 +39,12 @@
   ReadContacts, Export, Delete, Link, ViewRoles, ViewAudit bool}`; `Match{ID, PlayaName, Pronouns}`; `ProfileInput{PlayaName, Pronouns, Language, LegalName, Phone, ContactEmail *string}` (nil = unchanged); `ContactInput{Name, Phone, Relationship}`; `SearchQuery{Q string, Limit int}`;
   `RequestQuery{Status, Person}`; `LinkResult{Account model.AccountID, Orphan model.PersonID, OrphanDeleted bool}`; `ExportFormat = 1`; `DeletionReport{Person, People, Identity, Access int, Modules map[string]ModuleDeletion, Kept []Kept}`, `ModuleDeletion{Deleted, Anonymized int, Kept []Kept}`,
   `Kept{Kind string, Count int}`, `Export{Data json.RawMessage}` (structural twins of `module`'s; `app` converts).
-- `Policy{LegalName, Phone, EmergencyContacts FieldMode}` (+`Validate`), `DefaultPolicy()` (optional, optional, optional); `PolicySource{Policy(ctx) (Policy, error)}` (settings, M2 [nil = `DefaultPolicy`]; `app` implements it over a scoped `Reader`, D39); `Settings []settings.Decl` (D39: the three enum keys; `emergency_contacts` lists `hidden|optional` only, so `Policy.Validate`'s rule is the declaration); `Templates fs.FS` (`people.deletion-requested`; `en`, `es`; D39).
+- `Policy{LegalName, Phone, EmergencyContacts FieldMode}` (+`Validate`), `DefaultPolicy()` (optional, optional, optional); no `PolicySource` (removed, boundaries step 5): `Options.Settings` is a `settings.Reader` scoped to `people`, and people maps its three keys to a `Policy` itself; `Settings []settings.Decl` (D39: the three enum keys; `emergency_contacts` lists `hidden|optional` only, so `Policy.Validate`'s rule is the declaration); `Templates fs.FS` (`people.deletion-requested`; `en`, `es`; D39).
 - Seams `app` fills: `Accounts{EmailOf(ctx, PersonID) (model.Email, error); LinkAccount(ctx, model.Email, PersonID) (model.AccountID, model.PersonID, error); ExportPerson(ctx, PersonID) (json.RawMessage, error); DeletePerson(ctx, PersonID) (int, error)}` (`*identity.Service`; the two first methods
   are proposed); `Access{ExportPerson; DeletePerson(ctx, PersonID) (int, error)}` (`*authz.Service`); `AuditCounter{CountAbout(ctx, PersonID) (int, error)}` (`*audit.Log`); `Holders{HoldersOf(ctx, authz.Permission) ([]model.PersonID, error)}` (`*authz.Service`, D39); `Notify notify.Notifier` (scoped
   `people`, D39); `Source{Name string; Exporter PersonData}` with `PersonData{ExportPerson(ctx, PersonID) (Export, error); DeletePerson(ctx, PersonID) (ModuleDeletion, error)}`; `SectionProvider{Module string; personpage.Provider}`.
 - `Directory` (= `module.Deps.People`): `NamesOf(ctx, []model.PersonID) (map[model.PersonID]string, error)`, `ConsentOf(ctx, model.PersonID, Purpose) (bool, error)`.
-- `Options{DB, Clock, Logger, Tracer, Meter, Audit (scoped "people"), Signals (scoped "people"), Authz authz.Authorizer, Actor authz.ActorFunc, Accounts, Access, AuditCount AuditCounter, Policy PolicySource, Notify notify.Notifier, Holders Holders, Session SessionFunc}` (+`Validate`, which refuses a
+- `Options{DB, Clock, Logger, Tracer, Meter, Audit (scoped "people"), Signals (scoped "people"), Authz authz.Authorizer, Actor authz.ActorFunc, Accounts, Access, AuditCount AuditCounter, Settings settings.Reader (scoped "people", required), Notify notify.Notifier, Holders Holders, Session SessionFunc}` (+`Validate`, which refuses a
   nil `Session` (P-W1, D58) as it does the other required fields; `Notify` and `Holders` optional: nil means no notice); `New(Options) (*Service, error)` (no I/O; subscribes to `identity.account-created`; works against `db.None()`); `(*Service).Link(sources []Source, sections []SectionProvider,
   members []MembershipProvider) error` (once, from `app`'s `link`); `MembershipProvider{Module string; Provider membership.Provider}`.
 - `SessionFunc func(ctx) (identity.Session, bool)` (= `identity.SessionFrom`; P-W1, D58): `Me` reads the session's `IssuedAt` through it (decision 34). `Me` records the first-sign-in prompt and sets `Profile.FirstPrompt` (decisions 34 to 36); `Get` never does.
@@ -150,7 +150,7 @@
 - `signals`: a `Bus` scoped `people` (publishes the three, subscribes `identity.account-created`); `InDelivery`.
 - `db`: `Transact` ctx-carried transactions joined by nested calls (so modules' `DeletePerson` run inside people's), `*Error.Constraint`, `ErrReadOnly`.
 - `app`: part 5 (declare, build, link, commands, the `NameSource` adapter for identity, the `Accepts` for the point, `Deps.People`).
-- `module-contract`: `Deps.People people.Directory`; `peopletest.NewFake()` in `Conformance`. `settings` (M2): the three keys through `PolicySource`.
+- `module-contract`: `Deps.People people.Directory`; `peopletest.NewFake()` in `Conformance`. `settings` (M2): the three keys through `Options.Settings`.
 - `web-shell`: `GET /api/people/me` read once per session by the frame (language, profile prompt); `web/src/core/people/` as a core area.
 - `identity` (P-W1, D58): `Session.IssuedAt` stays the server time at sign-in, fixed for the session's life; a new session (password change, "sign out everywhere else") carries a new one.
 - `app` (P-W1, D58): `core_people.go` sets `Options.Session = identity.SessionFrom`.
@@ -250,10 +250,8 @@ type Policy struct {
 func DefaultPolicy() Policy // optional, optional, optional
 func (p Policy) Validate() error
 
-// PolicySource is settings' seam (M2). nil means DefaultPolicy.
-type PolicySource interface {
-	Policy(ctx context.Context) (Policy, error)
-}
+// There is no PolicySource (removed, boundaries step 5): people reads Options.Settings
+// (a settings.Reader scoped to "people") and builds the Policy itself, per use case.
 
 type contact struct{}
 type request struct{}
@@ -520,7 +518,7 @@ type Options struct {
 	Accounts   Accounts
 	Access     Access
 	AuditCount AuditCounter
-	Policy     PolicySource // optional; nil = DefaultPolicy
+	Settings   settings.Reader // scoped "people"; required (field people.settings)
 	Notify     notify.Notifier // optional (D39); scoped "people"; nil = no deletion-request notice
 	Holders    Holders         // optional (D39); nil = no notice
 	Session    SessionFunc     // app: identity.SessionFrom; Validate fails Invalid field people.session when nil (decision 34)
@@ -864,8 +862,7 @@ writing about that person before then gets `Invalid` from the foreign key; the s
 | `people.phone` | enum | `optional` | `hidden`, `optional`, `required` | Settings admin |
 | `people.emergency_contacts` | enum | `optional` | `hidden`, `optional` (never `required`, Q-CORE7; `Policy.Validate` refuses it) | Settings admin |
 
-Declared as `people.Settings` in the settings core area `people` (D39; titles are catalogue keys `core.people.setting.<key>.title|description|option.<opt>`) and read through `PolicySource` on every use case that needs it (no cache; settings has its own snapshot); `app` implements `PolicySource` over
-`Scoped("people")` (D39). With a nil source `DefaultPolicy()` applies. Changing a mode to `hidden` hides and stops accepting the field; stored values stay (a later change back shows them again); a change to `required` makes existing profiles `Complete: false` until the person fills it in.
+Declared as `people.Settings` in the settings core area `people` (D39; titles are catalogue keys `core.people.setting.<key>.title|description|option.<opt>`) and read through `Options.Settings` (a `settings.Reader` scoped to `people`, required) on every use case that needs it (no cache; settings has its own snapshot); people's own mapping builds the `Policy`, and an unset key is its declared default. Changing a mode to `hidden` hides and stops accepting the field; stored values stay (a later change back shows them again); a change to `required` makes existing profiles `Complete: false` until the person fills it in.
 
 ## UI (M2)
 
@@ -1105,7 +1102,7 @@ NFKC)` and `regexp_replace` are core PostgreSQL (≥ 13, UTF-8 databases) and ar
 ## Test plan
 
 - **Unit** (`internal/core/people`, no infrastructure): a hand-written fake store; `clock.NewFake`; `audittest.NewFake("people")`; `signalstest.NewFake("people", {person-created, person-deleted, deletion-requested}, {identity.account-created})` with `Deliver` driving the handler;
-  `authztest.NewFake()` with `Grant`/`GrantIn`/`Superuser`; fakes for `Accounts`, `Access`, `AuditCounter`, `PolicySource`, `PersonData` sources and `personpage.Provider` (one that fails, one that blocks until its ctx ends, so the timeout path runs without real time); `telemetrytest.New(t)`
+  `authztest.NewFake()` with `Grant`/`GrantIn`/`Superuser`; fakes for `Accounts`, `Access`, `AuditCounter`, a fake `settings.Reader` (`settingstest.NewFake`), `PersonData` sources and `personpage.Provider` (one that fails, one that blocks until its ctx ends, so the timeout path runs without real time); `telemetrytest.New(t)`
   asserting no name, address or phone appears in logs, spans or the recorder's `Reason`/`Fields`. Every F row; the visibility matrix (self / directory.read / contacts.read / manage / superuser × each field group); the policy matrix (hidden / optional / required × own save / admin save).
 - **Permission tests:** each use case has `_NoPermission_ReturnsPermission` (or `_NotFound` where the record must stay invisible); `Search` proves no personal-field match leaks without `people.contacts.read`. A `department-admin` holding `people.contacts.read` only in department scope, with no `people.membership` provider, sees no personal fields, no personal-field `Search` matches and no `LegalNamesOf` results for others (F73, D45).
 - **Integration** (`//go:build integration`, `dbtest.TempDB`): migrations apply on an empty database; the deletion transaction across a fake module table with a foreign key (F37, F34 rollback leaves every row); the open-request partial index under two concurrent requests; the advisory lock under two concurrent deletions (one `NotFound`); keyset-free search ordering; read-only paths with `SetReadOnly`.
@@ -1127,6 +1124,8 @@ NFKC)` and `regexp_replace` are core PostgreSQL (≥ 13, UTF-8 databases) and ar
 ## Amendments
 
 Amendment narratives (D39, D44, D45, D46, P1 (D48, D51), D53, P-W1 (D57, D58)), their reasons, review findings and superseded wording are in `plan/design/history/people.md`. The current rules are stated in the sections above.
+
+- **2026-11-01, boundaries step 5:** `Options.Settings` (a `settings.Reader` scoped to `people`, required) replaces `Policy PolicySource`; the `PolicySource` type is removed and people's own mapping (moved from `app`'s `peoplePolicy`) builds the `Policy`. `Lookup` and the other `Options` removals (`Access`, `AuditCount`, `Notify`, `Holders`) are step 8.
 
 ## Open questions
 

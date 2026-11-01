@@ -7,6 +7,7 @@
 - **Amended 2026-10-20 (owner, D40):** the reset e-mail's template receives the lifetime as a number of minutes (`lifetime_minutes`) and each language words the unit (Proposed change 1); the dev Mailpit accepts any SMTP AUTH so integration tests cover AUTH (Proposed change 14, applied in `deploy/compose/docker-compose.yml`); the outbox screen translates error tokens and template names and words the bare-address recipient (UI, "Outbox").
 - **Amendment 2026-10-28 (approved, owner, D53, demo.md Proposed change 8):** note only, no interface change: `app` may supply a `ChannelFactory` that ignores `SMTPConfig` (demo mode); `Configured` is unchanged.
 - **Amendment 2026-10-30 (owner, D57):** a message whose recipient has no e-mail address (`no_address`) ends `Skipped`, a fifth status, not `Failed`; it is counted in `Sent.Skipped`, shown on the outbox screen as "Skipped" with its reason, and the outbox status line in demo mode says mail is captured for the demo (decision 6, F22, F45, Data, Behavior, UI). Confirmed 2026-10-30 (D58): a skipped row's end instant is stored in the existing `failed_at` column (no new column), `Purge` covers it, a skipped row offers no Retry or Cancel (both refuse `Conflict` field `status`, F48, F49), and its delivery metric outcome is `skipped` (reason `no_address` on the span). D58 review: existing `failed` rows with `last_error = no_address` are left as they are, with no backfill, because D58 changes only future sends and those rows may still be retried within their window. Migration `0002` adds its CHECK constraints `NOT VALID`: existing rows satisfy them by construction and the outbox can be large (retention defaults to keep-forever), so a validating scan is avoided.
+- **Amendment 2026-11-01 (boundaries step 5):** `Options.Settings` (a `settings.Reader` scoped to `notify`, required) replaces `SMTPSource` and `RetentionSource`, which are removed; the SMTP mapping is `notify.SMTPFromSettings(ctx, settings.Reader)`, exported for `bms check` until step 10's `Probe`; retention 0 still deletes nothing. `Site`, `Address`, `Language`, `Name` sources, `Channel`, `Regional`, `Terms`, `Accounts`, `Profiles`, `AlertSender` and `Probe` are later steps.
 - **Package:** `internal/core/notify` (contract, catalogue, outbox, sender, handlers), `internal/core/notify/message` (the record type), `internal/core/notify/postgres` (store, `sql/`, `migrations/`), `internal/core/notify/smtp` (the SMTP channel; the only package importing `net/smtp`), `internal/core/notify/notifytest` (fakes)   **UI:** `web/src/core/notify/`
 - **Depends on specs:** `model`, `lib-errs`, `lib-core` (`clock`, `retry`, `validate`), `lib-secret`, `db`, `audit`, `authz` (leaf types, `Authorizer`), `telemetry`, `api` (`httpx`, the route-set shape), `web-shell`, `app` (part 9), `settings` (row 15, approved 2026-10-19, D39: the keys named under Settings, the sealed `Secret` kind), `people` (`LanguageOf`, `ContactEmailOf`: proposed), `identity` (`EmailOf`; the password-reset flow: proposed)   **Used by:** every module (`Deps.Notify`), `identity` (password reset, the superuser alert through `app`'s `Alerter` adapter, later the e-mail change confirmation), `people` (the deletion-request notice), `app` (part 9, the runnable, `bms check`), `web-shell` (the admin screens)
 
@@ -22,9 +23,9 @@
 - `Notifier{Send(ctx, Message) error; Configured(ctx) (bool, error)}` = `module.Deps.Notify`, scoped to one owner by `(*Service).Scoped(owner)`; `AddressSender{SendTo(ctx, model.Email, Message) error}` (core only: identity's e-mail change confirmation, the alert addresses; one explicit address, `To` empty).
 - `Record{ID, Owner, Template, Person model.PersonID, Language, Status, Attempts int, NextAttemptAt, LeasedUntil, CreatedAt, SentAt, FailedAt time.Time, LastError string, Subject string}` (`LogValue` = ID only); `Rendered{Subject, Body string}`; `TemplateInfo{Name Template, Vars []string, Languages []LanguageInfo}`, `LanguageInfo{Language, Overridden bool, UpdatedAt time.Time}`; `TemplateText{Subject, Body string}`; `TemplateView{Name, Language, Default, Current TemplateText, Overridden bool, Vars []string}`; `OutboxView{Configured bool, Counts map[Status]int, Recent []Record}`; `Sent{Sent, Retried, Failed, Skipped int}`.
 - Channel seam: `Envelope{From Address, ReplyTo *Address, To model.Email, Subject, Body, MessageID string}`, `Address{Name string, Email model.Email}`; `Channel{Send(ctx, Envelope) error; Ping(ctx) error}`; `ChannelFactory func(SMTPConfig) (Channel, error)` (default `smtp.New`; in demo mode `app` supplies one that ignores the config and returns the capture channel, D53; `Configured` unchanged); `ErrRejected` (permanent rejection, `Invalid`).
-- Settings seams: `SMTPConfig{Host string, Port int, Security Security, Username string, Password secret.Secret, Sender Address, ReplyTo *Address, AlertAddresses []model.Email}` (+`Validate`, `Configured()`), `Security` (`StartTLS`, `TLS`, `None`); `SMTPSource{SMTP(ctx) (SMTPConfig, error)}`; `Site{Name, URL string, DefaultLanguage Language, Terms map[string]string}`, `SiteSource{Site(ctx, Language) (Site, error)}`; `RetentionSource{Retention(ctx) (time.Duration, error)}`; `ErrNotConfigured` (`Unsupported`).
+- Settings seams: `SMTPConfig{Host string, Port int, Security Security, Username string, Password secret.Secret, Sender Address, ReplyTo *Address, AlertAddresses []model.Email}` (+`Validate`, `Configured()`), `Security` (`StartTLS`, `TLS`, `None`); `SMTPFromSettings(ctx, settings.Reader) (SMTPConfig, error)` (exported for `bms check` until `Probe`, step 10; no `SMTPSource`); `Site{Name, URL string, DefaultLanguage Language, Terms map[string]string}`, `SiteSource{Site(ctx, Language) (Site, error)}`; `ErrNotConfigured` (`Unsupported`).
 - Recipient seams: `AddressSource{AddressOf(ctx, model.PersonID) (model.Email, error)}` (`app`: the account's address first, then people's `ContactEmailOf` on `NotFound` or empty; `NotFound` from both ends the message as `no_address`; implementation, 2026-10-19); `LanguageSource{LanguageOf(ctx, model.PersonID) (Language, error)}` (people; `""` = site default); `NameSource{PlayaNameOf(ctx, model.PersonID) (string, error)}` (people; `""` = unknown).
-- `Options{DB, Clock, Logger, Tracer, Meter, Audit audit.Recorder (scoped "notify"), Authz authz.Authorizer, Actor authz.ActorFunc, SMTP SMTPSource, Site SiteSource, Retention RetentionSource, Addresses AddressSource, Languages LanguageSource, Names NameSource, Channel ChannelFactory, PollInterval, Lease, SendTimeout time.Duration, Hostname string}` (+`Validate`); `New(Options) (*Service, error)` (no I/O; works against `db.None()`).
+- `Options{DB, Clock, Logger, Tracer, Meter, Audit audit.Recorder (scoped "notify"), Authz authz.Authorizer, Actor authz.ActorFunc, Settings settings.Reader (scoped "notify", required), Site SiteSource, Addresses AddressSource, Languages LanguageSource, Names NameSource, Channel ChannelFactory, PollInterval, Lease, SendTimeout time.Duration, Hostname string}` (+`Validate`); `New(Options) (*Service, error)` (no I/O; works against `db.None()`).
 - `CheckTemplates(owner string, defaults fs.FS) error` (package function; Register's checks without a Service; used by moduletest's `templates_register` and the core packages' template tests (implementation, 2026-10-19)); `*Service` (safe for concurrent use): `Register(owner string, defaults fs.FS) error` (build time, before `Run`); `Scoped(owner) (Notifier, error)`; `AddressSender` (unscoped, core only); `Run(ctx) error` (the sender loop, an `app` runnable); `SendOnce(ctx) (Sent, error)`; `Ping(ctx) error`; `ListTemplates`, `GetTemplate`, `PutTemplate`, `ResetTemplate`, `Preview`, `SendTest`, `Outbox`, `Retry`, `Cancel`, `ExpireStale(ctx) (int64, error)`, `Configured(ctx) (bool, error)`; `ExportPerson(ctx, model.PersonID) (json.RawMessage, error)`; `DeletePerson(ctx, model.PersonID) (int, error)`; `Routes() []Route`; `OpenAPI() []byte`; `Close(ctx) error` (idempotent). `Route{Method, Pattern string, Handler http.Handler}` (all signed-in; `app` converts).
 - Constants: `MaxRecipients = 100`, `MaxVars = 32`, `MaxVarKeyBytes = 32`, `MaxVarBytes = 1024`, `MaxLinkBytes = 1024`, `MaxKeyBytes = 128`, `MaxTemplateBytes = 16384`, `MaxSubjectBytes = 256`, `MaxAttempts = 8`, `MaxBatch = 50`, `MaxOutboxList = 50`, `DefaultPollInterval = 5s`, `DefaultLease = 2m`, `DefaultSendTimeout = 30s`, `PurgeInterval = 1h`, `MaxAge = 7 days`, `MinRetention = 7 days`, `TemplateFileExt = ".tmpl"`, `DefaultLanguage = "en"`.
 - Permissions `notify.templates.manage`, `notify.outbox.manage` (site, reach `internal`, starter role `settings-admin`); `Permissions []authz.PermissionDecl`. No signals. Settings (core area `notify`, `Settings []settings.Decl`) `notify.smtp_host|smtp_port|smtp_security|smtp_username|smtp_password`, `notify.sender_address|sender_name`, `notify.reply_to`, `notify.alert_addresses`, `notify.retention` (stored by `settings`; the password lives in settings, sealed: owner, 2026-10-19, D39). Audit actions `notify.template.changed|reset`, `notify.test.sent`, `notify.message.retried|canceled`. `postgres.Migrations fs.FS`; `Set = db.Set{Name: "notify", Schema: "core"}`. Templates: `Templates fs.FS` (`notify.test`).
@@ -55,7 +56,7 @@
 
 **Owns.** Tables `core.notify_message` (the outbox; `address` and the rendered text are `personal`, cleared on `sent` or at `expires_at`; status rows under `notify.retention`), `core.notify_template` (overrides, `internal`). The two permissions, the ten settings keys, the five audit actions, template `notify.test`, route set `notify` (`GET /templates`, `GET|PUT|DELETE /templates/{name}/{lang}`, `POST /templates/{name}/{lang}/preview`, `POST /test`, `GET /outbox`, `POST /outbox/check` (the outbox screen's "check connection": `CheckConnection`, `Ping` behind `notify.outbox.manage`; 204 on success), `POST /outbox/{message}/retry`, `POST /outbox/{message}/cancel`), screens `/notify/templates`, `/notify/templates/:name/:lang`, `/notify/outbox`; keys `core.notify.*`; spans `notify.send`, `notify.tick`, `notify.deliver` (Client), `notify.<use-case>`; metrics `bms.notify.enqueued{owner}`, `bms.notify.delivered{outcome}`, `bms.notify.outbox{status}` (gauge), `bms.notify.purged`.
 
-**Expects of dependencies.** `db`: `Transact`, `TxMode`, `AfterCommit`, `ReadOnly`, `ErrReadOnly`, `Wrap`, `*Error.Constraint`, `Set`, `dbtest`; `notify` added to the fixed set order after `jobs` (Proposed change 2). `audit`: a `Recorder` scoped `notify`. `authz`: `Allow`; `HoldersOf(ctx, Permission) ([]model.PersonID, error)` for `app`'s alert adapter and people (proposed). `settings` (Draft, 2026-10-19, already aligned): the `notify.*` keys under Settings as `settings.Decl`s in core area `notify` (`notify.smtp_password` of kind `Secret`), `Regional` (`regional.name`, `regional.public_url`, `regional.language`), `TermsFor(ctx, lang)` for `term`, a `Reader` scoped `notify`; the `SMTPSource`, `SiteSource` and `RetentionSource` adapters are `app`'s over those. `people`: `PlayaNameOf`, `LanguageOf`, `ContactEmailOf`, `Templates`, a `Notifier` seam for `people.deletion-requested` (proposed). `identity`: `EmailOf`; `Templates` (`identity.password-reset`, `identity.superuser-signed-in`); the password-reset flow (Proposed change 1). `module-contract`: `Deps.Notify notify.Notifier` scoped by name, `Manifest.Templates fs.FS`, `notifytest.NewFake` in `Conformance`. `app`: part 9 (declare, build, link, the runnable, the lazy `Alerter` and `Notifier` adapters, `bms check` lines), `coreSetOrder` gains `notify`. `telemetry`: typed attributes, `telemetrytest`; the metric rows (Proposed change 9). `web-shell`: `web/src/core/notify/` as a core area. `deploy/compose`: Mailpit, `BMS_TEST_SMTP_ADDR`, `BMS_TEST_MAILPIT_URL` (proposed).
+**Expects of dependencies.** `db`: `Transact`, `TxMode`, `AfterCommit`, `ReadOnly`, `ErrReadOnly`, `Wrap`, `*Error.Constraint`, `Set`, `dbtest`; `notify` added to the fixed set order after `jobs` (Proposed change 2). `audit`: a `Recorder` scoped `notify`. `authz`: `Allow`; `HoldersOf(ctx, Permission) ([]model.PersonID, error)` for `app`'s alert adapter and people (proposed). `settings` (Draft, 2026-10-19, already aligned): the `notify.*` keys under Settings as `settings.Decl`s in core area `notify` (`notify.smtp_password` of kind `Secret`), `Regional` (`regional.name`, `regional.public_url`, `regional.language`), `TermsFor(ctx, lang)` for `term`, a `Reader` scoped `notify`; notify reads SMTP and retention itself; the `SiteSource` adapter is `app`'s over those. `people`: `PlayaNameOf`, `LanguageOf`, `ContactEmailOf`, `Templates`, a `Notifier` seam for `people.deletion-requested` (proposed). `identity`: `EmailOf`; `Templates` (`identity.password-reset`, `identity.superuser-signed-in`); the password-reset flow (Proposed change 1). `module-contract`: `Deps.Notify notify.Notifier` scoped by name, `Manifest.Templates fs.FS`, `notifytest.NewFake` in `Conformance`. `app`: part 9 (declare, build, link, the runnable, the lazy `Alerter` and `Notifier` adapters, `bms check` lines), `coreSetOrder` gains `notify`. `telemetry`: typed attributes, `telemetrytest`; the metric rows (Proposed change 9). `web-shell`: `web/src/core/notify/` as a core area. `deploy/compose`: Mailpit, `BMS_TEST_SMTP_ADDR`, `BMS_TEST_MAILPIT_URL` (proposed).
 
 **Open questions:** none; the four were answered 2026-10-19 (D39) and are folded into decisions 13, 16, 17 and 18 (SMTP password in settings, sealed; no automatic sign-in after a reset; the reset token lifetime; the test message sends only `notify.test`). **Proposed changes elsewhere:** 12, listed at the end; 11 applied 2026-10-19 (D39), item 12 (`deploy/compose/.env*`, `docs/operating.md`) left to the implementers. **Amendment approved (2026-10-19, sql-author's review; owner, 2026-10-20, D40):** text lives until `sent` or `expires_at` (`Message.TTL`, `MaxAge` 7 days, `ExpireStale`, `Retry` only while live, a `SendTo` dedupe index); see "Amendments"; F67–F72.
 
@@ -77,7 +78,7 @@ Deliver a notification to a person through a channel.
 | Not this | Whose it is |
 |---|---|
 | Deciding who needs telling, and when | the caller: a module from its own records; `identity` (reset, alert through `app`), `people` (deletion requests) |
-| Reading or storing SMTP settings, the sender address, the site name, URL, default language and terminology | `settings` (row 15); notify reads them through `SMTPSource`, `SiteSource`, `RetentionSource` |
+| Reading or storing SMTP settings, the sender address, the site name, URL, default language and terminology | `settings` (row 15); notify reads SMTP and retention itself through `Options.Settings`, the rest through `SiteSource` |
 | Who holds a permission (recipients of an admin notice) | `authz.HoldersOf` (proposed), called by the sender of the notice |
 | The person's address and language | `identity` (`EmailOf`), `people` (`ContactEmailOf`, `LanguageOf`) through the seams |
 | The password-reset token, its routes and screens | `identity` (Proposed change 1) |
@@ -153,10 +154,10 @@ func (m Message) Validate() error
 // deletion-request notice), app's alert adapter.
 type Notifier interface {
 	Send(ctx context.Context, m Message) error
-	// Configured reports whether Send would enqueue now: SMTPSource.SMTP succeeded and
+	// Configured reports whether Send would enqueue now: the SMTP settings read and mapping succeeded and
 	// SMTPConfig.Configured() is true (a host and a sender address are set). It reads the
 	// settings snapshot (a map lookup; no SMTP connection) and never looks at a recipient,
-	// so its answer cannot depend on who is being written to. Fails with the SMTPSource's
+	// so its answer cannot depend on who is being written to. Fails with the settings read's
 	// kind only. Consumers: identity (before the account lookup in RequestPasswordReset);
 	// any use case or screen that must say "e-mail is not set up" before doing work whose
 	// outcome must not depend on the recipient. A module is not obliged to call it.
@@ -234,9 +235,9 @@ type SMTPConfig struct {
 func (c SMTPConfig) Validate() error
 func (c SMTPConfig) Configured() bool
 
-type SMTPSource interface {
-	SMTP(ctx context.Context) (SMTPConfig, error)
-}
+// SMTPFromSettings maps the notify.smtp_* keys read from r to an SMTPConfig. notify's own
+// reads use it per send; it is exported only for `bms check` until Probe (step 10).
+func SMTPFromSettings(ctx context.Context, r settings.Reader) (SMTPConfig, error)
 
 // Site is what every template may use: the regional's name, the public URL (no trailing
 // slash), the default language and the terminology for lang (key -> word).
@@ -251,10 +252,7 @@ type SiteSource interface {
 	Site(ctx context.Context, lang Language) (Site, error)
 }
 
-// RetentionSource returns notify.retention: 0 keeps status rows forever.
-type RetentionSource interface {
-	Retention(ctx context.Context) (time.Duration, error)
-}
+// Retention is read from Options.Settings (notify.retention); 0 keeps status rows forever.
 
 // ---- Recipient seams ----
 
@@ -287,9 +285,8 @@ type Options struct {
 	Audit        audit.Recorder  // scoped "notify"
 	Authz        authz.Authorizer
 	Actor        authz.ActorFunc
-	SMTP         SMTPSource
+	Settings     settings.Reader // scoped "notify"; required (field notify.settings)
 	Site         SiteSource
-	Retention    RetentionSource // optional; nil keeps forever
 	Addresses    AddressSource
 	Languages    LanguageSource
 	Names        NameSource
@@ -487,7 +484,7 @@ Published: none. A `notify.message-sent` signal has no consumer in M4; it is add
 
 ## Settings
 
-Owned by notify and declared as `settings.Decl`s in the core area `notify` (`notify.Settings []settings.Decl`, exported like identity's); stored and checked by `settings` (row 15; key grammar `[a-z][a-z0-9]*(_[a-z0-9]+)*` after the area); `app` reads them through `settings.Reader` scoped `notify` and `Regional` and writes the `SMTPSource`, `SiteSource` and `RetentionSource` adapters. Changes take effect at the next tick or `Send`.
+Owned by notify and declared as `settings.Decl`s in the core area `notify` (`notify.Settings []settings.Decl`, exported like identity's); stored and checked by `settings` (row 15; key grammar `[a-z][a-z0-9]*(_[a-z0-9]+)*` after the area); `app` reads them through `settings.Reader` scoped `notify` and `Regional` and writes the `SiteSource` adapter; notify reads its own SMTP and retention keys through `Options.Settings`. Changes take effect at the next tick or `Send`.
 
 | Key | Type | Default | Valid range | Who can change it |
 |---|---|---|---|---|
@@ -514,7 +511,7 @@ Core area `web/src/core/notify/`, keys `core.notify.*`, phone-first, visible to 
 
 ## Behavior
 
-- **Enqueue.** `Send`: (1) validate `m`; (2) `SMTPSource.SMTP` and `Configured()`, else `Unsupported` wrapping `ErrNotConfigured` (before any recipient is looked at, so the outcome never depends on who the recipient is); (3) the template must be registered for the owner; (4) for each recipient: `LanguageOf`, resolve the language, `SiteSource.Site(lang)`, render subject and body (`Invalid` if the rendered subject exceeds `MaxSubjectBytes` or the body `65536`); (5) insert the rows with `status = queued`, `next_attempt_at = now`, on the ctx's transaction (`db.TxMode`); `ON CONFLICT (owner, key, person_id) DO NOTHING`; (6) `db.AfterCommit`: count `bms.notify.enqueued{owner}`. `Send` inside a `Read` transaction is `Internal` (like audit decision 12). `.Recipient.PlayaName` comes from `NameSource.PlayaNameOf` (app wires `people.PlayaNameOf`; `""` when unknown); a failure of `Names`, `Languages` or `Site` fails `Send` with its kind (F11).
+- **Enqueue.** `Send`: (1) validate `m`; (2) the SMTP settings read and `Configured()`, else `Unsupported` wrapping `ErrNotConfigured` (before any recipient is looked at, so the outcome never depends on who the recipient is); (3) the template must be registered for the owner; (4) for each recipient: `LanguageOf`, resolve the language, `SiteSource.Site(lang)`, render subject and body (`Invalid` if the rendered subject exceeds `MaxSubjectBytes` or the body `65536`); (5) insert the rows with `status = queued`, `next_attempt_at = now`, on the ctx's transaction (`db.TxMode`); `ON CONFLICT (owner, key, person_id) DO NOTHING`; (6) `db.AfterCommit`: count `bms.notify.enqueued{owner}`. `Send` inside a `Read` transaction is `Internal` (like audit decision 12). `.Recipient.PlayaName` comes from `NameSource.PlayaNameOf` (app wires `people.PlayaNameOf`; `""` when unknown); a failure of `Names`, `Languages` or `Site` fails `Send` with its kind (F11).
 - **Sending.** `Run` ticks on `Clock` every `PollInterval`. A tick: if `DB.ReadOnly()` skip (`outcome=read_only` once per flip, not per tick); else `SendOnce`: (1) `SMTP`; if not configured, mark nothing, log once per hour that `N` messages wait (`last_error` stays, `attempts` untouched), `outcome=no_smtp`; (2) in one short `Write` transaction lease: `UPDATE core.notify_message SET status='sending', leased_until = now + Lease, attempts = attempts + 1 WHERE id IN (SELECT id FROM core.notify_message WHERE expires_at > now AND ((status='queued' AND next_attempt_at <= now) OR (status='sending' AND leased_until < now)) ORDER BY next_attempt_at LIMIT MaxBatch FOR UPDATE SKIP LOCKED)
   RETURNING ...`; (3) outside any transaction, for each row: the address (`address` column, else `AddressSource.AddressOf(person_id)`; `NotFound` → `skipped`, `no_address`, text and address cleared, counted in `Sent.Skipped`, D57); build the envelope; `Channel.Send` under `SendTimeout`; (4) record: success → `sent`, `sent_at`, text and address cleared (a failed row keeps its text until `expires_at`, decision 11); `Invalid` wrapping `ErrRejected` → `failed`, `rejected`; `Unavailable`/`Timeout` → if `attempts < MaxAttempts` then `queued` with `next_attempt_at = now + policy.Delay(attempts)` (`retry.Policy{Initial: 1m, Max: 1h, Multiplier: 2, MaxAttempts: MaxAttempts}`), else `failed` with the token; `Canceled` → `queued`, `next_attempt_at = now`, attempts not counted (shutdown), stop the batch; an `ErrReadOnly` on any update → stop the batch, leave the lease (it expires).
   Each row is one `notify.deliver` Client span with `telemetry.ID("message_id")`, `Token("template")`, `Token("outcome")`; the metric `bms.notify.delivered{outcome: ok|retry|failed|rejected|skipped|no_smtp|read_only|expired}` (D58: a message with no address counts as `outcome=skipped`, matching the `Skipped` status; the span carries `Token("reason")` = `no_address`, and the row's `last_error` stays `no_address`). After each tick the loop stores the counts by status for the `bms.notify.outbox{status}` gauge.
@@ -635,10 +632,10 @@ Source: identity.md, "Needs a decision" in its D39 amendment (now in `plan/desig
 // Notifier is module.Deps.Notify, scoped to one owner (doc as above), plus:
 type Notifier interface {
 	Send(ctx context.Context, m Message) error
-	// Configured reports whether Send would enqueue now: SMTPSource.SMTP succeeded and
+	// Configured reports whether Send would enqueue now: the SMTP settings read and mapping succeeded and
 	// SMTPConfig.Configured() is true (a host and a sender address are set). It reads the
 	// settings snapshot (a map lookup; no SMTP connection) and never looks at a recipient,
-	// so its answer cannot depend on who is being written to. Fails with the SMTPSource's
+	// so its answer cannot depend on who is being written to. Fails with the settings read's
 	// kind only. Consumers: identity (before the account lookup in RequestPasswordReset);
 	// any use case or screen that must say "e-mail is not set up" before doing work whose
 	// outcome must not depend on the recipient. A module is not obliged to call it.
@@ -657,7 +654,7 @@ Between `Configured` and `Send` a settings admin may clear the host; `Send` then
 | # | Method | Condition | errs kind | Caller is expected to | Test |
 |---|---|---|---|---|---|
 | F64 | `Configured` | host and sender set / host unset / sender unset / both unset | `true` / `false` / `false` / `false`, nil; no recipient looked at, no SMTP connection | branch before any lookup | `TestConfigured_Table` |
-| F65 | `Configured` | `SMTPSource.SMTP` fails | its kind (`Unavailable`, `Timeout`, `Canceled`) | 503/504; identity fails the request before its lookup | `TestConfigured_SourceFails_ReturnsKind` |
+| F65 | `Configured` | the SMTP settings read fails | its kind (`Unavailable`, `Timeout`, `Canceled`) | 503/504; identity fails the request before its lookup | `TestConfigured_SourceFails_ReturnsKind` |
 | F66 | `notifytest.Fake` | `SetConfigured(false)` | `Configured` is `false, nil`; `Send` fails `Unsupported` wrapping `ErrNotConfigured` and records nothing | tests of the unset path | `TestFake_SetConfigured_SendUnsupported` |
 
 **Test plan (added).** `Configured` is covered in the unit tests over the fixed `SMTPConfig` seam fake; `Conformance` is unchanged (a module need not call it). The identity end-to-end run (Mailpit) adds: with `notify.smtp_host` cleared, `POST /api/accounts/password-reset` answers `501` for a known and an unknown address alike, with identical bodies.

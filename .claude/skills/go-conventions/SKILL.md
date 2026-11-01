@@ -39,6 +39,8 @@ web                         the built web shell (embed)   imports: stdlib, lib/e
 - A core package takes a seam (a func or interface it keeps and calls later) as an `Options`
   or `Decl` field, never as a method argument it retains. The seam test in `internal/app`
   sees stored fields, not retained arguments.
+- A core package reads its own settings area through a `settings.Reader` in its `Options`; it
+  never receives a parsed policy from app.
 
 ## Module package layout
 

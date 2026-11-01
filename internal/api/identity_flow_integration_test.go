@@ -17,6 +17,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/db/dbtest"
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/module"
+	"github.com/zedgama3/bms/internal/core/settings/settingstest"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/signals/signalstest"
 	"github.com/zedgama3/bms/internal/lib/secret"
@@ -57,7 +58,7 @@ func newFlowRig(t *testing.T) *flowRig {
 	svc, err := identity.New(identity.Options{
 		DB: pool, Clock: r.clk, Logger: r.cap.Logger(), Tracer: r.cap.Tracer("identity"), Meter: r.cap.Meter("identity"),
 		Key: secret.New(flowKey), AllowPlaintext: true, Audit: audittest.NewFake("identity"), Signals: bus,
-		Permissions: allowAll{},
+		Permissions: allowAll{}, Settings: settingstest.NewFake("accounts", identity.Settings),
 	})
 	if err != nil {
 		t.Fatalf("identity.New: %v", err)

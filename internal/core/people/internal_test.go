@@ -18,6 +18,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/db/dbtest"
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/people/rows"
+	"github.com/zedgama3/bms/internal/core/settings/settingstest"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/signals/signalstest"
 	"github.com/zedgama3/bms/internal/core/telemetry/telemetrytest"
@@ -400,6 +401,7 @@ func newWB(t *testing.T, grants ...authz.Permission) *wbRig {
 		Actor:    func(context.Context) (authz.Actor, bool) { return authz.Actor{Person: me}, true },
 		Session:  identity.SessionFrom,
 		Accounts: acc, Access: wbAccess{}, AuditCount: wbCounter{},
+		Settings: settingstest.NewFake("people", Settings),
 	}, st)
 	if err != nil {
 		t.Fatalf("newService: %v", err)

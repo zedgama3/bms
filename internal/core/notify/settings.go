@@ -75,8 +75,8 @@ func refOf(name Template, lang Language) audit.Ref {
 // ---- settings ---------------------------------------------------------------------------
 
 // Settings declares the notify.* keys for the settings core area "notify" (notify.md,
-// "Settings"; D39). app passes them to settings.New as Area{Name: "notify", Core: true} and
-// implements SMTPSource and RetentionSource over the area's scoped Reader. Titles and
+// "Settings"; D39). app passes them to settings.New as Area{Name: "notify", Core: true}; the service reads
+// them through Options.Settings, a Reader scoped to the area. Titles and
 // descriptions are the catalogue keys core.notify.setting.<key>.title|description|option.<opt>.
 var Settings = []settings.Decl{
 	{Key: "smtp_host", Kind: settings.Text, Check: checkHost},

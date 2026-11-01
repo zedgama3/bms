@@ -3,9 +3,12 @@ package people
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/zedgama3/bms/internal/core/people/rows"
+	"github.com/zedgama3/bms/internal/core/settings/settingstest"
 	"github.com/zedgama3/bms/internal/lib/errs"
+	"github.com/zedgama3/bms/internal/lib/secret"
 	"github.com/zedgama3/bms/internal/model"
 )
 
@@ -20,13 +23,62 @@ func (c *countingLegalStore) LegalNamesOf(ctx context.Context, ids []model.Perso
 	return c.memberStore.LegalNamesOf(ctx, ids)
 }
 
-// fixedPolicy is a PolicySource that answers one policy or one error.
-type fixedPolicy struct {
+// policyReader is a settings.Reader for the "people" area that answers one policy or one error.
+type policyReader struct {
 	p   Policy
 	err error
 }
 
-func (f fixedPolicy) Policy(context.Context) (Policy, error) { return f.p, f.err }
+func (f policyReader) fake() (*settingstest.Fake, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	fk := settingstest.NewFake("people", Settings)
+	fk.Set("legal_name", f.p.LegalName.String())
+	fk.Set("phone", f.p.Phone.String())
+	fk.Set("emergency_contacts", f.p.EmergencyContacts.String())
+	return fk, nil
+}
+
+func (f policyReader) Bool(ctx context.Context, k string) (bool, error) {
+	fk, err := f.fake()
+	if err != nil {
+		return false, err
+	}
+	return fk.Bool(ctx, k) //nolint:wrapcheck // test shim: the settingstest.Fake answer is the point
+}
+
+func (f policyReader) Int(ctx context.Context, k string) (int64, error) {
+	fk, err := f.fake()
+	if err != nil {
+		return 0, err
+	}
+	return fk.Int(ctx, k) //nolint:wrapcheck // test shim: the settingstest.Fake answer is the point
+}
+
+func (f policyReader) Duration(ctx context.Context, k string) (time.Duration, error) {
+	fk, err := f.fake()
+	if err != nil {
+		return 0, err
+	}
+	return fk.Duration(ctx, k) //nolint:wrapcheck // test shim: the settingstest.Fake answer is the point
+}
+
+func (f policyReader) Text(ctx context.Context, k string) (string, error) {
+	fk, err := f.fake()
+	if err != nil {
+		return "", err
+	}
+	return fk.Text(ctx, k) //nolint:wrapcheck // test shim: the settingstest.Fake answer is the point
+}
+
+func (f policyReader) Secret(ctx context.Context, k string) (secret.Secret, error) {
+	fk, err := f.fake()
+	if err != nil {
+		return secret.Secret{}, err
+	}
+	return fk.Secret(ctx, k) //nolint:wrapcheck // test shim: the settingstest.Fake answer is the point
+}
 
 // people.md Settings and Visibility: hidden "hides and stops accepting the field; stored
 // values stay", and hidden-mode fields are absent for everyone. Nothing is read or audited.
@@ -51,7 +103,7 @@ func TestLegalNamesOf_LegalNameHidden_ReturnsNoneAndAuditsNothing(t *testing.T) 
 			r.svc.store = st
 			pol := DefaultPolicy()
 			pol.LegalName = tc.mode
-			r.svc.policySrc = fixedPolicy{p: pol}
+			r.svc.settings = policyReader{p: pol}
 			got, err := r.svc.LegalNamesOf(r.ctx, []model.PersonID{someone})
 			if err != nil {
 				t.Fatalf("LegalNamesOf: %v", err)
@@ -80,7 +132,7 @@ func TestLegalNamesOf_LegalNameHidden_ReturnsNoneAndAuditsNothing(t *testing.T) 
 
 func TestLegalNamesOf_LegalNameHidden_StillNeedsContactsRead(t *testing.T) {
 	r := newWB(t)
-	r.svc.policySrc = fixedPolicy{p: Policy{LegalName: FieldHidden, Phone: FieldOptional, EmergencyContacts: FieldOptional}}
+	r.svc.settings = policyReader{p: Policy{LegalName: FieldHidden, Phone: FieldOptional, EmergencyContacts: FieldOptional}}
 	_, err := r.svc.LegalNamesOf(r.ctx, []model.PersonID{model.NewID[model.PersonID]()})
 	if !errs.Is(err, errs.Permission) {
 		t.Errorf("kind = %v, want Permission", errs.KindOf(err))
@@ -89,7 +141,7 @@ func TestLegalNamesOf_LegalNameHidden_StillNeedsContactsRead(t *testing.T) {
 
 func TestLegalNamesOf_PolicyFails_ReturnsItsKind(t *testing.T) {
 	r := newWB(t, PermissionContactsRead)
-	r.svc.policySrc = fixedPolicy{err: errs.E("settings.Policy", errs.Unavailable, context.DeadlineExceeded)}
+	r.svc.settings = policyReader{err: errs.E("settings.Policy", errs.Unavailable, context.DeadlineExceeded)}
 	_, err := r.svc.LegalNamesOf(r.ctx, []model.PersonID{model.NewID[model.PersonID]()})
 	if !errs.Is(err, errs.Unavailable) {
 		t.Errorf("kind = %v, want Unavailable", errs.KindOf(err))

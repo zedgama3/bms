@@ -332,7 +332,7 @@ func (s *Service) SendTest(ctx context.Context) (_ MessageID, err error) {
 
 // Outbox returns the counts by status, whether e-mail is configured and the newest open
 // rows (queued, sending, failed, skipped): never an address, subject or body. Needs
-// notify.outbox.manage. Fails errs.Unauthenticated, errs.Permission, the SMTPSource's kind
+// notify.outbox.manage. Fails errs.Unauthenticated, errs.Permission, the settings Reader's kind
 // and store kinds.
 func (s *Service) Outbox(ctx context.Context) (_ OutboxView, err error) {
 	const op = "notify.Service.Outbox"

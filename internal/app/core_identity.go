@@ -11,8 +11,9 @@ import (
 	"github.com/zedgama3/bms/internal/lib/errs"
 )
 
-// identityPart is core part 2: local accounts, sessions and the break-glass superuser. It
-// is built after audit, whose recorder it takes (audit.md Proposed change 1).
+// identityPart is the identity core part: local accounts, sessions and the break-glass superuser. It
+// is built after audit, whose recorder it takes (audit.md Proposed change 1), and after
+// settings, whose "accounts" Reader it takes (boundaries step 5).
 var identityPart = part{
 	name:    "identity",
 	declare: declareIdentity,
@@ -41,12 +42,17 @@ func declareIdentity(a *assembly) error {
 
 // buildIdentity constructs the service (no I/O: it succeeds against db.None() and on a
 // read-only copy), hands the shell its Authenticator and mounts the accounts routes. The
-// permission checker and the permission lister are the authz.Lookup, built before it; the
-// name source is a lazy adapter, because people is built after identity.
+// permission checker and the permission lister are the authz.Lookup, built before it, and
+// the policy is read through the "accounts" settings Reader; the name source is a lazy
+// adapter, because people is built after identity.
 func buildIdentity(_ context.Context, a *assembly) error {
 	const op = "app.identity.build"
-	if a.deps.audit == nil || a.authzLookup == nil {
-		return errs.E(op, errs.Internal, errors.New("identity is built after audit and the authz lookup"))
+	if a.deps.audit == nil || a.authzLookup == nil || a.settings == nil {
+		return errs.E(op, errs.Internal, errors.New("identity is built after audit, the authz lookup and settings"))
+	}
+	reader, err := a.settings.Scoped(accountsSettings)
+	if err != nil {
+		return fmt.Errorf("%s: settings scope: %w", op, err)
 	}
 	rec, err := a.deps.audit.Scoped("identity")
 	if err != nil {
@@ -73,7 +79,7 @@ func buildIdentity(_ context.Context, a *assembly) error {
 		Permissions:    a.authzLookup,
 		Lister:         a.authzLookup,
 		Names:          lazyNames{a: a},
-		Policy:         lazyIdentityPolicy{a: a},
+		Settings:       reader,
 		Notify:         lazyNotifier{a: a, owner: accountsOwner},
 		Alerter:        lazyAlerter{a: a},
 		Guard:          demoGuard(a), // nil unless demo mode

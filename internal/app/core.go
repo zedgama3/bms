@@ -97,10 +97,10 @@ type runnable struct {
 	stop  func(ctx context.Context) error
 }
 
-// coreParts are the core services that plug in, in dependency order (audit, authz, identity,
-// settings, people, departments, events, jobs, notify, files, demo; app.md "How later core
+// coreParts are the core services that plug in, in dependency order (audit, authz, settings,
+// identity, people, departments, events, jobs, notify, files, demo; app.md "How later core
 // services plug in"). Each later core spec adds one file core_<name>.go and one line here.
-var coreParts = []part{auditPart, authzPart, identityPart, settingsPart, peoplePart, departmentsPart, eventsPart, jobsPart, notifyPart, filesPart, demoPart}
+var coreParts = []part{auditPart, authzPart, settingsPart, identityPart, peoplePart, departmentsPart, eventsPart, jobsPart, notifyPart, filesPart, demoPart}
 
 // declare runs every part's declare, in order (F28).
 func (a *assembly) declare() error {

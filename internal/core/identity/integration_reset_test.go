@@ -597,7 +597,7 @@ func TestRequestPasswordReset_SendRefused_SilentNil(t *testing.T) {
 func TestResetRequestAndComplete_Racing_NoDeadlock(t *testing.T) {
 	ps := newPolicySource() // room for many requests for one address
 	ps.set(func(p *identity.Policy) { p.LoginFailureLimit, p.ClientFailureLimit = 100, 1000 })
-	r := newResetRig(t, func(o *identity.Options) { o.Policy = ps })
+	r := newResetRig(t, func(o *identity.Options) { o.Settings = ps })
 	u := r.signUp("ada.quill")
 	for round := range 8 {
 		// each round spends 5 of the address's reset requests: move past the window (and so the cooldown)

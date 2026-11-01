@@ -42,11 +42,11 @@ func (n scoped) Send(ctx context.Context, m Message) error {
 // Configured implements Notifier.
 func (n scoped) Configured(ctx context.Context) (bool, error) { return n.s.Configured(ctx) }
 
-// Configured reports whether Send would enqueue now: the SMTPSource answered and a host and
+// Configured reports whether Send would enqueue now: the SMTP settings were read and a host and
 // a sender are set. It reads the settings (no SMTP connection) and looks at no recipient.
-// Fails with the SMTPSource's kind.
+// Fails with the settings Reader's kind.
 func (s *Service) Configured(ctx context.Context) (bool, error) {
-	cfg, err := s.smtp.SMTP(ctx)
+	cfg, err := SMTPFromSettings(ctx, s.settings)
 	if err != nil {
 		return false, seamError("notify.Service.Configured", "the SMTP settings", err)
 	}

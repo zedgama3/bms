@@ -83,9 +83,7 @@ A row is one type in `internal/app` (or one top-level function, for a closure th
 |---|---|---|
 | `lazyNames` | a.names, which people's part sets | identity needs the playa name and people needs identity (identity ↔ people); removed in step 8. |
 | `lazyFilesStore` | a.files, which files' part sets after settings is built | settings holds the logo in files, and files reads its policy from settings (settings ↔ files); removed in step 7. |
-| `lazyIdentityPolicy` | a.settings, which settings' part sets after identity is built | identity reads its policy keys from settings and is built first; order, not imports, is the cause (F2); removed in step 5. |
-| `lazyPeoplePolicy` | a.settings, resolved when called | people reads its policy keys from settings through app; same cause as `lazyIdentityPolicy` (F2); removed in step 5. |
-| `lazyAlerter` | notify, authz and settings, which are built after identity | the alert is identity's reaction to its own event and needs notify, which needs identity (identity ↔ notify); removed in step 9. |
+| `lazyAlerter` | notify, which is built after identity | the alert is identity's reaction to its own event and needs notify, which needs identity (identity ↔ notify); removed in step 9. |
 | `lazyGuard` | a.demo, which the demo part sets last | identity asks demo whether an account is protected, and demo creates accounts through identity (identity ↔ demo); removed in step 10. |
 | `lazyFilesPolicy` | a.demo, which the demo part sets last | files takes demo's cap, and demo's reset clears files (files ↔ demo); removed in step 10. |
 | `lazyNotifier` | a.notifiers, which the notify part fills | identity and people send through notify, and notify reads their addresses and names (identity ↔ notify, people ↔ notify); removed in step 8. |

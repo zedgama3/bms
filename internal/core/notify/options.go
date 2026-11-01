@@ -8,6 +8,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/db"
+	"github.com/zedgama3/bms/internal/core/settings"
 	"github.com/zedgama3/bms/internal/core/telemetry"
 	"github.com/zedgama3/bms/internal/lib/clock"
 	"github.com/zedgama3/bms/internal/lib/validate"
@@ -36,10 +37,10 @@ type Options struct {
 	Audit audit.Recorder // scoped "notify"
 	Authz authz.Authorizer
 	Actor authz.ActorFunc
-	SMTP  SMTPSource
-	Site  SiteSource
-	// Retention is optional: nil keeps status rows forever.
-	Retention RetentionSource
+	// Settings is the reader scoped "notify" (the SMTP keys and retention), read per use
+	// case and never cached; required.
+	Settings  settings.Reader
+	Site      SiteSource
 	Addresses AddressSource
 	Languages LanguageSource
 	Names     NameSource
@@ -54,7 +55,7 @@ type Options struct {
 
 // Validate fails errs.Invalid joining one validate.FieldError per problem: a nil dependency
 // (fields notify.db, notify.clock, notify.logger, notify.tracer, notify.audit,
-// notify.authz, notify.actor, notify.smtp, notify.site, notify.addresses, notify.languages,
+// notify.authz, notify.actor, notify.settings, notify.site, notify.addresses, notify.languages,
 // notify.names), notify.poll_interval, notify.lease and notify.send_timeout
 // outside their ranges, and notify.hostname that is empty or malformed.
 func (o Options) Validate() error {
@@ -70,7 +71,7 @@ func (o Options) Validate() error {
 		{"notify.audit", o.Audit == nil},
 		{"notify.authz", o.Authz == nil},
 		{"notify.actor", o.Actor == nil},
-		{"notify.smtp", o.SMTP == nil},
+		{"notify.settings", o.Settings == nil},
 		{"notify.site", o.Site == nil},
 		{"notify.addresses", o.Addresses == nil},
 		{"notify.languages", o.Languages == nil},

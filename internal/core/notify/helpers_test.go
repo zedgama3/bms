@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -20,6 +21,8 @@ import (
 	"github.com/zedgama3/bms/internal/core/authz/authztest"
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/notify"
+	"github.com/zedgama3/bms/internal/core/settings"
+	"github.com/zedgama3/bms/internal/core/settings/settingstest"
 	"github.com/zedgama3/bms/internal/core/telemetry/telemetrytest"
 	"github.com/zedgama3/bms/internal/lib/clock"
 	"github.com/zedgama3/bms/internal/lib/errs"
@@ -122,19 +125,19 @@ func asSuper(ctx context.Context, p model.PersonID) context.Context {
 
 // ---- seam fakes --------------------------------------------------------------------------
 
+// smtpSrc is the settings.Reader for the "notify" area that tests change as an
+// SMTPConfig (set) and a retention (ret.set), or make fail (fail). Every read is answered
+// from a settingstest.Fake loaded with the current values, so notify's own key mapping is
+// what the tests exercise. calls counts reads of the SMTP host, once per SMTP snapshot.
 type smtpSrc struct {
 	mu    sync.Mutex
 	cfg   notify.SMTPConfig
+	keep  time.Duration
 	err   error
 	calls atomic.Int64
 }
 
-func (s *smtpSrc) SMTP(context.Context) (notify.SMTPConfig, error) {
-	s.calls.Add(1)
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.cfg, s.err
-}
+var _ settings.Reader = (*smtpSrc)(nil)
 
 func (s *smtpSrc) set(mod func(*notify.SMTPConfig)) {
 	s.mu.Lock()
@@ -146,6 +149,80 @@ func (s *smtpSrc) fail(err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.err = err
+}
+
+func (s *smtpSrc) fake() (*settingstest.Fake, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.err != nil {
+		return nil, s.err
+	}
+	f := settingstest.NewFake("notify", notify.Settings)
+	c := s.cfg
+	f.Set("smtp_host", c.Host)
+	if c.Port != 0 {
+		f.Set("smtp_port", strconv.Itoa(c.Port))
+	}
+	if c.Security != 0 {
+		f.Set("smtp_security", c.Security.String())
+	}
+	f.Set("smtp_username", c.Username)
+	f.SetSecret("smtp_password", c.Password)
+	f.Set("sender_address", string(c.Sender.Email))
+	f.Set("sender_name", c.Sender.Name)
+	if c.ReplyTo != nil {
+		f.Set("reply_to", string(c.ReplyTo.Email))
+	}
+	var alerts []string
+	for _, a := range c.AlertAddresses {
+		alerts = append(alerts, string(a))
+	}
+	f.Set("alert_addresses", strings.Join(alerts, ","))
+	f.Set("retention", s.keep.String())
+	return f, nil
+}
+
+func (s *smtpSrc) Bool(ctx context.Context, k string) (bool, error) {
+	f, err := s.fake()
+	if err != nil {
+		return false, err
+	}
+	return f.Bool(ctx, k) //nolint:wrapcheck // test shim: the settingstest.Fake answer is the point
+}
+
+func (s *smtpSrc) Int(ctx context.Context, k string) (int64, error) {
+	f, err := s.fake()
+	if err != nil {
+		return 0, err
+	}
+	return f.Int(ctx, k) //nolint:wrapcheck // test shim: the settingstest.Fake answer is the point
+}
+
+func (s *smtpSrc) Duration(ctx context.Context, k string) (time.Duration, error) {
+	f, err := s.fake()
+	if err != nil {
+		return 0, err
+	}
+	return f.Duration(ctx, k) //nolint:wrapcheck // test shim: the settingstest.Fake answer is the point
+}
+
+func (s *smtpSrc) Text(ctx context.Context, k string) (string, error) {
+	if k == "smtp_host" {
+		s.calls.Add(1)
+	}
+	f, err := s.fake()
+	if err != nil {
+		return "", err
+	}
+	return f.Text(ctx, k) //nolint:wrapcheck // test shim: the settingstest.Fake answer is the point
+}
+
+func (s *smtpSrc) Secret(ctx context.Context, k string) (secret.Secret, error) {
+	f, err := s.fake()
+	if err != nil {
+		return secret.Secret{}, err
+	}
+	return f.Secret(ctx, k) //nolint:wrapcheck // test shim: the settingstest.Fake answer is the point
 }
 
 type siteSrc struct {
@@ -170,21 +247,13 @@ func (s *siteSrc) fail(err error) {
 	s.err = err
 }
 
-type retSrc struct {
-	mu sync.Mutex
-	d  time.Duration
-}
+// retSrc sets the retention the smtpSrc reader answers.
+type retSrc struct{ s *smtpSrc }
 
-func (s *retSrc) Retention(context.Context) (time.Duration, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.d, nil
-}
-
-func (s *retSrc) set(d time.Duration) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.d = d
+func (r *retSrc) set(d time.Duration) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	r.s.keep = d
 }
 
 type addrSrc struct {
@@ -375,12 +444,13 @@ func defaultConfig() notify.SMTPConfig {
 func newRigOptions(t *testing.T, d db.DB) (*rig, notify.Options) {
 	t.Helper()
 	c := telemetrytest.New(t)
+	smtp := &smtpSrc{cfg: defaultConfig()}
 	r := &rig{
 		t: t, clk: clock.NewFake(epoch), cap: c,
 		rec: audittest.NewFake("notify"), az: authztest.NewFake(),
-		smtp:  &smtpSrc{cfg: defaultConfig()},
+		smtp:  smtp,
 		site:  &siteSrc{site: notify.Site{Name: "Test Burn", URL: siteURL, DefaultLanguage: "en", Terms: map[string]string{"shift": "duty"}}},
-		ret:   &retSrc{},
+		ret:   &retSrc{s: smtp},
 		addrs: &addrSrc{m: map[model.PersonID]model.Email{}},
 		langs: &langSrc{m: map[model.PersonID]notify.Language{}},
 		names: &nameSrc{m: map[model.PersonID]string{}},
@@ -390,7 +460,7 @@ func newRigOptions(t *testing.T, d db.DB) (*rig, notify.Options) {
 	o := notify.Options{
 		DB: d, Clock: r.clk, Logger: c.Logger(), Tracer: c.Tracer("notify"), Meter: c.Meter("notify"),
 		Audit: r.rec, Authz: r.az, Actor: actorFn,
-		SMTP: r.smtp, Site: r.site, Retention: r.ret,
+		Settings: r.smtp, Site: r.site,
 		Addresses: r.addrs, Languages: r.langs, Names: r.names,
 		Channel: r.ch.factory, Hostname: testHostname,
 	}

@@ -291,6 +291,8 @@ func TestRequestPasswordReset_InvalidResetPolicy_Invalid(t *testing.T) {
 		name string
 		mod  func(*identity.Policy)
 	}{
+		// the settings Fake rejects these single-key values (declared Check) before
+		// Policy.Validate runs; see TestPolicy_InvalidValues_FailInvalid (white-box)
 		{"address limit zero", func(p *identity.Policy) { p.PasswordResetAddressLimit = 0 }},
 		{"client below address", func(p *identity.Policy) { p.PasswordResetAddressLimit = 50; p.PasswordResetClientLimit = 10 }},
 		{"cooldown negative", func(p *identity.Policy) { p.PasswordResetCooldown = -time.Second }},

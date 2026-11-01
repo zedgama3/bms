@@ -47,7 +47,7 @@ func TestNew_Table(t *testing.T) {
 
 func TestNew_ZeroOptions_ReportsEveryProblemAtOnce(t *testing.T) {
 	err := identity.Options{}.Validate()
-	for _, f := range []string{"identity.db", "identity.clock", "identity.logger", "identity.tracer", "identity.audit", "identity.signals", "session.key"} {
+	for _, f := range []string{"identity.db", "identity.clock", "identity.logger", "identity.tracer", "identity.audit", "identity.signals", "identity.settings", "session.key"} {
 		wantField(t, err, f, "")
 	}
 }
@@ -55,7 +55,7 @@ func TestNew_ZeroOptions_ReportsEveryProblemAtOnce(t *testing.T) {
 func TestNew_OptionalSeamsNil_Succeeds(t *testing.T) {
 	o, _ := validOptions(t, dbtest.NewFake())
 	o.Meter = nil
-	o.Policy, o.Permissions, o.Lister, o.Names, o.Alerter = nil, nil, nil, nil, nil
+	o.Permissions, o.Lister, o.Names, o.Alerter = nil, nil, nil, nil
 	if _, err := identity.New(o); err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -325,3 +325,15 @@ func TestAccountQuery_Validate_Table(t *testing.T) {
 }
 
 var _ clock.Clock = (*clock.Fake)(nil)
+
+// boundaries step 5: Settings is required (the reader of the "accounts" area).
+func TestNew_NilSettings_ReturnsInvalid(t *testing.T) {
+	o, _ := validOptions(t, dbtest.NewFake())
+	o.Settings = nil
+	svc, err := identity.New(o)
+	wantField(t, err, "identity.settings", "")
+	if svc != nil {
+		t.Error("New returned a service with an error")
+	}
+	wantField(t, o.Validate(), "identity.settings", "")
+}

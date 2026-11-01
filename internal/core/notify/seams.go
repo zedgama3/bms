@@ -2,16 +2,9 @@ package notify
 
 import (
 	"context"
-	"time"
 
 	"github.com/zedgama3/bms/internal/model"
 )
-
-// SMTPSource returns the current SMTP settings. app implements it over settings.Reader
-// scoped "notify". Fails with the settings' kinds.
-type SMTPSource interface {
-	SMTP(ctx context.Context) (SMTPConfig, error)
-}
 
 // Site is what every template may use: the regional's name, the public URL (no trailing
 // slash), the default language and the terminology for a language (key -> word).
@@ -26,11 +19,6 @@ type Site struct {
 // settings' Regional and TermsFor.
 type SiteSource interface {
 	Site(ctx context.Context, lang Language) (Site, error)
-}
-
-// RetentionSource returns notify.retention: 0 keeps status rows forever.
-type RetentionSource interface {
-	Retention(ctx context.Context) (time.Duration, error)
 }
 
 // AddressSource answers a person's current address: identity's login address, else
@@ -62,10 +50,10 @@ type NameSource interface {
 // transaction; store kinds; the SiteSource's, LanguageSource's and NameSource's kinds.
 type Notifier interface {
 	Send(ctx context.Context, m Message) error
-	// Configured reports whether Send would enqueue now: SMTPSource.SMTP succeeded and
+	// Configured reports whether Send would enqueue now: the SMTP settings were read and
 	// SMTPConfig.Configured() is true. It reads the settings snapshot (no SMTP connection)
 	// and never looks at a recipient, so its answer cannot depend on who is being written
-	// to. Fails with the SMTPSource's kind only. Call it before work whose outcome must not
+	// to. Fails with the settings Reader's kind only. Call it before work whose outcome must not
 	// depend on the recipient.
 	Configured(ctx context.Context) (bool, error)
 }

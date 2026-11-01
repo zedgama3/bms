@@ -193,14 +193,14 @@ func (s *Service) sweep(ctx context.Context) {
 // SendOnce leases up to MaxBatch due rows and delivers them, returning counts. Delivery
 // failures are recorded on the rows, not returned. When SMTP is not configured nothing is
 // leased: it returns Sent{Skipped: n} for the n queued rows and logs once an hour. Fails
-// errs.Unavailable wrapping db.ErrReadOnly (nothing leased), the SMTPSource's kind, store
+// errs.Unavailable wrapping db.ErrReadOnly (nothing leased), the settings Reader's kind, store
 // kinds, and errs.Canceled when ctx ends mid-batch (the rows are given back).
 func (s *Service) SendOnce(ctx context.Context) (res Sent, err error) {
 	const op = "notify.Service.SendOnce"
 	if s.db.ReadOnly() {
 		return Sent{}, readOnlyErr(op)
 	}
-	cfg, err := s.smtp.SMTP(ctx)
+	cfg, err := SMTPFromSettings(ctx, s.settings)
 	if err != nil {
 		return Sent{}, seamError(op, "the SMTP settings", err)
 	}
@@ -429,12 +429,12 @@ func (s *Service) record(ctx context.Context, row message.Record, outcome, token
 // ---- Ping, Purge, ExpireStale -----------------------------------------------------------
 
 // Ping builds a channel from the current settings and checks the conversation. Fails
-// errs.Unsupported wrapping ErrNotConfigured, the SMTPSource's kind, and the channel's kinds.
+// errs.Unsupported wrapping ErrNotConfigured, the settings Reader's kind, and the channel's kinds.
 func (s *Service) Ping(ctx context.Context) (err error) {
 	const op = "notify.Service.Ping"
 	ctx, span := s.start(ctx, "ping", telemetry.WithKind(telemetry.SpanClient))
 	defer endSpan(span, &err)
-	cfg, err := s.smtp.SMTP(ctx)
+	cfg, err := SMTPFromSettings(ctx, s.settings)
 	if err != nil {
 		return seamError(op, "the SMTP settings", err)
 	}
@@ -451,9 +451,9 @@ func (s *Service) Ping(ctx context.Context) (err error) {
 }
 
 // Purge deletes Sent, Failed and Skipped rows older than the retention, in batches, and returns how
-// many. A nil RetentionSource or a retention of 0 deletes nothing. A retention under
+// many. A retention of 0 deletes nothing. A retention under
 // MinRetention is read as MinRetention. Fails errs.Unavailable wrapping db.ErrReadOnly, the
-// RetentionSource's kind and store kinds.
+// settings Reader's kind and store kinds.
 func (s *Service) Purge(ctx context.Context) (n int64, err error) {
 	const op = "notify.Service.Purge"
 	ctx, span := s.start(ctx, "purge")
@@ -461,10 +461,7 @@ func (s *Service) Purge(ctx context.Context) (n int64, err error) {
 	if s.db.ReadOnly() {
 		return 0, readOnlyErr(op)
 	}
-	if s.retention == nil {
-		return 0, nil
-	}
-	keep, err := s.retention.Retention(ctx)
+	keep, err := retentionFrom(ctx, s.settings)
 	if err != nil {
 		return 0, seamError(op, "the retention setting", err)
 	}

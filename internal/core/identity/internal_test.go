@@ -16,6 +16,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/audit/audittest"
 	"github.com/zedgama3/bms/internal/core/db/dbtest"
 	"github.com/zedgama3/bms/internal/core/identity/account"
+	"github.com/zedgama3/bms/internal/core/settings/settingstest"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/signals/signalstest"
 	"github.com/zedgama3/bms/internal/core/telemetry/telemetrytest"
@@ -39,6 +40,7 @@ func bareService(t *testing.T) (*Service, *clock.Fake) {
 	s, err := newService(Options{
 		DB: dbtest.NewFake(), Clock: clk, Logger: c.Logger(), Tracer: c.Tracer("identity"),
 		Key: secret.New("internal-test-session-key-0123456789abcdef"), Audit: audittest.NewFake("identity"), Signals: bus,
+		Settings: settingstest.NewFake("accounts", Settings),
 	}, struct{ store }{})
 	if err != nil {
 		t.Fatalf("newService: %v", err)

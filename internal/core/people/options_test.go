@@ -36,6 +36,7 @@ func TestNew_NilDependency_ReturnsInvalid(t *testing.T) {
 		{"people.accounts", func(o *people.Options) { o.Accounts = nil }},
 		{"people.access", func(o *people.Options) { o.Access = nil }},
 		{"people.audit_count", func(o *people.Options) { o.AuditCount = nil }},
+		{"people.settings", func(o *people.Options) { o.Settings = nil }},
 	}
 	for _, tc := range tests {
 		t.Run(tc.field, func(t *testing.T) {
@@ -56,7 +57,7 @@ func TestOptions_Validate_ReportsEveryProblemAtOnce(t *testing.T) {
 	wantKind(t, err, errs.Invalid)
 	for _, f := range []string{
 		"people.db", "people.clock", "people.logger", "people.tracer", "people.audit", "people.signals",
-		"people.authz", "people.actor", "people.accounts", "people.access", "people.audit_count", "people.session",
+		"people.authz", "people.actor", "people.accounts", "people.access", "people.audit_count", "people.session", "people.settings",
 	} {
 		if !hasField(err, f, "") {
 			t.Errorf("no field error for %s", f)
@@ -64,13 +65,12 @@ func TestOptions_Validate_ReportsEveryProblemAtOnce(t *testing.T) {
 	}
 }
 
-func TestNew_OptionalMeterAndPolicy_MayBeNil(t *testing.T) {
+func TestNew_OptionalMeter_MayBeNil(t *testing.T) {
 	o, _ := validOptions(t, dbtest.NewFake())
 	o.Meter = nil
-	o.Policy = nil
 	wantNoErr(t, o.Validate())
 	if _, err := people.New(o); err != nil {
-		t.Fatalf("New without a Meter or Policy: %v", err)
+		t.Fatalf("New without a Meter: %v", err)
 	}
 }
 

@@ -7,8 +7,6 @@ import (
 
 	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/files"
-	"github.com/zedgama3/bms/internal/core/identity"
-	"github.com/zedgama3/bms/internal/core/people"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/model"
 )
@@ -122,37 +120,4 @@ func (l lazyFilesStore) DeleteByRecord(ctx context.Context, rec audit.Ref) (int,
 		return 0, err
 	}
 	return st.DeleteByRecord(ctx, rec) //nolint:wrapcheck // the store's own error
-}
-
-// lazyIdentityPolicy is identity's PolicySource over a.settings, which settings' part sets
-// after identity is built: until then the policy is the shipped default, as it is when
-// identity is given no source. It does no I/O of its own.
-type lazyIdentityPolicy struct{ a *assembly }
-
-// Policy reads the accounts.* settings when there is a settings service, else the defaults.
-func (l lazyIdentityPolicy) Policy(ctx context.Context) (identity.Policy, error) {
-	if l.a.settings == nil {
-		return identity.DefaultPolicy(), nil
-	}
-	r, err := l.a.settings.Scoped(accountsSettings)
-	if err != nil {
-		return identity.Policy{}, fmt.Errorf("app.lazyIdentityPolicy: %w", err)
-	}
-	return settingsPolicy{r: r}.Policy(ctx)
-}
-
-// lazyPeoplePolicy is people's PolicySource over a.settings, resolved when called, so the
-// part order does not matter to it.
-type lazyPeoplePolicy struct{ a *assembly }
-
-// Policy reads the people.* settings when there is a settings service, else the defaults.
-func (l lazyPeoplePolicy) Policy(ctx context.Context) (people.Policy, error) {
-	if l.a.settings == nil {
-		return people.DefaultPolicy(), nil
-	}
-	r, err := l.a.settings.Scoped(peopleSettings)
-	if err != nil {
-		return people.Policy{}, fmt.Errorf("app.lazyPeoplePolicy: %w", err)
-	}
-	return peoplePolicy{r: r}.Policy(ctx)
 }

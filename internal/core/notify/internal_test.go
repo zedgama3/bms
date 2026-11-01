@@ -16,6 +16,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/authz/authztest"
 	"github.com/zedgama3/bms/internal/core/db/dbtest"
 	"github.com/zedgama3/bms/internal/core/notify/message"
+	"github.com/zedgama3/bms/internal/core/settings/settingstest"
 	"github.com/zedgama3/bms/internal/core/telemetry/telemetrytest"
 	"github.com/zedgama3/bms/internal/lib/clock"
 	"github.com/zedgama3/bms/internal/lib/errs"
@@ -141,9 +142,16 @@ func (c *testChannel) count() int {
 	return len(c.envelopes)
 }
 
-type smtpSrc struct{ cfg SMTPConfig }
-
-func (s smtpSrc) SMTP(context.Context) (SMTPConfig, error) { return s.cfg, nil }
+// rigSettings is the "notify" area over the declared keys, set to a local relay that needs
+// no security and a sender, so the rig is configured.
+func rigSettings() *settingstest.Fake {
+	f := settingstest.NewFake("notify", Settings)
+	f.Set("smtp_host", "smtp.invalid")
+	f.Set("smtp_port", "25")
+	f.Set("smtp_security", "none")
+	f.Set("sender_address", "noreply@example.org")
+	return f
+}
 
 type siteSrc struct{}
 
@@ -187,11 +195,9 @@ func newRig(t *testing.T, mutate ...func(*Options, *fakeStore, *testChannel, *ri
 	o := Options{
 		DB: dbtest.NewFake(), Clock: r.clk, Logger: r.cap.Logger(), Tracer: r.cap.Tracer("notify"),
 		Meter: r.cap.Meter("notify"), Audit: audittest.NewFake("notify"), Authz: authztest.NewFake(),
-		Actor: func(context.Context) (authz.Actor, bool) { return authz.Actor{}, false },
-		SMTP: smtpSrc{cfg: SMTPConfig{
-			Host: "smtp.invalid", Port: 25, Security: None, Sender: Address{Email: "noreply@example.org"},
-		}},
-		Site: siteSrc{}, Addresses: addrSrc{email: "someone@example.org"}, Languages: langSrc{}, Names: nameSrc{},
+		Actor:    func(context.Context) (authz.Actor, bool) { return authz.Actor{}, false },
+		Settings: rigSettings(),
+		Site:     siteSrc{}, Addresses: addrSrc{email: "someone@example.org"}, Languages: langSrc{}, Names: nameSrc{},
 		Channel: func(SMTPConfig) (Channel, error) { return r.ch, nil }, Hostname: "bms.example.org",
 		Lease: 30 * time.Second, SendTimeout: 5 * time.Second,
 	}

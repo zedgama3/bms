@@ -551,7 +551,7 @@ func (r *checkReport) smtpConfig(ctx context.Context, a *assembly) (notify.SMTPC
 	}
 	sctx, cancel := context.WithTimeout(ctx, checkTimeout)
 	defer cancel()
-	return smtpSource{r: rd}.SMTP(sctx)
+	return notify.SMTPFromSettings(sctx, rd) //nolint:wrapcheck // printed with its kind
 }
 
 // auditSpool prints how many audit spool files wait to be imported and how many the

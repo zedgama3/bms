@@ -15,59 +15,10 @@ import (
 	"github.com/zedgama3/bms/internal/core/notify"
 	"github.com/zedgama3/bms/internal/core/notify/notifytest"
 	"github.com/zedgama3/bms/internal/core/settings"
-	"github.com/zedgama3/bms/internal/core/settings/settingstest"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/lib/secret"
 	"github.com/zedgama3/bms/internal/model"
 )
-
-func TestSMTPSource_NothingSet_IsNotConfigured(t *testing.T) {
-	cfg, err := smtpSource{r: settingstest.NewFake("notify", notify.Settings)}.SMTP(t.Context())
-	if err != nil {
-		t.Fatalf("SMTP: %v", err)
-	}
-	if cfg.Configured() || cfg.Port != 587 || cfg.Security != notify.StartTLS {
-		t.Errorf("cfg = %+v, want unconfigured with the default port and starttls", cfg)
-	}
-}
-
-func TestSMTPSource_ReadsEveryKey(t *testing.T) {
-	r := settingstest.NewFake("notify", notify.Settings)
-	r.Set("smtp_host", "mail.example.org")
-	r.Set("smtp_port", "2525")
-	r.Set("smtp_security", "tls")
-	r.Set("smtp_username", "outbox")
-	r.SetSecret("smtp_password", secret.New("pw-for-the-test"))
-	r.Set("sender_address", "bms@example.org")
-	r.Set("sender_name", "Quill Burn")
-	r.Set("reply_to", "help@example.org")
-	r.Set("alert_addresses", "a@example.org, b@example.org")
-	cfg, err := smtpSource{r: r}.SMTP(t.Context())
-	if err != nil {
-		t.Fatalf("SMTP: %v", err)
-	}
-	if !cfg.Configured() || cfg.Host != "mail.example.org" || cfg.Port != 2525 || cfg.Security != notify.TLS ||
-		cfg.Username != "outbox" || cfg.Password.Value() != "pw-for-the-test" ||
-		cfg.Sender.Email != "bms@example.org" || cfg.Sender.Name != "Quill Burn" ||
-		cfg.ReplyTo == nil || cfg.ReplyTo.Email != "help@example.org" || len(cfg.AlertAddresses) != 2 {
-		t.Errorf("cfg = %+v", cfg)
-	}
-}
-
-func TestSMTPSource_WrongArea_ReturnsInvalid(t *testing.T) {
-	if _, err := (smtpSource{r: settingstest.NewFake("people", nil)}).SMTP(t.Context()); !errs.Is(err, errs.Invalid) {
-		t.Errorf("err = %v, want Invalid", err)
-	}
-}
-
-func TestRetentionSource_ReadsTheDuration(t *testing.T) {
-	r := settingstest.NewFake("notify", notify.Settings)
-	r.Set("retention", "240h")
-	got, err := retentionSource{r: r}.Retention(t.Context())
-	if err != nil || got != 240*time.Hour {
-		t.Errorf("Retention = %v, %v, want 240h", got, err)
-	}
-}
 
 type fakeRegional struct {
 	asked string

@@ -24,6 +24,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/people"
 	"github.com/zedgama3/bms/internal/core/people/postgres"
+	"github.com/zedgama3/bms/internal/core/settings/settingstest"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/signals/signalstest"
 	"github.com/zedgama3/bms/internal/core/telemetry/telemetrytest"
@@ -130,14 +131,15 @@ func newIRig(t *testing.T, realIdentity bool, mods ...func(*people.Options)) *ir
 
 	o, r := validOptions(t, spy)
 	idSvc, err := identity.New(identity.Options{
-		DB:      pool,
-		Clock:   clock.Real(),
-		Logger:  idCap.Logger(),
-		Tracer:  idCap.Tracer("identity"),
-		Meter:   idCap.Meter("identity"),
-		Key:     secret.New(sessionKeyText),
-		Audit:   idRec,
-		Signals: idBus,
+		DB:       pool,
+		Clock:    clock.Real(),
+		Logger:   idCap.Logger(),
+		Tracer:   idCap.Tracer("identity"),
+		Meter:    idCap.Meter("identity"),
+		Key:      secret.New(sessionKeyText),
+		Audit:    idRec,
+		Signals:  idBus,
+		Settings: settingstest.NewFake("accounts", identity.Settings),
 	})
 	wantNoErr(t, err)
 	if realIdentity {

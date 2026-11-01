@@ -241,7 +241,7 @@ func TestAssembly_CorePermsStartWithModulesRead(t *testing.T) {
 
 // coreOrder is the order in which the core's services plug in (app.md "How later core
 // services plug in"); coreParts must be a subsequence of it.
-var coreOrder = []string{"audit", "authz", "identity", "settings", "people", "departments", "events", "jobs", "notify", "files", "demo"}
+var coreOrder = []string{"audit", "authz", "settings", "identity", "people", "departments", "events", "jobs", "notify", "files", "demo"}
 
 func TestParts_OrderAndNames_Pinned(t *testing.T) {
 	pos := -1
@@ -736,8 +736,8 @@ func TestCoreParts_Declare_SetsPermissionsSignalAndCommand(t *testing.T) {
 	}
 	want := "core.modules.read,audit.search,audit.export," +
 		"access.roles.read,access.roles.manage,access.rules.manage,access.grants.read,access.grants.manage,access.department-grants.manage," +
-		"accounts.read,accounts.manage," +
 		"settings.read,settings.manage," +
+		"accounts.read,accounts.manage," +
 		"people.directory.read,people.contacts.read,people.profiles.manage,people.data.export,people.data.delete," +
 		"departments.manage,departments.details.manage,events.manage," +
 		"jobs.read,jobs.manage," +
@@ -885,8 +885,8 @@ func TestBuildParts_AgainstNoDatabase_SetsAuthenticatorRoutesAndRunnable(t *test
 			t.Errorf("route set %s has %d routes and %d bytes of fragment", rs.Module, len(rs.Routes), len(rs.OpenAPI))
 		}
 	}
-	if strings.Join(areas, ",") != "audit,access,accounts,settings,people,departments,events,jobs,notify" {
-		t.Errorf("route sets = %v, want audit, access, accounts, settings, people, departments, events, jobs, notify", areas)
+	if strings.Join(areas, ",") != "audit,access,settings,accounts,people,departments,events,jobs,notify" {
+		t.Errorf("route sets = %v, want audit, access, settings, accounts, people, departments, events, jobs, notify", areas)
 	}
 	var runnables []string
 	for _, r := range a.runnables {

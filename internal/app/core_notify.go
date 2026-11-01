@@ -9,11 +9,9 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/notify"
-	"github.com/zedgama3/bms/internal/core/notify/channel"
 	"github.com/zedgama3/bms/internal/core/people"
 	"github.com/zedgama3/bms/internal/core/settings"
 	"github.com/zedgama3/bms/internal/lib/errs"
@@ -84,9 +82,8 @@ func buildNotify(_ context.Context, a *assembly) error {
 		Audit:     rec,
 		Authz:     a.deps.authz,
 		Actor:     identity.Actor,
-		SMTP:      smtpSource{r: reader},
+		Settings:  reader,
 		Site:      siteSource{svc: a.settings},
-		Retention: retentionSource{r: reader},
 		Addresses: addressSource{accounts: a.identity, contacts: a.people},
 		Languages: languageSource{p: a.people},
 		Names:     nameSource{p: a.people},
@@ -195,93 +192,6 @@ func (r *notifyRunner) stop(ctx context.Context) error {
 }
 
 // ---- adapters over settings ------------------------------------------------------------
-
-// smtpSource is notify's SMTPSource over the "notify" area's scoped Reader. The password
-// is the sealed smtp_password, unsealed per read and never logged.
-type smtpSource struct{ r settings.Reader }
-
-var _ notify.SMTPSource = smtpSource{}
-
-// SMTP reads the notify.* SMTP keys. It fails with the Reader's kinds, and errs.Invalid for
-// a stored value notify cannot read (settings validated it, so that is a bug).
-func (s smtpSource) SMTP(ctx context.Context) (notify.SMTPConfig, error) {
-	const op = "app.smtpSource.SMTP"
-	var (
-		cfg  notify.SMTPConfig
-		text = func(key string) (string, error) {
-			v, err := s.r.Text(ctx, key)
-			if err != nil {
-				return "", fmt.Errorf("%s: notify.%s: %w", op, key, err)
-			}
-			return v, nil
-		}
-		err error
-	)
-	if cfg.Host, err = text("smtp_host"); err != nil {
-		return notify.SMTPConfig{}, err
-	}
-	port, err := s.r.Int(ctx, "smtp_port")
-	if err != nil {
-		return notify.SMTPConfig{}, fmt.Errorf("%s: notify.smtp_port: %w", op, err)
-	}
-	cfg.Port = int(port)
-	sec, err := text("smtp_security")
-	if err != nil {
-		return notify.SMTPConfig{}, err
-	}
-	if cfg.Security, err = channel.ParseSecurity(sec); err != nil {
-		return notify.SMTPConfig{}, fmt.Errorf("%s: %w", op, err)
-	}
-	if cfg.Username, err = text("smtp_username"); err != nil {
-		return notify.SMTPConfig{}, err
-	}
-	if cfg.Password, err = s.r.Secret(ctx, "smtp_password"); err != nil {
-		return notify.SMTPConfig{}, fmt.Errorf("%s: notify.smtp_password: %w", op, err)
-	}
-	sender, err := text("sender_address")
-	if err != nil {
-		return notify.SMTPConfig{}, err
-	}
-	if cfg.Sender.Email, err = notify.ParseAddress(sender); err != nil {
-		return notify.SMTPConfig{}, fmt.Errorf("%s: notify.sender_address: %w", op, err)
-	}
-	if cfg.Sender.Name, err = text("sender_name"); err != nil {
-		return notify.SMTPConfig{}, err
-	}
-	reply, err := text("reply_to")
-	if err != nil {
-		return notify.SMTPConfig{}, err
-	}
-	replyTo, err := notify.ParseAddress(reply)
-	if err != nil {
-		return notify.SMTPConfig{}, fmt.Errorf("%s: notify.reply_to: %w", op, err)
-	}
-	if replyTo != "" {
-		cfg.ReplyTo = &notify.Address{Email: replyTo}
-	}
-	alerts, err := text("alert_addresses")
-	if err != nil {
-		return notify.SMTPConfig{}, err
-	}
-	if cfg.AlertAddresses, err = notify.ParseAddresses(alerts); err != nil {
-		return notify.SMTPConfig{}, fmt.Errorf("%s: notify.alert_addresses: %w", op, err)
-	}
-	return cfg, nil
-}
-
-// retentionSource is notify's RetentionSource over the "notify" area's scoped Reader.
-type retentionSource struct{ r settings.Reader }
-
-var _ notify.RetentionSource = retentionSource{}
-
-// Retention reads notify.retention. It fails with the Reader's kinds.
-func (s retentionSource) Retention(ctx context.Context) (time.Duration, error) {
-	d, err := s.r.Duration(ctx, "retention")
-	if err != nil {
-		return 0, fmt.Errorf("app.retentionSource.Retention: notify.retention: %w", err)
-	}
-	return d, nil
-}
 
 // regionalSource is the part of *settings.Service siteSource reads.
 type regionalSource interface {

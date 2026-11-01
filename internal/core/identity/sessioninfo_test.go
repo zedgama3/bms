@@ -114,7 +114,7 @@ func TestSessionInfo_SeamFailure_PassesKind(t *testing.T) {
 		{"policy unavailable", func(o *identity.Options) {
 			ps := newPolicySource()
 			ps.err = errDown
-			o.Policy = ps
+			o.Settings = ps
 		}, errs.Unavailable},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

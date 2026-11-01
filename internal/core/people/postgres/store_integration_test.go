@@ -14,6 +14,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/db/dbtest"
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/people/postgres"
+	"github.com/zedgama3/bms/internal/core/settings/settingstest"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/signals/signalstest"
 	"github.com/zedgama3/bms/internal/core/telemetry/telemetrytest"
@@ -118,7 +119,8 @@ func TestBackfill_OnePersonRowPerExistingAccount(t *testing.T) {
 	svc, err := identity.New(identity.Options{
 		DB: pool, Clock: clock.Real(), Logger: telemetrytest.New(t).Logger(), Tracer: telemetrytest.New(t).Tracer("identity"),
 		Key: secret.New("people-pg-test-session-key-0123456789abcdef"), Audit: audittest.NewFake("identity"),
-		Signals: mustBus(t),
+		Signals:  mustBus(t),
+		Settings: settingstest.NewFake("accounts", identity.Settings),
 	})
 	if err != nil {
 		t.Fatal(err)

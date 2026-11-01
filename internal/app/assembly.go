@@ -114,7 +114,7 @@ type assembly struct {
 	authz    *authz.Service    // the authz part's service (migrate's seed, people's Access); nil before its build
 	people   *people.Service   // the people part's service (export, delete); nil before its build
 
-	settings *settings.Service // the settings part's service (the PolicySource adapters); nil before its build
+	settings *settings.Service // the settings part's service (identity, people, notify and files read their areas through it); nil before its build
 
 	departments *departments.Service // the departments part's service; nil before its build
 

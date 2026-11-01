@@ -12,8 +12,8 @@ import (
 
 // Settings declares the accounts.* keys for the settings core area "accounts" (identity.md,
 // "Settings"; D39): the keys, kinds, defaults and ranges of the Policy fields. app passes
-// them, with CheckSettings, to settings.New and implements PolicySource over the area's
-// scoped Reader. Titles and descriptions are the catalogue keys
+// them, with CheckSettings, to settings.New; the service reads them through
+// Options.Settings, a Reader scoped to the area. Titles and descriptions are the catalogue keys
 // core.accounts.setting.<key>.title|description (and .option.<opt> for signup). Each Check
 // is pure and agrees with Policy.Validate, which stays the check at the point of use.
 var Settings = []settings.Decl{

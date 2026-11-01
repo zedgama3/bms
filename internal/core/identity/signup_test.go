@@ -160,6 +160,8 @@ func TestPolicy_SourceFailure_FailsUseCase(t *testing.T) {
 	}{
 		{"source unavailable", func(s *policySource) { s.err = errDown }, errs.Unavailable},
 		{"source timeout", func(s *policySource) { s.err = errTimeout }, errs.Timeout},
+		// the settings Fake rejects 3 (its declared Check) before Policy.Validate runs; the
+		// Validate step itself is TestPolicy_InvalidValues_FailInvalid (white-box)
 		{"invalid policy", func(s *policySource) { s.p.PasswordMinLength = 3 }, errs.Invalid},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
