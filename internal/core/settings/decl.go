@@ -107,13 +107,19 @@ type Decl struct {
 	// It may return validate.FieldErrors (re-fielded under the setting key, codes kept)
 	// or any error (code "rejected", reason = err.Error()).
 	Check func(value string) error `json:"-"`
+	// Normalize is an optional rewrite of a trimmed value before Check runs and the value is
+	// stored (regional.public_url's canonical form, a colour in lower case). Pure and a fixed
+	// point (Normalize(Normalize(v)) == Normalize(v)): a value it cannot improve is returned
+	// unchanged, so that Check reports why it is refused. Never for a Secret, which is never
+	// trimmed or rewritten: Decl.Validate refuses the pair.
+	Normalize func(value string) string `json:"-"`
 }
 
 // Validate fails errs.Invalid joining one validate.FieldError per problem, on the fields
-// "key", "kind", "options" and "default": Key not an ident; Kind invalid; Options given
+// "key", "kind", "options", "default" and "normalize": Key not an ident; Kind invalid; Options given
 // for a kind other than Enum, or fewer than two, not idents or duplicated for Enum;
-// Default not parsable as Kind or rejected by Check; a Secret with a Default. Messages
-// never echo a value.
+// Default not parsable as Kind or rejected by Check; a Secret with a Default; a Secret with a
+// Normalize (code unsupported). Messages never echo a value.
 func (d Decl) Validate() error {
 	acc := validate.Errors{Op: "settings.Decl.Validate"}
 	if !isKey(d.Key) {
@@ -121,6 +127,9 @@ func (d Decl) Validate() error {
 	}
 	if !d.Kind.valid() {
 		acc.Addf("kind", codeOneOf, "must be one of: bool, int, duration, text, enum, secret")
+	}
+	if d.Kind == Secret && d.Normalize != nil {
+		acc.Addf("normalize", "unsupported", "a secret is never rewritten, so it has no Normalize")
 	}
 	optionsOK := d.checkOptions(&acc)
 	switch {
@@ -183,7 +192,7 @@ func (d Decl) checkOptions(acc *validate.Errors) bool {
 
 // Area is one owner of settings: a module (Core false) or a core area (Core true).
 type Area struct {
-	Name  string // a module name or a core area name; "regional" is this package's own
+	Name  string // a module name or a core area name
 	Core  bool
 	Decls []Decl
 	// Terms are the words this area lets a regional rename (D57). Keys are one flat
@@ -409,4 +418,18 @@ func checkError(field string, err error, secretValue bool) []error {
 		out[i] = fieldError(field, fe.Code, fe.Params, reason)
 	}
 	return out
+}
+
+// safeField returns s cut and cleaned for use inside a field name that came from a client.
+func safeField(s string) string {
+	const limit = 64
+	if len(s) > limit {
+		s = s[:limit]
+	}
+	return strings.Map(func(r rune) rune {
+		if r == utf8.RuneError || unicode.IsControl(r) {
+			return '?'
+		}
+		return r
+	}, s)
 }

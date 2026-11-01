@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 // The regional's name and default language: the shipped defaults until
-// GET /api/settings/public answers (web-shell.md "Settings", settings.md).
+// GET /api/regional/public answers (web-shell.md "Settings", regional.md).
 export const DEFAULT_REGIONAL_NAME = "BMS";
 export const DEFAULT_LANGUAGE = "en";
 

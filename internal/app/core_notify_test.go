@@ -14,6 +14,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/notify"
 	"github.com/zedgama3/bms/internal/core/notify/notifytest"
+	"github.com/zedgama3/bms/internal/core/regional"
 	"github.com/zedgama3/bms/internal/core/settings"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/lib/secret"
@@ -25,8 +26,8 @@ type fakeRegional struct {
 	err   error
 }
 
-func (f *fakeRegional) Regional(context.Context) (settings.Regional, error) {
-	return settings.Regional{Name: "Quill Burn", PublicURL: "https://burn.example.org", Language: "en"}, f.err
+func (f *fakeRegional) Profile(context.Context) (regional.Profile, error) {
+	return regional.Profile{Name: "Quill Burn", PublicURL: "https://burn.example.org", Language: "en"}, f.err
 }
 
 func (f *fakeRegional) TermsFor(_ context.Context, lang string) (map[string]settings.Forms, error) {
@@ -45,7 +46,7 @@ func TestSiteSource_Table(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := &fakeRegional{}
-			site, err := siteSource{svc: f}.Site(t.Context(), notify.Language(tc.lang))
+			site, err := siteSource{reg: f, terms: f}.Site(t.Context(), notify.Language(tc.lang))
 			if err != nil {
 				t.Fatalf("Site: %v", err)
 			}
@@ -61,7 +62,7 @@ func TestSiteSource_Table(t *testing.T) {
 }
 
 func TestSiteSource_RegionalFails_KeepsTheKind(t *testing.T) {
-	_, err := siteSource{svc: &fakeRegional{err: errs.E("test", errs.Unavailable, errors.New("down"))}}.Site(t.Context(), "")
+	_, err := siteSource{reg: &fakeRegional{err: errs.E("test", errs.Unavailable, errors.New("down"))}, terms: &fakeRegional{}}.Site(t.Context(), "")
 	if !errs.Is(err, errs.Unavailable) {
 		t.Errorf("err = %v, want Unavailable", err)
 	}

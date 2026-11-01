@@ -241,7 +241,7 @@ func TestAssembly_CorePermsStartWithModulesRead(t *testing.T) {
 
 // coreOrder is the order in which the core's services plug in (app.md "How later core
 // services plug in"); coreParts must be a subsequence of it.
-var coreOrder = []string{"audit", "authz", "settings", "jobs", "auditlog", "identity", "people", "departments", "events", "notify", "files", "demo"}
+var coreOrder = []string{"audit", "authz", "settings", "jobs", "auditlog", "identity", "people", "departments", "events", "files", "regional", "notify", "demo"}
 
 func TestParts_OrderAndNames_Pinned(t *testing.T) {
 	pos := -1
@@ -886,8 +886,8 @@ func TestBuildParts_AgainstNoDatabase_SetsAuthenticatorRoutesAndRunnable(t *test
 			t.Errorf("route set %s has %d routes and %d bytes of fragment", rs.Module, len(rs.Routes), len(rs.OpenAPI))
 		}
 	}
-	if strings.Join(areas, ",") != "access,settings,jobs,audit,accounts,people,departments,events,notify" {
-		t.Errorf("route sets = %v, want access, settings, jobs, audit, accounts, people, departments, events, notify", areas)
+	if strings.Join(areas, ",") != "access,settings,jobs,audit,accounts,people,departments,events,regional,notify" {
+		t.Errorf("route sets = %v, want access, settings, jobs, audit, accounts, people, departments, events, regional, notify", areas)
 	}
 	var runnables []string
 	for _, r := range a.runnables {
@@ -901,24 +901,25 @@ func TestBuildParts_AgainstNoDatabase_SetsAuthenticatorRoutesAndRunnable(t *test
 	}
 }
 
-// settings' public routes (the public document, the stylesheet and, from 2026-10-21, the logo) need no session; every other one is signed in and checks its
-// permission inside the use case.
-func TestSettingsRoutes_PublicOnlyThePublicDocumentTheStylesheetAndTheLogo(t *testing.T) {
+// regional's public routes (the public document, the stylesheet and the logo) need no
+// session; every other one, and every one of settings, is signed in and checks its permission
+// inside the use case (boundaries step 7: these three moved from /api/settings to /api/regional).
+func TestRegionalRoutes_PublicOnlyThePublicDocumentTheStylesheetAndTheLogo(t *testing.T) {
 	a := builtCore(t)
-	var got []string
+	public := map[string][]string{}
 	for _, rs := range a.routeSets {
-		if rs.Module != "settings" {
-			continue
-		}
 		for _, r := range rs.Routes {
-			if r.Access == module.AccessPublic {
-				got = append(got, r.Method+" "+r.Pattern)
+			if r.Access == module.AccessPublic && (rs.Module == "settings" || rs.Module == "regional") {
+				public[rs.Module] = append(public[rs.Module], r.Method+" "+r.Pattern)
 			}
 		}
 	}
-	slices.Sort(got)
-	if want := []string{"GET /logo", "GET /public", "GET /theme.css"}; !slices.Equal(got, want) {
-		t.Errorf("public settings routes = %v, want %v", got, want)
+	slices.Sort(public["regional"])
+	if want := []string{"GET /logo", "GET /public", "GET /theme.css"}; !slices.Equal(public["regional"], want) {
+		t.Errorf("public regional routes = %v, want %v", public["regional"], want)
+	}
+	if len(public["settings"]) != 0 {
+		t.Errorf("public settings routes = %v, want none", public["settings"])
 	}
 }
 

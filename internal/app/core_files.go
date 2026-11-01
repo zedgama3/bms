@@ -14,14 +14,12 @@ import (
 	"github.com/zedgama3/bms/internal/config"
 	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/files"
-	"github.com/zedgama3/bms/internal/core/files/filesettings"
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/jobs"
 	"github.com/zedgama3/bms/internal/core/objects"
 	"github.com/zedgama3/bms/internal/core/objects/disk"
 	"github.com/zedgama3/bms/internal/core/objects/s3"
 	"github.com/zedgama3/bms/internal/core/people"
-	"github.com/zedgama3/bms/internal/core/settings"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/model"
 )
@@ -39,7 +37,7 @@ var filesPart = part{
 const filesArea = "files"
 
 // filesSettings is the settings area of the files.* keys.
-const filesSettings = filesettings.Area
+const filesSettings = filesArea
 
 // verifyTimeout bounds `bms files verify`, which heads every object.
 const verifyTimeout = 30 * time.Minute
@@ -130,46 +128,31 @@ func buildFiles(_ context.Context, a *assembly) error {
 	if err != nil {
 		return err
 	}
-	inner := filesPolicy{r: rd}
-	a.filesPolicy = inner
-	svc, err := files.New(files.Options{
-		DB:      a.dbc,
-		Clock:   a.clock,
-		Logger:  a.component("files"),
-		Tracer:  tr,
-		Meter:   m,
-		Audit:   rec,
-		Actor:   identity.Actor,
-		Objects: store,
-		TempDir: filepath.Join(dir, "tmp"),
-		Policy:  lazyFilesPolicy{a: a}, // the settings-backed policy, capped by demo mode (core_demo.go)
-	})
+	a.filesReader = rd
+	opts := files.Options{
+		DB:       a.dbc,
+		Clock:    a.clock,
+		Logger:   a.component("files"),
+		Tracer:   tr,
+		Meter:    m,
+		Audit:    rec,
+		Actor:    identity.Actor,
+		Objects:  store,
+		TempDir:  filepath.Join(dir, "tmp"),
+		Settings: rd,
+	}
+	if a.cfg.Demo.Enabled {
+		// Transitional: the same settings, capped by the demo service (core_demo.go);
+		// Options.Ceiling replaces it in step 10. Without demo mode files maps its settings itself.
+		opts.Policy = lazyFilesPolicy{a: a}
+	}
+	svc, err := files.New(opts)
 	if err != nil {
 		return err //nolint:wrapcheck // files.New names itself
 	}
 	a.files = svc
 	a.deps.files = svc
 	return nil
-}
-
-// filesPolicy is files.PolicySource over the files settings area: read at use-case time, so
-// a changed setting applies to the next upload.
-type filesPolicy struct{ r settings.Reader }
-
-func (p filesPolicy) Policy(ctx context.Context) (files.Policy, error) {
-	maxBytes, err := p.r.Int(ctx, filesettings.KeyMaxBytes)
-	if err != nil {
-		return files.Policy{}, fmt.Errorf("files.%s: %w", filesettings.KeyMaxBytes, err)
-	}
-	quota, err := p.r.Int(ctx, filesettings.KeyQuotaBytes)
-	if err != nil {
-		return files.Policy{}, fmt.Errorf("files.%s: %w", filesettings.KeyQuotaBytes, err)
-	}
-	perRecord, err := p.r.Int(ctx, filesettings.KeyMaxPerRecord)
-	if err != nil {
-		return files.Policy{}, fmt.Errorf("files.%s: %w", filesettings.KeyMaxPerRecord, err)
-	}
-	return files.Policy{MaxBytes: maxBytes, QuotaBytes: quota, MaxPerRecord: int(perRecord)}, nil
 }
 
 // linkFiles registers the two jobs through the jobs runner and the start-up probe as a

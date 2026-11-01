@@ -28,7 +28,7 @@ is tracked in [design/README.md](design/README.md).
      ┌──────────────────────────────────────────────────────────────────────────┐
      │ core contracts: module · db · identity · authz · people · departments ·  │   core
      │ events · signals · notify · audit · files · jobs · settings · privacy ·  │
-     │ telemetry · demo · auditlog                                              │
+     │ telemetry · demo · auditlog · regional                                   │
      └──────────────────────────────────┬───────────────────────────────────────┘
                                         │ implemented by
        local, oidc (identity) · email (notify) · disk, s3-compatible (objects) · postgres (db)
@@ -82,7 +82,6 @@ A row is one type in `internal/app` (or one top-level function, for a closure th
 | Type | Waits for | Reason |
 |---|---|---|
 | `lazyNames` | a.names, which people's part sets | identity needs the playa name and people needs identity (identity ↔ people); removed in step 8. |
-| `lazyFilesStore` | a.files, which files' part sets after settings is built | settings holds the logo in files, and files reads its policy from settings (settings ↔ files); removed in step 7. |
 | `lazyAlerter` | notify, which is built after identity | the alert is identity's reaction to its own event and needs notify, which needs identity (identity ↔ notify); removed in step 9. |
 | `lazyGuard` | a.demo, which the demo part sets last | identity asks demo whether an account is protected, and demo creates accounts through identity (identity ↔ demo); removed in step 10. |
 | `lazyFilesPolicy` | a.demo, which the demo part sets last | files takes demo's cap, and demo's reset clears files (files ↔ demo); removed in step 10. |
@@ -238,10 +237,15 @@ A row is one type in `internal/app` (or one top-level function, for a closure th
 - **Owns:** `Search`, `Export` and `CountAbout` behind `audit.search` and `audit.export`; the settings `audit.retention` and `audit.self_view` (it replaces the deleted `auditsettings`); the `audit.purge` job (0 keeps forever, otherwise purge older than now minus the retention, writing copy only); the routes `GET /api/audit/entries` and `GET /api/audit/people/{person}/views`. Split from `audit` because it needs `authz.Lookup`, `settings` and `jobs`, which are built after the recorder. Spec: `plan/design/auditlog.md`.
 - **Doesn't do:** write entries, the spool, the table or its guard (`audit`); decide permissions (`authz`); schedule jobs (`jobs`); export and deletion across modules (`datarights`, which calls `Export` and `CountAbout`).
 
+### regional: the regional's public face
+- **Purpose:** hold the regional's own profile, brand colours and logo, and the public document the shell boots from.
+- **Owns:** the `regional.*` settings area (`name`, `contact_email`, `public_url`, `language`, `timezone`, `color_primary`, `color_primary_dark`) and `Profile`; the public document, `theme.css`, and the logo (`LogoRef`, `MaxLogoBytes`, `SetLogo`, `RemoveLogo`, `OpenLogo`), served under `/api/regional/` (`GET public|theme.css|logo` public; `PUT|DELETE logo` with `settings.manage`); audit actions `regional.logo.changed|removed` (old entries keep `settings.logo.*`). The logo's files owner stays `"settings"`. Split from `settings` so that `settings` no longer imports `files`. Spec: `plan/design/regional.md`.
+- **Doesn't do:** store values, the revision, terminology or the admin screens (`settings`); store or serve bytes (`files`); send mail (`notify`, which reads `Profile`); permissions (`settings.manage` is `settings`'); personal data.
+
 ### files: attachments
 - **Purpose:** keep the bytes a module attaches to one of its records, with the record's permissions deciding who may read them.
-- **Owns:** the object-store contract `objects.Store` (a simplified S3: bucket, key, Put/Get/Head/Delete/List, SHA-256 verified at Put; never the database, D43) with the `disk` (default) and `s3` implementations and their conformance suite; the `Store` seam modules get as `Deps.Files`; the metadata (`core.file`, `core.file_tombstone`); the catalogue of accepted kinds (images and PDF), metadata stripping, the safe `Serve`, the audit of content reads, the person-data export and deletion backstop, the reap and sweep jobs, `bms files verify`, settings `files.max_bytes|quota_bytes|max_per_record`, config `files.*`. Spec: `plan/design/files.md`.
-- **Doesn't do:** permissions (the owning module), routes and screens (the owner; the logo is settings'), retention (the owner's job), running a store over the network (MinIO, Garage, SeaweedFS, Ceph through `s3`), keeping a copy's objects in sync (the operator; later `switchover`), virus scanning, thumbnails.
+- **Owns:** the object-store contract `objects.Store` (a simplified S3: bucket, key, Put/Get/Head/Delete/List, SHA-256 verified at Put; never the database, D43) with the `disk` (default) and `s3` implementations and their conformance suite; the `Store` seam modules get as `Deps.Files`; the metadata (`core.file`, `core.file_tombstone`); the catalogue of accepted kinds (images and PDF), metadata stripping, the safe `Serve`, the audit of content reads, the person-data export and deletion backstop, the reap and sweep jobs, `bms files verify`, the settings `files.max_bytes|quota_bytes|max_per_record` (it declares them as `files.Settings`, replacing the deleted `filesettings`, and reads them through its own `settings.Reader`), config `files.*`. Spec: `plan/design/files.md`.
+- **Doesn't do:** permissions (the owning module), routes and screens (the owner; the logo is `regional`'s), retention (the owner's job), running a store over the network (MinIO, Garage, SeaweedFS, Ceph through `s3`), keeping a copy's objects in sync (the operator; later `switchover`), virus scanning, thumbnails.
 
 ### jobs: background work
 - **Purpose:** run scheduled and deferred work (reminders, retention) once, with retries.
@@ -280,8 +284,8 @@ A row is one type in `internal/app` (or one top-level function, for a closure th
 ### settings: what a regional configures at runtime
 - **Purpose:** typed, validated settings per module and for the core (terminology, brand colours,
   default language (D28), retention periods (D30; default: keep forever)), editable by admins.
-- **Owns:** the declaration types (`Kind`, `Decl`, `Area`), `core.setting` and its revision, terminology (four forms per term per language), `regional.*`, the sealed `Secret` kind, scoped `Reader`s, `Regional` and `TermsFor`, the public document and `theme.css`, the settings screens, the regional's logo (`LogoRef`, `GET|PUT|DELETE /api/settings/logo`, `MaxLogoBytes`, `settings.logo.*` audit actions; D44, D47).
-- **Doesn't do:** process configuration (`config`), the meaning of other areas' keys (their specs), enforcing retention (`jobs`), translations (web-shell), signals on change, storing the logo's bytes (`files`; the logo's routes and screen field are settings', D44). SVG sanitising (`files`, Later; D47).
+- **Owns:** the declaration types (`Kind`, `Decl`, `Area`), `core.setting` and its revision, terminology (four forms per term per language), the sealed `Secret` kind, scoped `Reader`s, `TermsFor`, `Revise` (the revision lock as a seam for `regional`), the settings screens (including the Regional form and the logo field, which call `regional`'s routes). It declares no area of its own to the core: `regional`, `accounts`, `audit`, `files` and the rest declare theirs and `app` passes them in.
+- **Doesn't do:** process configuration (`config`), the meaning of other areas' keys (their specs), enforcing retention (`jobs`), translations (web-shell), signals on change, the regional's profile, public document, `theme.css` and logo (`regional`), storing the logo's bytes (`files`), SVG sanitising (`files`, Later; D47). `settings` no longer imports `files`.
 
 ## Delivery
 

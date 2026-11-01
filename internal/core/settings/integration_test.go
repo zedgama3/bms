@@ -624,46 +624,20 @@ func TestSet_Regional_Table(t *testing.T) {
 func TestSet_Regional_PublicURLTrailingSlashRemoved(t *testing.T) {
 	r := newIRig(t)
 	r.mustSet("regional.public_url", "https://burn.example.org/")
-	got, err := r.svc.Regional(ctxT(t))
+	got, err := r.reader("regional").Text(ctxT(t), "public_url")
 	wantNoErr(t, err)
-	if got.PublicURL != "https://burn.example.org" {
-		t.Errorf("PublicURL = %q", got.PublicURL)
+	if got != "https://burn.example.org" {
+		t.Errorf("public_url = %q", got)
 	}
 	r.mustSet("regional.public_url", "http://example.org/burn/")
-	got = first(r.svc.Regional(ctxT(t)))
-	if got.PublicURL != "http://example.org/burn" {
-		t.Errorf("PublicURL = %q", got.PublicURL)
+	if got = first(r.reader("regional").Text(ctxT(t), "public_url")); got != "http://example.org/burn" {
+		t.Errorf("public_url = %q", got)
 	}
 	// Saving the same URL with a slash again is a no-op.
 	rev := r.dbRevision()
 	r.mustSet("regional.public_url", "http://example.org/burn")
 	if r.dbRevision() != rev {
 		t.Error("a normalised-equal URL bumped the revision")
-	}
-}
-
-func TestRegional_DefaultsAndOverrides(t *testing.T) {
-	r := newIRig(t)
-	ctx := ctxT(t)
-	got, err := r.svc.Regional(ctx)
-	wantNoErr(t, err)
-	if got.Name != "BMS" || got.Language != "en" || got.ContactEmail != "" || got.PublicURL != "" || got.Timezone != "" {
-		t.Errorf("defaults = %+v", got)
-	}
-	if !slices.Equal(got.Languages, settings.Languages) {
-		t.Errorf("Languages = %v", got.Languages)
-	}
-	got.Languages[0] = "zz" // a copy: the next call is unaffected
-	again := first(r.svc.Regional(ctx))
-	if again.Languages[0] != "en" {
-		t.Error("Regional shares its Languages slice with the caller")
-	}
-
-	r.mustSet("regional.name", "Camp Quill", "regional.contact_email", "hello@example.org",
-		"regional.language", "es", "regional.timezone", "America/Denver")
-	got = first(r.svc.Regional(ctx))
-	if got.Name != "Camp Quill" || got.ContactEmail != "hello@example.org" || got.Language != "es" || got.Timezone != "America/Denver" {
-		t.Errorf("Regional = %+v", got)
 	}
 }
 
@@ -695,12 +669,9 @@ func TestSet_ReadOnly_ReturnsUnavailable(t *testing.T) {
 	if len(r.rec.Recorded()) != 0 {
 		t.Error("a refused write left audit entries")
 	}
-	// Reads keep working: the snapshot, the public document and the admin document.
+	// Reads keep working: the snapshot and the admin document.
 	if v, err := r.reader("mail").Int(ctx, "port"); err != nil || v != 2525 {
 		t.Errorf("read on a read-only copy: %v, %v", v, err)
-	}
-	if _, err := r.svc.Public(ctx); err != nil {
-		t.Errorf("Public on a read-only copy: %v", err)
 	}
 	if _, err := r.svc.Document(r.actx()); err != nil {
 		t.Errorf("Document on a read-only copy: %v", err)
@@ -813,10 +784,7 @@ func TestSnapshot_LoadsOnce_ReadsDoNoIO(t *testing.T) {
 	for range 50 {
 		ignore(r.reader("mail").Int(ctx, "port"))
 		ignore(r.reader("hello").Text(ctx, "greeting"))
-		ignore(r.svc.Regional(ctx))
 		ignore(r.svc.TermsFor(ctx, "en"))
-		ignore(r.svc.Public(ctx))
-		ignore(r.svc.ThemeCSS(ctx))
 		ignore(r.reader("mail").Secret(ctx, "password"))
 	}
 	if got := f.transactions(); got != loaded {
@@ -1025,28 +993,6 @@ func TestSetTerms_OverridesApplyPerLanguage(t *testing.T) {
 		t.Error("an en override leaked into es")
 	}
 
-	pub, err := r.svc.Public(ctx)
-	wantNoErr(t, err)
-	flat := pub.Terms["en"]
-	for k, want := range map[string]string{
-		"term_department": "team", "term_department_plural": "teams",
-		"term_department_title": "Team", "term_department_plural_title": "Teams",
-		"term_event": "event", "term_event_plural": "events", "term_event_title": "Event", "term_event_plural_title": "Events",
-	} {
-		if flat[k] != want {
-			t.Errorf("Public.Terms[en][%s] = %q, want %q", k, flat[k], want)
-		}
-	}
-	for _, lang := range settings.Languages {
-		for _, term := range settings.CoreTerms {
-			for _, suffix := range []string{"", "_plural", "_title", "_plural_title"} {
-				if pub.Terms[lang]["term_"+term+suffix] == "" {
-					t.Errorf("Public.Terms[%s][term_%s%s] is empty", lang, term, suffix)
-				}
-			}
-		}
-	}
-
 	_, err = r.svc.SetTerms(r.actx(), "es", termsOf(map[string]settings.FormChanges{"department": {Singular: str("equipo")}}))
 	wantNoErr(t, err)
 	en2 := first(r.svc.TermsFor(ctx, "en"))
@@ -1246,15 +1192,9 @@ func TestAdminUseCases_PermissionMatrix(t *testing.T) {
 			check(t, err, p.wrt)
 		})
 	}
-	// Public reads and module readers need no permission and no session.
-	if _, err := r.svc.Public(t.Context()); err != nil {
-		t.Errorf("Public: %v", err)
-	}
-	if _, err := r.svc.ThemeCSS(t.Context()); err != nil {
-		t.Errorf("ThemeCSS: %v", err)
-	}
-	if _, err := r.svc.Regional(t.Context()); err != nil {
-		t.Errorf("Regional: %v", err)
+	// Module readers need no permission and no session (the public document is regional's).
+	if _, err := r.svc.Revision(t.Context()); err != nil {
+		t.Errorf("Revision: %v", err)
 	}
 	if _, err := r.reader("mail").Int(t.Context(), "port"); err != nil {
 		t.Errorf("Reader.Int without a session: %v", err)

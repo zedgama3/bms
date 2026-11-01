@@ -223,7 +223,7 @@ describe("/settings (regional)", () => {
     await waitFor(() =>
       expect(
         fetchMock.mock.calls.filter(
-          ([r]) => r.method === "GET" && new URL(r.url).pathname === "/api/settings/public",
+          ([r]) => r.method === "GET" && new URL(r.url).pathname === "/api/regional/public",
         ).length,
       ).toBeGreaterThan(1),
     );
@@ -831,13 +831,13 @@ describe("the logo section", () => {
   function logoServer(initial = "", over: Routes = {}) {
     const state = { logo: initial, puts: 0, deletes: 0 };
     const routes = base({
-      "GET /api/settings/public": () => json(publicBody(state.logo)),
-      "PUT /api/settings/logo": () => {
+      "GET /api/regional/public": () => json(publicBody(state.logo)),
+      "PUT /api/regional/logo": () => {
         state.puts++;
         state.logo = "file-" + String(state.puts);
         return json({ revision: 6, logo: state.logo });
       },
-      "DELETE /api/settings/logo": () => {
+      "DELETE /api/regional/logo": () => {
         state.deletes++;
         state.logo = "";
         return json({ revision: 7, logo: "" });
@@ -886,7 +886,7 @@ describe("the logo section", () => {
     const { routes } = logoServer("abc123");
     mountApp({ path: "/settings", session: ident(ADMIN), routes });
     const img = await screen.findByRole("img", { name: "The current logo" });
-    expect(img).toHaveAttribute("src", "/api/settings/logo?v=abc123");
+    expect(img).toHaveAttribute("src", "/api/regional/logo?v=abc123");
     expect(img.className).toMatch(/max-h-24 w-auto/);
     expect(within(section()).getByRole("button", { name: "Replace" })).toBeInTheDocument();
     fireEvent.error(img);
@@ -904,15 +904,15 @@ describe("the logo section", () => {
     await userEvent.click(within(section()).getByRole("button", { name: "Upload" }));
     expect(await screen.findByText("Logo updated")).toBeInTheDocument();
     const put = f.fetchMock.mock.calls.find(([r]) => r.method === "PUT")![0];
-    expect(new URL(put.url).pathname).toBe("/api/settings/logo");
+    expect(new URL(put.url).pathname).toBe("/api/regional/logo");
     const sent = await put.clone().text();
     expect(sent).toMatch(/name="file"/);
     const img = await screen.findByRole("img", { name: "The current logo" });
-    expect(img).toHaveAttribute("src", "/api/settings/logo?v=file-1");
+    expect(img).toHaveAttribute("src", "/api/regional/logo?v=file-1");
     const header = screen.getByRole("banner");
     expect(await within(header).findByRole("img", { name: "Dust Bowl" })).toHaveAttribute(
       "src",
-      "/api/settings/logo?v=file-1",
+      "/api/regional/logo?v=file-1",
     );
     expect(within(section()).getByRole("button", { name: "Replace" })).toBeDisabled();
     expect(screen.queryByText(/Chosen file/)).not.toBeInTheDocument();
@@ -937,7 +937,7 @@ describe("the logo section", () => {
   for (const [code, status, text, extra] of fieldCases) {
     it(`puts the server's ${code} on the file input`, async () => {
       const { routes } = logoServer("", {
-        "PUT /api/settings/logo": () =>
+        "PUT /api/regional/logo": () =>
           problem(status, {
             code: "invalid",
             fields: [{ field: "file", code, reason: "r", ...extra }],
@@ -962,7 +962,7 @@ describe("the logo section", () => {
 
   it("shows the quota as the site having no room, for a 409", async () => {
     const { routes } = logoServer("", {
-      "PUT /api/settings/logo": () =>
+      "PUT /api/regional/logo": () =>
         problem(409, {
           code: "conflict",
           fields: [{ field: "file", code: "quota", reason: "r", params: { max: "1" } }],
@@ -979,7 +979,7 @@ describe("the logo section", () => {
 
   it("shows a 409 with no field as the quota too", async () => {
     const { routes } = logoServer("", {
-      "PUT /api/settings/logo": () => problem(409, { code: "conflict" }),
+      "PUT /api/regional/logo": () => problem(409, { code: "conflict" }),
     });
     mountApp({ path: "/settings", session: ident(ADMIN), routes });
     await screen.findByRole("heading", { level: 2, name: "Logo" });
@@ -992,7 +992,7 @@ describe("the logo section", () => {
 
   it("shows a 413 as too large with the known limit", async () => {
     const { routes } = logoServer("", {
-      "PUT /api/settings/logo": () => new Response("big", { status: 413 }),
+      "PUT /api/regional/logo": () => new Response("big", { status: 413 }),
     });
     mountApp({ path: "/settings", session: ident(ADMIN), routes });
     await screen.findByRole("heading", { level: 2, name: "Logo" });
@@ -1005,7 +1005,7 @@ describe("the logo section", () => {
 
   it("says the copy is read-only on a read_only answer and keeps the file", async () => {
     const { routes } = logoServer("", {
-      "PUT /api/settings/logo": () => problem(503, { code: "read_only" }),
+      "PUT /api/regional/logo": () => problem(503, { code: "read_only" }),
     });
     mountApp({ path: "/settings", session: ident(ADMIN), routes });
     await screen.findByRole("heading", { level: 2, name: "Logo" });
@@ -1022,7 +1022,7 @@ describe("the logo section", () => {
 
   it("replaces the controls with a note when the installation has no file store (501)", async () => {
     const { routes } = logoServer("", {
-      "PUT /api/settings/logo": () => problem(501, { code: "unsupported" }),
+      "PUT /api/regional/logo": () => problem(501, { code: "unsupported" }),
     });
     mountApp({ path: "/settings", session: ident(ADMIN), routes });
     await screen.findByRole("heading", { level: 2, name: "Logo" });
@@ -1035,7 +1035,7 @@ describe("the logo section", () => {
 
   it("shows the generic error with its reference when the store is unreachable (503)", async () => {
     const { routes } = logoServer("", {
-      "PUT /api/settings/logo": () =>
+      "PUT /api/regional/logo": () =>
         problem(503, { code: "unavailable", ref: "AB12-CD34" }, { "Retry-After": "5" }),
     });
     mountApp({ path: "/settings", session: ident(ADMIN), routes });
@@ -1051,7 +1051,7 @@ describe("the logo section", () => {
 
   it("shows an error summary for a 403 and for a network failure", async () => {
     const { routes } = logoServer("", {
-      "PUT /api/settings/logo": () => problem(403, { code: "permission", ref: "AB12-CD34" }),
+      "PUT /api/regional/logo": () => problem(403, { code: "permission", ref: "AB12-CD34" }),
     });
     mountApp({ path: "/settings", session: ident(ADMIN), routes });
     await screen.findByRole("heading", { level: 2, name: "Logo" });
@@ -1076,7 +1076,7 @@ describe("the logo section", () => {
 
   it("clears the upload's error when another file is picked", async () => {
     const { routes } = logoServer("", {
-      "PUT /api/settings/logo": () => problem(500, { code: "internal", ref: "AB12-CD34" }),
+      "PUT /api/regional/logo": () => problem(500, { code: "internal", ref: "AB12-CD34" }),
     });
     mountApp({ path: "/settings", session: ident(ADMIN), routes });
     await screen.findByRole("heading", { level: 2, name: "Logo" });
@@ -1089,8 +1089,8 @@ describe("the logo section", () => {
 
   it("does not show a failed upload's error once a removal starts", async () => {
     const { routes } = logoServer("abc123", {
-      "PUT /api/settings/logo": () => problem(500, { code: "internal", ref: "AB12-CD34" }),
-      "DELETE /api/settings/logo": () => problem(500, { code: "internal", ref: "CD34-EF56" }),
+      "PUT /api/regional/logo": () => problem(500, { code: "internal", ref: "AB12-CD34" }),
+      "DELETE /api/regional/logo": () => problem(500, { code: "internal", ref: "CD34-EF56" }),
     });
     mountApp({ path: "/settings", session: ident(ADMIN), routes });
     await screen.findByRole("img", { name: "The current logo" });
@@ -1106,7 +1106,7 @@ describe("the logo section", () => {
 
   it("moves focus to the Logo heading when the 501 removes the controls, and announces it", async () => {
     const { routes } = logoServer("", {
-      "PUT /api/settings/logo": () => problem(501, { code: "unsupported" }),
+      "PUT /api/regional/logo": () => problem(501, { code: "unsupported" }),
     });
     mountApp({ path: "/settings", session: ident(ADMIN), routes });
     await screen.findByRole("heading", { level: 2, name: "Logo" });
@@ -1121,7 +1121,7 @@ describe("the logo section", () => {
 
   it("does the same when the removal answers 501, closing the dialog", async () => {
     const { routes } = logoServer("abc123", {
-      "DELETE /api/settings/logo": () => problem(501, { code: "unsupported" }),
+      "DELETE /api/regional/logo": () => problem(501, { code: "unsupported" }),
     });
     mountApp({ path: "/settings", session: ident(ADMIN), routes });
     await screen.findByRole("img", { name: "The current logo" });
@@ -1186,7 +1186,7 @@ describe("the logo section", () => {
 
   it("shows the error when removing fails and keeps the logo", async () => {
     const { routes } = logoServer("abc123", {
-      "DELETE /api/settings/logo": () => problem(500, { code: "internal", ref: "AB12-CD34" }),
+      "DELETE /api/regional/logo": () => problem(500, { code: "internal", ref: "AB12-CD34" }),
     });
     mountApp({ path: "/settings", session: ident(ADMIN), routes });
     await screen.findByRole("img", { name: "The current logo" });

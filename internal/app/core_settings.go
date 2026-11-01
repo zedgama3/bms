@@ -7,10 +7,11 @@ import (
 	"log/slog"
 
 	"github.com/zedgama3/bms/internal/core/auditlog"
-	"github.com/zedgama3/bms/internal/core/files/filesettings"
+	"github.com/zedgama3/bms/internal/core/files"
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/notify"
 	"github.com/zedgama3/bms/internal/core/people"
+	"github.com/zedgama3/bms/internal/core/regional"
 	"github.com/zedgama3/bms/internal/core/settings"
 	"github.com/zedgama3/bms/internal/lib/errs"
 )
@@ -70,7 +71,6 @@ func buildSettings(_ context.Context, a *assembly) error {
 		Audit:      rec,
 		Authz:      a.authzLookup,
 		Actor:      identity.Actor,
-		Files:      lazyFilesStore{a: a},
 		Areas:      settingsAreas(a),
 		SealingKey: a.cfg.Settings.SealingKey,
 	})
@@ -87,17 +87,18 @@ func buildSettings(_ context.Context, a *assembly) error {
 	return nil
 }
 
-// settingsAreas is every area but "regional": the core's, then one per enabled module that
+// settingsAreas is every area: the core's (regional first, the area its package declares), then one per enabled module that
 // declares a setting or a term (D57), in build order, carrying its terms. A module that
 // declares neither has no area, so its screen list stays empty of it (provision gives a
 // module a Reader only when it declares a setting: a terms-only module has no key to read).
 func settingsAreas(a *assembly) []settings.Area {
 	areas := []settings.Area{
+		{Name: regional.Area, Core: true, Decls: regional.Settings},
 		{Name: accountsSettings, Core: true, Decls: identity.Settings, Check: identity.CheckSettings},
 		{Name: peopleSettings, Core: true, Decls: people.Settings},
 		{Name: auditSettings, Core: true, Decls: auditlog.Settings},
 		{Name: notifySettings, Core: true, Decls: notify.Settings},
-		{Name: filesSettings, Core: true, Decls: filesettings.Settings},
+		{Name: filesSettings, Core: true, Decls: files.Settings},
 	}
 	if a.plan == nil {
 		return areas

@@ -24,9 +24,12 @@ import (
 	"github.com/zedgama3/bms/internal/core/files"
 	"github.com/zedgama3/bms/internal/core/objects"
 	"github.com/zedgama3/bms/internal/core/objects/objectstest"
+	"github.com/zedgama3/bms/internal/core/settings"
+	"github.com/zedgama3/bms/internal/core/settings/settingstest"
 	"github.com/zedgama3/bms/internal/core/telemetry/telemetrytest"
 	"github.com/zedgama3/bms/internal/lib/clock"
 	"github.com/zedgama3/bms/internal/lib/errs"
+	"github.com/zedgama3/bms/internal/lib/secret"
 	"github.com/zedgama3/bms/internal/lib/validate"
 	"github.com/zedgama3/bms/internal/model"
 )
@@ -122,22 +125,74 @@ func actorFromCtx(ctx context.Context) (authz.Actor, bool) {
 
 // ---- policy ----
 
+// policyBox is a settings.Reader for the "files" area that tests change as a files.Policy
+// (set) or make fail (err). Reads are answered from a settingstest.Fake loaded with the
+// current policy, so files' own key mapping is what the tests exercise.
 type policyBox struct {
 	mu  sync.Mutex
 	p   files.Policy
 	err error
 }
 
-func (b *policyBox) Policy(context.Context) (files.Policy, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.p, b.err
-}
+var _ settings.Reader = (*policyBox)(nil)
 
 func (b *policyBox) set(p files.Policy) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.p = p
+}
+
+func (b *policyBox) fake() (*settingstest.Fake, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.err != nil {
+		return nil, b.err
+	}
+	f := settingstest.NewFake("files", files.Settings)
+	f.Set("max_bytes", strconv.FormatInt(b.p.MaxBytes, 10))
+	f.Set("quota_bytes", strconv.FormatInt(b.p.QuotaBytes, 10))
+	f.Set("max_per_record", strconv.Itoa(b.p.MaxPerRecord))
+	return f, nil
+}
+
+func (b *policyBox) Bool(ctx context.Context, k string) (bool, error) {
+	f, err := b.fake()
+	if err != nil {
+		return false, err
+	}
+	return f.Bool(ctx, k)
+}
+
+func (b *policyBox) Int(ctx context.Context, k string) (int64, error) {
+	f, err := b.fake()
+	if err != nil {
+		return 0, err
+	}
+	return f.Int(ctx, k)
+}
+
+func (b *policyBox) Duration(ctx context.Context, k string) (time.Duration, error) {
+	f, err := b.fake()
+	if err != nil {
+		return 0, err
+	}
+	return f.Duration(ctx, k)
+}
+
+func (b *policyBox) Text(ctx context.Context, k string) (string, error) {
+	f, err := b.fake()
+	if err != nil {
+		return "", err
+	}
+	return f.Text(ctx, k)
+}
+
+func (b *policyBox) Secret(ctx context.Context, k string) (secret.Secret, error) {
+	f, err := b.fake()
+	if err != nil {
+		return secret.Secret{}, err
+	}
+	return f.Secret(ctx, k)
 }
 
 // ---- a store that fails on demand ----
@@ -301,7 +356,7 @@ func newRig(t testing.TB, opts ...rigOption) *rig {
 	r.store = newFault(r.inner)
 	o := files.Options{
 		DB: r.db, Clock: r.clk, Logger: r.cap.Logger(), Tracer: r.cap.Tracer("files"), Meter: r.cap.Meter("files"),
-		Audit: r.audit, Actor: actorFromCtx, Objects: r.store, TempDir: r.tmp, Policy: r.policy,
+		Audit: r.audit, Actor: actorFromCtx, Objects: r.store, TempDir: r.tmp, Settings: r.policy,
 	}
 	for _, f := range opts {
 		f(r, &o)

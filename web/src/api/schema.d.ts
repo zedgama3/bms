@@ -1284,6 +1284,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/regional/logo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The regional's logo (PNG, JPEG or WebP). No session needed. The shell requests it as /api/regional/logo?v=<logo>, the file ID from the public document; the query is ignored. ETag is the image's SHA-256 and a matching If-None-Match answers 304. 404 when there is no logo; 503 with Retry-After on a copy that has not yet received the image. */
+        get: operations["regionalLogo"];
+        /** Replace the logo. Needs settings.manage. multipart/form-data with one file part named file (PNG, JPEG or WebP by its bytes, at most 2 MiB; metadata is removed). Field errors use the field file: too_large {max}, type, malformed, required. 409 with code quota when the site is out of file space; 503 read_only on a read-only copy. */
+        put: operations["regionalSetLogo"];
+        post?: never;
+        /** Remove the logo. Needs settings.manage. With no logo it changes nothing and answers the current revision and an empty logo. 503 read_only on a read-only copy. */
+        delete: operations["regionalRemoveLogo"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/regional/public": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The regional's public values and the terms in every language. No session needed. ETag is derived from the settings revision; a matching If-None-Match answers 304. */
+        get: operations["regionalPublic"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/regional/theme.css": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The regional's brand colours as a stylesheet; an empty body when both are the shipped palette. No session needed. ETag and 304 as for /public. */
+        get: operations["regionalTheme"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings/": {
         parameters: {
             query?: never;
@@ -1293,42 +1346,6 @@ export interface paths {
         };
         /** Every declared setting with its default and value. Needs settings.read. A secret is reported as secret_set only. */
         get: operations["settingsDocument"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/settings/logo": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** The regional's logo (PNG, JPEG or WebP). No session needed. The shell requests it as /api/settings/logo?v=<logo>, the file ID from the public document; the query is ignored. ETag is the image's SHA-256 and a matching If-None-Match answers 304. 404 when there is no logo; 501 when the installation has no file store; 503 with Retry-After on a copy that has not yet received the image. */
-        get: operations["settingsLogo"];
-        /** Replace the logo. Needs settings.manage. multipart/form-data with one file part named file (PNG, JPEG or WebP by its bytes, at most 2 MiB; metadata is removed). Field errors use the field file: too_large {max}, type, malformed, required. 409 with code quota when the site is out of file space; 501 when the installation has no file store; 503 read_only on a read-only copy. */
-        put: operations["settingsSetLogo"];
-        post?: never;
-        /** Remove the logo. Needs settings.manage. With no logo it changes nothing and answers the current revision and an empty logo. 501 when the installation has no file store; 503 read_only on a read-only copy. */
-        delete: operations["settingsRemoveLogo"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/settings/public": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** The regional's public values and the terms in every language. No session needed. ETag is derived from the settings revision; a matching If-None-Match answers 304. */
-        get: operations["settingsPublic"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1364,23 +1381,6 @@ export interface paths {
         get?: never;
         /** Change the forms of terms in one language, all or nothing. Needs settings.manage. A null or absent form is unchanged; reset names forms to put back to the default. */
         put: operations["settingsSetTerms"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/settings/theme.css": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** The regional's brand colours as a stylesheet; an empty body when both are the shipped palette. No session needed. ETag and 304 as for /public. */
-        get: operations["settingsTheme"];
-        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -2674,6 +2674,41 @@ export interface components {
             ref?: string;
             status: number;
         };
+        RegionalLogoResult: {
+            /** @description The file ID after the call; empty after a removal. */
+            logo: string;
+            /** Format: int64 */
+            revision: number;
+        };
+        RegionalLogoUpload: {
+            /**
+             * Format: binary
+             * @description The image: PNG, JPEG or WebP, at most 2 MiB (2097152 bytes). Send it as the only part.
+             */
+            file: string;
+        };
+        RegionalPublic: {
+            /** @description The regional's shared mailbox, shown to anyone; empty when none. */
+            contact_email: string;
+            /** @description The language before a person chooses. */
+            language: string;
+            languages: string[];
+            /** @description The logo's file ID; empty when there is none. Request /api/regional/logo?v=<logo>, so a replaced logo is a new URL. */
+            logo: string;
+            name: string;
+            /** @description No trailing slash; empty when unset. */
+            public_url: string;
+            /** @description Per language, the term arguments: term_<term>, term_<term>_plural, term_<term>_title, term_<term>_plural_title. */
+            terms: {
+                [key: string]: {
+                    [key: string]: string;
+                };
+            };
+            /** @description Whether /api/regional/theme.css has content. */
+            theme: boolean;
+            /** @description An IANA name; empty means the browser's zone. */
+            timezone: string;
+        };
         /** @enum {string} */
         Sensitivity: "public" | "internal" | "personal" | "sensitive";
         SettingsArea: {
@@ -2704,41 +2739,6 @@ export interface components {
             plural_title: string;
             singular: string;
             singular_title: string;
-        };
-        SettingsLogoResult: {
-            /** @description The file ID after the call; empty after a removal. */
-            logo: string;
-            /** Format: int64 */
-            revision: number;
-        };
-        SettingsLogoUpload: {
-            /**
-             * Format: binary
-             * @description The image: PNG, JPEG or WebP, at most 2 MiB (2097152 bytes). Send it as the only part.
-             */
-            file: string;
-        };
-        SettingsPublic: {
-            /** @description The regional's shared mailbox, shown to anyone; empty when none. */
-            contact_email: string;
-            /** @description The language before a person chooses. */
-            language: string;
-            languages: string[];
-            /** @description The logo's file ID; empty when there is none. Request /api/settings/logo?v=<logo>, so a replaced logo is a new URL. */
-            logo: string;
-            name: string;
-            /** @description No trailing slash; empty when unset. */
-            public_url: string;
-            /** @description Per language, the term arguments: term_<term>, term_<term>_plural, term_<term>_title, term_<term>_plural_title. */
-            terms: {
-                [key: string]: {
-                    [key: string]: string;
-                };
-            };
-            /** @description Whether /api/settings/theme.css has content. */
-            theme: boolean;
-            /** @description An IANA name; empty means the browser's zone. */
-            timezone: string;
         };
         SettingsRevision: {
             /** Format: int64 */
@@ -6208,36 +6208,7 @@ export interface operations {
             };
         };
     };
-    settingsDocument: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The settings document. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SettingsDocument"];
-                };
-            };
-            /** @description An error. The body is a Problem. */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
-    };
-    settingsLogo: {
+    regionalLogo: {
         parameters: {
             query?: {
                 /** @description The logo's file ID, to version the URL; ignored. */
@@ -6278,7 +6249,7 @@ export interface operations {
             };
         };
     };
-    settingsSetLogo: {
+    regionalSetLogo: {
         parameters: {
             query?: never;
             header?: never;
@@ -6287,7 +6258,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["SettingsLogoUpload"];
+                "multipart/form-data": components["schemas"]["RegionalLogoUpload"];
             };
         };
         responses: {
@@ -6297,7 +6268,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SettingsLogoResult"];
+                    "application/json": components["schemas"]["RegionalLogoResult"];
                 };
             };
             /** @description An error. The body is a Problem. */
@@ -6311,7 +6282,7 @@ export interface operations {
             };
         };
     };
-    settingsRemoveLogo: {
+    regionalRemoveLogo: {
         parameters: {
             query?: never;
             header?: never;
@@ -6326,7 +6297,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SettingsLogoResult"];
+                    "application/json": components["schemas"]["RegionalLogoResult"];
                 };
             };
             /** @description An error. The body is a Problem. */
@@ -6340,7 +6311,7 @@ export interface operations {
             };
         };
     };
-    settingsPublic: {
+    regionalPublic: {
         parameters: {
             query?: never;
             header?: never;
@@ -6355,7 +6326,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SettingsPublic"];
+                    "application/json": components["schemas"]["RegionalPublic"];
                 };
             };
             /** @description The If-None-Match tag is the current one. */
@@ -6364,6 +6335,71 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    regionalTheme: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The stylesheet. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/css": string;
+                };
+            };
+            /** @description The If-None-Match tag is the current one. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    settingsDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The settings document. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsDocument"];
+                };
             };
             /** @description An error. The body is a Problem. */
             default: {
@@ -6428,42 +6464,6 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SettingsRevision"];
                 };
-            };
-            /** @description An error. The body is a Problem. */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
-    };
-    settingsTheme: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The stylesheet. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "text/css": string;
-                };
-            };
-            /** @description The If-None-Match tag is the current one. */
-            304: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
             /** @description An error. The body is a Problem. */
             default: {

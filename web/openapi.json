@@ -2477,6 +2477,95 @@
         ],
         "type": "object"
       },
+      "RegionalLogoResult": {
+        "properties": {
+          "logo": {
+            "description": "The file ID after the call; empty after a removal.",
+            "type": "string"
+          },
+          "revision": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "logo"
+        ],
+        "type": "object"
+      },
+      "RegionalLogoUpload": {
+        "properties": {
+          "file": {
+            "description": "The image: PNG, JPEG or WebP, at most 2 MiB (2097152 bytes). Send it as the only part.",
+            "format": "binary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "type": "object"
+      },
+      "RegionalPublic": {
+        "properties": {
+          "contact_email": {
+            "description": "The regional's shared mailbox, shown to anyone; empty when none.",
+            "type": "string"
+          },
+          "language": {
+            "description": "The language before a person chooses.",
+            "type": "string"
+          },
+          "languages": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "logo": {
+            "description": "The logo's file ID; empty when there is none. Request /api/regional/logo?v=\u003clogo\u003e, so a replaced logo is a new URL.",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "public_url": {
+            "description": "No trailing slash; empty when unset.",
+            "type": "string"
+          },
+          "terms": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "description": "Per language, the term arguments: term_\u003cterm\u003e, term_\u003cterm\u003e_plural, term_\u003cterm\u003e_title, term_\u003cterm\u003e_plural_title.",
+            "type": "object"
+          },
+          "theme": {
+            "description": "Whether /api/regional/theme.css has content.",
+            "type": "boolean"
+          },
+          "timezone": {
+            "description": "An IANA name; empty means the browser's zone.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "contact_email",
+          "public_url",
+          "language",
+          "timezone",
+          "languages",
+          "theme",
+          "logo",
+          "terms"
+        ],
+        "type": "object"
+      },
       "Sensitivity": {
         "enum": [
           "public",
@@ -2606,95 +2695,6 @@
           "plural",
           "singular_title",
           "plural_title"
-        ],
-        "type": "object"
-      },
-      "SettingsLogoResult": {
-        "properties": {
-          "logo": {
-            "description": "The file ID after the call; empty after a removal.",
-            "type": "string"
-          },
-          "revision": {
-            "format": "int64",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "revision",
-          "logo"
-        ],
-        "type": "object"
-      },
-      "SettingsLogoUpload": {
-        "properties": {
-          "file": {
-            "description": "The image: PNG, JPEG or WebP, at most 2 MiB (2097152 bytes). Send it as the only part.",
-            "format": "binary",
-            "type": "string"
-          }
-        },
-        "required": [
-          "file"
-        ],
-        "type": "object"
-      },
-      "SettingsPublic": {
-        "properties": {
-          "contact_email": {
-            "description": "The regional's shared mailbox, shown to anyone; empty when none.",
-            "type": "string"
-          },
-          "language": {
-            "description": "The language before a person chooses.",
-            "type": "string"
-          },
-          "languages": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "logo": {
-            "description": "The logo's file ID; empty when there is none. Request /api/settings/logo?v=\u003clogo\u003e, so a replaced logo is a new URL.",
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "public_url": {
-            "description": "No trailing slash; empty when unset.",
-            "type": "string"
-          },
-          "terms": {
-            "additionalProperties": {
-              "additionalProperties": {
-                "type": "string"
-              },
-              "type": "object"
-            },
-            "description": "Per language, the term arguments: term_\u003cterm\u003e, term_\u003cterm\u003e_plural, term_\u003cterm\u003e_title, term_\u003cterm\u003e_plural_title.",
-            "type": "object"
-          },
-          "theme": {
-            "description": "Whether /api/settings/theme.css has content.",
-            "type": "boolean"
-          },
-          "timezone": {
-            "description": "An IANA name; empty means the browser's zone.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "name",
-          "contact_email",
-          "public_url",
-          "language",
-          "timezone",
-          "languages",
-          "theme",
-          "logo",
-          "terms"
         ],
         "type": "object"
       },
@@ -7788,46 +7788,15 @@
         ]
       }
     },
-    "/api/settings/": {
-      "get": {
-        "operationId": "settingsDocument",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SettingsDocument"
-                }
-              }
-            },
-            "description": "The settings document."
-          },
-          "default": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "An error. The body is a Problem."
-          }
-        },
-        "summary": "Every declared setting with its default and value. Needs settings.read. A secret is reported as secret_set only.",
-        "tags": [
-          "settings"
-        ]
-      }
-    },
-    "/api/settings/logo": {
+    "/api/regional/logo": {
       "delete": {
-        "operationId": "settingsRemoveLogo",
+        "operationId": "regionalRemoveLogo",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SettingsLogoResult"
+                  "$ref": "#/components/schemas/RegionalLogoResult"
                 }
               }
             },
@@ -7844,13 +7813,13 @@
             "description": "An error. The body is a Problem."
           }
         },
-        "summary": "Remove the logo. Needs settings.manage. With no logo it changes nothing and answers the current revision and an empty logo. 501 when the installation has no file store; 503 read_only on a read-only copy.",
+        "summary": "Remove the logo. Needs settings.manage. With no logo it changes nothing and answers the current revision and an empty logo. 503 read_only on a read-only copy.",
         "tags": [
-          "settings"
+          "regional"
         ]
       },
       "get": {
-        "operationId": "settingsLogo",
+        "operationId": "regionalLogo",
         "parameters": [
           {
             "description": "The logo's file ID, to version the URL; ignored.",
@@ -7901,18 +7870,18 @@
           }
         },
         "security": [],
-        "summary": "The regional's logo (PNG, JPEG or WebP). No session needed. The shell requests it as /api/settings/logo?v=\u003clogo\u003e, the file ID from the public document; the query is ignored. ETag is the image's SHA-256 and a matching If-None-Match answers 304. 404 when there is no logo; 501 when the installation has no file store; 503 with Retry-After on a copy that has not yet received the image.",
+        "summary": "The regional's logo (PNG, JPEG or WebP). No session needed. The shell requests it as /api/regional/logo?v=\u003clogo\u003e, the file ID from the public document; the query is ignored. ETag is the image's SHA-256 and a matching If-None-Match answers 304. 404 when there is no logo; 503 with Retry-After on a copy that has not yet received the image.",
         "tags": [
-          "settings"
+          "regional"
         ]
       },
       "put": {
-        "operationId": "settingsSetLogo",
+        "operationId": "regionalSetLogo",
         "requestBody": {
           "content": {
             "multipart/form-data": {
               "schema": {
-                "$ref": "#/components/schemas/SettingsLogoUpload"
+                "$ref": "#/components/schemas/RegionalLogoUpload"
               }
             }
           },
@@ -7923,7 +7892,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SettingsLogoResult"
+                  "$ref": "#/components/schemas/RegionalLogoResult"
                 }
               }
             },
@@ -7940,21 +7909,21 @@
             "description": "An error. The body is a Problem."
           }
         },
-        "summary": "Replace the logo. Needs settings.manage. multipart/form-data with one file part named file (PNG, JPEG or WebP by its bytes, at most 2 MiB; metadata is removed). Field errors use the field file: too_large {max}, type, malformed, required. 409 with code quota when the site is out of file space; 501 when the installation has no file store; 503 read_only on a read-only copy.",
+        "summary": "Replace the logo. Needs settings.manage. multipart/form-data with one file part named file (PNG, JPEG or WebP by its bytes, at most 2 MiB; metadata is removed). Field errors use the field file: too_large {max}, type, malformed, required. 409 with code quota when the site is out of file space; 503 read_only on a read-only copy.",
         "tags": [
-          "settings"
+          "regional"
         ]
       }
     },
-    "/api/settings/public": {
+    "/api/regional/public": {
       "get": {
-        "operationId": "settingsPublic",
+        "operationId": "regionalPublic",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SettingsPublic"
+                  "$ref": "#/components/schemas/RegionalPublic"
                 }
               }
             },
@@ -7976,6 +7945,72 @@
         },
         "security": [],
         "summary": "The regional's public values and the terms in every language. No session needed. ETag is derived from the settings revision; a matching If-None-Match answers 304.",
+        "tags": [
+          "regional"
+        ]
+      }
+    },
+    "/api/regional/theme.css": {
+      "get": {
+        "operationId": "regionalTheme",
+        "responses": {
+          "200": {
+            "content": {
+              "text/css": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The stylesheet."
+          },
+          "304": {
+            "description": "The If-None-Match tag is the current one."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "security": [],
+        "summary": "The regional's brand colours as a stylesheet; an empty body when both are the shipped palette. No session needed. ETag and 304 as for /public.",
+        "tags": [
+          "regional"
+        ]
+      }
+    },
+    "/api/settings/": {
+      "get": {
+        "operationId": "settingsDocument",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsDocument"
+                }
+              }
+            },
+            "description": "The settings document."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Every declared setting with its default and value. Needs settings.read. A secret is reported as secret_set only.",
         "tags": [
           "settings"
         ]
@@ -8058,41 +8093,6 @@
           }
         },
         "summary": "Change the forms of terms in one language, all or nothing. Needs settings.manage. A null or absent form is unchanged; reset names forms to put back to the default.",
-        "tags": [
-          "settings"
-        ]
-      }
-    },
-    "/api/settings/theme.css": {
-      "get": {
-        "operationId": "settingsTheme",
-        "responses": {
-          "200": {
-            "content": {
-              "text/css": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            },
-            "description": "The stylesheet."
-          },
-          "304": {
-            "description": "The If-None-Match tag is the current one."
-          },
-          "default": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "An error. The body is a Problem."
-          }
-        },
-        "security": [],
-        "summary": "The regional's brand colours as a stylesheet; an empty body when both are the shipped palette. No session needed. ETag and 304 as for /public.",
         "tags": [
           "settings"
         ]
@@ -9796,6 +9796,10 @@
     {
       "description": "The events the regional puts on: dates and zone, kinds, schedule, closing, and the modules' set-up.",
       "name": "events"
+    },
+    {
+      "description": "The regional's public face: its name, language, colours and logo, and the public document the shell reads at boot.",
+      "name": "regional"
     },
     {
       "description": "Notifications: template wording, a test message and the outbox. Every route needs a signed-in person; the permission is noted per route.",

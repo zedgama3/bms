@@ -1,6 +1,6 @@
 //go:build integration
 
-package settings_test
+package regional_test
 
 import (
 	"bytes"

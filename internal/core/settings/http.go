@@ -2,12 +2,8 @@ package settings
 
 import (
 	_ "embed" // the OpenAPI fragment
-	"log/slog"
 	"net/http"
-	"strconv"
-	"strings"
 
-	"github.com/zedgama3/bms/internal/core/files"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/lib/httpx"
 )
@@ -15,52 +11,16 @@ import (
 //go:embed openapi.json
 var openAPIFragment []byte
 
-// setCaching is the one place the caching of GET /public and GET /theme.css is decided: a
-// strong ETag derived from the revision, so a write moves it and a changed document never
-// matches. No handler sets Cache-Control: the /api/ no-store rule stays on both routes
-// (settings.md amendment 2026-10-19), and a 304 to a matching If-None-Match saves the body.
-func setCaching(h http.Header, revision int64) {
-	h.Set("ETag", etagOf(revision))
-}
-
-// etagOf is the entity tag of the public documents at a revision.
-func etagOf(revision int64) string { return `"settings-` + strconv.FormatInt(revision, 10) + `"` }
-
-// notModified reports whether the request's If-None-Match names the entity tag of revision
-// (a list of tags, weak ones, or "*").
-func notModified(r *http.Request, revision int64) bool {
-	want := etagOf(revision)
-	for _, field := range r.Header.Values("If-None-Match") {
-		for _, tag := range strings.Split(field, ",") {
-			tag = strings.TrimPrefix(strings.TrimSpace(tag), "W/")
-			if tag == "*" || tag == want {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// Routes returns the routes of the settings set, relative to /api/settings. GET /public,
-// GET /theme.css and GET /logo are public (no session); the permission of the rest is
-// checked inside the use case. PUT /logo takes at most 2*MaxLogoBytes of request body (the
-// field error of a file over MaxLogoBytes wins for anything near the cap) and
-// files.UploadTimeout; GET /logo gets files.ServeTimeout.
+// Routes returns the routes of the settings set, relative to /api/settings: GET /, PUT
+// /values, GET /terms and PUT /terms/{lang}. The permission of each is checked inside the
+// use case; the public document, the stylesheet and the logo are regional's routes.
 // Handlers are thin: parse, call the service, httpx.Fail on error. Cannot fail.
 func (s *Service) Routes() []httpx.Route {
 	return []httpx.Route{
-		{Method: http.MethodGet, Pattern: "/public", Public: true, Handler: s.publicHandler()},
-		{Method: http.MethodGet, Pattern: "/theme.css", Public: true, Handler: s.themeHandler()},
 		{Method: http.MethodGet, Pattern: "/", Handler: s.documentHandler()},
 		{Method: http.MethodPut, Pattern: "/values", Handler: s.setHandler()},
 		{Method: http.MethodGet, Pattern: "/terms", Handler: s.termsHandler()},
 		{Method: http.MethodPut, Pattern: "/terms/{lang}", Handler: s.setTermsHandler()},
-		{Method: http.MethodGet, Pattern: "/logo", Public: true, Handler: s.getLogoHandler(), Timeout: files.ServeTimeout},
-		{
-			Method: http.MethodPut, Pattern: "/logo", Handler: s.putLogoHandler(),
-			MaxBodyBytes: 2 * MaxLogoBytes, Timeout: files.UploadTimeout,
-		},
-		{Method: http.MethodDelete, Pattern: "/logo", Handler: s.deleteLogoHandler()},
 	}
 }
 
@@ -74,44 +34,6 @@ func writeJSON(w http.ResponseWriter, r *http.Request, status int, v any) {
 	if err := httpx.WriteJSON(w, status, v); err != nil && !errs.Is(err, errs.Canceled) {
 		httpx.Fail(w, r, err)
 	}
-}
-
-func (s *Service) publicHandler() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		p, rev, err := s.publicAt(r.Context())
-		if err != nil {
-			httpx.Fail(w, r, wrap("settings.publicHandler", err))
-			return
-		}
-		setCaching(w.Header(), rev)
-		if notModified(r, rev) {
-			w.WriteHeader(http.StatusNotModified)
-			return
-		}
-		writeJSON(w, r, http.StatusOK, p)
-	})
-}
-
-func (s *Service) themeHandler() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		css, rev, err := s.themeAt(r.Context())
-		if err != nil {
-			httpx.Fail(w, r, wrap("settings.themeHandler", err))
-			return
-		}
-		setCaching(w.Header(), rev)
-		if notModified(r, rev) {
-			w.WriteHeader(http.StatusNotModified)
-			return
-		}
-		h := w.Header()
-		h.Set("Content-Type", "text/css; charset=utf-8")
-		h.Set("Content-Length", strconv.Itoa(len(css)))
-		w.WriteHeader(http.StatusOK)
-		if _, err := w.Write([]byte(css)); err != nil {
-			return // the client is gone; the shell remembers the write error
-		}
-	})
 }
 
 func (s *Service) documentHandler() http.Handler {
@@ -170,56 +92,5 @@ func (s *Service) setTermsHandler() http.Handler {
 			return
 		}
 		writeJSON(w, r, http.StatusOK, revisionBody{rev})
-	})
-}
-
-// getLogoHandler serves the logo. The ?v= query the shell adds only versions the URL.
-func (s *Service) getLogoHandler() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		f, c, err := s.OpenLogo(r.Context())
-		if err != nil {
-			httpx.Fail(w, r, err)
-			return
-		}
-		files.Serve(w, r, f, c)
-		if err := c.Close(); err != nil {
-			s.logger.WarnContext(r.Context(), "the logo could not be closed",
-				slog.String("error.kind", errs.KindOf(err).String()))
-		}
-	})
-}
-
-// putLogoHandler reads the multipart upload (the file part is named "file") and replaces
-// the logo with it.
-func (s *Service) putLogoHandler() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Permission first: a person who may not change the logo gets Permission before
-		// the request body is parsed or a byte of the file is read.
-		if err := s.preflightSetLogo(r.Context(), "settings.putLogo"); err != nil {
-			httpx.Fail(w, r, err)
-			return
-		}
-		mp, err := files.ReadUpload(r, fieldFile)
-		if err != nil {
-			httpx.Fail(w, r, err)
-			return
-		}
-		res, err := s.SetLogo(r.Context(), logoName, mp.Body)
-		if err != nil {
-			httpx.Fail(w, r, err)
-			return
-		}
-		writeJSON(w, r, http.StatusOK, res)
-	})
-}
-
-func (s *Service) deleteLogoHandler() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		res, err := s.RemoveLogo(r.Context())
-		if err != nil {
-			httpx.Fail(w, r, err)
-			return
-		}
-		writeJSON(w, r, http.StatusOK, res)
 	})
 }

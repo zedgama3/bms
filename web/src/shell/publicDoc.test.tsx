@@ -61,7 +61,7 @@ describe("the public settings document at boot", () => {
     mountApp({
       session: ident([]),
       routes: {
-        "GET /api/settings/public": () => json(publicDoc()),
+        "GET /api/regional/public": () => json(publicDoc()),
         "GET /api/people/me": () => problem(404, { code: "not_found" }),
         "GET /api/departments/": () => json({ departments: [] }),
       },
@@ -79,13 +79,13 @@ describe("the public settings document at boot", () => {
     mountApp({
       session: ident([]),
       routes: {
-        "GET /api/settings/public": () => json(publicDoc({ logo: "f0e1d2c3" })),
+        "GET /api/regional/public": () => json(publicDoc({ logo: "f0e1d2c3" })),
         "GET /api/people/me": () => problem(404, { code: "not_found" }),
       },
     });
     const home = await screen.findByRole("link", { name: "Dust Bowl" });
     const img = within(home).getByRole("img", { name: "Dust Bowl" });
-    expect(img).toHaveAttribute("src", "/api/settings/logo?v=f0e1d2c3");
+    expect(img).toHaveAttribute("src", "/api/regional/logo?v=f0e1d2c3");
     expect(img).toHaveAttribute("decoding", "async");
     expect(img).not.toHaveAttribute("loading");
     expect(img.className).toMatch(/h-8 w-auto max-w-\[12rem\]/);
@@ -95,7 +95,7 @@ describe("the public settings document at boot", () => {
     mountApp({
       session: ident([]),
       routes: {
-        "GET /api/settings/public": () => json(publicDoc({ logo: "f0e1d2c3" })),
+        "GET /api/regional/public": () => json(publicDoc({ logo: "f0e1d2c3" })),
         "GET /api/people/me": () => problem(404, { code: "not_found" }),
       },
     });
@@ -109,7 +109,7 @@ describe("the public settings document at boot", () => {
     mountApp({
       session: ident([]),
       routes: {
-        "GET /api/settings/public": () => json(publicDoc()),
+        "GET /api/regional/public": () => json(publicDoc()),
         "GET /api/people/me": () => problem(404, { code: "not_found" }),
       },
     });
@@ -122,7 +122,7 @@ describe("the public settings document at boot", () => {
       path: "/departments",
       session: ident([]),
       routes: {
-        "GET /api/settings/public": () => json(publicDoc()),
+        "GET /api/regional/public": () => json(publicDoc()),
         "GET /api/people/me": () => problem(404, { code: "not_found" }),
         "GET /api/departments/": () => json({ departments: [] }),
       },
@@ -133,16 +133,16 @@ describe("the public settings document at boot", () => {
 
   it("links the theme stylesheet only when the regional has one", async () => {
     const first = mountApp({
-      routes: { "GET /api/settings/public": () => json(publicDoc({ theme: true })) },
+      routes: { "GET /api/regional/public": () => json(publicDoc({ theme: true })) },
     });
     await screen.findByRole("heading", { level: 1 });
     const link = document.getElementById("bms-theme");
     expect(link).toBeInstanceOf(HTMLLinkElement);
     expect(link).toHaveAttribute("rel", "stylesheet");
-    expect(link?.getAttribute("href")).toMatch(/^\/api\/settings\/theme\.css\?v=\d+$/);
+    expect(link?.getAttribute("href")).toMatch(/^\/api\/regional\/theme\.css\?v=\d+$/);
     first.unmount();
     document.getElementById("bms-theme")?.remove();
-    mountApp({ routes: { "GET /api/settings/public": () => json(publicDoc()) } });
+    mountApp({ routes: { "GET /api/regional/public": () => json(publicDoc()) } });
     await screen.findByRole("heading", { level: 1 });
     expect(document.getElementById("bms-theme")).toBeNull();
   });
@@ -150,7 +150,7 @@ describe("the public settings document at boot", () => {
   it("keeps the shipped defaults, and still boots, when the document cannot be had", async () => {
     mountApp({
       routes: {
-        "GET /api/settings/public": () => problem(503, { code: "unavailable", ref: "AAAA-0009" }),
+        "GET /api/regional/public": () => problem(503, { code: "unavailable", ref: "AAAA-0009" }),
       },
     });
     expect(
@@ -166,7 +166,7 @@ describe("the public settings document at boot", () => {
       path: "/departments",
       session: ident([]),
       routes: {
-        "GET /api/settings/public": () => json(publicDoc()),
+        "GET /api/regional/public": () => json(publicDoc()),
         "GET /api/people/me": () => problem(404, { code: "not_found" }),
         "GET /api/departments/": () => json({ departments: [] }),
       },
@@ -194,7 +194,7 @@ describe("the public settings document at boot", () => {
     let calls = 0;
     mountApp({
       routes: {
-        "GET /api/settings/public": () => {
+        "GET /api/regional/public": () => {
           calls++;
           return problem(503, { code: "unavailable" });
         },

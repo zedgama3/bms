@@ -186,6 +186,37 @@ linters:
           deny:
             - pkg: github.com/zedgama3/bms/internal/core/auditlog
               desc: "only app and datarights import auditlog (boundaries.md decision 3)"
+        regional-seam:
+          # boundaries.md decision 4 (regional.md): app builds the regional's profile and hands
+          # it to notify; nothing else reads it.
+          files:
+            - "$all"
+            - "!**/internal/app/**"
+            - "!**/internal/core/regional/**"
+            - "!**/internal/core/notify/**"
+            - "!$test"
+          deny:
+            - pkg: github.com/zedgama3/bms/internal/core/regional
+              desc: "only app and notify import regional (boundaries.md decision 4)"
+        regional-inward:
+          files:
+            - "**/internal/core/regional/**"
+            - "!$test"
+          deny:
+            - pkg: github.com/zedgama3/bms/internal/core/notify
+              desc: "regional never imports notify (boundaries.md decision 4)"
+            - pkg: github.com/zedgama3/bms/internal/core/identity
+              desc: "regional never imports identity (boundaries.md decision 4)"
+            - pkg: github.com/zedgama3/bms/internal/core/people
+              desc: "regional never imports people (boundaries.md decision 4)"
+        settings-no-files:
+          # boundaries.md decision 4: the logo moved to regional, so settings is only the store.
+          files:
+            - "**/internal/core/settings/**"
+            - "!$test"
+          deny:
+            - pkg: github.com/zedgama3/bms/internal/core/files
+              desc: "settings does not import files (boundaries.md decision 4)"
         api:
           files: ["**/internal/api/**"]
           deny:

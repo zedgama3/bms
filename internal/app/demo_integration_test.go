@@ -626,7 +626,7 @@ func TestDemo_NoIndexHeader_OnlyInDemoMode(t *testing.T) {
 				t.Errorf("demo off, GET %s: X-Robots-Tag = %q, want none", p, got)
 			}
 		}
-		for _, p := range []string{"/api/settings/public", "/healthz"} {
+		for _, p := range []string{"/api/regional/public", "/healthz"} {
 			_, h, _ := testerRequestH(t, nil, d.s.base, "GET", p, "")
 			if h.Get("X-Robots-Tag") != "" {
 				t.Errorf("GET %s carries X-Robots-Tag", p)

@@ -233,80 +233,6 @@ type recorded struct {
 	fail   *failRec
 }
 
-func TestGetPublic_ServesWithoutASession(t *testing.T) {
-	r := newIRig(t)
-	r.mustSet("regional.name", "Camp Quill", kPassword, "invented-pass-5")
-	res := r.get(t.Context(), "/public")
-	if res.status != 200 {
-		t.Fatalf("status = %d, failures %v", res.status, res.fail.last())
-	}
-	var pub settings.Public
-	wantNoErr(t, json.Unmarshal([]byte(res.body), &pub))
-	if pub.Name != "Camp Quill" || pub.Language != "en" || pub.Theme || len(pub.Terms["en"]) == 0 {
-		t.Errorf("public = %+v", pub)
-	}
-	var raw map[string]any
-	wantNoErr(t, json.Unmarshal([]byte(res.body), &raw))
-	for _, key := range []string{"theme", "terms"} {
-		if _, ok := raw[key]; !ok {
-			t.Errorf("public document lacks %q: %v", key, res.body)
-		}
-	}
-	if strings.Contains(res.body, "invented-pass-5") || strings.Contains(res.body, "mail.") {
-		t.Error("the public document leaks a non-regional setting")
-	}
-	if res.header.Get("ETag") == "" {
-		t.Error("no ETag")
-	}
-}
-
-func TestGetPublic_IfNoneMatch_Returns304(t *testing.T) {
-	r := newIRig(t)
-	for _, path := range []string{"/public", "/theme.css"} {
-		t.Run(path, func(t *testing.T) {
-			first := r.get(t.Context(), path)
-			etag := first.header.Get("ETag")
-			if first.status != 200 || etag == "" {
-				t.Fatalf("status %d, ETag %q", first.status, etag)
-			}
-			second := r.get(t.Context(), path, "If-None-Match", etag)
-			if second.status != http.StatusNotModified || second.body != "" {
-				t.Errorf("status = %d, body %q; want 304 and no body", second.status, second.body)
-			}
-			if second.fail.count() != 0 {
-				t.Errorf("a 304 went through the failer: %v", second.fail.last())
-			}
-			stale := r.get(t.Context(), path, "If-None-Match", `"not-the-etag"`)
-			if stale.status != 200 {
-				t.Errorf("a different ETag answered %d", stale.status)
-			}
-		})
-	}
-	// A write changes the ETag of /public.
-	old := r.get(t.Context(), "/public").header.Get("ETag")
-	r.mustSet("regional.name", "Camp Quill")
-	after := r.get(t.Context(), "/public", "If-None-Match", old)
-	if after.status != 200 || after.header.Get("ETag") == old {
-		t.Errorf("after a write: status %d, ETag %q (old %q)", after.status, after.header.Get("ETag"), old)
-	}
-}
-
-func TestGetThemeCSS_ContentTypeAndBody(t *testing.T) {
-	r := newIRig(t)
-	res := r.get(t.Context(), "/theme.css")
-	if res.status != 200 || res.body != "" {
-		t.Errorf("default: status %d body %q", res.status, res.body)
-	}
-	if ct := res.header.Get("Content-Type"); ct != "text/css; charset=utf-8" {
-		t.Errorf("Content-Type = %q", ct)
-	}
-	r.mustSet("regional.color_primary", "#9a3412") //nolint:contextcheck // the helper builds its own ctx
-	res = r.get(t.Context(), "/theme.css")
-	if !strings.Contains(res.body, "--primary: #9a3412") || res.header.Get("Content-Type") != "text/css; charset=utf-8" {
-		t.Errorf("themed: %q (%q)", res.body, res.header.Get("Content-Type"))
-	}
-}
-
 func TestAdminRoutes_RoundTrip(t *testing.T) {
 	r := newIRig(t)
 	ctx := r.actx()
@@ -431,9 +357,6 @@ func TestLeak_NoSecretNoEmailInLogsSpansMetricsAuditOrErrors(t *testing.T) {
 	if v, err := mail.Secret(ctx, "password"); err != nil || v.Value() != secretMarker {
 		t.Fatalf("secret round trip: %v", err)
 	}
-	ignore(r.svc.Regional(ctx))
-	ignore(r.svc.Public(ctx))
-	ignore(r.svc.ThemeCSS(ctx))
 	ignore(r.svc.Document(ctx))
 	ignore(r.svc.Terms(ctx))
 
@@ -445,7 +368,7 @@ func TestLeak_NoSecretNoEmailInLogsSpansMetricsAuditOrErrors(t *testing.T) {
 	ignore(other.reader("mail").Duration(ctx, "wait"))
 
 	// HTTP: every route, successes and failures.
-	for _, path := range []string{"/", "/public", "/theme.css", "/terms"} {
+	for _, path := range []string{"/", "/terms"} {
 		responses = append(responses, r.get(ctx, path).body)
 	}
 	for _, body := range []string{

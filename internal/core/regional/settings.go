@@ -1,4 +1,4 @@
-package settings
+package regional
 
 import (
 	"errors"
@@ -10,13 +10,15 @@ import (
 	"strings"
 	"time"
 	"unicode"
-	"unicode/utf8"
 
+	"github.com/zedgama3/bms/internal/core/settings"
+	"github.com/zedgama3/bms/internal/lib/errs"
+	"github.com/zedgama3/bms/internal/lib/validate"
 	"github.com/zedgama3/bms/internal/model"
 )
 
-// regionalArea is the name of the area this package declares and reserves.
-const regionalArea = "regional"
+// Area is the name of the settings area this package declares, the prefix of its keys.
+const Area = "regional"
 
 // The keys of the regional area, bare.
 const (
@@ -29,6 +31,25 @@ const (
 	keyColorPrimaryDk = "color_primary_dark"
 )
 
+// The field codes the rules below report (the shell's vocabulary; validate has the rest).
+const (
+	codeTooLong  = "too_long"      // params: max
+	codeControl  = "control_chars" // a control character in a text value
+	codeUnknown  = "unknown"       // an unknown time zone
+	codeContrast = "contrast"      // params: ratio, min
+)
+
+// fieldError returns an errs.Invalid error carrying one FieldError, as settings' own rules do.
+func fieldError(field, code string, params map[string]string, reason string) error {
+	return errs.E("", errs.Invalid, &validate.FieldError{Field: field, Code: code, Params: params, Reason: reason})
+}
+
+// tooLongError is the too_long refusal of a value over limit bytes.
+func tooLongError(limit int) error {
+	return fieldError("", codeTooLong, map[string]string{"max": strconv.Itoa(limit)},
+		fmt.Sprintf("must be at most %d bytes", limit))
+}
+
 // The shipped backgrounds a brand colour must contrast with (web-shell tokens).
 const (
 	lightBackground = "#ffffff"
@@ -39,24 +60,18 @@ const (
 	hoverShift       = 0.12 // how far the hover colour moves, in sRGB
 )
 
-// regionalDecls are the regional's own settings. All are public (decision 6).
-func regionalDecls() []Decl {
-	return []Decl{
-		{Key: keyName, Kind: Text, Default: defaultName, Check: checkName},
-		{Key: keyContactEmail, Kind: Text, Check: checkContactEmail},
-		{Key: keyPublicURL, Kind: Text, Check: checkPublicURL},
-		{Key: keyLanguage, Kind: Enum, Default: "en", Options: slices.Clone(Languages)},
-		{Key: keyTimezone, Kind: Text, Check: checkTimezone},
-		{Key: keyColorPrimary, Kind: Text, Check: checkColor(lightBackground)},
-		{Key: keyColorPrimaryDk, Kind: Text, Check: checkColor(darkBackground)},
-	}
-}
-
-// regionalNormalizers rewrite a trimmed value before it is checked and stored.
-var regionalNormalizers = map[string]func(string) string{
-	regionalArea + "." + keyPublicURL:      canonicalPublicURLOrSame,
-	regionalArea + "." + keyColorPrimary:   strings.ToLower,
-	regionalArea + "." + keyColorPrimaryDk: strings.ToLower,
+// Settings declares the regional.* keys: name, contact_email, public_url, language, timezone,
+// color_primary and color_primary_dark. All are public (settings.md decision 6). app passes
+// them to settings.New as the core area "regional". Titles and descriptions are the catalogue
+// keys core.regional.setting.<key>.title|description. Callers must not modify it.
+var Settings = []settings.Decl{
+	{Key: keyName, Kind: settings.Text, Default: defaultName, Check: checkName},
+	{Key: keyContactEmail, Kind: settings.Text, Check: checkContactEmail},
+	{Key: keyPublicURL, Kind: settings.Text, Check: checkPublicURL, Normalize: canonicalPublicURLOrSame},
+	{Key: keyLanguage, Kind: settings.Enum, Default: "en", Options: slices.Clone(settings.Languages)},
+	{Key: keyTimezone, Kind: settings.Text, Check: checkTimezone},
+	{Key: keyColorPrimary, Kind: settings.Text, Check: checkColor(lightBackground), Normalize: strings.ToLower},
+	{Key: keyColorPrimaryDk, Kind: settings.Text, Check: checkColor(darkBackground), Normalize: strings.ToLower},
 }
 
 // canonicalPublicURLOrSame is the normalizer of regional.public_url: the canonical form of a
@@ -71,12 +86,11 @@ func canonicalPublicURLOrSame(v string) string {
 func checkName(v string) error {
 	switch {
 	case v == "":
-		return fieldError("", codeRequired, nil, "must not be empty")
+		return fieldError("", validate.CodeRequired, nil, "must not be empty")
 	case strings.IndexFunc(v, unicode.IsControl) >= 0:
 		return fieldError("", codeControl, nil, "must not contain control characters")
-	case len(v) > MaxNameBytes:
-		p := tooLong(MaxNameBytes)
-		return fieldError("", p.code, p.params, p.reason)
+	case len(v) > settings.MaxNameBytes:
+		return tooLongError(settings.MaxNameBytes)
 	}
 	return nil
 }
@@ -86,7 +100,7 @@ func checkContactEmail(v string) error {
 		return nil
 	}
 	if _, err := model.ParseEmail(v); err != nil {
-		return fieldError("", codeMalformed, nil, "must be a valid e-mail address")
+		return fieldError("", validate.CodeMalformed, nil, "must be a valid e-mail address")
 	}
 	return nil
 }
@@ -104,7 +118,7 @@ const (
 // checkPublicURL is the Check of regional.public_url (settings.md, "regional.public_url
 // canonical form"): "" or an absolute http(s) URL with a host, an optional port in 1..65535,
 // no userinfo, no query ("?") and no fragment ("#"), and no space, control or Unicode format character. A
-// value over MaxURLBytes is too_long; every other refusal is code url with a reason param.
+// value over settings.MaxURLBytes is too_long; every other refusal is code url with a reason param.
 func checkPublicURL(v string) error {
 	_, err := parsePublicURL(v)
 	return err
@@ -120,16 +134,15 @@ func parsePublicURL(v string) (string, error) {
 	if v == "" {
 		return "", nil
 	}
-	if len(v) > MaxURLBytes {
-		p := tooLong(MaxURLBytes)
-		return "", fieldError("", p.code, p.params, p.reason)
+	if len(v) > settings.MaxURLBytes {
+		return "", tooLongError(settings.MaxURLBytes)
 	}
 	bad := func(reason, why string) (string, error) {
 		params := map[string]string{"reason": reason}
 		if reason == urlReasonScheme {
 			params["schemes"] = "https, http"
 		}
-		return "", fieldError("", codeURL, params, why)
+		return "", fieldError("", validate.CodeURL, params, why)
 	}
 	if strings.IndexFunc(v, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) || unicode.Is(unicode.Cf, r) }) >= 0 {
 		return bad(urlReasonChars, "must not contain a space, a control character or an invisible format character")
@@ -177,8 +190,7 @@ func checkTimezone(v string) error {
 	case v == "":
 		return nil
 	case len(v) > maxTimezoneBytes:
-		p := tooLong(maxTimezoneBytes)
-		return fieldError("", p.code, p.params, p.reason)
+		return tooLongError(maxTimezoneBytes)
 	case v == "Local":
 		return fieldError("", codeUnknown, nil, "must be an IANA time zone name")
 	}
@@ -188,7 +200,7 @@ func checkTimezone(v string) error {
 	return nil
 }
 
-// checkColor returns the Check of a brand colour: "" or #rrggbb with at least MinContrast
+// checkColor returns the Check of a brand colour: "" or #rrggbb with at least settings.MinContrast
 // against background.
 func checkColor(background string) func(string) error {
 	bg, _ := parseHex(background)
@@ -198,13 +210,13 @@ func checkColor(background string) func(string) error {
 		}
 		c, ok := parseHex(v)
 		if !ok {
-			return fieldError("", codeMalformed, nil, "must be a colour such as #9a3412")
+			return fieldError("", validate.CodeMalformed, nil, "must be a colour such as #9a3412")
 		}
-		if ratio := contrast(c, bg); ratio < MinContrast {
+		if ratio := contrast(c, bg); ratio < settings.MinContrast {
 			shown := formatRatio(ratio)
 			return fieldError("", codeContrast,
-				map[string]string{"ratio": shown, "min": strconv.FormatFloat(MinContrast, 'f', 1, 64)},
-				fmt.Sprintf("contrast %s:1 is below %.1f:1", shown, MinContrast))
+				map[string]string{"ratio": shown, "min": strconv.FormatFloat(settings.MinContrast, 'f', 1, 64)},
+				fmt.Sprintf("contrast %s:1 is below %.1f:1", shown, settings.MinContrast))
 		}
 		return nil
 	}
@@ -316,18 +328,4 @@ func renderTheme(light, dark string) string {
 		b.WriteString(mediaDark + " { :root { " + themeRule(c, true) + " } }\n")
 	}
 	return b.String()
-}
-
-// safeField returns s cut and cleaned for use inside a field name that came from a client.
-func safeField(s string) string {
-	const limit = 64
-	if len(s) > limit {
-		s = s[:limit]
-	}
-	return strings.Map(func(r rune) rune {
-		if r == utf8.RuneError || unicode.IsControl(r) {
-			return '?'
-		}
-		return r
-	}, s)
 }

@@ -71,9 +71,6 @@ const (
 	actionTermChanged    audit.Action = "settings.term.changed"
 	actionTermReset      audit.Action = "settings.term.reset"
 
-	actionLogoChanged audit.Action = "settings.logo.changed"
-	actionLogoRemoved audit.Action = "settings.logo.removed"
-
 	kindSetting = "settings.setting"
 	kindTerm    = "settings.term"
 )
@@ -92,36 +89,12 @@ func refOf(s string) [16]byte {
 	return [16]byte(sum[:16])
 }
 
-// Regional is the regional's own values (area "regional"), defaults filled in.
-type Regional struct {
-	Name         string   `json:"name"`          // regional.name
-	ContactEmail string   `json:"contact_email"` // regional.contact_email ("" = none)
-	PublicURL    string   `json:"public_url"`    // regional.public_url ("" = unset; no trailing slash)
-	Language     string   `json:"language"`      // regional.language, one of Languages
-	Timezone     string   `json:"timezone"`      // regional.timezone, an IANA name or "" (the browser's)
-	Languages    []string `json:"languages"`     // the build's languages (Languages), offered to everyone
-}
-
 // Forms are the four forms of one term in one language.
 type Forms struct {
 	Singular      string `json:"singular"`       // "department"
 	Plural        string `json:"plural"`         // "departments"
 	SingularTitle string `json:"singular_title"` // "Department"
 	PluralTitle   string `json:"plural_title"`   // "Departments"
-}
-
-// Public is what GET /public returns. Everything in it is the site's own appearance.
-type Public struct {
-	Regional
-	Theme bool `json:"theme"` // theme.css is not empty
-	// Logo is the logo's file ID ("" when none), from the snapshot (decision 16). The shell
-	// requests /api/settings/logo?v=<Logo> so a replaced logo is a new URL. Public, like
-	// every field here (decision 6).
-	Logo string `json:"logo"`
-	// Terms per language, flattened for the shell's {term_*} arguments:
-	// {"en": {"term_department": "department", "term_department_plural": "departments",
-	// "term_department_title": "Department", "term_department_plural_title": "Departments"}}
-	Terms map[string]map[string]string `json:"terms"`
 }
 
 // Changes is one batch of value changes: a text form sets, nil resets to the default.
@@ -132,7 +105,7 @@ type Changes struct {
 // Document is what GET / returns to a settings admin.
 type Document struct {
 	Revision Revision  `json:"revision"`
-	Areas    []AreaDoc `json:"areas"` // regional first, then core areas, then modules in build order
+	Areas    []AreaDoc `json:"areas"` // core areas, then modules in build order
 }
 
 // AreaDoc is one area of a Document.

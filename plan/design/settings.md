@@ -4,12 +4,12 @@
 - **Package:** `internal/core/settings` (store in `internal/core/settings/postgres`, fake in
   `internal/core/settings/settingstest`)   **UI:** `web/src/core/settings/`
 - **Depends on specs:** lib-errs, lib-core, lib-secret, model, config, db, audit, authz,
-  telemetry, module-contract (`Plan.Settings()`), api (route mounting), web-shell, files
-  (the logo's bytes)
+  telemetry, module-contract (`Plan.Settings()`), api (route mounting), web-shell
+- **Amended 2026-11-01 (boundaries step 7, `boundaries.md` decision 4; items 15 and 17):** the regional's profile moved out. The `regional.*` settings area, `Regional`, `Public`, `ThemeCSS`, the logo (`LogoRef`, `MaxLogoBytes`, `SetLogo`, `RemoveLogo`, `OpenLogo`, `LogoResult`), `Options.Files` and the routes `GET /public`, `GET /theme.css`, `GET|PUT|DELETE /logo` are now `internal/core/regional` (spec `regional.md`, paths under `/api/regional/`; audit actions `regional.logo.changed|removed`, old entries keep `settings.logo.changed|removed`). `settings` no longer imports `files`, no longer adds the `regional` area (app passes `regional.Settings` as a core area) and serves four routes: `GET /`, `PUT /values`, `GET /terms`, `PUT /terms/{lang}`. Keys, defaults, ranges, permissions, tables and the revision are unchanged. The moved failure rows are F23 and F36 to F54 (numbers left unused here); the moved decisions are 6 (the public half), 8, 9 (the stylesheet), 16, 17, 18. See `regional.md`.
 - **Used by:** every module (`Deps.Settings`), identity and people (`PolicySource`), audit
   (`audit.retention`, `audit.self_view`), notify (sender, regional name, public URL, terms),
   api (trusted origin, Later), authz (the regional's zone, Later), the web shell
-  (`GET /api/settings/public`, `/api/settings/theme.css`), departments-events
+  (the Regional form and the terms; the public document is `regional`'s), departments-events
   (the new-event form's default zone)
 
 ## Summary
@@ -18,36 +18,32 @@
 defaults, declared by the core and the modules, edited by a settings admin, audited, and
 effective without a restart. Package `internal/core/settings`; imports `model`, `lib`,
 `core/db`, `core/audit`, `core/authz` (Authorizer, leaf types, `ActorFunc`),
-`core/telemetry`, `core/files` (the `Store` interface and its types for the logo; files never
-imports settings, so no cycle). Never `core/module`, `core/identity`, `api`, `app`, `config` or a module.
+`core/telemetry`, not `core/files` (files imports settings for its own area, since step 7). Never `core/module`, `core/identity`, `api`, `app`, `config` or a module.
 Configuration (`config.md`: what reaches the database, listens, is a credential of the
 process, or differs per process) is not here, and nothing here is read from the environment.
 
 **Exported (leaf types, aliased by `module`).** `Kind` (`Bool`=1, `Int`, `Duration`, `Text`,
-`Enum`, `Secret`; zero invalid; `String`), `Decl{Key, Kind, Default, Options, Check func(string) error}`
+`Enum`, `Secret`; zero invalid; `String`), `Decl{Key, Kind, Default, Options, Check func(string) error, Normalize func(string) string}`
 (+`Validate`), `Area{Name, Core bool, Decls []Decl, Check func(map[string]string) error}` (+`Validate`).
 `module.SettingDecl = settings.Decl`, `module.SettingKind = settings.Kind`, `module.SettingBool = settings.Bool`, ... (Proposed change 1).
 
 **Exported (service).**
 - `Reader` (= `module.Deps.Settings`, scoped to one area; keys are bare): `Bool`, `Int` (int64),
   `Duration`, `Text` (Text and Enum), `Secret(ctx, key) (secret.Secret, error)`.
-- `Regional{Name, ContactEmail, PublicURL, Language, Timezone string; Languages []string}`;
-  `Forms{Singular, Plural, SingularTitle, PluralTitle string}`; `Public{Regional;
-  Theme bool; Logo string (D44; the logo's file ID from the snapshot, `""` when none); Terms map[string]map[string]string}`; `LogoResult{Revision, Logo string}`; `Document`, `AreaDoc`, `SettingDoc`,
+- `Forms{Singular, Plural, SingularTitle, PluralTitle string}`; `Document`, `AreaDoc`, `SettingDoc`,
   `TermDecl{Key string; Defaults map[string]Forms}` (+`Validate`; D57; a key may not end in `_plural` or `_title`, `reserved`, D58), `Changes{Values map[string]*string}`, `TermChanges{Terms map[string]FormChanges}`,
   `FormChanges{Singular, Plural, SingularTitle, PluralTitle *string}`, `Revision int64`.
 - `Options{DB, Clock, Logger, Tracer, Meter, Audit audit.Recorder (scoped "settings"), Authz
-  authz.Authorizer, Actor authz.ActorFunc, Files files.Store (optional, D44; scoped `settings`, lazy from `app`; nil = the logo routes answer `Unsupported`), Areas []Area, SealingKey secret.Secret (optional),
+  authz.Authorizer, Actor authz.ActorFunc, Areas []Area (every area; `regional.Settings` is passed by `app` like `accounts`), SealingKey secret.Secret (optional),
   RefreshInterval (default 30 s, 1 s..10 m)}` (+`Validate`); `New(Options) (*Service, error)` (no I/O).
-- `*Service` (safe for concurrent use): `Scoped(area) (Reader, error)`; `Regional(ctx)`; `TermsFor(ctx, lang)
-  (map[string]Forms, error)` (every declared term, core and module, D57); `Public(ctx)`; `ThemeCSS(ctx) (string, error)`;
+- `*Service` (safe for concurrent use): `Scoped(area) (Reader, error)`; `TermsFor(ctx, lang)
+  (map[string]Forms, error)` (every declared term, core and module, D57);
   `Document(ctx)`; `Set(ctx, Changes) (Revision, error)`; `Terms(ctx) (TermsDocument, error)`;
-  `SetTerms(ctx, lang, TermChanges) (Revision, error)`;
-  `Run(ctx) error` (the refresher, an `app` runnable); `Routes() []Route`; `OpenAPI() []byte`. The logo (D44, D47; D52(e): the stored upload name is always "logo"): `SetLogo(ctx, name string, body io.Reader) (LogoResult, error)`, `RemoveLogo(ctx) (LogoResult, error)`, `OpenLogo(ctx) (files.File, files.Content, error)`; routes `GET /logo` (public;
-  `files.Serve`), `PUT /logo` (multipart field `file`, `settings.manage`), `DELETE /logo` (`settings.manage`); `Route` gains `MaxBodyBytes`, `Timeout` (`app` copies them); audit `settings.logo.changed|removed`.
+  `SetTerms(ctx, lang, TermChanges) (Revision, error)`; `Revision(ctx) (Revision, error)` (the current snapshot's revision; consumer: `regional`'s `ETag` and cache key); `Revise(ctx, fn func(ctx) (changed bool, err error)) (Revision, error)` (the revision lock as a seam for `regional`'s logo writes; boundaries A2 point 1);
+  `Run(ctx) error` (the refresher, an `app` runnable); `Routes() []httpx.Route` (`GET /`, `PUT /values`, `GET /terms`, `PUT /terms/{lang}`; `Route` was `settings.Route` with `MaxBodyBytes`, `Timeout`, replaced by `httpx.Route`, boundaries step 2); `OpenAPI() []byte`. The logo, the public document and the stylesheet are `regional`'s (`regional.md`).
 - Constants: `Languages = []string{"en", "es"}`; `CoreTerms = []string{"event", "department", "participant", "theme_camp", "lead"}` (`lead` added D57);
   `MaxBatch = 200`, `MaxTextBytes = 4096`, `MaxNameBytes = 80`, `MaxURLBytes = 256`, `MaxTermBytes = 60`,
-  `MinContrast = 4.5`, `MaxLogoBytes = 2 << 20`, `LogoRef = audit.Ref{Kind: files.LogoRecordKind, ID: sha256("settings.logo")[:16]}` (a `var`),
+  `MinContrast = 4.5`,
   `DefaultRefreshInterval = 30 * time.Second`, `PermissionRead = "settings.read"`, `PermissionManage = "settings.manage"`.
 - `settingstest.NewFake(area string, decls []Decl) *Fake` (a `Reader` answering the defaults; `Set(key, value)`, `SetSecret(key, secret)`; safe for concurrent use).
 
@@ -57,38 +53,35 @@ process, or differs per process) is not here, and nothing here is read from the 
 3. (owner, 2026-10-19: the SMTP password lives in settings, sealed) a sixth kind, `Secret`: sealed at rest with AES-256-GCM under a key derived from `settings.sealing_key` (a generated field of the secrets file, config Proposed change 9), never returned by any route (`secret_set` only), read only by Go consumers.
 4. one in-memory snapshot per process, loaded on first read, replaced after each local commit and by a 30 s revision poll (`core.setting_revision`), so a read is a map lookup and a replica follows the writer without LISTEN/NOTIFY (which a standby cannot receive).
 5. a stored value that no longer parses after an upgrade yields the default and a warning, never an error.
-6. the regional's own values (`regional.*`) are a core area declared here; only they are public.
+6. the regional's own values (`regional.*`) are a core area, declared by `regional` (step 7; before, here) and passed in by `app`; only they are public.
 7. (owner, 2026-10-19: four forms) terminology is data: four forms per term per language, defaults embedded here (`terms/<lang>.json`), overrides in `core.terminology`; the shell's `term.*` catalogue entries stay as the boot fallback and must equal the defaults (test).
-8. (superseded 2026-10-20, D44) the logo was deferred to the `files` spec (owner, 2026-10-19); it now lives here, stored and served by `files` (`Options.Files`, `GET|PUT|DELETE /api/settings/logo`, `Public.Logo`, audit `settings.logo.changed|removed`, `MaxLogoBytes` 2 MiB; `history/settings.md`).
-9. (owner, 2026-10-19) colours are one brand colour per scheme, checked for 4.5:1 against the shipped background, served as `/api/settings/theme.css` (light inside `@media not (prefers-color-scheme: dark)`, dark inside `(prefers-color-scheme: dark)`, an unset scheme emits nothing; implementation, 2026-10-19). Duration `range` params are plain whole units (`1h`, `8760h`), not `1h0m0s`.
+8. (superseded 2026-10-20, D44; moved 2026-11-01) the logo lives in `regional` (`regional.md`, decision 3): stored and served by `files`, `GET|PUT|DELETE /api/regional/logo`, audit `regional.logo.changed|removed`, `MaxLogoBytes` 2 MiB.
+9. (owner, 2026-10-19) colours are one brand colour per scheme, checked for 4.5:1 against the shipped background, served by `regional` as `/api/regional/theme.css` (light inside `@media not (prefers-color-scheme: dark)`, dark inside `(prefers-color-scheme: dark)`, an unset scheme emits nothing; implementation, 2026-10-19). Duration `range` params are plain whole units (`1h`, `8760h`), not `1h0m0s`.
 10. no signal on change: every consumer reads at use-case time from the snapshot; nothing downstream holds a copy.
 11. no automatic retention keys per module: the module that runs the job declares its `<name>.retention*` keys when its spec has the job that enforces it (owner, 2026-10-19).
-12. `regional` is a reserved area name.
+12. `regional` is a reserved area name (only `regional.Settings` may declare it).
 13. values never appear in logs, audit entries, spans or error messages.
 14. `settings.read` goes to `settings-admin` only; other admins see what they need on their own screens (owner, 2026-10-19).
 15. (owner, 2026-10-20, D40) no early area check: an area `Check` runs only inside the `Set` transaction over stored values; `regional.public_url` is canonicalised (http/https, host required, no query/fragment/userinfo, trailing slashes removed); a `Check` cannot see whether a `Secret` is set and re-saving a `Secret` always counts as a change; the sealing and contrast tests are unit tests.
-16. **a logo change is a settings write**: it runs under the revision row lock, bumps the revision and replaces the snapshot, and the snapshot carries the logo's file ID (read with `ByRecord(LogoRef)` at load), so `Public.Logo`, the `ETag` of `GET /public` and a replica's poll all follow the logo without a second mechanism; `GET /logo` itself reads `ByRecord` (exact, not the snapshot).
-17. one logo for both colour schemes, PNG, JPEG or WebP (`files.Brand`), at most `MaxLogoBytes` (2 MiB, a bound, not a setting) enforced by a counting reader in the handler before files' site-wide `files.max_bytes`; no SVG (an XML document that can carry scripts, event handlers and external references; needs a sanitiser files does not have; owner, 2026-10-21, D47); no pixel-dimension check (the uploader holds `settings.manage`; a bomb would hurt only their own site's browsers; owner, 2026-10-21, D47); no dark-scheme logo and no favicon derived from the logo (owner, 2026-10-21, D47).
-18. the write refuses a read-only copy after the permission check and before the body is read, so no object is staged for nothing; `RemoveLogo` with no logo is a no-op (no audit, no bump), as `Set` with unchanged values.
+16. (moved 2026-11-01 to `regional.md`, decision 3 and decision 7) the logo rules; the snapshot no longer carries the logo's file ID because settings no longer imports `files`: the logo bumps the revision through `Revise`, and `regional` caches the ID by revision (boundaries A2 point 1).
+17. (moved 2026-11-01 to `regional.md`, decision 3) the logo's kinds, size bound and the refused extras (no SVG, no pixel check, no dark-scheme logo, no favicon; owner, 2026-10-21, D47).
+18. (moved 2026-11-01 to `regional.md`, decision 3) the logo write refuses a read-only copy before the body is read; `RemoveLogo` with no logo is a no-op.
 19. (owner, 2026-10-30, D57) a module or core area may declare terms (`Area.Terms []TermDecl`), one flat namespace: a key declared by two areas, or equal to a `CoreTerms` name, is `Invalid` at `New`, whose fix is promoting the word to `CoreTerms` (as `lead` was); a stored row of an undeclared term is kept and ignored. (D58) A module term key may not end in `_plural` or `_title` (`reserved`:
   `term_x_plural` would be both a form of `x` and the term `x_plural`), and the terms document promises no order: the Terminology screen orders terms core first, then modules alphabetically by title, then terms by key.
 
 **Errs kinds callers handle.** Readers: `Invalid` (undeclared key, kind mismatch), `Unavailable`/`Timeout`/`Canceled` (first load), `Unsupported` (`Secret` with no sealing key), `Internal` (unsealing failed). Use cases:
 `Unauthenticated`, `Permission`, `Invalid` with field = the setting key and codes `unknown`, `malformed`, `one_of`, `range`, `too_long {max}`, `required`, `control_chars`, `url`, `contrast {ratio, min}`, `rejected` (a `Check`'s reason), `too_many {max}`; `Unsupported` (a secret without a sealing key); `Unavailable` wrapping `db.ErrReadOnly` on every write; `Run`: `Conflict` (started twice).
-The logo: `SetLogo`: `Unauthenticated`, `Permission`, `Unsupported` (no `Files`), `Unavailable` wrapping `db.ErrReadOnly` (before the body is read), `Invalid` with field `file` and codes `required`, `too_large {max}`, `type`, `malformed`, `Conflict quota {max}`, `Unavailable`, `Timeout`, `Canceled`, the recorder's kind; `RemoveLogo`: the same minus the file codes; `OpenLogo`:
-`Unsupported`, `NotFound` (no logo), `Unavailable` wrapping `objects.ErrMissing` (a copy without the bytes), `Unavailable`; the handler: `Invalid` wrapping `httpx.ErrUnsupportedMediaType` (not multipart). No sentinels.
+The logo's errors are `regional`'s (`regional.md`). No sentinels.
 
-**Owns.** Tables `core.setting`, `core.setting_revision`, `core.terminology` (nothing personal); permissions `settings.read`, `settings.manage` (site, reach `internal`, starter `settings-admin`); settings area `regional` (`name`, `contact_email`, `public_url`, `language`, `timezone`, `color_primary`, `color_primary_dark`); route set `settings`:
-`GET /public`, `GET /theme.css`, `GET /logo` (public), `GET /{$}`, `PUT /values`, `GET /terms`, `PUT /terms/{lang}`, `PUT /logo`, `DELETE /logo`; the file record `LogoRef` (kind `settings.logo`, one file, level `public`, in files' bucket `settings`); screens `/settings` (with the logo field), `/settings/terms`, `/settings/:area`; keys `core.settings.*` (`core.settings.logo.*` for the field), `core.regional.setting.*`; audit actions `settings.setting.changed|reset`, `settings.term.changed|reset`, `settings.logo.changed|removed`; spans `settings.<use-case>` (`settings.logo.set|remove|open`), `settings.load`, `settings.refresh`; metrics `bms.settings.refresh{outcome}`, `bms.settings.stale_values`.
+**Owns.** Tables `core.setting`, `core.setting_revision`, `core.terminology` (nothing personal); permissions `settings.read`, `settings.manage` (site, reach `internal`, starter `settings-admin`); no area of its own to declare (the `regional` area is `regional`'s); route set `settings`:
+`GET /{$}`, `PUT /values`, `GET /terms`, `PUT /terms/{lang}`; screens `/settings` (with the Regional form and the logo field, which call `regional`'s routes), `/settings/terms`, `/settings/:area`; keys `core.settings.*` (`core.settings.logo.*` for the field; `core.regional.setting.*` belong to `regional`'s declarations but ship in this folder's catalogue); audit actions `settings.setting.changed|reset`, `settings.term.changed|reset`; spans `settings.<use-case>`, `settings.load`, `settings.refresh`; metrics `bms.settings.refresh{outcome}`, `bms.settings.stale_values`.
 Config key proposed: `settings.sealing_key` (`BMS_SETTINGS_SEALING_KEY`, generated into `secrets.json` as `settings_sealing_key`). No signals.
 
-**Expects of dependencies.** `app`: part 3 (`declare`: `Set`, `Permissions`; `build`: `New` over the areas (`regional` from this package, `identity.Settings`, `people.Settings`, `auditsettings.Settings`, `Plan.Settings()` as module areas), the actor closure, `audit.Scoped("settings")`, `cfg.Settings.SealingKey`; `a.deps.Settings` scoped per module in `provision`;
+**Expects of dependencies.** `app`: part 3 (`declare`: `Set`, `Permissions`; `build`: `New` over the areas (`regional.Settings`, `identity.Settings`, `people.Settings`, `auditsettings.Settings`, `Plan.Settings()` as module areas), the actor closure, `audit.Scoped("settings")`, `cfg.Settings.SealingKey`; `a.deps.Settings` scoped per module in `provision`;
 `PolicySource` adapters for identity and people; `Run` as a runnable; route set `settings`). `module-contract`: the aliases, `Deps.Settings settings.Reader`, `moduletest.Conformance` supplying `settingstest.NewFake`, `regional` reserved. `identity`, `people`, `audit`: export `Settings []settings.Decl` (identity also `CheckSettings`). `authz`: `Allow`, starter-role seeding. `audit`:
 `Recorder` inside a `Write` transaction. `db`: `Transact`, `AfterCommit`, `Wrap`, `ErrReadOnly`, `Set`.
-`web-shell`: reads `GET /api/settings/public` at boot, merges `terms` over its catalogue, links `/api/settings/theme.css`, adds the three term forms to its catalogue and the `field.contrast` key; owns `upload()` in `@/api`, `ui/FileField` and the header `<img src="/api/settings/logo?v=<Public.logo>" alt="<regional name>">` with its text fallback (Proposed change 15).
-`notify`: declares `notify.*` (named under Settings) and reads `Regional`, `TermsFor` and its own `Reader`. `files`: a `Store` scoped `settings` (`Stage` outside the transaction, `Attach{Record:
-LogoRef, Level: public, Replace: true}` inside it with no store I/O, `ByRecord` usable inside a `Read` transaction, `Open` and `Serve` with no `Cache-Control`, decision 25), `files.Brand`, `LogoRecordKind`, a classified error from `Upload.Body` returned unchanged by `Stage` (Proposed change 16). `app`: `Options.Files` as a lazy adapter resolved on first use, like `lazyAuthorizer`;
-`settingsRoutes` copies `MaxBodyBytes` and `Timeout` (Proposed change 14).
+`web-shell`: reads `GET /api/regional/public` at boot, merges `terms` over its catalogue, links `/api/regional/theme.css`, adds the three term forms to its catalogue and the `field.contrast` key; owns `upload()` in `@/api`, `ui/FileField` and the header `<img src="/api/regional/logo?v=<Public.logo>" alt="<regional name>">` with its text fallback (Proposed change 15; paths moved by boundaries step 7).
+`notify`: declares `notify.*` (named under Settings) and reads `Regional`, `TermsFor` and its own `Reader`. `regional` (step 7): `regional.Settings` is passed as a core area; `GET /public` carries `TermsFor` (`regional.md`, decision 8: `Options.Terms`, required). `files`: nothing; `settings` no longer imports it.
 
 **Open questions:** the six of 2026-10-19 were answered (D39) and are folded into decisions 3, 7, 8, 9, 11 and 14; the four logo questions were answered (owner, 2026-10-21, D47) and are folded into decision 17: no SVG now (a sanitised kind later in `files`), no dark-scheme logo, no favicon from the logo, no pixel-dimension cap.
 **Settled 2026-10-20 (D40):** the amendment of 2026-10-19 is approved (`lazyAuthorizer`; `no-store` with `ETag`; `PublicOrigin` waits); decision 15 below; the implementation deviations marked 2026-10-19 are accepted as written. **Proposed changes elsewhere:** 13, all applied 2026-10-19 (D39), listed at the end; 14 to 19 applied 2026-10-21 (D47).
@@ -105,18 +98,13 @@ Hold what a regional configures while bms runs, so that the core and every modul
   revision number every write bumps.
 - Validation of every change: by kind, by the declaration's `Check`, and by the area's
   cross-field `Check`.
-- The regional's own values (`regional.*`): name, contact mailbox, public URL (D18), default
-  language (D28), time zone, brand colours.
 - Terminology: the words a regional uses for the core's things, per language, in the forms
   the UI and notifications need.
-- Reads: scoped `Reader`s for modules and core areas, the typed `Regional` and `TermsFor`
-  for notify and the api, and the public document the shell boots from.
+- Reads: scoped `Reader`s for modules and core areas, `TermsFor`
+  for notify and the public document (which `regional` builds).
 - Caching: one snapshot per process, refreshed after a local commit and by a revision poll.
 - Audit of every change, permissions on every read of the admin document and every write,
   sealing of secret values at rest.
-- The regional's logo: its one file record (`LogoRef`), the three routes
-  that upload, replace, remove and serve it, its cap and accepted kinds, its audit entries,
-  and its file ID in the public document. The bytes are files'.
 - The admin screens.
 
 ## Not responsible for
@@ -127,7 +115,7 @@ Hold what a regional configures while bms runs, so that the core and every modul
 - **Which modules are enabled**: `config` (`modules.disabled`) and `module-contract`.
 - **What each setting means**: the declaring spec (`accounts.*` identity, `people.*` people,
   `audit.*` audit, `notify.*` notify, `<module>.*` the module). This spec stores, checks the
-  shape, and hands the value back; it never interprets one, except its own `regional.*`.
+  shape, and hands the value back; it never interprets one (the `regional.*` checks are `regional`'s).
 - **Enforcing retention**: `jobs` (the retention job reads the declaring area's key).
 - **Translations of the UI**: the web catalogues (web-shell decision 8). Terminology here is
   the regional's override of a handful of words, not a translation layer.
@@ -138,8 +126,7 @@ Hold what a regional configures while bms runs, so that the core and every modul
 - **Department-scoped or per-event settings**: Later (module-contract Proposed change 5
   "site-wide ones only"); a module that needs a per-department choice stores it as its own
   data.
-- **Storing and serving the logo's bytes:** `files` (the object store, the catalogue entry `files.Brand`, the sniff, the metadata strip, `files.Serve`, the tombstone and the sweep). The logo's routes, screen field, size cap and audit actions are here (D44, replacing D39's deferral); no other brand image exists.
-  Sanitising an SVG, should one ever be accepted: a later `files` catalogue entry (decision 17). The header `<img>`, `upload()` and `ui/FileField`: `web-shell` (its "M4 files additions", D44; Proposed change 15 gives them the detail the logo field needs).
+- **The regional's profile, the public document, `theme.css` and the logo** (the `regional.*` area and its checks, `Profile`, the logo's routes, cap, kinds and audit entries): `regional` (`regional.md`, step 7). The Regional form and the logo field are still screens here; they call `regional`'s routes. Storing the logo's bytes: `files`. The header `<img>`, `upload()` and `ui/FileField`: `web-shell`.
 - **Brand fonts** (web-shell decision 15, Later), a favicon, e-mail templates (`notify`).
 - **Personal data**: nothing here is about a person; no `PersonData`, no export, no deletion.
 - **Rotating the sealing key**: a later `rotate-secret` command (config.md decision 7 says the
@@ -153,10 +140,8 @@ Hold what a regional configures while bms runs, so that the core and every modul
 | Values | Store and read the values a regional set, defaults for the rest. | `core.setting`, `Reader`, `Set`, `Document` |
 | Snapshot | Make every read a map lookup and every process follow the writer. | load, after-commit replace, revision poll (`Run`) |
 | Sealing | Keep a secret value unreadable at rest and never returned. | AES-256-GCM, `Secret` kind, `Reader.Secret` |
-| Regional | The regional's identity, language, zone and colours. | area `regional`; `Regional`, `Public`, `ThemeCSS` |
 | Terminology | The regional's words for the core's things, per language, in four forms. | `core.terminology`, `terms/<lang>.json`, `TermsFor` |
-| Logo | Keep one public image as the regional's logo, replaceable by a settings admin. | `LogoRef`, `SetLogo`, `RemoveLogo`, `OpenLogo`; bytes in `files` |
-| Routes and screens | The public document, the admin document, the forms, the logo routes. | route set `settings`, `web/src/core/settings/` |
+| Routes and screens | The admin document, the forms, the terms routes. | route set `settings`, `web/src/core/settings/` |
 
 ## Interface
 
@@ -196,15 +181,24 @@ type Decl struct {
 	// plaintext only, and an area Check sees "" for every Secret key, set or not, so no rule
 	// may depend on a Secret already being set (owner, 2026-10-20, D40).
 	Check func(value string) error `json:"-"`
+	// Normalize is an optional rewrite of a trimmed value to its canonical form, run before
+	// Check and before the value is stored (boundaries A2 point 5). Rules: pure; a fixed point
+	// (Normalize(Normalize(v)) == Normalize(v)), so a value it cannot improve is returned
+	// unchanged and Check reports why it is refused; run only for non-Secret kinds. A Secret
+	// Decl with a Normalize fails Validate (Invalid, field "normalize", code "unsupported"):
+	// a secret is never trimmed or rewritten. The canonical form is the declaring area's rule,
+	// as Check is (regional.public_url declares it).
+	Normalize func(value string) string `json:"-"`
 }
 
 // Validate fails errs.Invalid with one validate.FieldError per problem on "key", "kind",
-// "options", "default" (module-contract F6, unchanged; plus: a Secret with a Default).
+// "options", "default", "normalize" (module-contract F6, unchanged; plus: a Secret with a
+// Default or a Normalize).
 func (d Decl) Validate() error
 
 // Area is one owner of settings: a module (Core false) or a core area (Core true).
 type Area struct {
-	Name  string // a module name or a core area name; "regional" is this package's own
+	Name  string // a module name or a core area name; "regional" is declared by the `regional` package
 	Core  bool
 	Decls []Decl
 	// Terms are the words this area lets a regional rename (D57). Keys are one flat
@@ -255,15 +249,7 @@ type Reader interface {
 	Secret(ctx context.Context, key string) (secret.Secret, error)
 }
 
-// Regional is the regional's own values (area "regional"), defaults filled in.
-type Regional struct {
-	Name         string   // regional.name
-	ContactEmail string   // regional.contact_email ("" = none)
-	PublicURL    string   // regional.public_url ("" = unset; no trailing slash)
-	Language     string   // regional.language, one of Languages
-	Timezone     string   // regional.timezone, an IANA name or "" (the browser's)
-	Languages    []string // the build's languages (Languages), offered to everyone
-}
+// Regional (the typed regional values) moved to regional.Profile (regional.md, step 7).
 
 // Forms are the four forms of one term in one language.
 type Forms struct {
@@ -273,19 +259,7 @@ type Forms struct {
 	PluralTitle   string `json:"plural_title"`   // "Departments"
 }
 
-// Public is what GET /public returns.
-type Public struct {
-	Regional
-	Theme bool                         `json:"theme"` // theme.css is not empty
-	// Logo is the logo's file ID ("" when none), from the snapshot (decision 16). The shell
-	// requests /api/settings/logo?v=<Logo> so a replaced logo is a new URL. Public, like
-	// every field here (decision 6).
-	Logo string `json:"logo"`
-	// Terms per language, flattened for the shell's {term_*} arguments:
-	// {"en": {"term_department": "department", "term_department_plural": "departments",
-	//         "term_department_title": "Department", "term_department_plural_title": "Departments", ...}}
-	Terms map[string]map[string]string `json:"terms"`
-}
+// Public (the public document) moved to regional.md, step 7; it carries TermsFor.
 
 // ---- Editing ----
 
@@ -334,24 +308,7 @@ type FormChanges struct {
 
 type Revision int64
 
-// ---- The logo ----
-
-// MaxLogoBytes caps the logo's bytes: 2 MiB, a bound, not a setting (a header image far
-// below it; a photo above it is the wrong file). Enforced before files' site-wide
-// files.max_bytes so the limit a settings admin sees is this one.
-const MaxLogoBytes int64 = 2 << 20
-
-// LogoRef is the one file record the logo is attached to: kind files.LogoRecordKind
-// ("settings.logo", whose area is "settings", so files' ownership check passes for the
-// Store scoped "settings") and a fixed ID, the first 16 bytes of sha256("settings.logo")
-// (the fixed-ID pattern of departments-events decision 25). Pinned by TestLogoRef_Pinned.
-var LogoRef = audit.Ref{Kind: files.LogoRecordKind, ID: logoID()}
-
-// LogoResult is what PUT /logo and DELETE /logo answer.
-type LogoResult struct {
-	Revision Revision `json:"revision"`
-	Logo     string   `json:"logo"` // the file ID after the call; "" after a removal
-}
+// ---- The logo ---- moved to regional.md (MaxLogoBytes, LogoRef, LogoResult), step 7.
 
 // ---- Service ----
 
@@ -364,19 +321,14 @@ type Options struct {
 	Audit           audit.Recorder   // scoped "settings"
 	Authz           authz.Authorizer
 	Actor           authz.ActorFunc
-	// Files is a files.Store scoped "settings" for the logo. Optional:
-	// nil means the three logo routes answer Unsupported and Public.Logo is "". files is
-	// core part 10 and settings part 3, so app passes a lazy adapter resolved on first
-	// use, as it does for Authz; a method called before files is built is Unavailable.
-	Files           files.Store
-	Areas           []Area           // every area but "regional", which New adds
+	Areas           []Area           // every area, including regional.Settings as a core area (passed by app)
 	SealingKey      secret.Secret    // optional; without it Secret values cannot be set or read
 	RefreshInterval time.Duration    // 0 = DefaultRefreshInterval; 1s..10m
 }
 
 // Validate fails errs.Invalid with fields settings.db, settings.clock, settings.logger,
 // settings.tracer, settings.audit, settings.authz, settings.actor, settings.refresh_interval,
-// settings.areas[i].<field>, settings.areas (duplicate area, an area named "regional").
+// settings.areas[i].<field>, settings.areas (duplicate area).
 func (o Options) Validate() error
 
 // New validates and builds the service. No I/O: it succeeds against db.None().
@@ -385,20 +337,10 @@ func New(o Options) (*Service, error)
 // Scoped returns the Reader for one declared area. Fails errs.Invalid for an unknown area.
 func (s *Service) Scoped(area string) (Reader, error)
 
-// Regional returns the regional's own values. Consumers: notify (name, public URL), the
-// public and theme handlers, api (trusted origin, Later), authz (zone, Later).
-func (s *Service) Regional(ctx context.Context) (Regional, error)
-
 // TermsFor returns every declared term (core and module, D57) in one language, overrides applied over the embedded
-// defaults (a language without a defaults file uses "en"). Consumers: notify, GET /public.
+// defaults (a language without a defaults file uses "en"). Consumers: notify, regional's public document.
 // Fails errs.Invalid (lang not in Languages) and the snapshot's kinds.
 func (s *Service) TermsFor(ctx context.Context, lang string) (map[string]Forms, error)
-
-// Public builds GET /public. No permission: every field is public by decision 6.
-func (s *Service) Public(ctx context.Context) (Public, error)
-
-// ThemeCSS renders the regional's colours as a stylesheet ("" when both are default).
-func (s *Service) ThemeCSS(ctx context.Context) (string, error)
 
 // Document needs settings.read.
 func (s *Service) Document(ctx context.Context) (Document, error)
@@ -408,6 +350,22 @@ func (s *Service) Document(ctx context.Context) (Document, error)
 // after commit. Returns the new revision.
 func (s *Service) Set(ctx context.Context, c Changes) (Revision, error)
 
+// Revision is the current snapshot's revision. No permission. Consumer: regional (the ETag
+// of GET /public and GET /theme.css, and the key of its logo-ID cache).
+func (s *Service) Revision(ctx context.Context) (Revision, error)
+
+// Revise runs fn inside one Write transaction after taking the revision row lock, which
+// serialises it with Set, SetTerms and every other Revise across instances. When fn
+// reports changed, Revise bumps the revision and, after commit, installs the snapshot it
+// built under the lock (as Set does); when fn reports no change, it commits nothing new
+// and returns the current revision. fn's error rolls everything back and is returned with
+// its kind. Revise records no audit entry (fn records under its own area) and checks no
+// permission: it is a method of *settings.Service, which only app holds (modules see a
+// Reader), and the caller has checked its own permission first. Call it outside any
+// transaction. Consumer: regional (SetLogo, RemoveLogo). Failure modes: boundaries B34 to
+// B38 (fn fails, read-only copy, no change, no revision row F26, concurrent callers).
+func (s *Service) Revise(ctx context.Context, fn func(ctx context.Context) (changed bool, err error)) (Revision, error)
+
 // Terms needs settings.read. The map carries no order and none is promised: the Terminology
 // screen orders what it shows (core first, then modules alphabetically by title, then terms
 // by key; D58).
@@ -416,43 +374,12 @@ func (s *Service) Terms(ctx context.Context) (TermsDocument, error)
 // SetTerms needs settings.manage; same transaction rules as Set.
 func (s *Service) SetTerms(ctx context.Context, lang string, c TermChanges) (Revision, error)
 
-// SetLogo needs settings.manage. Outside any transaction it refuses a
-// read-only copy, then stages body (named name, at most MaxLogoBytes, a files.Brand kind
-// by its bytes) in files' bucket "settings"; then, in one Write transaction under the
-// revision lock, attaches it to LogoRef replacing any earlier logo, records
-// settings.logo.changed, bumps the revision; after commit the snapshot carries the new ID.
-// A staged object that was not attached is discarded. Consumer: PUT /logo.
-func (s *Service) SetLogo(ctx context.Context, name string, body io.Reader) (LogoResult, error)
-
-// RemoveLogo needs settings.manage. In one Write transaction under the revision lock it
-// deletes LogoRef's files, records settings.logo.removed and bumps the revision; with no
-// logo it changes nothing and answers the current revision. Consumer: DELETE /logo.
-func (s *Service) RemoveLogo(ctx context.Context) (LogoResult, error)
-
-// OpenLogo needs no permission (the logo is public). It lists LogoRef's files (the newest
-// when more than one, which the revision lock prevents) and opens it; the caller serves
-// with files.Serve and closes the Content. errs.NotFound when there is no logo. Consumer:
-// GET /logo.
-func (s *Service) OpenLogo(ctx context.Context) (files.File, files.Content, error)
-
 // Run is the refresher: every RefreshInterval it reads core.setting_revision and reloads
 // the snapshot when it moved. Returns nil when ctx ends; errs.Conflict if already running.
 func (s *Service) Run(ctx context.Context) error
 
-func (s *Service) Routes() []Route
+func (s *Service) Routes() []httpx.Route // GET /, PUT /values, GET /terms, PUT /terms/{lang}
 func (s *Service) OpenAPI() []byte
-
-// Route is the shape app converts to module.Route (audit decision 14). MaxBodyBytes and
-// Timeout are module.Route's (api decision 32): zero = the shell's;
-// app copies them. PUT /logo sets MaxBodyBytes = 2*MaxLogoBytes and Timeout =
-// files.UploadTimeout; GET /logo sets Timeout = files.ServeTimeout.
-type Route struct {
-	Method, Pattern string
-	Public          bool
-	Handler         http.Handler
-	MaxBodyBytes    int64
-	Timeout         time.Duration
-}
 
 // IDOf derives the fixed audit reference for a key (as events does for kinds): the first
 // 16 bytes of sha256("settings.setting:" + key). Cannot fail.
@@ -463,12 +390,11 @@ func IDOf(key string) [16]byte
 keys (hello: `Text("greeting")`), app's `PolicySource` adapters for identity (`Enum`, `Duration`,
 `Int`) and people (`Enum`), jobs for `audit.retention` (`Duration`); `Bool` has no core consumer
 yet and exists because `Bool` is a declared kind a module may use. `Reader.Secret`: notify
-(`notify.smtp_password`). `Regional`: notify, the handlers, api and authz Later. `TermsFor`:
-notify's templates, `Public`. `Scoped`: app (`provision`, the core adapters). `Document`,
-`Set`, `Terms`, `SetTerms`, `Public`, `ThemeCSS`: the
+(`notify.smtp_password`). `TermsFor`:
+notify's templates, regional's public document. `Scoped`: app (`provision`, the core adapters). `Document`,
+`Set`, `Terms`, `SetTerms`: the
 handlers. `Run`: app. `IDOf`: this package's audit entries and tests.
-`SetLogo`, `RemoveLogo`, `OpenLogo`: the three logo handlers only; `LogoRef`: this package,
-`filestest`-based tests, and `bms files verify`'s operator (the record kind it prints).
+
 
 **Pre- and post-conditions.** Every use case checks its permission first (`Allow`), then
 validates, then writes in one `Transact(Write)`. A write on a read-only copy fails
@@ -477,7 +403,7 @@ is visible to the next read in the same process before the call returns.
 
 ## Types
 
-Defined above. Uses `model.Email` (`ParseEmail` for `regional.contact_email`),
+Defined above. Uses `model.Email` (still used by `regional`'s checks; see `regional.md`),
 `secret.Secret`, `validate.FieldError` and its codes, `authz.Permission`, `authz.PermissionDecl`,
 `audit.Entry`, `audit.Ref`.
 
@@ -531,20 +457,14 @@ CREATE TABLE core.terminology (
 | Permission | Allows | Scoped by | Reaches | Starter roles |
 |---|---|---|---|---|
 | `settings.read` | `GET /` and `GET /terms`: every declared setting's value (secrets as `secret_set`), the terms | site | internal | `settings-admin` |
-| `settings.manage` | `PUT /values`, `PUT /terms/{lang}`, `PUT /logo`, `DELETE /logo` | site | internal | `settings-admin` |
+| `settings.manage` | `PUT /values`, `PUT /terms/{lang}` (and, in `regional`, `PUT /logo`, `DELETE /logo`) | site | internal | `settings-admin` |
 
- `GET /logo` is public, like `GET /public`: the logo is attached at level
-`public` and shown on every page to everyone, so `Open` audits nothing and needs no actor
-(files decision 11). The logo record holds nothing about a person: no sensitivity level
-beyond `public`, no `Subject`; `UploadedBy` is files' own column, handled by files' export
-and deletion (an admin's export lists the logo under `uploaded`, with its name, since it
-has no subject and is public: files decision 27).
+The logo's permissions and its public reads (`GET /public`, `/theme.css`, `/logo`) are `regional`'s; `settings.manage` is still the permission that guards its writes.
 
 `settings.manage` does not imply `settings.read`; the starter role holds both, and a regional
 that gives a role `manage` alone gets a screen that can save and not show, which the screen
 says. `settings.read` goes to `settings-admin` only (owner, 2026-10-19, D39): other admins see what
-they need on their own screens, and a module's settings are that module's business. Public reads (`GET /public`, `/theme.css`) need no session: everything in
-them is the site's own appearance (decision 6). Module readers (`Deps.Settings`) are not
+they need on their own screens, and a module's settings are that module's business. Module readers (`Deps.Settings`) are not
 permission-checked: a module reads its own declared keys as the system, like `Departments`.
 
 ## Signals
@@ -560,18 +480,7 @@ Subscribed: none.
 
 ## Settings
 
-Declared by this package in area `regional` (core; catalogue keys `core.regional.setting.<key>.*`,
-shipped in `web/src/core/settings/messages/en.json`). All are public (decision 6).
-
-| Key | Type | Default | Valid range | Who can change it |
-|---|---|---|---|---|
-| `regional.name` | text | `BMS` | 1..`MaxNameBytes` bytes after trimming, no control characters (`required`, `too_long`, `control_chars`) | settings admin |
-| `regional.contact_email` | text | `` | `` or `model.ParseEmail` (`malformed`); the regional's shared mailbox, shown to anyone who opens the site; the form says so | settings admin |
-| `regional.public_url` | text | `` | `` or an absolute URL, canonicalised on save by the rule under this table (`url`, `too_long`). The installation's identity (D18) and the base of every link notify sends | settings admin |
-| `regional.language` | enum | `en` | `Languages` (`one_of`); the language before a person chooses (D28, web-shell decision 7) | settings admin |
-| `regional.timezone` | text | `` | `` (the browser's zone) or an IANA name `time.LoadLocation` accepts, never `Local`, at most 64 bytes (`unknown`, `too_long`); the new-event form's default zone, authz's end-of-day Later | settings admin |
-| `regional.color_primary` | text | `` | `` (the shipped palette) or `#rrggbb` (`malformed`); contrast against the shipped light background `#ffffff` at least `MinContrast` (`contrast {ratio, min}`) | settings admin |
-| `regional.color_primary_dark` | text | `` | `` or `#rrggbb`; contrast against the shipped dark background `#121212` at least `MinContrast` | settings admin |
+Moved 2026-11-01 (boundaries step 7) to `regional.md`: the area `regional` (seven keys, `core.regional.setting.<key>.*`; keys, defaults, ranges and who can change them unchanged). `settings` still stores their values, checks their shape and calls their `Check`.
 
 Declared elsewhere, stored here (the owning spec gives the ranges; `settings` only checks
 shape and calls their `Check`): `accounts.*` (identity, eleven keys, `identity.CheckSettings`
@@ -587,17 +496,12 @@ default `587`), `notify.smtp_security` (enum `starttls|tls|none`, default `start
 `notify.smtp_username` (text), `notify.smtp_password` (secret), `notify.sender_address`
 (text, the From address), `notify.sender_name` (text, default `` = `regional.name`),
 `notify.reply_to` (text), `notify.alert_addresses` (text), `notify.retention` (duration).
-**`regional.public_url` canonical form (owner, 2026-10-20, D40).** The submitted text is trimmed, then refused (`url`, with a `reason` param of `scheme`, `host`, `userinfo`, `query`, `fragment` or `chars`) unless: it parses with `net/url`; the scheme is `http` or `https` (any case); the host is non-empty (a port, if present, is 1..65535); there is no userinfo; the text contains no `?` or `#` (so no query, empty query or fragment); and it has no space or control character; it is longer than `MaxURLBytes` is `too_long`.
-It is then stored as lowercase scheme, lowercase host (and port), the path as given, **with every trailing `/` removed** (so `https://x.example/` becomes `https://x.example` and a regional behind a sub-path keeps it: `https://x.example/bms`).
-The same function is the canonical form `Regional().PublicURL` returns; notify builds links as `PublicURL + Link`, so a link can neither double a slash nor lose its host. A stored value that no longer passes (an upgrade) falls back to the default under decision 5. (Implementation, 2026-10-20:
-NUL and DEL are refused first by the generic text check with `control_chars` and no `reason`; tab, newline and space reach this rule as `chars`.
-A Unicode format character (category Cf, such as a zero-width space) or a bad percent-escape is `chars`; the canonical authority is taken from the submitted text and lowercased as a whole (percent-escape hex digits included), not from the unescaped host, so canonicalisation is a fixed point; any other parse failure, a port outside 1..65535 or a trailing colon is `host`.
-`Regional().PublicURL` canonicalises on read as well as on save, and a stored value the rule refuses reads as unset with the decision-5 warning.)
+**`regional.public_url` canonical form (owner, 2026-10-20, D40).** Moved 2026-11-01 (boundaries step 7) to `regional.md` (the rule is `regional`'s `Check`); the decision-5 warning for a stored value that no longer parses still applies.
 
 What notify's draft calls `site.name`, `site.public_url` and `site.default_language` are
-`regional.name`, `regional.public_url` and `regional.language` here, read through
-`Regional`; the terminology map is `TermsFor`. Notify's `SMTPSource`, `SiteSource` and
-`RetentionSource` seams are adapters `app` writes over `Scoped("notify")` and `Regional`,
+`regional.name`, `regional.public_url` and `regional.language`, read through
+`regional.Profile`; the terminology map is `TermsFor`. Notify's `SMTPSource`, `SiteSource` and
+`RetentionSource` seams are adapters `app` writes over `Scoped("notify")` and `regional.Profile`,
 as for identity's and people's `PolicySource`.
 
 **Terminology.** Terms are `CoreTerms` (`event`, `department`, `participant`, `theme_camp`, `lead`; `lead` added D57) and the terms areas declare (`Area.Terms`, D57),
@@ -613,8 +517,7 @@ bytes, trimmed, no control characters. A module that needs a word of its own dec
 |---|---|---|
 | `RefreshInterval` | 30 s (`Options`, for tests) | a replica's staleness bound; nothing a regional should tune |
 | `MaxBatch`, `MaxTextBytes`, `MaxTermBytes`, `MaxNameBytes`, `MaxURLBytes` | 200, 4096, 60, 80, 256 | bounds, not choices |
-| `MinContrast` | 4.5 | WCAG 2.2 AA for text (principle 4) |
-| `MaxLogoBytes` | 2 MiB | a header image is tens of kilobytes; a bound below files' per-file setting, not a choice a regional makes |
+| `MinContrast` | 4.5 | WCAG 2.2 AA for text (principle 4); `regional`'s colour checks read it |
 | sealing | AES-256-GCM, HKDF-SHA256 over the sealing key with info `bms settings seal v1` | one algorithm, in the standard library |
 
 ## UI
@@ -632,7 +535,7 @@ Core screen set `settings` (`web/src/core/settings/`, `kind: "core"`), nav entry
 
 Each field's title and description come from the declaring area's catalogue (decision 8
 derivation); a missing key shows the raw setting key and is reported (web-shell decision 2).
-After a save the shell refetches `GET /api/settings/public` and re-applies the terms and
+After a save the shell refetches `GET /api/regional/public` and re-applies the terms and
 the regional name, so the admin sees the change without a reload. Other browsers see it
 on their next boot (the document is fetched at boot and not cached across sessions).
 
@@ -646,7 +549,7 @@ with `settings.manage` and not on a read-only copy (`useGate`, the shell's read-
 `manage` without `read` gets no section (the screen shows no form, as today).
 
 - **Preview.** When `Public.logo` is set (the shell's public document, `usePublic`): an
-  `<img src="/api/settings/logo?v=<logo>" alt={t("core.settings.logo.current_alt")}>`
+  `<img src="/api/regional/logo?v=<logo>" alt={t("core.settings.logo.current_alt")}>`
   ("The current logo"), height-bounded by Tailwind classes (`max-h-24 w-auto`), on a
   checkerboard-free plain background in both schemes (the header shows it on the frame's
   own background, so the preview sits on the same token). Image load failure (`onError`,
@@ -660,7 +563,7 @@ with `settings.manage` and not on a read-only copy (`useGate`, the shell's read-
   `maxBytes=2097152`, no `capture`: a logo is a file, not a photo) and a **Upload** button
   (`core.settings.logo.upload`; `core.settings.logo.replace` "Replace" when a logo exists),
   disabled until a file is chosen. The upload is explicit, not on pick: a mis-pick must
-  not replace the live logo for everyone. On press: `upload("/api/settings/logo", {file},
+  not replace the live logo for everyone. On press: `upload("/api/regional/logo", {file},
   {method: "PUT"})`; the button is `aria-busy` and disabled while in flight; the `Toast`
   `core.settings.logo.uploaded` ("Logo updated") on success; then the shell's public
   document is refetched (as after Save) so the header and the preview change without a
@@ -668,7 +571,7 @@ with `settings.manage` and not on a read-only copy (`useGate`, the shell's read-
   without a request; the server enforces it anyway.
 - **Remove.** **Remove logo** (`core.settings.logo.remove`), a `Dialog` asking
   `core.settings.logo.remove_confirm` ("Remove the logo? The site will show its name as
-  text instead.") with **Remove** and **Cancel**; `DELETE /api/settings/logo`; `Toast`
+  text instead.") with **Remove** and **Cancel**; `DELETE /api/regional/logo`; `Toast`
   `core.settings.logo.removed` ("Logo removed"); the public document refetched.
 - **Errors.** Field errors from `PUT` land on the `FileField` through `useFieldErrors`
   (`file`: `field.too_large {max}`, `field.type`, `field.malformed`, `field.required`;
@@ -686,7 +589,7 @@ with `settings.manage` and not on a read-only copy (`useGate`, the shell's read-
   is `role="status"`; nothing depends on colour alone.
 
 **The header** (web-shell's frame, D44; Proposed change 15 adds the detail): when
-`Public.logo` is set, the home link holds `<img src="/api/settings/logo?v=<logo>"
+`Public.logo` is set, the home link holds `<img src="/api/regional/logo?v=<logo>"
 alt="<regional name>" decoding="async" class="max-h-8 w-auto max-w-[12rem]">` (at most a 32 px line on
 a phone; the home link has `min-w-11` so a square logo still gives a 44x44 target; review correction, D47: a fixed `h-8` distorted a logo wider than 6:1, `max-h-8` keeps the aspect ratio and a short logo renders smaller; `max-w` so a wide logo cannot push the menu button off a 320 px screen); the link's
 accessible name is therefore the regional's name, as it is with text. When unset, or when
@@ -698,16 +601,14 @@ needs a dark variant uploads one with a transparent background.
 
 ## Behavior
 
-**Construction.** `New` validates `Options`, prepends the `regional` area, validates every
-area, refuses duplicate area names and any area named `regional` from outside, and builds
+**Construction.** `New` validates `Options`, validates every
+area, refuses duplicate area names (a second `regional` area is a duplicate; the reserved name is `module`'s check, `api.md` item 24; the area itself is passed in by `app` from `regional.Settings`), and builds
 the declaration index (`fullKey -> (Area, Decl)`). No I/O.
 
 **Snapshot.** `snapshot{revision, values map[fullKey]string (text forms as stored),
-sealed map[fullKey][]byte, terms map[lang]map[term]map[form]string, logo string (the logo's
-file ID or ""), loadedAt}` behind an
+sealed map[fullKey][]byte, terms map[lang]map[term]map[form]string, loadedAt}` behind an
 `atomic.Pointer`. The first read on a process loads it (single-flight, one `Transact(Read)`
-with a derived deadline, span `settings.load`; when `Options.Files` is set the same
-transaction runs `Files.ByRecord(LogoRef)` and keeps the newest file's ID); until it exists every read fails with the
+with a derived deadline, span `settings.load`); until it exists every read fails with the
 load's error. `Run` polls `SELECT revision FROM core.setting_revision` every
 `RefreshInterval` and reloads when it moved (span `settings.refresh`, metric
 `bms.settings.refresh{outcome=ok|unchanged|failed}`); a failed poll or reload logs once per
@@ -724,7 +625,7 @@ warning once per key per process (`setting` attribute only), and counts
 unseals on each call so plaintext is not held; `secret.Secret{}` when unset.
 
 **Writes.** `Set`: `Allow(settings.manage)`; `Validate`: 1..`MaxBatch` keys, each declared
-(`unknown`), each non-nil value trimmed (not for `Secret`) and parsed by kind, the `Decl.Check`
+(`unknown`), each non-nil value trimmed (not for `Secret`), normalised (`Decl.Normalize`, when set, non-`Secret` only), parsed by kind, the `Decl.Check`
 run; all problems joined into one `Invalid` with the full key as field. There is **no early
 area check** (owner, 2026-10-20, D40, Q-SETTINGS-REVIEW): the snapshot can be up to
 `RefreshInterval` (30 s) stale on a copy that has not yet polled, so an area `Check` run
@@ -743,101 +644,9 @@ ID: IDOf(lang + ":" + term)}`, `Fields: [form...]`, `Reason: "term:<lang>:<term>
 2); a `Record` failure fails the use case (decision 3). Reads of the admin document are not
 audited: nothing in it is personal. Secrets are never in an entry.
 
-**Public document.** `Public` = `Regional` + whether
-`ThemeCSS` is non-empty + `Terms` for every language in `Languages` (defaults with overrides,
-flattened to the shell's argument names: `term_<term>`, `term_<term>_plural`,
-`term_<term>_title`, `term_<term>_plural_title`). `GET /public` sets `ETag` from the
-revision and answers `304` to a matching `If-None-Match`; the api shell's `no-store` on
-`/api/` still applies (api decision 12), so the shell fetches it once per boot.
-`GET /theme.css` answers `text/css; charset=utf-8` with
+**Public document and `theme.css`.** Moved 2026-11-01 (boundaries step 7) to `regional.md` (`GET /public`, `GET /theme.css`, the `ETag` and the derived colours).
 
-```css
-@media not (prefers-color-scheme: dark) { :root { --primary: #...; --primary-fg: #...; --primary-hover: #...; } }
-@media (prefers-color-scheme: dark) { :root { --primary: ...; --primary-fg: ...; --primary-hover: ...; } }
-```
-
-for the schemes whose colour is set; a scheme with no colour emits no rule, so the shipped
-tokens stay for it, and an empty body when neither is set (implementation, 2026-10-19: the
-light colour was first written as a bare `:root { ... }`, which in dark mode overrode the
-shipped dark tokens and broke contrast, found in the web review, so it is now inside
-`not (prefers-color-scheme: dark)`). `--primary-fg` is white
-or `#1a1a1a`, whichever contrasts more with the colour, and `--primary-hover` is the colour
-darkened (light scheme) or lightened (dark scheme) by 12 % in sRGB; both are derived, so
-the regional sets one colour per scheme (decision 9).
-
-**The logo** (decisions 16 to 18). Three use cases over `Options.Files`,
-every one `Unsupported` when it is nil.
-
-*`SetLogo(ctx, name, body)`.* 1 `Allow(settings.manage)` (`Unauthenticated` with no actor,
-`Permission` without it). 2 `s.db.ReadOnly()`: on a read-only copy, `Unavailable` wrapping
-`db.ErrReadOnly` now, before a byte of the body is read (decision 18; files asks that a
-handler on a read-only copy never reach `Stage`). 3 `Files.Stage(ctx, files.Upload{Name:
-name, Accept: files.Brand, Body: limit(body)})` outside any transaction: `limit` is a
-counting reader that, on the byte past `MaxLogoBytes`, returns `errs.E(op, errs.Invalid,
-validate.FieldError{Field: "file", Code: "too_large", Params: {"max": "2097152"}})`, which
-`Stage` returns unchanged (files' `classifyRead` passes a classified `*errs.Error` through;
-Proposed change 16 writes that into files' contract); files sniffs the kind (`Detect` on the
-first 512 bytes; anything outside `files.Brand`, an SVG, a GIF, a PDF, an HTML file named
-`.png`, is `Invalid file type`), strips the image's metadata (`KeepMetadata` false: there is
-nothing in a logo's EXIF the site needs, and the rule stays one rule), hashes and puts the
-object in bucket `settings`. A `Stage` failure ends the use case with its error; nothing was
-written to the database. 4 `defer Files.Discard(ctx, staged)`: a no-op once attached, else
-the object goes (a `Discard` error is logged once with the file ID and left to files' sweep).
-5 `Transact(Write)`: `LockRevision` first (the row lock serialises logo writes with each
-other and with `Set`, so two admins uploading at once end with one row: the second
-`Replace` runs after the first commit and deletes the first file); `Files.Attach(ctx,
-staged, files.Attachment{Record: LogoRef, Level: model.SensitivityPublic, Replace: true})`
-(no `Subject`: the logo is about nobody; `Replace` deletes the previous logo's row and
-writes its tombstone in this transaction; files records `files.file.created` and
-`files.file.deleted` itself); `Audit.Record(settings.logo.changed, Record: LogoRef, Fields:
-["logo"], Reason: "file:<new id>")`; `BumpRevision`. A failure anywhere rolls back: no row,
-no entry, no bump, and step 4 removes the object. 6 after commit: the next snapshot is the
-old one with `logo` = the new ID and the bumped revision, installed if newer (as `Set`);
-files' `AfterCommit` deletes the old object. Returns `LogoResult{Revision, Logo}`.
-`SetLogo` always changes something (a new file, a new ID), like a `Secret` re-save (F22a).
-
-*`RemoveLogo(ctx)`.* 1 `Allow(settings.manage)`. 2 `s.db.ReadOnly()` as above. 3
-`Transact(Write)`: `LockRevision`; `Files.DeleteByRecord(ctx, LogoRef)`; when it returns 0
-the transaction ends with nothing changed (no entry, no bump; the current revision is
-returned with `Logo: ""`: idempotent, decision 18); otherwise `Audit.Record(settings.logo.removed,
-Record: LogoRef, Fields: ["logo"], Reason: "file:<old id>")` and `BumpRevision`; after
-commit the snapshot's `logo` is `""`.
-
-*`OpenLogo(ctx)`.* No permission (public). Outside any transaction: `Files.ByRecord(ctx,
-LogoRef)`; none is `NotFound`; the newest is opened with `Files.Open` (public: no actor
-needed, no audit; files decisions 10 and 11); the handler calls `files.Serve(w, r, f, c)`
-and closes `c`. `ByRecord`, not the snapshot, so a replica never serves a deleted ID during
-its poll interval (decision 16). On a copy whose bytes have not been synced `Open` is
-`Unavailable` wrapping `objects.ErrMissing` and the api answers `503` with `Retry-After`;
-the header falls back to the name as text (web-shell).
-
-*Handlers.* `PUT /logo`: check `settings.manage` first (D52(e)), then `files.ReadUpload(r, "file")` (`415` when not multipart; `400
-file required` with no file part; text parts are ignored), then `SetLogo(ctx, "logo",
-mp.Body)` (the stored name is always "logo", D52(e); `settings.manage` is checked before `ReadUpload` reads the body); `200` with `LogoResult`. `Route.MaxBodyBytes = 2*MaxLogoBytes` (the field error
-from step 3 wins for anything up to twice the cap; a client that ignores it gets the shell's
-`413` beyond; files' 1 GiB ceiling, which D44 named, has no use on a 2 MiB route) and
-`Route.Timeout = files.UploadTimeout` (a phone on a venue link). `DELETE /logo`: `RemoveLogo`;
-`200` with `LogoResult`. `GET /logo`: public; `OpenLogo`, `files.Serve` (sniffed
-`Content-Type`, `inline`, `Content-Security-Policy: default-src 'none'`, `ETag` = SHA-256,
-no `Cache-Control` of its own: the shell's `no-store` stands, files decision 25, D45; a
-matching `If-None-Match` is a `304` through `http.ServeContent`); `Route.Timeout =
-files.ServeTimeout`. The `?v=` query the shell adds is ignored by the handler. The OpenAPI
-fragment documents the multipart request body, the binary `image/*` response and
-`LogoResult` (api decision 33). Handlers never write an error body themselves
-(`httpx.Fail`).
-
-*Why the snapshot carries the ID (decision 16).* `GET /public`'s `ETag` is the revision;
-a logo change that did not bump the revision would answer `304` to the shell's refetch after
-an upload and the header would keep the old image. Bumping the revision makes the logo an
-ordinary settings write: the writer's after-commit snapshot and a replica's poll both see
-it, and `Public` stays a snapshot read with no I/O (F9 is its only failure). *Not taken:*
-`ByRecord` inside `Public` (I/O on the boot document, and a logo change invisible to the
-`ETag`); a declared `regional.logo` setting holding the ID (an admin could set it to any
-string through `PUT /values`; there is no "internal-only" key).
-
-*Export and deletion.* None: the logo is about nobody (no `Subject`, level `public`); the
-spec's "Personal data" line under "Not responsible for" stands. files owns the one person
-reference the row has (`uploaded_by`) and anonymises it in its own `DeletePerson`.
+**The logo** (decisions 16 to 18). Moved 2026-11-01 (boundaries step 7) to `regional.md`: `SetLogo`, `RemoveLogo`, `OpenLogo`, their handlers, the rationale for the snapshot's logo ID and the export/deletion note. How the logo write takes part in the revision lock without `settings` importing `files` is `regional.md`, Open question 2.
 
 **Deviation: duration range errors (implementation, 2026-10-19).** A `range` error on a
 `Duration` setting (identity and `auditsettings` checks) gives its `min` and `max` params in
@@ -854,10 +663,7 @@ has it.
 **Read-only copy.** Reads, the public routes and `Run` work (the standby streams the
 writer's rows, and the revision poll sees them). Every write fails `Unavailable` wrapping
 `db.ErrReadOnly` before any statement changes anything, and the api answers `503 read_only`.
- `GET /logo` works when the operator's sync has brought the object
-(files Q-FILES8), else `503` with `Retry-After` and the header shows the name; `PUT` and
-`DELETE /logo` fail `read_only` before the body is read (decision 18), and the screen hides
-their controls on a read-only copy.
+ The logo routes' behavior on a read-only copy is `regional`'s.
 
 **Concurrency and lifecycle.** `*Service` is safe for concurrent use. `Run` is the one
 goroutine, started by `app` as a runnable after `Set.Start`, exiting when its ctx ends;
@@ -866,10 +672,7 @@ values is a no-op write (no rows change, no audit entry, no revision bump). Retr
 decision 11).
 
 **Telemetry.** Spans `settings.<use-case>` with `settings.keys` (`Int`, the batch size) and
-`settings.area` (`Token`); never a key's value. Spans `settings.logo.set`,
-`settings.logo.remove`, `settings.logo.open` with `settings.file_id` (`ID`) once known; never
-the file name or the declared type (files' rule, kept here: `files.File.LogValue` is the ID).
-No new metrics: files counts uploads and reads. Logs carry `setting` (the key, a token) and
+`settings.area` (`Token`); never a key's value. The logo's spans are `regional`'s. Logs carry `setting` (the key, a token) and
 never a value. The leak test (`telemetrytest`) sets a marker as a text value and a secret
 and asserts it appears in no log, span or audit entry.
 
@@ -880,12 +683,12 @@ and asserts it appears in no log, span or audit entry.
 | F1 | `New` | a nil `DB`, `Clock`, `Logger`, `Tracer`, `Audit`, `Authz` or `Actor` | Invalid (`settings.<field>`) | fix the wiring | `TestNew_NilDependency_ReturnsInvalid` |
 | F2 | `New` | `RefreshInterval` outside 1 s..10 m | Invalid (`settings.refresh_interval`) | fix the wiring | `TestNew_RefreshIntervalRange_ReturnsInvalid` |
 | F3 | `New` | an area invalid: name not an ident, a `Decl` failing `Validate`, duplicate keys | Invalid (`settings.areas[i].*`) | fix the declaring package | `TestNew_InvalidArea_ReturnsInvalid` |
-| F4 | `New` | two areas with one name, or an outside area named `regional` | Invalid (`settings.areas`) | fix the wiring | `TestNew_DuplicateArea_ReturnsInvalid` |
+| F4 | `New` | two areas with one name, or a non-core area named `regional` | Invalid (`settings.areas`) | fix the wiring | `TestNew_DuplicateArea_ReturnsInvalid` |
 | F5 | `Decl.Validate` | a `Secret` with a non-empty `Default` or `Options` | Invalid (`default`) | fix the declaration | `TestDeclValidate_SecretWithDefault_ReturnsInvalid` |
 | F6 | `Scoped` | an undeclared area | Invalid | fix the wiring | `TestScoped_UnknownArea_ReturnsInvalid` |
 | F7 | `Reader.*` | a key the area did not declare | Invalid | fix the caller | `TestReader_UndeclaredKey_ReturnsInvalid` |
 | F8 | `Reader.*` | the method's kind does not match the declaration (`Int` on a text) | Invalid | fix the caller | `TestReader_KindMismatch_ReturnsInvalid` |
-| F9 | `Reader.*`, `Regional`, `TermsFor`, `Public` | no snapshot yet and the load fails (database down) | Unavailable (or Timeout, Canceled) | the use case fails; the api answers 503; the shell keeps its defaults and retries | `TestReader_FirstLoadFails_ReturnsUnavailable` |
+| F9 | `Reader.*`, `TermsFor` | no snapshot yet and the load fails (database down) | Unavailable (or Timeout, Canceled) | the use case fails; the api answers 503; the shell keeps its defaults and retries | `TestReader_FirstLoadFails_ReturnsUnavailable` |
 | F10 | `Reader.*` | the stored value no longer parses as its kind | none: the default is returned, warned once, counted | nothing | `TestReader_StaleValue_ReturnsDefaultAndWarnsOnce` |
 | F11 | `Reader.Secret` | a value is set and the service has no sealing key | Unsupported | tell the operator to set `settings.sealing_key` | `TestReaderSecret_NoSealingKey_ReturnsUnsupported` |
 | F12 | `Reader.Secret` | unsealing fails (key changed, row tampered) | Internal | the use case fails; the operator restores the key or the admin re-enters the value | `TestReaderSecret_WrongKey_ReturnsInternal` |
@@ -900,7 +703,6 @@ and asserts it appears in no log, span or audit entry.
 | F21 | `Set` | an area's `Check` rejects the merged values (identity: `client_failure_limit` below `login_failure_limit`) | Invalid (`<area>.<field>`, the check's codes) | show the field error | `TestSet_AreaCheckRejects_ReturnsInvalid` |
 | F22a | `Set` | a `Secret` re-saved with the value it already has | counts as a change: written (a fresh nonce makes new ciphertext), revision bumped, `settings.setting.changed` audited; a `Check` and an area `Check` see no "already set" | nothing | `TestSet_SecretResave_AlwaysChanges` |
 | F22 | `Set` | a `Secret` value with no sealing key | Unsupported | tell the operator | `TestSet_SecretWithoutSealingKey_ReturnsUnsupported` |
-| F23 | `Set` (`regional.*`) | name empty or too long; contact e-mail malformed; URL not http/https, without a host, with userinfo, query or fragment, or too long (the rule above); zone unknown or `Local`; colour not `#rrggbb`; colour under `MinContrast` | Invalid (`required`, `too_long`, `malformed`, `url {reason}`, `unknown`, `contrast {ratio, min}`) | show the field errors | `TestSet_Regional_Table` |
 | F23a | `Set` | the snapshot is stale (a copy that has not polled) and the batch is valid against the stored values | accepted: the area `Check` runs inside the transaction over the stored rows, so a stale snapshot cannot refuse it | nothing | `TestSet_StaleSnapshot_AreaCheckUsesStoredRows` |
 | F24 | `Set`, `SetTerms` | read-only copy | Unavailable wrapping `db.ErrReadOnly` | the api answers `503 read_only`; the screen keeps its edits | `TestSet_ReadOnly_ReturnsUnavailable` |
 | F25 | `Set`, `SetTerms` | the audit `Record` fails | the recorder's error; nothing written | the use case fails | `TestSet_AuditFails_RollsBack` |
@@ -918,30 +720,8 @@ and asserts it appears in no log, span or audit entry.
 | F33 | `Run` | a poll or reload fails | none returned: logged once per minute, counted `failed`, old snapshot kept | nothing | `TestRun_PollFails_KeepsSnapshotAndWarnsOnce` |
 | F34 | `Run` | ctx ends | nil | nothing | `TestRun_ContextDone_ReturnsNil` |
 | F35 | handlers | malformed JSON, wrong content type | Invalid (`httpx.ReadJSON`'s) | show the error | `TestPutValues_BadBody_Returns400` |
-| F36 | `GET /public`, `/theme.css` | `If-None-Match` equals the current `ETag` | none: `304` | nothing | `TestGetPublic_IfNoneMatch_Returns304` |
-| F37 | `PUT /logo` | the body is not `multipart/form-data`, or has no file part | Invalid wrapping `httpx.ErrUnsupportedMediaType` (`415`) / Invalid (`file`, `required`) | fix the client / "choose a file" | `TestPutLogo_NotMultipart_Returns415`, `TestPutLogo_NoFilePart_ReturnsInvalidRequired` |
-| F38 | `SetLogo`, `RemoveLogo` | no actor | Unauthenticated | sign in | `TestSetLogo_NoActor_ReturnsUnauthenticated` |
-| F39 | `SetLogo`, `RemoveLogo` | no `settings.manage` | Permission | show forbidden | `TestSetLogo_NoPermission_ReturnsPermission`, `TestRemoveLogo_NoPermission_ReturnsPermission` (D44's F38) |
-| F40 | `SetLogo`, `RemoveLogo`, `OpenLogo` | `Options.Files` is nil | Unsupported (`501`) | the screen says logos aren't available here | `TestLogo_NoFiles_ReturnsUnsupported` (D44's F40) |
-| F41 | `SetLogo`, `RemoveLogo` | read-only copy | Unavailable wrapping `db.ErrReadOnly`, before any of the body is read (`SetLogo`) and before `Stage` | `503 read_only`; the screen keeps the chosen file | `TestSetLogo_ReadOnly_ReturnsUnavailableBeforeBodyRead` (the body reader records zero reads), `TestRemoveLogo_ReadOnly_ReturnsUnavailable` |
-| F42 | `SetLogo` | more than `MaxLogoBytes` bytes in the file part | Invalid (`file`, `too_large {max: 2097152}`); the counting reader stops at the cap, nothing staged | show the limit: "The file is larger than {max}.", `max` formatted as bytes by the UI ("2 MB"; the `Params` stay `{max: 2097152}`, D52(e)) | `TestSetLogo_OverMaxLogoBytes_ReturnsInvalidTooLarge` (asserts the message text; D44's F37; the fake's `Staged()` is empty) |
-| F43 | `SetLogo` | the sniffed kind is not in `files.Brand` (SVG, GIF, PDF, HTML named `.png`) | Invalid (`file`, `type`) | "this kind of file isn't accepted" | `TestSetLogo_UnacceptedType_ReturnsInvalidType` (table: an SVG, a GIF, a PDF, an HTML file) |
-| F44 | `SetLogo` | the image cannot be parsed for stripping | Invalid (`file`, `malformed`) | "the file is damaged" | `TestSetLogo_Malformed_ReturnsInvalid` |
-| F45 | `SetLogo` | the site is at `files.quota_bytes` (files decision 26, at `Stage` or `Attach`) | Conflict (`quota {max}`) | raise the quota or remove files | `TestSetLogo_AtQuota_ReturnsConflictQuota` (nothing attached, no bump, no entry) |
-| F46 | `SetLogo` | the object store or the temp dir is unavailable | Unavailable (`503`, `Retry-After`); nothing written | retry later; operator | `TestSetLogo_StoreUnavailable_ReturnsUnavailable` |
-| F47 | `SetLogo`, `RemoveLogo` | the audit `Record` fails inside the transaction | the recorder's kind; rollback; the staged object discarded | the use case fails | `TestSetLogo_AuditFails_RollsBackAndDiscards` (`Files()` unchanged, `Staged()` empty after), `TestRemoveLogo_AuditFails_RollsBack` |
-| F48 | `SetLogo` | `Attach` fails for a files reason after `Stage` (`Invalid staged expired`, store kinds) | that error; rollback; discarded | the use case fails | `TestSetLogo_AttachFails_RollsBackAndDiscards` |
-| F49 | `SetLogo` | two admins upload at once | none: serialised by the revision lock; one row remains (the later upload's), one `settings.logo.changed` each | nothing | `TestSetLogo_Concurrent_OneRowRemains` (integration) |
-| F50 | `RemoveLogo` | no logo | none: no entry, no bump, `LogoResult{current revision, ""}` | nothing | `TestRemoveLogo_None_IsNoop` |
-| F51 | `OpenLogo` | no logo | NotFound (`404 not_found`) | the header shows the name | `TestGetLogo_None_ReturnsNotFound` (D44's F39) |
-| F52 | `OpenLogo` | the row exists and the object does not (a copy not yet synced) | Unavailable wrapping `objects.ErrMissing` (`503`, `Retry-After`) | the header falls back to the name; the operator syncs | `TestGetLogo_ObjectMissing_ReturnsUnavailable` |
-| F53 | `GET /logo` | `If-None-Match` equals the file's `ETag` | none: `304` (`http.ServeContent`) | nothing | `TestGetLogo_IfNoneMatch_Returns304`; `TestGetLogo_SetsNoCacheControl` pins decision 25 |
-| F54 | load | `Files.ByRecord(LogoRef)` fails during the snapshot load | the load's error (Unavailable, Timeout, Canceled), as F9 | as F9 | `TestLoad_LogoLookupFails_ReturnsUnavailable` |
 
-`Public`, `ThemeCSS`, `Regional` and `Routes`/`OpenAPI` cannot fail beyond F9 and `Internal`
-on an unencodable document (a bug): they read the snapshot and format it. `LogoRef` and
-`MaxLogoBytes` are constants pinned by `TestLogoRef_Pinned` and `TestConstants_Pinned`
-.
+Moved to `regional.md` (step 7), with numbers and tests unchanged: F23 (`regional.*` checks), F36 to F54 (public document, theme and the whole logo). Those numbers are left unused here. `Routes`/`OpenAPI` cannot fail beyond F9 and `Internal` on an unencodable document (a bug). `TestConstants_Pinned` stays here.
 
 ## Lock-in check
 
@@ -953,13 +733,9 @@ store interface (D8), so a fork can swap it. Nothing here calls out of the proce
 
 - **Unit (no infrastructure):** `Decl`/`Area` validation tables; value parsing per kind;
   the sealing (crypto) tests (round trip, wrong key, moved ciphertext) and the contrast tests
-  are unit tests with no build tag and no database (owner, 2026-10-20, D40); the
-  `regional.*` checks (URL canonical-form table: scheme, host, userinfo, query, fragment,
-  trailing slashes, case, sub-path; zone, colour, contrast with known pairs: `#9a3412` on white
-  passes, `#f97316` fails); the snapshot (load once, after-commit replace, out-of-order
+  are unit tests with no build tag and no database (owner, 2026-10-20, D40); the snapshot (load once, after-commit replace, out-of-order
   install refused, stale value → default and one warning); `Reader` scoping and kind checks
-  over a store fake; sealing round trip, wrong key, moved ciphertext (AAD); `ThemeCSS`
-  rendering and the derived colours; the public flattening of terms; `Run` with a fake
+  over a store fake; sealing round trip, wrong key, moved ciphertext (AAD); the flattening of terms; `Run` with a fake
   clock (no `time.Sleep`): unchanged, moved, failing polls; the handlers over
   `httptest` with `dbtest.Fake` for the kinds a fake can produce (read-only, store failure).
 - **Permission tests:** `authztest.NewFake()`: every use case denied without its permission,
@@ -974,26 +750,10 @@ store interface (D8), so a fork can swap it. Nothing here calls out of the proce
   harness has one) fail `ErrReadOnly`.
 - **Leak test:** `telemetrytest.New(t)`: a marker set as a text value and as a secret
   appears in no log, span, metric or audit entry.
-- **Logo:** unit tests over `filestest.NewFake("settings")`,
-  `authztest`, `audittest` and `dbtest.Fake`: F37 to F48, F50 to F54 as named; the snapshot
-  carries the ID after `SetLogo` and `""` after `RemoveLogo`; `GET /public`'s `ETag` moves
-  on both; `Public.Logo` is `""` with no `Files`; the counting reader stops reading at
-  `MaxLogoBytes + 1` (a reader that counts its reads); the handler over `httptest` with a
-  real multipart body (a 1x1 PNG, a JPEG, a WebP header) and `TestGetLogo_SetsNoCacheControl`
-  (the header absent); the leak test adds a marker as the uploaded file's name and asserts
-  it reaches no log, span or audit entry. Integration (`dbtest.TempDB`, the `disk` store in a
-  temp dir): upload, replace (the first object gone after `Reap`), remove (tombstone, then
-  gone), a second `Service` sees the new ID after one poll, F49 with two goroutines.
-  Catalogue test (`internal/app`): every `core.settings.logo.*` key named under UI exists in
-  `en.json`. Playwright (phone and desktop): the smoke run's logo round trip (web-shell
-  Proposed change 8): a settings admin uploads a PNG, the header shows it with the regional's
-  name as `alt`, replaces it (the `src` changes), removes it (the name is text again);
-  `axe` passes on `/settings` with and without a logo.
-- **Logo handler (D52(e)):** `TestPutLogo_NonAdmin_Returns403WithoutReadingTheBody`,
-  `TestPutLogo_StoredName_IsLogoNotTheMultipartFilename`; the too-large tests assert the message text.
+- **Logo, theme, public document and the `regional.*` checks:** moved to `regional.md`'s test plan with their names (`TestLogo_*`, `TestPublic_*`, `TestTheme_*`, `TestSet_Regional_Table`, `core_settings_logo_test`). `TestSet_Regional_Table` keeps the canonical-form rows, in `regional`.
+- **Normalize and Revise (boundaries A2):** `TestSet_NormalizeRunsBeforeCheck`, `TestDeclValidate_SecretWithNormalize_ReturnsInvalid`, `TestRevise_FnFails_RollsBackAndKeepsRevision`, `TestRevise_ReadOnlyCopy_ReturnsUnavailable`, `TestRevise_Unchanged_ReturnsCurrentRevision`, `TestRevise_NoRevisionRow_ReturnsInternal`, `TestRevise_Changed_BumpsAndInstallsSnapshot`, `TestRevise_Concurrent_Serialised` (integration). Playwright still runs the logo round trip and `axe` on `/settings` with and without a logo against `/api/regional/`.
 - **Module terms (D57):** the F29a to F29d tests, `TestSetTerms_UndeclaredModuleTerm_ReturnsInvalid`; the shell's `term.lead*` entries join the `terms/en.json` equality test.
-- **Catalogue tests (`internal/app`):** `core.regional.setting.<key>.title|description` for
-  every `regional` key and `.option.<opt>` for `language`; the shell's `term.*` entries equal
+- **Catalogue tests (`internal/app`):** the shell's `term.*` entries equal
   `terms/en.json`; every core area's declared keys have their catalogue titles.
 - **End-to-end (Playwright, phone and desktop):** a settings admin renames "department" to
   "team" and the nav and the departments page title change without a reload; a
@@ -1002,6 +762,8 @@ store interface (D8), so a fork can swap it. Nothing here calls out of the proce
 ## Amendments
 
 Amendments 2026-10-19 (D40), 2026-10-20 (D44), 2026-10-21 (D47), 2026-10-28 (D52(e)) and 2026-10-30 (D57, D58) are folded into the text above. Their narratives, the reasons for each choice and the superseded wording are in `plan/design/history/settings.md`.
+
+Amendment 2026-11-01 (boundaries step 7, `boundaries.md` decision 4, items 15 and 17; A2: `Revise`, `Revision`, `Decl.Normalize`, audit actions `regional.logo.changed|removed`): the regional's profile, public document, theme and logo moved to `regional.md`; `Options.Files` is removed; routes are `GET /`, `PUT /values`, `GET /terms`, `PUT /terms/{lang}`; the `regional` area is passed in as a core area, not added by `New`. Done in place: this spec's Summary and body say so where they changed; the moved text, rows F23 and F36 to F54 and the logo tests are in `regional.md`. The step is not yet implemented, so the narrative moves to `history/settings.md` when it is.
 
 ## Open questions
 

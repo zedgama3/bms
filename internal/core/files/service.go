@@ -69,7 +69,7 @@ type Service struct {
 	actor   authz.ActorFunc
 	objects objects.Store
 	tempDir string
-	policy  PolicySource
+	policy  PolicySource // PolicyFrom(Options.Settings), or Options.Policy
 
 	metrics metrics
 
@@ -99,8 +99,11 @@ func New(o Options) (*Service, error) {
 		audit:   o.Audit,
 		actor:   o.Actor,
 		tempDir: o.TempDir,
-		policy:  o.Policy,
+		policy:  PolicyFrom(o.Settings),
 		owners:  map[string]struct{}{},
+	}
+	if o.Policy != nil {
+		s.policy = o.Policy
 	}
 	s.tombstones.Store(-1)
 	if err := s.metrics.init(o.Meter, s); err != nil {
@@ -136,17 +139,14 @@ func (s *Service) knownOwners() []string {
 	return out
 }
 
-// readPolicy asks the PolicySource (DefaultPolicy when none) and validates the answer.
+// readPolicy maps the files.* settings onto a Policy and validates the answer.
 func (s *Service) readPolicy(ctx context.Context, op string) (Policy, error) {
-	if s.policy == nil {
-		return DefaultPolicy(), nil
-	}
 	p, err := s.policy.Policy(ctx)
 	if err != nil {
 		return Policy{}, fmt.Errorf("%s: read the policy: %w", op, err)
 	}
 	if err := p.Validate(); err != nil {
-		return Policy{}, errs.E(op, errs.Internal, fmt.Errorf("the policy source answered an invalid policy: %w", err))
+		return Policy{}, errs.E(op, errs.Internal, fmt.Errorf("the settings gave an invalid policy: %w", err))
 	}
 	return p, nil
 }

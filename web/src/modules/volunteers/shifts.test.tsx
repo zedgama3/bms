@@ -27,7 +27,7 @@ describe("volunteers: the regional's word for shift (F170)", () => {
     mount({
       path: "/volunteers",
       routes: {
-        "GET /api/settings/public": () =>
+        "GET /api/regional/public": () =>
           json(
             publicDoc({
               term_shift: "stint",

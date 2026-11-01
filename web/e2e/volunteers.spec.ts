@@ -11,7 +11,7 @@ const only = (m: string) => test.skip(mode !== m, `needs BMS_E2E_MODE=${m}`);
 
 const test = base.extend<object>({
   page: async ({ page }, provide) => {
-    await page.route("**/api/settings/public", (r) =>
+    await page.route("**/api/regional/public", (r) =>
       r.fulfill({
         json: {
           name: "BMS",
@@ -26,7 +26,7 @@ const test = base.extend<object>({
         },
       }),
     );
-    await page.route("**/api/settings/theme.css**", (r) =>
+    await page.route("**/api/regional/theme.css**", (r) =>
       r.fulfill({ contentType: "text/css", body: "" }),
     );
     await provide(page);

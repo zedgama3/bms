@@ -67,12 +67,24 @@ func TestNew_AllMissing_NamesEveryField(t *testing.T) {
 	}
 }
 
-func TestNew_NilPolicyAndMeter_AreAllowed(t *testing.T) {
+func TestNew_NilMeter_IsAllowed(t *testing.T) {
 	o := baseOptions(t)
-	o.Policy = nil // nil = DefaultPolicy
+	o.Meter = nil
 	if _, err := files.New(o); err != nil {
-		t.Fatalf("New(nil Policy) = %v", err)
+		t.Fatalf("New(nil Meter) = %v", err)
 	}
+}
+
+// boundaries step 5: Settings (the reader scoped "files") is required.
+func TestNew_NilSettings_ReturnsInvalid(t *testing.T) {
+	o := baseOptions(t)
+	o.Settings = nil
+	svc, err := files.New(o)
+	wantKind(t, err, errs.Invalid)
+	if svc != nil {
+		t.Error("New returned a service with its error")
+	}
+	wantKind(t, o.Validate(), errs.Invalid)
 }
 
 // "New does no I/O, so bms openapi and bms check build against db.None()".

@@ -26,6 +26,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/module"
 	"github.com/zedgama3/bms/internal/core/notify"
 	"github.com/zedgama3/bms/internal/core/people"
+	"github.com/zedgama3/bms/internal/core/regional"
 	"github.com/zedgama3/bms/internal/core/settings"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/telemetry"
@@ -123,6 +124,7 @@ type assembly struct {
 	authzLookup       *authz.Lookup              // built by buildLookups; audit, identity, settings and api take it; nil before it
 	events            *events.Service            // the events part's service; nil before its build
 	notify            *notify.Service            // the notify part's service (the alert, the outbox in export); nil before its build
+	regional          *regional.Service          // the regional part's service (notify's site source); nil before its build
 	files             *files.Service             // the files part's service (the Start probe, bms check, bms files verify); nil before its build
 	auditlog          *auditlog.Service          // the auditlog part's service (people's deletion report, the audit routes); nil before its build
 	jobs              *jobs.Runner               // the jobs part's runner (lazyDeferrer, audit.purge, bms check); nil before its build
@@ -132,9 +134,9 @@ type assembly struct {
 	started           []runnable
 	srv               httpServer
 	uiVersion         string
-	demo              *demo.Service      // the demo part's service (demo seed|reset, the lazy adapters); nil before its build
-	filesPolicy       files.PolicySource // the settings-backed files policy; the demo part wraps it when enabled
-	forDocument       bool               // the openapi command: the client services are built off and empty (usage.go)
+	demo              *demo.Service   // the demo part's service (demo seed|reset, the lazy adapters); nil before its build
+	filesReader       settings.Reader // the reader scoped "files"; the demo part caps the policy mapped from it when enabled
+	forDocument       bool            // the openapi command: the client services are built off and empty (usage.go)
 }
 
 // newAssembly returns the assembly of one command run over cfg. Telemetry and everything

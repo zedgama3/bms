@@ -5,7 +5,7 @@ import type { Locator, Page } from "@playwright/test";
 // Shared helpers, the extended `test` and the mode gate for the end-to-end specs
 // (web-shell.md decision 22, "Test plan").
 
-/** The public settings document the shell reads at boot (`GET /api/settings/public`). */
+/** The public settings document the shell reads at boot (`GET /api/regional/public`). */
 export function publicSettings(over: Record<string, unknown> = {}) {
   return {
     name: "BMS",
@@ -25,8 +25,8 @@ export function publicSettings(over: Record<string, unknown> = {}) {
  *  mocks the session does not depend on what the real server holds. A route a test adds later
  *  takes precedence. */
 export async function mockPublicSettings(page: Page, doc: () => unknown = () => publicSettings()) {
-  await page.route("**/api/settings/public", (r) => r.fulfill({ json: doc() }));
-  await page.route("**/api/settings/theme.css**", (r) =>
+  await page.route("**/api/regional/public", (r) => r.fulfill({ json: doc() }));
+  await page.route("**/api/regional/theme.css**", (r) =>
     r.fulfill({ contentType: "text/css", body: "" }),
   );
 }

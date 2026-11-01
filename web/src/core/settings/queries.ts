@@ -4,7 +4,7 @@ import { api } from "@/api";
 
 export const DOCUMENT_KEY = ["settings", "document"] as const;
 export const TERMS_KEY = ["settings", "terms"] as const;
-/** The frame's boot query for GET /api/settings/public (web-shell "Settings"): invalidating it
+/** The frame's boot query for GET /api/regional/public (web-shell "Settings"): invalidating it
  *  makes the frame fetch the document again and apply the new name and terms at once. */
 const PUBLIC_KEY = ["core", "settings", "public"] as const;
 

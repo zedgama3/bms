@@ -394,7 +394,7 @@ test.describe("settings: the logo", () => {
     const logo = { id: "", puts: 0, deletes: 0 };
     // Later routes win: the public document now carries the logo's file ID.
     await mockPublicSettings(page, () => publicSettings({ name: "BMS", logo: logo.id }));
-    await page.route("**/api/settings/logo**", (r) => {
+    await page.route("**/api/regional/logo**", (r) => {
       const method = r.request().method();
       if (method === "PUT") {
         logo.puts++;
@@ -436,7 +436,7 @@ test.describe("settings: the logo", () => {
     expect(logo.puts).toBe(1);
     await expect(section.getByRole("img", { name: "The current logo" })).toHaveAttribute(
       "src",
-      "/api/settings/logo?v=file-1",
+      "/api/regional/logo?v=file-1",
     );
     const home = page.getByRole("banner").getByRole("link", { name: "BMS", exact: true });
     await expect(home.getByRole("img", { name: "BMS" })).toBeVisible();
@@ -466,7 +466,7 @@ test.describe("settings: the logo", () => {
     only("default");
     const isPhone = info.project.name === "phone";
     await mockSettings(page, ["settings.read", "settings.manage"]);
-    await page.route("**/api/settings/logo**", (r) =>
+    await page.route("**/api/regional/logo**", (r) =>
       r.fulfill({
         status: 400,
         contentType: "application/problem+json",
@@ -501,7 +501,7 @@ test.describe("settings: the logo", () => {
     const wide = solidPng(600, 100);
     await mockSettings(page, ["settings.read", "settings.manage"]);
     await mockPublicSettings(page, () => publicSettings({ name: "BMS", logo: "wide-1" }));
-    await page.route("**/api/settings/logo**", (r) =>
+    await page.route("**/api/regional/logo**", (r) =>
       r.fulfill({ contentType: "image/png", body: wide }),
     );
     await page.setViewportSize({ width: 320, height: 568 });

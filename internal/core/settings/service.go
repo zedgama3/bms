@@ -13,7 +13,6 @@ import (
 	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/db"
-	"github.com/zedgama3/bms/internal/core/files"
 	"github.com/zedgama3/bms/internal/core/settings/postgres"
 	"github.com/zedgama3/bms/internal/core/settings/rows"
 	"github.com/zedgama3/bms/internal/core/telemetry"
@@ -58,16 +57,10 @@ type Options struct {
 	// Meter is optional: without one the service counts nothing.
 	Meter telemetry.Meter
 	Audit audit.Recorder // scoped "settings"
-	// Authz is taken as the interface, not as a built authz service: authz is built after
-	// settings, so app passes an adapter that resolves it on first use.
-	Authz authz.Authorizer
-	Actor authz.ActorFunc
-	// Files is a files.Store scoped "settings" for the logo. Optional: nil means the three
-	// logo routes answer errs.Unsupported and Public.Logo is "". files is core part 10 and
-	// settings part 3, so app passes an adapter that resolves it on first use, as it does
-	// for Authz; a method called before files is built is errs.Unavailable.
-	Files           files.Store
-	Areas           []Area        // every area but "regional", which New adds
+	// Authz is the authz.Lookup app builds before settings (decisions only).
+	Authz           authz.Authorizer
+	Actor           authz.ActorFunc
+	Areas           []Area        // every area: the core's (regional first), then the modules'
 	SealingKey      secret.Secret // optional; without it Secret values cannot be set or read
 	RefreshInterval time.Duration // 0 = DefaultRefreshInterval; 1s..10m
 }
@@ -79,7 +72,7 @@ const minSealingKeyBytes = 32
 // (fields settings.db, settings.clock, settings.logger, settings.tracer, settings.audit,
 // settings.authz, settings.actor), settings.refresh_interval outside 1s..10m,
 // settings.sealing_key for a key under 32 bytes, settings.areas[i].<field> for an invalid area, and settings.areas for a duplicate area
-// name or an outside area named "regional".
+// name.
 func (o Options) Validate() error {
 	v := validate.Errors{Op: "settings.Options.Validate"}
 	for _, d := range []struct {
@@ -121,10 +114,7 @@ func (o Options) Validate() error {
 					"the term is also declared by another area; move the word to CoreTerms so both use one")
 			}
 		}
-		switch _, dup := seen[a.Name]; {
-		case a.Name == regionalArea:
-			v.Addf("settings.areas", "reserved", "the area name %q is reserved", regionalArea)
-		case dup:
+		if _, dup := seen[a.Name]; dup {
 			v.Addf("settings.areas", "duplicate", "an area is declared more than once")
 		}
 		seen[a.Name] = struct{}{}
@@ -151,9 +141,8 @@ type Service struct {
 	audit  audit.Recorder
 	authz  authz.Authorizer
 	actorF authz.ActorFunc
-	files  files.Store // nil: no logo support
 
-	areas    []Area           // regional first, then core areas, then modules
+	areas    []Area           // core areas, then modules, each in the order given
 	index    map[string]entry // full key -> entry
 	areaIdx  map[string]int   // area name -> position in areas
 	sealer   *sealer          // nil without a sealing key
@@ -195,10 +184,6 @@ func newService(o Options, st store) (*Service, error) {
 	if st == nil {
 		return nil, errs.E(op, errs.Invalid, errors.New("nil store"))
 	}
-	regional := Area{Name: regionalArea, Core: true, Decls: regionalDecls()}
-	if err := regional.Validate(); err != nil { // a bug in this package, caught at construction
-		return nil, errs.E(op, errs.Internal, err)
-	}
 	sl, err := newSealer(o.SealingKey)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", op, err)
@@ -213,7 +198,7 @@ func newService(o Options, st store) (*Service, error) {
 	}
 	s := &Service{
 		store: st, db: o.DB, clock: o.Clock, logger: o.Logger, tracer: o.Tracer, audit: o.Audit,
-		authz: o.Authz, actorF: o.Actor, files: o.Files, sealer: sl, interval: o.RefreshInterval, defaults: defaults,
+		authz: o.Authz, actorF: o.Actor, sealer: sl, interval: o.RefreshInterval, defaults: defaults,
 		loading: make(chan struct{}, 1), metrics: m,
 	}
 	if s.interval == 0 {
@@ -227,17 +212,15 @@ func newService(o Options, st store) (*Service, error) {
 		s.areaIdx[a.Name] = i
 		for _, d := range a.Decls {
 			full := a.Name + "." + d.Key
-			s.index[full] = entry{area: a.Name, full: full, decl: d, normalize: regionalNormalizers[full]}
+			s.index[full] = entry{area: a.Name, full: full, decl: d, normalize: d.Normalize}
 		}
 	}
 	return s, nil
 }
 
-// orderAreas puts the regional first, then the core areas, then the modules, each group in
-// the order given.
+// orderAreas puts the core areas first, then the modules, each group in the order given.
 func orderAreas(in []Area) []Area {
-	out := make([]Area, 0, len(in)+1)
-	out = append(out, Area{Name: regionalArea, Core: true, Decls: regionalDecls()})
+	out := make([]Area, 0, len(in))
 	for _, a := range in {
 		if a.Core {
 			out = append(out, cloneArea(a))

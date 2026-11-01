@@ -1,4 +1,4 @@
-package settings_test
+package regional_test
 
 // Failure-mode, permission and contract tests for the logo (settings.md, amendment
 // 2026-10-21, F37 to F54). These need no database: they prove what happens before the store
@@ -16,6 +16,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/files"
 	"github.com/zedgama3/bms/internal/core/objects"
+	"github.com/zedgama3/bms/internal/core/regional"
 	"github.com/zedgama3/bms/internal/core/settings"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/lib/httpx"
@@ -24,20 +25,20 @@ import (
 // ---- constants ---------------------------------------------------------------------------
 
 func TestMaxLogoBytes_Pinned(t *testing.T) {
-	if settings.MaxLogoBytes != 2097152 {
-		t.Errorf("MaxLogoBytes = %d, want 2097152", settings.MaxLogoBytes)
+	if regional.MaxLogoBytes != 2097152 {
+		t.Errorf("MaxLogoBytes = %d, want 2097152", regional.MaxLogoBytes)
 	}
 }
 
 func TestLogoRef_Pinned(t *testing.T) {
 	sum := sha256.Sum256([]byte("settings.logo"))
-	if settings.LogoRef.Kind != "settings.logo" || files.LogoRecordKind != "settings.logo" {
-		t.Errorf("LogoRef.Kind = %q", settings.LogoRef.Kind)
+	if regional.LogoRef.Kind != "settings.logo" || files.LogoRecordKind != "settings.logo" {
+		t.Errorf("LogoRef.Kind = %q", regional.LogoRef.Kind)
 	}
-	if settings.LogoRef.ID != [16]byte(sum[:16]) {
-		t.Errorf("LogoRef.ID = %x, want %x", settings.LogoRef.ID, sum[:16])
+	if regional.LogoRef.ID != [16]byte(sum[:16]) {
+		t.Errorf("LogoRef.ID = %x, want %x", regional.LogoRef.ID, sum[:16])
 	}
-	if err := settings.LogoRef.Validate(); err != nil {
+	if err := regional.LogoRef.Validate(); err != nil {
 		t.Errorf("LogoRef.Validate: %v", err)
 	}
 }
@@ -53,8 +54,8 @@ func TestLogoRoutes_AccessAndLimits(t *testing.T) {
 	if put.Public || del.Public {
 		t.Error("PUT and DELETE /logo must not be public")
 	}
-	if put.MaxBodyBytes != 2*settings.MaxLogoBytes {
-		t.Errorf("PUT MaxBodyBytes = %d, want %d", put.MaxBodyBytes, 2*settings.MaxLogoBytes)
+	if put.MaxBodyBytes != 2*regional.MaxLogoBytes {
+		t.Errorf("PUT MaxBodyBytes = %d, want %d", put.MaxBodyBytes, 2*regional.MaxLogoBytes)
 	}
 	if put.Timeout != files.UploadTimeout {
 		t.Errorf("PUT Timeout = %v, want %v", put.Timeout, files.UploadTimeout)
@@ -81,59 +82,27 @@ func TestOpenAPI_NamesTheLogoRoutes(t *testing.T) {
 			t.Errorf("OpenAPI /logo has no %s", m)
 		}
 	}
-	// The fragment prefixes every schema with "Settings" (api decision 33).
-	if _, ok := doc.Components.Schemas["SettingsLogoResult"]; !ok {
+	// The fragment prefixes every schema with the route set's name (api decision 33): now
+	// "Regional"; a bare name is also accepted.
+	if _, ok := doc.Components.Schemas["RegionalLogoResult"]; !ok {
 		if _, ok := doc.Components.Schemas["LogoResult"]; !ok {
 			t.Error("OpenAPI has no LogoResult schema")
 		}
 	}
+	pub, ok := doc.Components.Schemas["RegionalPublic"]
+	if !ok {
+		pub = doc.Components.Schemas["Public"]
+	}
 	found := false
-	for _, r := range doc.Components.Schemas["SettingsPublic"].Required {
+	for _, r := range pub.Required {
 		found = found || r == "logo"
 	}
 	if !found {
-		t.Error("SettingsPublic does not require logo")
+		t.Error("the Public schema does not require logo")
 	}
 }
 
-// ---- F40: no Files store ---------------------------------------------------------------
-
-func TestLogo_NoFiles_ReturnsUnsupported(t *testing.T) {
-	u := newUnit(t) // Options.Files is nil
-	admin := u.person(settings.PermissionManage)
-	ctx := asPerson(t.Context(), admin)
-
-	t.Run("SetLogo", func(t *testing.T) {
-		wantKind(t, errOf(u.svc.SetLogo(ctx, "logo.png", bytes.NewReader(pngOf(t, 1)))), errs.Unsupported)
-	})
-	t.Run("RemoveLogo", func(t *testing.T) {
-		wantKind(t, errOf(u.svc.RemoveLogo(ctx)), errs.Unsupported)
-	})
-	t.Run("OpenLogo", func(t *testing.T) {
-		_, c, err := u.svc.OpenLogo(ctx)
-		closeContent(t, c)
-		wantKind(t, err, errs.Unsupported)
-	})
-	u.noStatements(t, "a logo call with no Files store")
-
-	t.Run("handlers answer 501", func(t *testing.T) {
-		body, ct := multipartOf(t, nil, "logo.png", "image/png", pngOf(t, 1))
-		w, f := u.send(ctx, http.MethodPut, "/logo", body, ct)
-		if w.Code != http.StatusNotImplemented {
-			t.Errorf("PUT status = %d, want 501 (%v)", w.Code, f.last())
-		}
-		w, _ = u.send(ctx, http.MethodDelete, "/logo", nil, "")
-		if w.Code != http.StatusNotImplemented {
-			t.Errorf("DELETE status = %d, want 501", w.Code)
-		}
-		w, _ = u.send(ctx, http.MethodGet, "/logo", nil, "")
-		if w.Code != http.StatusNotImplemented {
-			t.Errorf("GET status = %d, want 501", w.Code)
-		}
-	})
-}
-
-// ---- F38, F39: identity and permission ---------------------------------------------------
+// ---- F40 is gone: Options.Files is required, so a nil store is TestNew_NilFiles_ReturnsInvalid (B9).
 
 func TestSetLogo_NoActor_ReturnsUnauthenticated(t *testing.T) {
 	u := newLogoUnit(t)
@@ -261,7 +230,7 @@ func TestSetLogo_OverMaxLogoBytes_ReturnsInvalidTooLarge(t *testing.T) {
 		name string
 		size int
 	}{
-		{"one byte over the cap", int(settings.MaxLogoBytes) + 1},
+		{"one byte over the cap", int(regional.MaxLogoBytes) + 1},
 		{"far over the cap", 8 << 20},
 	}
 	for _, tc := range tests {
@@ -277,8 +246,8 @@ func TestSetLogo_OverMaxLogoBytes_ReturnsInvalidTooLarge(t *testing.T) {
 				t.Errorf("staged %d, attached %d after a too-large upload", len(u.fs.Staged()), len(u.fs.Files()))
 			}
 			// The reader stops at the byte past the cap; it does not drain the rest.
-			if served := body.bytes.Load(); served > settings.MaxLogoBytes+1+32<<10 {
-				t.Errorf("the body was read to %d bytes; the cap is %d", served, settings.MaxLogoBytes)
+			if served := body.bytes.Load(); served > regional.MaxLogoBytes+1+32<<10 {
+				t.Errorf("the body was read to %d bytes; the cap is %d", served, regional.MaxLogoBytes)
 			}
 			u.noStatements(t, "a too-large logo")
 		})

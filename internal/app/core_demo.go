@@ -67,7 +67,7 @@ func declareDemo(a *assembly) error {
 func buildDemo(_ context.Context, a *assembly) error {
 	const op = "app.demo.build"
 	if a.deps.audit == nil || a.authz == nil || a.settings == nil || a.identity == nil || a.people == nil ||
-		a.departments == nil || a.events == nil || a.filesPolicy == nil {
+		a.departments == nil || a.events == nil || a.filesReader == nil {
 		return errs.E(op, errs.Internal, errors.New("demo is built after audit, identity, settings, authz, people, departments, events and files"))
 	}
 	rec, err := a.deps.audit.Scoped(demoArea)
@@ -89,7 +89,7 @@ func buildDemo(_ context.Context, a *assembly) error {
 		Meter:              m,
 		Audit:              rec,
 		Actor:              identity.Actor,
-		Files:              a.filesPolicy,
+		Files:              files.PolicyFrom(a.filesReader),
 		Accounts:           a.identity,
 		Access:             demoAccess{a: a},
 		Addresses:          a.identity,
@@ -200,20 +200,19 @@ func demoChannelFactory(a *assembly) notify.ChannelFactory {
 	}
 }
 
-// lazyFilesPolicy is files' PolicySource: the settings-backed one, capped by the demo
-// service when demo mode is on. It is lazy because files is built before demo.
+// lazyFilesPolicy is files' policy override in demo mode (and only then: buildFiles passes
+// it only when demo mode is on, so other deployments use files' own mapping of its settings):
+// the settings-backed policy capped by the demo service. It is lazy because files is built
+// before demo.
 type lazyFilesPolicy struct{ a *assembly }
 
 func (l lazyFilesPolicy) Policy(ctx context.Context) (files.Policy, error) {
-	if l.a.cfg.Demo.Enabled {
-		if l.a.demo == nil {
-			// Fail closed, like lazyGuard: an upload must not slip past the demo cap through a
-			// gap in the wiring.
-			return files.Policy{}, errs.E("app.lazyFilesPolicy.Policy", errs.Unavailable, errors.New("the demo service is not built yet"))
-		}
-		return l.a.demo.Policy(ctx) //nolint:wrapcheck // the service's own error
+	if l.a.demo == nil {
+		// Fail closed, like lazyGuard: an upload must not slip past the demo cap through a
+		// gap in the wiring.
+		return files.Policy{}, errs.E("app.lazyFilesPolicy.Policy", errs.Unavailable, errors.New("the demo service is not built yet"))
 	}
-	return l.a.filesPolicy.Policy(ctx) //nolint:wrapcheck // the settings-backed source's own error
+	return l.a.demo.Policy(ctx) //nolint:wrapcheck // the service's own error
 }
 
 // demoAccess is the seed's slice of authz.

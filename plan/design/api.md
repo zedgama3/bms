@@ -109,7 +109,7 @@
 
 **Pending proposed changes:** items 10 (authz), 15 (settings: trusted origins and Host allowlist; settled 2026-10-20, D40, with `PublicOrigin` deferred), wait on targets not yet written; item 14 is applied (the `docs/operating.md` and front-end examples halves, 2026-10-30); the rest are applied.
 
-**Amendments:** folded into the text; narratives in `plan/design/history/api.md`.
+**Amendments:** folded into the text; narratives in `plan/design/history/api.md`. **Amended 2026-11-01 (boundaries step 7, item 24, `regional` part):** the public document, stylesheet and logo are served by the core route set `regional` at `/api/regional/public`, `/api/regional/theme.css` and `/api/regional/logo` (formerly `/api/settings/...`); `regional` joins the reserved core area names (a module may not be named `regional`; module-contract already reserves it). The OpenAPI names (boundaries A2 point 6, owner, 2026-11-01): operationIds `regionalPublic`, `regionalTheme`, `regionalLogo`, `regionalSetLogo`, `regionalRemoveLogo`; schemas `RegionalPublic`, `RegionalLogoUpload`, `RegionalLogoResult`; tag `regional`; the five leave settings' fragment (the area prefix follows decision 33; only the generated `web/src/api/schema.d.ts` is affected, the shell calls by path). The `datarights` route set, `PermissionChecker` and the rest of item 24 land with their steps.
 
 ## Purpose
 
@@ -413,7 +413,7 @@ type Options struct {
 
 	// Routes are the route sets to mount: every module's (module.Set.Routes()) and the
 	// core's (app builds a module.ModuleRoutes per core package with routes: Module is the
-	// core area name, which is a reserved module name, so it cannot collide). May be
+	// core area name, which is a reserved module name, so it cannot collide; `regional` is one, since boundaries step 7). May be
 	// empty. Each set's OpenAPI fragment is required when it has routes (decision 11).
 	Routes []module.ModuleRoutes
 
@@ -509,10 +509,10 @@ func RouteTokens(routes []module.ModuleRoutes) []string
 **Deferred: `Options.PublicOrigin` (D40; not M4).** The shape is fixed now so no spec waits on it:
 
 ```go
-// PublicOrigin returns the regional's public URL (settings regional.public_url) or ""
+// PublicOrigin returns the regional's public URL (regional.public_url) or ""
 // when unset. Optional; nil or "" is today's behaviour (the front end preserves Host,
 // Proposed change 14). Read per request: a change needs no restart. app fills it over
-// settings.Regional. The shell derives the origin (scheme://host[:port]) from it for
+// regional.Profile (settings.Regional before boundaries step 7). The shell derives the origin (scheme://host[:port]) from it for
 // decision 6 (one more trusted origin) and for the Host allowlist (the origin's host plus
 // loopback and the bind address; a request whose Host is not listed is 404 with no body).
 PublicOrigin func(ctx context.Context) (string, error)
@@ -946,7 +946,7 @@ None of its own. What this spec provides for `web-shell.md`:
     the handler runs, and a handler that overwrites it is a review finding. `ETag` and `304`
     are allowed with `no-store`: a validator lets a client that keeps the tag itself (the web
     shell, in memory) revalidate, and tells a cache nothing it may store; the cost is one
-    small fetch of each of `/api/settings/public` and `/api/settings/theme.css` per boot. A
+    small fetch of each of `/api/regional/public` and `/api/regional/theme.css` per boot (`/api/settings/...` before boundaries step 7). A
     route-level "cacheable" declaration (`module.Route.Cache`) is not added until a route
     needs it; `files`, which will serve large bodies, is the candidate and may propose it.
 13. **Unknown JSON fields are ignored.** telemetry decision 11 set it for intake ("an
@@ -1385,7 +1385,7 @@ library (`bytes`, `context`, `encoding/json`, `errors`, `fmt`, `io`, `mime`, `ne
 | F55 | `New` | `Addr` is loopback and `TrustedProxies` is non-empty but contains no loopback address | none: one warn log at start | list `127.0.0.1/32` or bind the interface the front end reaches | `TestNew_LoopbackBindWithoutLoopbackProxy_WarnsOnce` |
 | F56 | pipeline | a loopback peer that is not trusted sends `X-Forwarded-For` | none: the headers are ignored (client = `127.0.0.1`, scheme `http`); one warn per process, no address in it | set `trusted_proxies=127.0.0.1/32` | `TestPipeline_UntrustedLoopbackForwardedHeader_WarnsOnce` |
 | F57 | pipeline | more than 1,000 distinct untrusted peer prefixes within an hour | none: the first 1,000 get their own line; the rest one aggregate warn line per minute with counts | fix the network path; look for a scan | `TestPipeline_UntrustedPeer_PrefixCapAggregates` (fake clock: 1,001 prefixes → 1,000 lines + 1 aggregate; more within the minute → nothing; advance a minute → one line with the count) |
-| F58 | pipeline | a mounted route answers with `ETag` (the settings public routes) | none: the response carries `Cache-Control: no-store` and the `ETag`; a matching `If-None-Match` gets `304`, also with `no-store`; a handler's own `Cache-Control` never reaches the client on `/api/` | nothing | `TestPipeline_MountedRouteWithETag_KeepsNoStore` (a fake route set in api's tests; `app`'s e2e repeats it on `GET /api/settings/public` and `/theme.css` once settings is built) |
+| F58 | pipeline | a mounted route answers with `ETag` (the `regional` public routes, formerly settings') | none: the response carries `Cache-Control: no-store` and the `ETag`; a matching `If-None-Match` gets `304`, also with `no-store`; a handler's own `Cache-Control` never reaches the client on `/api/` | nothing | `TestPipeline_MountedRouteWithETag_KeepsNoStore` (a fake route set in api's tests; `app`'s e2e repeats it on `GET /api/regional/public` and `/theme.css` once `regional` is built; `/api/settings/...` before boundaries step 7) |
 | F59 | pipeline (lands with `PublicOrigin`) | the seam fails | none: treated as unset for the request; one warn per minute, no URL in it | fix settings | `TestPipeline_PublicOriginFails_TreatedAsUnset` |
 | F60 (D40) | UI handler | a document request for `/accounts/password-reset` (with or without `?token=`) | none: the `text/html` response carries `Referrer-Policy: no-referrer`; any other document path keeps `strict-origin-when-cross-origin` | nothing | `TestUIHandler_PasswordResetPage_NoReferrer` (and `..._OtherPath_KeepsDefault`) |
 | F61 (D44) | `New` | a route's `MaxBodyBytes` above 1 GiB or `Timeout` above 10 minutes (or negative) | Invalid (`api.routes[i].max_body_bytes` / `.timeout`) | fix the route | `TestNew_RouteCapAboveCeiling_ReturnsInvalid` |
@@ -1496,7 +1496,7 @@ bodies, query strings, cookies and `User-Agent`, asserted absent with
   and its response has `Connection: close`); `TestServe_AfterShutdown_ReturnsNil`;
   F19–F24.
 - `TestSpanName_EveryMountedRoute_NoViolation` across every mounted route (F48).
-- Cache and route limits (D40, D44): F58 (`app`'s e2e repeats it on `GET /api/settings/public` and `/theme.css` once settings is built), F61, F62; F59 lands with `PublicOrigin`; F60 in the UI tests.
+- Cache and route limits (D40, D44): F58 (`app`'s e2e repeats it on `GET /api/regional/public` and `/theme.css` once `regional` is built; `/api/settings/...` before boundaries step 7), F61, F62; F59 lands with `PublicOrigin`; F60 in the UI tests.
 - Client events, `NoIndex`, the error counter and `RouteTokens` (D53, D54): F63–F72.
 - The only wall-clock-bounded test is `TestPipeline_SlowBody_ReadDeadlineEnds504`
   (F28), through the unexported `testRequestTimeout` hook in an internal test file; every
@@ -1515,6 +1515,8 @@ are the contract this spec enforces on modules, and the `hello` module is the re
 that passes them.
 
 ## Amendments
+
+Amendment 2026-11-01 (boundaries step 7, `boundaries.md` item 24, `regional` part): the paths of the public document, stylesheet and logo moved from `/api/settings/` to `/api/regional/`, and `regional` is a reserved core route-set name; A2 added the operationIds and schema names (see the header note); folded into the text above (header note, the `Options.Routes` comment, decision 12's `ETag` sentence, F58 and the test-plan line).
 
 The 2026-10-19 amendment (D40: `Cache-Control`, `PublicOrigin`) and the 2026-10-28 amendment (D53 and D54: `NoIndex`, `client-events`, `bms.api.errors`, `RouteTokens`) are folded into the text above, as are the header notes of the 2026-10-17 to 2026-10-19 amendments. Their narratives, the reasons for each choice and the superseded wording are in `plan/design/history/api.md`.
 

@@ -1,6 +1,6 @@
 //go:build integration
 
-package settings_test
+package regional_test
 
 // The logo paths that commit (settings.md, amendment 2026-10-21): F37 to F54 that need a
 // real database, and the contract lines about the snapshot and the ETag. Two kinds of rig:
@@ -15,138 +15,18 @@ import (
 	"errors"
 	"fmt"
 	"hash/crc32"
-	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
-	"github.com/zedgama3/bms/internal/core/audit/audittest"
-	"github.com/zedgama3/bms/internal/core/db"
-	"github.com/zedgama3/bms/internal/core/db/dbtest"
 	"github.com/zedgama3/bms/internal/core/files"
-	"github.com/zedgama3/bms/internal/core/files/filestest"
-	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/objects"
-	"github.com/zedgama3/bms/internal/core/objects/objectstest"
-	"github.com/zedgama3/bms/internal/core/people"
-	"github.com/zedgama3/bms/internal/core/settings"
-	"github.com/zedgama3/bms/internal/core/telemetry/telemetrytest"
-	"github.com/zedgama3/bms/internal/lib/clock"
+	"github.com/zedgama3/bms/internal/core/regional"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/lib/validate"
 	"github.com/zedgama3/bms/internal/model"
 )
-
-// logoI is an integration rig with a files store on Options.Files.
-type logoI struct {
-	*irig
-	spy  *spyStore
-	fs   *filestest.Fake // set on the fake rig
-	mem  *objectstest.Mem
-	fsvc *files.Service // set on the real rig
-}
-
-// newLogoI is a rig over filestest.Fake("settings").
-func newLogoI(t *testing.T, mods ...func(*settings.Options)) *logoI {
-	t.Helper()
-	fs := filestest.NewFake("settings")
-	spy := &spyStore{Store: fs}
-	all := append([]func(*settings.Options){func(o *settings.Options) { o.Files = spy }}, mods...)
-	return &logoI{irig: newIRig(t, all...), spy: spy, fs: fs}
-}
-
-type fixedPolicy struct{ p files.Policy }
-
-func (f fixedPolicy) Policy(context.Context) (files.Policy, error) { return f.p, nil }
-
-// newRealLogoI is a rig over the real files service on the rig's database.
-func newRealLogoI(t *testing.T, policy files.Policy) *logoI {
-	t.Helper()
-	pool := dbtest.TempDB(t)
-	mig, err := db.NewMigrator(pool, slog.New(slog.DiscardHandler))
-	wantNoErr(t, err)
-	_, err = mig.Migrate(ctxT(t), []db.Set{identity.Set, people.Set, files.Set, settings.Set})
-	wantNoErr(t, err)
-
-	mem := objectstest.NewMem()
-	fsvc, err := files.New(files.Options{
-		DB: pool, Clock: clock.NewFake(time.Now().UTC().Truncate(time.Microsecond)),
-		Logger: slog.New(slog.DiscardHandler), Tracer: telemetrytest.New(t).Tracer("files"), Audit: audittest.NewFake("files"),
-		Actor: actorOf, Objects: mem, TempDir: t.TempDir(), Policy: fixedPolicy{policy},
-	})
-	wantNoErr(t, err)
-	store, err := fsvc.Scoped("settings")
-	wantNoErr(t, err)
-	spy := &spyStore{Store: store}
-	ir := newIRigOn(t, pool, pool, func(o *settings.Options) { o.Files = spy })
-	// files' uploaded_by references core.person.
-	ir.exec(`INSERT INTO core.person (id, playa_name, legal_name, created_at, updated_at) VALUES ($1, 'Test Person', '', $2, $2)`,
-		[16]byte(ir.admin), time.Now().UTC())
-	return &logoI{irig: ir, spy: spy, mem: mem, fsvc: fsvc}
-}
-
-func (r *logoI) fileRows() int { return r.count(`SELECT count(*) FROM core.file`) }
-
-func (r *logoI) count(sql string, args ...any) int {
-	r.t.Helper()
-	var n int
-	if err := r.pool.QueryRow(ctxT(r.t), sql, args...).Scan(&n); err != nil {
-		r.t.Fatalf("count %q: %v", sql, err)
-	}
-	return n
-}
-
-func (r *logoI) set(name string, data []byte) (settings.LogoResult, error) {
-	return r.svc.SetLogo(r.actx(), name, bytes.NewReader(data)) //nolint:wrapcheck // the error under test
-}
-
-func (r *logoI) mustSetLogo(name string, data []byte) settings.LogoResult {
-	r.t.Helper()
-	res, err := r.set(name, data)
-	if err != nil {
-		r.t.Fatalf("SetLogo(%q): %v", name, err)
-	}
-	return res
-}
-
-func (r *logoI) publicLogo() string {
-	r.t.Helper()
-	p, err := r.svc.Public(r.actx())
-	wantNoErr(r.t, err)
-	return p.Logo
-}
-
-// publicETag fetches GET /public and returns its ETag and the document's logo.
-func (r *logoI) publicETag(ifNoneMatch string) (code int, etag, logo string) {
-	r.t.Helper()
-	var hdr []string
-	if ifNoneMatch != "" {
-		hdr = []string{"If-None-Match", ifNoneMatch}
-	}
-	w, f := r.send(context.Background(), http.MethodGet, "/public", nil, "", hdr...)
-	if w.Code == http.StatusOK {
-		var doc struct {
-			Logo string `json:"logo"`
-		}
-		wantNoErr(r.t, json.Unmarshal(w.Body.Bytes(), &doc))
-		logo = doc.Logo
-	} else if w.Code != http.StatusNotModified {
-		r.t.Fatalf("GET /public = %d (%v)", w.Code, f.last())
-	}
-	return w.Code, w.Header().Get("ETag"), logo
-}
-
-func (r *logoI) onlyFile() files.File {
-	r.t.Helper()
-	got, err := r.spy.ByRecord(r.actx(), settings.LogoRef)
-	wantNoErr(r.t, err)
-	if len(got) != 1 {
-		r.t.Fatalf("%d logo files, want 1", len(got))
-	}
-	return got[0]
-}
 
 // ---- happy paths and the contract lines --------------------------------------------------
 
@@ -174,18 +54,18 @@ func TestSetLogo_AcceptedKinds_AttachAuditAndBump(t *testing.T) {
 			if int64(res.Revision) != before+1 || r.dbRevision() != before+1 {
 				t.Errorf("revision = %d (db %d), want %d", res.Revision, r.dbRevision(), before+1)
 			}
-			if f.Record != settings.LogoRef || f.Level != model.SensitivityPublic || !f.Subject.IsZero() {
+			if f.Record != regional.LogoRef || f.Level != model.SensitivityPublic || !f.Subject.IsZero() {
 				t.Errorf("file record = %+v level %v subject %v", f.Record, f.Level, f.Subject)
 			}
 			if f.ContentType != tc.ctype {
 				t.Errorf("ContentType = %q, want the sniffed %q (never the extension)", f.ContentType, tc.ctype)
 			}
-			ch := entriesWith(r.rec.Recorded(), "settings.logo.changed")
+			ch := entriesWith(r.rec.Recorded(), "regional.logo.changed")
 			if len(ch) != 1 {
-				t.Fatalf("%d settings.logo.changed entries, want 1 (%v)", len(ch), actionsOf(r.rec.Recorded()))
+				t.Fatalf("%d regional.logo.changed entries, want 1 (%v)", len(ch), actionsOf(r.rec.Recorded()))
 			}
 			e := ch[0]
-			if e.Record != settings.LogoRef || len(e.Fields) != 1 || e.Fields[0] != "logo" || e.Reason != "file:"+f.ID.String() {
+			if e.Record != regional.LogoRef || len(e.Fields) != 1 || e.Fields[0] != "logo" || e.Reason != "file:"+f.ID.String() {
 				t.Errorf("entry = record %v fields %v reason %q", e.Record, e.Fields, e.Reason)
 			}
 			if got := r.publicLogo(); got != f.ID.String() {
@@ -197,7 +77,7 @@ func TestSetLogo_AcceptedKinds_AttachAuditAndBump(t *testing.T) {
 
 func TestSetLogo_ExactlyMaxLogoBytes_IsAccepted(t *testing.T) {
 	r := newLogoI(t)
-	res, err := r.set("logo.png", padded(pngOf(t, 1), int(settings.MaxLogoBytes)))
+	res, err := r.set("logo.png", padded(pngOf(t, 1), int(regional.MaxLogoBytes)))
 	wantNoErr(t, err)
 	if res.Logo == "" {
 		t.Error("no logo ID for a file of exactly MaxLogoBytes")
@@ -211,7 +91,7 @@ func TestSetLogo_TextPartsBeforeTheFile_AreIgnored(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("PUT status = %d (%v)", w.Code, f.last())
 	}
-	var res settings.LogoResult
+	var res regional.LogoResult
 	wantNoErr(t, json.Unmarshal(w.Body.Bytes(), &res))
 	if res.Logo == "" {
 		t.Error("PUT answered no logo ID")
@@ -232,17 +112,17 @@ func TestSetLogo_Replace_LeavesOneRow(t *testing.T) {
 	if first.Logo == second.Logo {
 		t.Fatal("a replacement kept the old ID")
 	}
-	if r.fileRows() != 1 || r.onlyFile().ID.String() != second.Logo {
-		t.Errorf("rows = %d, remaining %s, want one row %s", r.fileRows(), r.onlyFile().ID, second.Logo)
-	}
 	if int64(second.Revision) != int64(first.Revision)+1 {
 		t.Errorf("revision %d then %d", first.Revision, second.Revision)
+	}
+	if r.fileRows() != 1 || r.onlyFile().ID.String() != second.Logo {
+		t.Errorf("rows = %d, remaining %s, want one row %s", r.fileRows(), r.onlyFile().ID, second.Logo)
 	}
 	if got := r.publicLogo(); got != second.Logo {
 		t.Errorf("Public.Logo = %q, want %q", got, second.Logo)
 	}
-	if n := len(entriesWith(r.rec.Recorded(), "settings.logo.changed")); n != 2 {
-		t.Errorf("%d settings.logo.changed entries, want 2", n)
+	if n := len(entriesWith(r.rec.Recorded(), "regional.logo.changed")); n != 2 {
+		t.Errorf("%d regional.logo.changed entries, want 2", n)
 	}
 	// The first object goes once the sweep has run.
 	_, err := r.fsvc.Reap(ctxT(t))
@@ -279,17 +159,6 @@ func TestPublic_ETagAndLogoMoveTogether(t *testing.T) {
 	}
 }
 
-func TestPublic_NoFiles_LogoIsEmpty(t *testing.T) {
-	r := &logoI{irig: newIRig(t)} // Options.Files nil
-	if got := r.publicLogo(); got != "" {
-		t.Errorf("Public.Logo = %q with no Files", got)
-	}
-	_, _, logo := r.publicETag("")
-	if logo != "" {
-		t.Errorf("GET /public logo = %q", logo)
-	}
-}
-
 // ---- F50: RemoveLogo ---------------------------------------------------------------------
 
 func TestRemoveLogo_RemovesAuditsAndBumps(t *testing.T) {
@@ -305,8 +174,8 @@ func TestRemoveLogo_RemovesAuditsAndBumps(t *testing.T) {
 	if r.fileRows() != 0 || r.publicLogo() != "" {
 		t.Errorf("rows %d, Public.Logo %q after removal", r.fileRows(), r.publicLogo())
 	}
-	rm := entriesWith(r.rec.Recorded(), "settings.logo.removed")
-	if len(rm) != 1 || rm[0].Record != settings.LogoRef || rm[0].Reason != "file:"+set.Logo ||
+	rm := entriesWith(r.rec.Recorded(), "regional.logo.removed")
+	if len(rm) != 1 || rm[0].Record != regional.LogoRef || rm[0].Reason != "file:"+set.Logo ||
 		len(rm[0].Fields) != 1 || rm[0].Fields[0] != "logo" {
 		t.Errorf("removed entries = %+v", rm)
 	}
@@ -319,7 +188,7 @@ func TestRemoveLogo_RemovesAuditsAndBumps(t *testing.T) {
 
 func TestRemoveLogo_None_IsNoop(t *testing.T) {
 	r := newLogoI(t)
-	r.mustSet(kPort, "2525") // some revision above the initial one
+	r.mustSet("regional.name", "Camp Quill") // some revision above the initial one
 	before, entriesBefore := r.dbRevision(), len(r.rec.Recorded())
 	for i := range 2 { // idempotent
 		res, err := r.svc.RemoveLogo(r.actx())
@@ -357,7 +226,7 @@ func TestSetLogo_AuditFails_RollsBackAndDiscards(t *testing.T) {
 		if r.dbRevision() != before || r.publicLogo() != "" {
 			t.Errorf("revision %d (was %d), Public.Logo %q", r.dbRevision(), before, r.publicLogo())
 		}
-		if len(entriesWith(r.rec.Recorded(), "settings.logo.changed")) != 0 {
+		if len(entriesWith(r.rec.Recorded(), "regional.logo.changed")) != 0 {
 			t.Error("an entry was kept for a failed upload")
 		}
 	})
@@ -540,7 +409,7 @@ func TestSetLogo_Concurrent_OneRowRemains(t *testing.T) {
 	r := newRealLogoI(t, files.DefaultPolicy())
 	const n = 6
 	var wg sync.WaitGroup
-	results := make([]settings.LogoResult, n)
+	results := make([]regional.LogoResult, n)
 	errsOut := make([]error, n)
 	start := make(chan struct{})
 	for i := range n {
@@ -562,8 +431,8 @@ func TestSetLogo_Concurrent_OneRowRemains(t *testing.T) {
 	if r.fileRows() != 1 {
 		t.Fatalf("%d rows remain, want 1", r.fileRows())
 	}
-	if n := len(entriesWith(r.rec.Recorded(), "settings.logo.changed")); n != 6 {
-		t.Errorf("%d settings.logo.changed entries, want one per upload (6)", n)
+	if n := len(entriesWith(r.rec.Recorded(), "regional.logo.changed")); n != 6 {
+		t.Errorf("%d regional.logo.changed entries, want one per upload (6)", n)
 	}
 	seen := map[int64]bool{}
 	for _, res := range results {
@@ -584,7 +453,7 @@ func TestSetLogo_Concurrent_OneRowRemains(t *testing.T) {
 
 // ---- F54: the snapshot load ---------------------------------------------------------------
 
-func TestLoad_LogoLookupFails_ReturnsUnavailable(t *testing.T) {
+func TestPublic_LogoLookupFails_ReturnsUnavailable(t *testing.T) {
 	tests := []struct {
 		name string
 		err  error
@@ -623,8 +492,8 @@ func TestPublic_AfterLoad_DoesNotTouchTheFilesStore(t *testing.T) {
 }
 
 func TestRun_ReplicaSeesTheNewLogoAfterOnePoll(t *testing.T) {
-	writer := newLogoI(t, withPoll)
-	reader := newIRigOn(t, writer.pool, writer.pool, withPoll, func(o *settings.Options) { o.Files = writer.spy })
+	writer := newLogoIPoll(t)
+	reader := newIRigOn(t, writer.pool, writer.pool, poll, func(o *regional.Options) { o.Files = writer.spy })
 	ctx := ctxT(t)
 	if p, err := reader.svc.Public(ctx); err != nil || p.Logo != "" {
 		t.Fatalf("reader Public = %+v, %v", p, err)

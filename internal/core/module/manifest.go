@@ -22,7 +22,7 @@ var nameRE = regexp.MustCompile(`^[a-z][a-z0-9]{1,31}$`)
 // signals and permissions are prefixed by one.
 var coreAreas = []string{
 	"core", "people", "accounts", "access", "identity", "authz", "departments", "events",
-	"signals", "notify", "audit", "auditlog", "files", "jobs", "settings", "telemetry", "db", "module",
+	"signals", "notify", "audit", "auditlog", "files", "jobs", "settings", "regional", "telemetry", "db", "module",
 	"demo",
 	"modules",
 }
@@ -30,7 +30,7 @@ var coreAreas = []string{
 // reservedNames are the names a module may not take besides the core areas: the shell
 // packages and PostgreSQL's own schemas. Anything starting with "pg" is reserved too.
 var reservedNames = []string{
-	"api", "app", "config", "web", "admin", "client", "public", "information", "regional",
+	"api", "app", "config", "web", "admin", "client", "public", "information",
 }
 
 // IsCoreArea reports whether name is one of the core's areas, the names a module may not

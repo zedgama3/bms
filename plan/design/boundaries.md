@@ -33,7 +33,8 @@
 - `audit.WithSystem`, `audit.WithOperator`; `auditlog.New`, `auditlog.Options`, `auditlog.Settings`.
 - `authz.NewLookup`, `authz.Lookup`, `authz.LookupOptions`; `departments.NewLookup`; `people.NewLookup`, `people.Lookup`; `identity.NewLookup`, `identity.Lookup`, `identity.Actor`, `identity.AuditActor`.
 - `notify.Accounts`, `notify.Profiles`, `notify.RegionalSource`, `notify.TermSource`, `notify.AlertSender`, `notify.Probe`, `notify.EmailState`.
-- `regional.New`, `regional.Profile`, `regional.Settings`, `regional.LogoRef`, `regional.MaxLogoBytes`.
+- `regional.New`, `regional.Profile`, `regional.Settings`, `regional.LogoRef`, `regional.MaxLogoBytes`, `regional.RevisionSource`, `regional.TermSource` (A2).
+- `settings.Service.Revision`, `settings.Service.Revise`, `settings.Decl.Normalize` (A2).
 - `datarights.New`, `datarights.Options`, `datarights.PersonData`, `datarights.Export`, `datarights.Deletion`, `datarights.Kept`, `datarights.Source`.
 - `files.Purge`, `files.Settings`, `files.Options.Ceiling`; `demo.NewGuard`, `demo.NewCapture`, `demo.FileCeiling`, `demo.StateOf`; `jobs.NewDeferrer`; `httpx.Route`; `module.CoreRoutes`.
 
@@ -427,7 +428,7 @@ The delivery rules that move in from app: an address is the login address, else 
 ### `regional`: the regional's profile (decision 4)
 
 ```go
-package regional // imports settings, files, audit, authz, db?, telemetry, lib, model; never notify, identity, people
+package regional // imports settings, files, audit, authz, db, telemetry, lib, model; never notify, identity, people
 
 // Settings declares the regional.* keys (settings.regionalDecls today, verbatim): name,
 // contact_email, public_url, language, timezone, color_primary, color_primary_dark.
@@ -447,27 +448,39 @@ type Options struct {
     Clock    clock.Clock
     Logger   *slog.Logger
     Tracer   telemetry.Tracer
-    Meter    telemetry.Meter
     Audit    audit.Recorder  // scoped "regional"
     Authz    authz.Authorizer
     Actor    authz.ActorFunc
+    DB       db.DB           // ReadOnly() alone: a logo write refuses a read-only copy first (A2)
     Settings settings.Reader // scoped "regional"
-    Revision RevisionSource  // settings: the current revision, for the public document's ETag
+    Terms    TermSource      // settings (TermsFor); required (A2)
+    Revision RevisionSource  // settings: Revision and Revise (the revision lock); *settings.Service (A2)
     Files    files.Store     // scoped "settings" (the logo); required
+}
+
+// TermSource is satisfied by *settings.Service.
+type TermSource interface {
+    TermsFor(ctx context.Context, lang string) (map[string]settings.Forms, error)
+}
+
+// RevisionSource is satisfied by *settings.Service.
+type RevisionSource interface {
+    Revision(ctx context.Context) (settings.Revision, error)
+    Revise(ctx context.Context, fn func(ctx context.Context) (changed bool, err error)) (settings.Revision, error)
 }
 
 func New(o Options) (*Service, error)
 
 // Profile reads the seven keys (settings' kinds). Public, ThemeCSS, Document (the public
 // document and the stylesheet), SetLogo, RemoveLogo, OpenLogo keep settings.md's rules and
-// failure modes; the audit actions become regional.logo.set|removed. Routes returns
+// failure modes; the audit actions become regional.logo.changed|removed (A2 point 4); the logo writes run inside settings.Revise (A2 point 1). Routes returns
 // GET /public, GET /theme.css, GET /logo (public), PUT /logo, DELETE /logo under
 // /api/regional. The permission of PUT and DELETE /logo stays settings.manage.
 func (s *Service) Profile(ctx context.Context) (Profile, error)
 func (s *Service) Routes() []httpx.Route
 ```
 
-`settings.New` stops adding the `regional` area itself; app passes `regional.Settings` as a core area like `accounts`. `settings.Service` loses `Regional`, `Public`, `ThemeCSS`, `Document`'s public half and the logo; keeps `Document` (the settings screen), `Set`, `Scoped`, `TermsFor`, `Terms`, `SetTerms`, `Revision`.
+`settings.New` stops adding the `regional` area itself; app passes `regional.Settings` as a core area like `accounts`. `settings.Service` loses `Regional`, `Public`, `ThemeCSS`, `Document`'s public half and the logo; keeps `Document` (the settings screen), `Set`, `Scoped`, `TermsFor`, `Terms`, `SetTerms`, `Revision` and `Revise` (the revision lock as a seam for `regional`, A2 point 1). `Decl` gains `Normalize func(value string) string` (A2 point 5).
 
 ### `datarights`: export and deletion (decision 5)
 
@@ -560,6 +573,8 @@ type Options struct {
     // policy never exceeds, and a zero QuotaBytes setting becomes Ceiling.QuotaBytes. Zero
     // means no ceiling. demo.FileCeiling in demo mode.
     Ceiling Policy
+    // Until step 10 (A2 point 7): Policy PolicySource stays as an optional override and
+    // PolicyFrom stays exported; Ceiling replaces Policy and PolicyFrom is unexported then.
     Jobs    jobs.Registrar // scoped "files": Start registers files.reap and files.sweep-orphans
 }
 
@@ -677,7 +692,7 @@ No screen changes. Paths the web calls change in two steps: `web/src/shell` (`pu
 | 8 | `auditlog.New` | audit (none at build: its own store), authz.Lookup, settings "audit", jobs "audit" |
 | 9 | `departments.New`, `events.New` | audit, signals, authz.Lookup, departments.Lookup |
 | 10 | `files.New` | audit, authz.Lookup, settings "files", objects, jobs "files", `demo.FileCeiling` when demo mode |
-| 11 | `regional.New` | audit, authz.Lookup, settings "regional", files "settings" |
+| 11 | `regional.New` | audit, authz.Lookup, db (ReadOnly), settings "regional", settings (revision, `Revise`, terms), files "settings" |
 | 12 | `identity.NewLookup`, `people.NewLookup` | db |
 | 13 | `demo.NewGuard`, `demo.NewCapture` (demo mode only) | db |
 | 14 | `notify.New` | audit, authz.Lookup, settings "notify", regional, settings (terms), identity.Lookup, people.Lookup, Capture or nil |
@@ -773,7 +788,7 @@ Moved methods keep their specs' failure modes and tests. New ones:
 | B6 | `auditlog.New` | nil dependency | Invalid | fail the build | TestNew_NilDependency_ReturnsInvalid |
 | B7 | `auditlog.Start` | `audit.purge` registered twice | Conflict | fail the start | TestStart_Twice_ReturnsConflict |
 | B8 | `auditlog` purge handler | read-only copy | Unavailable wrapping `db.ErrReadOnly` | jobs retries later | TestPurge_ReadOnlyCopy_ReturnsUnavailable |
-| B9 | `regional.New` | nil `Files` or `Settings` | Invalid | fail the build | TestNew_NilFiles_ReturnsInvalid |
+| B9 | `regional.New` | nil `Files`, `Settings`, `Terms`, `Revision`, `DB` or any dependency | Invalid | fail the build | TestNew_NilFiles_ReturnsInvalid, TestNew_NilTerms_ReturnsInvalid |
 | B10 | `regional.Profile` | a key fails to read | the Reader's kind | fail the request | TestProfile_ReaderFails_KeepsTheKind |
 | B11 | `notify.AlertSender.SendAlert` | no alert address configured | Unsupported | log once, continue (identity) | TestSendAlert_NoAddress_ReturnsUnsupported |
 | B12 | `notify.AlertSender.SendAlert` | template of another owner | Invalid | fail (a programming error) | TestSendAlert_OtherOwnersTemplate_ReturnsInvalid |
@@ -798,6 +813,11 @@ Moved methods keep their specs' failure modes and tests. New ones:
 | B31 | `TestSeamTable_MatchesApp` | a func literal capturing the assembly is stored in a project package's struct (5b) | test failure | extract it to a named function or type and list it, or remove it | TestSeamTable_FlagsStoredLiteral |
 | B32 | `TestSeamTable_MatchesApp` | a method value `a.<m>` is stored in a project package's struct and `assembly.<m>` is not in the table | test failure | list `assembly.<m>` with a reason, or remove it | TestSeamTable_FlagsStoredMethodValue |
 | B33 | `TestSeamTable_MatchesApp` | the "Late-bound seams" section is missing, "None." sits beside rows, or neither rows nor "None." are present | test failure | fix the document | TestSeamRows_MissingSection, TestSeamRows_None, TestSeamRows_Malformed |
+| B34 | `settings.Revise` | fn fails | fn's kind; rollback, no bump, no snapshot change | fail the use case | TestRevise_FnFails_RollsBackAndKeepsRevision |
+| B35 | `settings.Revise` | read-only copy | Unavailable wrapping `db.ErrReadOnly`, before fn runs | fail the use case | TestRevise_ReadOnlyCopy_ReturnsUnavailable |
+| B36 | `settings.Revise` | fn reports no change | none: the current revision, no bump, no snapshot replace | none | TestRevise_Unchanged_ReturnsCurrentRevision |
+| B37 | `settings.Revise` | `core.setting_revision` has no row | Internal (settings F26) | fail the use case | TestRevise_NoRevisionRow_ReturnsInternal |
+| B38 | `settings.Revise` | two callers at once (two instances) | none: serialised by the row lock, the second runs after the first commits | none | TestRevise_Concurrent_Serialised (integration) |
 
 `identity.Actor`, `identity.AuditActor`, `audit.WithSystem`, `audit.WithOperator`, `module.CoreRoutes`'s happy path, `demo.FileCeiling` and the Lookups' constructors beyond nil checks cannot fail: they are pure functions over a ctx or a value.
 
@@ -809,7 +829,7 @@ No external technology is wrapped. `objects` (disk, S3-compatible), SMTP and Pos
 
 - **Unit, per step** (fakes: `dbtest`, `authztest` (gains `HoldersOf` if missing), `peopletest`, `notifytest`, `settingstest`, `jobstest`, `filestest`, `telemetrytest`): the moved tests verbatim, the new tests in the table above.
 - **Permission tests:** unchanged for every moved use case (the same names run in the new package).
-- **Integration** (`//go:build integration`, the compose PostgreSQL): `core_integration_test`, `core_notify_integration_test`, `demo_integration_test`, `demo_caps_integration_test`, `person_commands_integration_test`, `internal_jobs_integration_test` run unchanged at every step; `TestDefer_RowIsRunnableByTheRunner` and `TestPurge_ClearsScopedBucketsAndTemp` are new.
+- **Integration** (`//go:build integration`, the compose PostgreSQL): `core_integration_test`, `core_notify_integration_test`, `demo_integration_test`, `demo_caps_integration_test`, `person_commands_integration_test`, `internal_jobs_integration_test` run unchanged at every step; `TestDefer_RowIsRunnableByTheRunner`, `TestPurge_ClearsScopedBucketsAndTemp` and `TestRevise_Concurrent_Serialised` (A2) are new; `TestRevise_Changed_BumpsAndInstallsSnapshot` is the unit happy path.
 - **Conformance:** `moduletest.Conformance` for `hello` and `volunteers` at every step (the aliases in step 12 must keep both green without a change in either module).
 - **End to end:** `make test-e2e` in the three modes at steps 7, 12 and 13.
 - **Document:** `make openapi-check` at every step; steps 7 and 12 commit the new document.
@@ -824,7 +844,7 @@ None. Q1–Q6 were answered by the owner on 2026-10-31 and are decisions 12 (Q1)
 Applied by `spec-editor` after approval, in the step that needs each.
 
 1. *(applied 2026-10-31)* **`plan/00-principles.md`**, Engineering tenets: add **5. App wires, it never decides** and **6. No hidden two-way dependencies**, with the two paragraphs under Behavior, "The tenets" (shortened to the principle and one sentence of consequence each).
-2. **`plan/07-abstractions.md`** *(rules 11 and 12 and the "Late-bound seams" section applied 2026-10-31; partly applied 2026-11-01, step 6: the new **auditlog** entry, the **audit** entry losing search, export, retention and the settings, and `auditlog` in the core diagram; the rest of the entry edits and the new entries pending: land with their steps)*:
+2. **`plan/07-abstractions.md`** *(rules 11 and 12 and the "Late-bound seams" section applied 2026-10-31; partly applied 2026-11-01, step 6: the new **auditlog** entry, the **audit** entry losing search, export, retention and the settings, and `auditlog` in the core diagram; partly applied 2026-11-01, step 7: the new **regional** entry and `regional` in the core diagram, **settings** losing the regional profile, the public document and the logo and gaining "declares no area of its own", and the **files** entry's settings sentence; the rest of the entry edits and the new **datarights** entry pending: land with their steps)*:
    - rule 11 (app wires) and rule 12 (no hidden two-way dependencies; the seam table) under "Layers and dependency rules";
    - a new section **"Late-bound seams"** with the table (18 rows at step 1, 19 after A1, "None." at step 13);
    - the **app** entry: "Doesn't do: anything any assembled package does; parse a setting; implement a package's seam except by forwarding";
@@ -837,24 +857,24 @@ Applied by `spec-editor` after approval, in the step that needs each.
 6. **`.golangci.yml`**: depguard rule `app-no-stores` (Behavior). **`Makefile`**: `imports` runs the seam test; new `arch-report` target. **`scripts/arch-report.sh`**: new.
 7. *(applied 2026-10-31)* **`.claude/skills/design-spec/SKILL.md`**, checklist: "- [ ] For each dependency: what does this need that is built after it? (If anything, the design names the split; nothing is late-bound.)" and "- [ ] Does any of this belong in app? (Only constructors, forwarding and lifecycle may.)". **`.claude/agents/architect.md`**, Rules: the same two questions as bullets.
 8. *(applied 2026-10-31)* **`.claude/agents/go-reviewer.md`**, check 3 Boundaries: "- new code in `internal/app` that is not a constructor call, a shape conversion, a declaration collection or lifecycle (app wires, it never decides)" and "- a new type in `internal/app` that reads the assembly after construction, or a func literal capturing it, that is not in the seam table of `07-abstractions.md`".
-9. **`.claude/skills/go-conventions/SKILL.md`**, Layers *(the sentence "A core package reads its own settings area…" applied 2026-11-01, step 5; partly applied 2026-11-01, step 6: `auditlog` added to the core list, which is an open-ended example list, so `regional` and `datarights` join it with their steps; the rest lands with its steps)*: add `internal/core/auditlog`, `regional`, `datarights` to the core list; the sentence "A core package reads its own settings area through a `settings.Reader` in its `Options`; it never receives a parsed policy from app." and "A core area's `Routes()` returns `[]httpx.Route`; app converts with `module.CoreRoutes`."
+9. **`.claude/skills/go-conventions/SKILL.md`**, Layers *(the sentence "A core package reads its own settings area…" applied 2026-11-01, step 5; partly applied 2026-11-01, step 6: `auditlog` added to the core list, which is an open-ended example list, so `regional` and `datarights` join it with their steps; `regional` added 2026-11-01, step 7; the rest lands with its steps)*: add `internal/core/auditlog`, `regional`, `datarights` to the core list; the sentence "A core package reads its own settings area through a `settings.Reader` in its `Options`; it never receives a parsed policy from app." and "A core area's `Routes()` returns `[]httpx.Route`; app converts with `module.CoreRoutes`."
    - *(applied 2026-10-31)* "a core package takes a seam as an `Options` or `Decl` field, never as a method argument it retains" (A1). The rest of this item lands with its steps.
 10. **`plan/design/app.md`**: remove "The superuser alert", the four lazy amendments (2026-10-19, 2026-10-21, the demo adapters of 2026-10-28), `authzActor`/`auditActor`; replace "How later core services plug in" with the build order table above; the Imports section drops `core/demo/postgres`, `core/notify/postgres`, `core/notify/smtp`, `core/notify/channel` and adds `core/auditlog`, `core/regional`, `core/datarights`; narratives go to `history/app.md`.
 11. *(applied 2026-11-01, step 6; the reader's text lives in `auditlog.md` and `audit.md` keeps a pointer section; the failure rows that moved are F23 to F31, F40, F41, F44, not F15 to F22, which are the recorder's)* **`plan/design/audit.md`**: the recorder keeps F1–F14 and the spool; Search, Export, CountAbout, retention, `audit.search|export`, the settings and the routes move to a new section "The log reader (`auditlog`)" with F15–F22 unchanged; `Options.Permissions` removed, `Titles` required; `WithSystem`, `WithOperator` and the actor order added.
 12. (applied 2026-11-01, step 4; see E2) **`plan/design/authz.md`**: `Lookup` and `LookupOptions`; `Departments` moves to the Lookup; the Service forwards decisions; F1–F16, F67–F71 are the Lookup's.
 13. *(partly applied 2026-11-01, step 5: `Options.Settings` replaces `PolicySource`; the rest lands with steps 8–9)* **`plan/design/identity.md`**: `Lookup`, `Actor`, `AuditActor`; `Options.Settings` replaces `PolicySource`; `Holders` and `Alerts` replace `Alerter`; "The superuser alert" section moved in from app.md verbatim; identity built after notify and authz.
 14. *(partly applied 2026-11-01, step 5: `Options.Settings` replaces `Policy`/`PolicySource`; the rest lands with step 8)* **`plan/design/people.md`**: `Lookup`; the data-rights sections (export, deletion, requests, the notice, the two commands, their routes, F40–F58, the signal `people.deletion-requested`) move to datarights.md; people answers as a `PeopleSource`; `Options` loses `Access`, `AuditCount`, `Notify`, `Holders`, `Policy` and gains `Lookup`, `Settings`.
-15. *(partly applied 2026-11-01, step 6: `auditlog.md` and its README row written; `datarights.md` and `regional.md` pending)* **New `plan/design/datarights.md`**, **`regional.md`**, **`auditlog.md`**: written by `spec-editor` from the moved sections and this spec's Interface, each with its own Summary; README rows added as Approved-on-approval-of-this-spec.
+15. *(partly applied 2026-11-01, step 7: `auditlog.md` (step 6) and `regional.md` with its README row (row 19e) written; `datarights.md` pending)* **New `plan/design/datarights.md`**, **`regional.md`**, **`auditlog.md`**: written by `spec-editor` from the moved sections and this spec's Interface, each with its own Summary; README rows added as Approved-on-approval-of-this-spec.
 16. *(partly applied 2026-11-01, step 5: `Settings` replaces `SMTPSource` and `RetentionSource`, `SMTPFromSettings` exported; the rest lands with steps 6–10)* **`plan/design/notify.md`**: the six seams replaced by `Settings`, `Regional`, `Terms`, `Accounts`, `Profiles`, `Channel`; `AlertSender`, `Alerts`, `Probe`; the delivery rules moved in; the imports line gains `core/regional` and `core/settings`.
-17. **`plan/design/settings.md`**: regional profile, public document, theme, logo and the `regional` area move to regional.md; `Options.Files` removed; routes reduced to four.
-18. **`plan/design/files.md`**: `Settings`, `Options.Settings`, `Options.Ceiling`, `Options.Jobs`, `Purge`; `PolicySource` removed; `filesettings` removed.
+17. *(applied 2026-11-01, step 7; the moved text, rows F23 and F36 to F54, and the logo tests are in `regional.md`; Open questions 1 and 2 there are what the split left unsettled)* **`plan/design/settings.md`**: regional profile, public document, theme, logo and the `regional` area move to regional.md; `Options.Files` removed; routes reduced to four.
+18. *(partly applied 2026-11-01, step 7: `Settings`, `Options.Settings`, `PolicySource` removed, `filesettings` removed; `Options.Ceiling`, `Options.Jobs` and `Purge` pending: step 10)* **`plan/design/files.md`**: `Settings`, `Options.Settings`, `Options.Ceiling`, `Options.Jobs`, `Purge`; `PolicySource` removed; `filesettings` removed.
 19. **`plan/design/demo.md`**: `Guard`, `Capture`, `FileCeiling`, `StateOf`; `Service.Policy`, `Channel`, `Protected` removed; `Objects` is `files.Purge`; the seams take the services' shapes.
 20. **`plan/design/jobs.md`**: `NewDeferrer`; the runner sets `audit.WithSystem` on every run.
 21. **`plan/design/signals.md`**: the `Deferrer` is `jobs.Deferrer`, built before the dispatcher; the delivery marker audit reads is unchanged.
 22. **`plan/design/departments-events.md`**: `departments.Lookup`; authz's `DepartmentSource` is the Lookup.
 23. **`plan/design/module-contract.md`**: `PersonData`, `Export`, `Deletion`, `Kept` are aliases of `datarights`'; `CoreRoutes`; `Deps` unchanged.
-24. **`plan/design/api.md`**: `PermissionChecker` is the `authz.Lookup`; route sets `regional` and `datarights` added to the reserved core area names; the moved paths.
-25. **`plan/design/web-shell.md`**: the public document, theme and logo come from `/api/regional/`.
+24. *(partly applied 2026-11-01, step 7: route set `regional` reserved and the moved `/api/regional/` paths; `PermissionChecker` as `authz.Lookup` and the `datarights` set and paths pending with their steps)* **`plan/design/api.md`**: `PermissionChecker` is the `authz.Lookup`; route sets `regional` and `datarights` added to the reserved core area names; the moved paths.
+25. *(applied 2026-11-01, step 7)* **`plan/design/web-shell.md`**: the public document, theme and logo come from `/api/regional/`.
 26. **`plan/03-decisions.md`** (by `plan-keeper` on approval): the two tenets, the path moves, the signal rename and the audit action renames as one decision with this spec as its source.
 
 ## Amendments
@@ -867,3 +887,47 @@ Applied by `spec-editor` after approval, in the step that needs each.
 - **D3, 2026-11-01** (staging, forced by an import cycle): the files part of step 5 (`files.Settings`, `files.Options.Settings`, removing `filesPolicy` and `filesettings`) moves to step 7, because files cannot import settings until regional takes the logo out of settings. Step 5 also exports `notify.SMTPFromSettings` for `bms check` until step 10.
 - **E3, 2026-11-01** (erratum): item 11's F15–F22 are `Record` rows; the reader's rows are F23–F31, F40, F41, F44. `auditlog.Options` also has `Audit audit.Recorder` (scoped "audit", required), which build-order row 8 implies and the Options list omitted.
 - **D4, 2026-11-01** (step 6 review): `auditlog`'s purge is unexported (job-only) and `auditlog.Options` drops the unused `Meter`; the build-order table lists settings before jobs, as built.
+- **S7, 2026-11-01** (step 7 applied by `spec-editor`): `regional.md` written from the moved `settings.md` text and this spec's Interface. It leaves two questions for the step-7 implementer: where the public document's terms and languages come from (this spec's `regional.Options` has no terms source) and how a logo change takes part in settings' revision lock and snapshot now that `settings` does not import `files` and `regional` has no `DB` (`regional.md`, Open questions 1 and 2). Until they are settled, treat the `Options` list under Interface (`regional`) as incomplete. Settled by A2 below.
+
+- **A2, 2026-11-01 (approved by the owner 2026-11-01)**: the design gaps step 7 (`regional`) exposed, read against the uncommitted implementation (`internal/core/regional`, `internal/core/settings`, `internal/core/files`, `internal/app/core_regional.go`). Nine points; each gives the decision, the reason, the alternative considered, and what changes in this spec and in `regional.md` (the folding is `spec-editor`'s, after approval). The rule throughout: the behaviour settings decision 16 bought (one logo row across instances, a cheap boot document, an `ETag` that moves with the logo) stays; `regional` depends on `settings`, never the reverse; `settings` does not import `files`.
+
+  1. **The logo and the settings revision (regional.md Open question 2).** *Decision:* `settings.Service` gains one write seam, `Revise`, and `regional`'s two logo writes run inside it; the logo bumps the revision as before, the `ETag` of `GET /public` and `GET /theme.css` is the revision alone again, and `Public` reads the logo's file ID from a small per-process cache keyed by the revision, not from the files store on every request. *Reason:* the revision row lock is the one thing that serialises writers across instances, and only settings may hold it; the logo ID left settings' snapshot with `files`, so the cache is what keeps the boot document a map lookup. *Alternatives:* (a) a hidden `regional.logo` key written through `Set` under the lock: settings has no "internal-only" key (decision 16 refused it for that reason), and `Set` is one transaction that cannot carry files' `Attach`, so the row and the key could disagree; (c) keep the implementation (own `DB`, an in-process mutex, `ByRecord` on every `/public`, `ETag` `"regional-<rev>[-<file>]"`): two uploads on two instances can leave two rows (F49 fails), and the boot document does I/O on every boot.
+     - **Interface, `settings`:**
+       ```go
+       // Revise runs fn inside one Write transaction after taking the revision row lock, which
+       // serialises it with Set, SetTerms and every other Revise across instances. When fn
+       // reports changed, Revise bumps the revision and, after commit, installs the snapshot it
+       // built under the lock (as Set does); when fn reports no change, it commits nothing new
+       // and returns the current revision. fn's error rolls everything back and is returned with
+       // its kind. Revise records no audit entry (fn records under its own area) and checks no
+       // permission: it is a method of *settings.Service, which only app holds (modules see a
+       // Reader), and the caller has checked its own permission first. Call it outside any
+       // transaction. Consumer: regional (SetLogo, RemoveLogo).
+       func (s *Service) Revise(ctx context.Context, fn func(ctx context.Context) (changed bool, err error)) (Revision, error)
+       ```
+       `Revision(ctx) (Revision, error)` (the current snapshot's revision; consumer: regional's `ETag` and cache key) is accepted as written. The `settings` paragraph under Interface lists both among what `settings.Service` keeps.
+     - **Interface, `regional`:** `Options` gains `DB db.DB` (used for `ReadOnly()` alone, so a logo write refuses a read-only copy before a byte of the body is read, settings decision 18; `Revise` owns the transaction) and keeps `Revision RevisionSource`, now two methods, both satisfied by `*settings.Service`:
+       ```go
+       type RevisionSource interface {
+           Revision(ctx context.Context) (settings.Revision, error)
+           Revise(ctx context.Context, fn func(ctx context.Context) (changed bool, err error)) (settings.Revision, error)
+       }
+       ```
+       `SetLogo`: `Allow(settings.manage)`; `DB.ReadOnly()`; `Stage` outside any transaction; `Revise(fn)` where fn runs `Attach{Record: LogoRef, Replace: true}` and `Audit.Record` and reports `true`; `LogoResult{Revision: the bumped revision, Logo: id}`. `RemoveLogo`: `Allow`; `ReadOnly()`; `Revise(fn)` where fn runs `DeleteByRecord(LogoRef)`, reports `false` when it deleted nothing (no entry, no bump, the current revision is returned: idempotent), else records and reports `true`. The in-process mutex goes. `Public` and `ThemeCSS`: `Revision()` first, then the body, so the body is at least as new as the tag; the `ETag` is `"regional-<revision>"`; the logo's file ID comes from `(revision, id)` held in an `atomic.Pointer`, refreshed with one `ByRecord` when the revision read differs from the held one (so one query per revision change per process, and none while nothing changes). The cache is correct because every logo change bumps the revision; a replica's poll moves its revision and its next `/public` re-reads.
+     - **Failure modes (new rows):** B34 `settings.Revise`, fn fails → fn's kind, rollback, no bump, no snapshot change; caller fails its use case; `TestRevise_FnFails_RollsBackAndKeepsRevision`. B35 `settings.Revise`, read-only copy → `Unavailable` wrapping `db.ErrReadOnly` before fn runs; `TestRevise_ReadOnlyCopy_ReturnsUnavailable`. B36 `settings.Revise`, fn reports no change → none: the current revision, no bump, no snapshot replace; `TestRevise_Unchanged_ReturnsCurrentRevision`. B37 `settings.Revise`, `core.setting_revision` has no row → `Internal` (settings F26); `TestRevise_NoRevisionRow_ReturnsInternal`. B38 `settings.Revise`, two callers at once (two instances) → none: serialised by the row lock, the second runs after the first commits; `TestRevise_Concurrent_Serialised` (integration). `TestRevise_Changed_BumpsAndInstallsSnapshot` proves the happy path (the local snapshot carries the new revision at once). B9 is widened by points 2 and 3.
+     - **regional.md:** `Options` and `RevisionSource` as above; Behavior "The logo": "`Transact(Write)`: `LockRevision` first ... `BumpRevision`" becomes "`Revise(fn)`", and "the next snapshot is the old one with `logo` = the new ID" becomes "after commit settings installs the bumped revision; the next `Public` sees it and re-reads the ID"; "Why the snapshot carries the ID (decision 16)" becomes "Why the logo bumps the revision" with the cache in place of the snapshot field; F49 keeps its test (now through `Revise`); F54 becomes "`Public`: the cache refresh's `ByRecord` fails → the store's kind (Unavailable, Timeout, Canceled)", test `TestPublic_LogoLookupFails_ReturnsUnavailable`; the existing `TestPublic_ETag_FollowsTheRevisionAndTheLogo`, `TestPublic_ETagAndLogoMoveTogether` and `TestPublic_AfterLoad_DoesNotTouchTheFilesStore` keep their names with the cache semantics (one `ByRecord` per revision; the fake counts calls); Open question 2 closed.
+  2. **Terms for the public document (regional.md Open question 1).** *Decision:* `Options.Terms TermSource` (`TermsFor(ctx, lang) (map[string]settings.Forms, error)`, satisfied by `*settings.Service`) is **required**; `Languages` comes from `settings.Languages`, a build constant, so it needs no seam; the document's JSON field set (`name`, `contact_email`, `public_url`, `language`, `timezone`, `languages`, `theme`, `logo`, `terms`) is unchanged and pinned by `TestGetPublic_FieldSetIsPinned`. *Reason:* a public document with empty term maps is a different document (the shell merges `terms` over its catalogue, so a regional's renamed words would silently vanish); `settings` is always built before `regional`; an optional seam that changes a document's content hides a wiring mistake. *Alternative:* optional with empty maps, as implemented: rejected for the reason above. *Changes:* this spec's `regional.Options` gains `Terms TermSource // settings; required`; B9 reads "nil `Files`, `Settings`, `Terms`, `Revision`, `DB` or any dependency"; new test `TestNew_NilTerms_ReturnsInvalid`; regional.md Summary, Interface and Open question 1 updated.
+  3. **The other `Options` additions.** `DB`: kept, for `ReadOnly()` only (point 1). `Revision`: the two-method `RevisionSource` (point 1); `settings.Service.Revision` accepted. `Meter`: dropped from `regional.Options`, as D2 and D4 dropped unused Meters; nothing in `regional` counts (point 9a says why the stale-URL count does not move here). *Changes:* this spec's `regional.Options` block (no `Meter`; `DB`, `Terms` added; `Revision` documented as above); Summary "Exported names added" gains `regional.RevisionSource`, `regional.TermSource`, `settings.Service.Revision`, `settings.Service.Revise`; `regional.New` on a `Meter`-less `Options` is what the app passes.
+  4. **Audit action names.** The old actions were `settings.logo.changed` and `settings.logo.removed` (verified in `internal/core/settings/settings.go` at HEAD). *Decision:* `regional.logo.changed` and `regional.logo.removed`: a prefix change only, as Summary item 11 says and the owner intended; `changed` is also the verb of `settings.setting.changed` and `settings.term.changed`. The Interface text under `regional` ("the audit actions become regional.logo.set|removed") and the implementation's `regional.logo.set` are corrected. Spans stay `regional.logo.set|remove|open`: a span name is not an audit action. *Changes:* this spec's `regional` Interface comment; regional.md Summary (decision 5 and "Owns"), Interface comments, Behavior, and the tests `TestSetLogo_RecordsRegionalLogoSet` → `TestSetLogo_RecordsRegionalLogoChanged` (`TestRemoveLogo_RecordsRegionalLogoRemoved` unchanged); settings.md's amendment line names the new actions.
+  5. **`settings.Decl.Normalize`.** *Decision:* accepted: `Normalize func(value string) string` on `Decl`, an optional rewrite of a trimmed value before `Check` runs and the value is stored. *Reason:* the canonical form of a value is the declaring area's rule, as `Check` already is; the settings-private map keyed by full key (`regionalNormalizers`) was the coupling that kept the `regional.*` declarations inside settings. *Rules:* pure; a fixed point (`Normalize(Normalize(v)) == Normalize(v)`), so a value it cannot improve is returned unchanged and `Check` reports why it is refused; it runs only for non-`Secret` kinds, and a `Secret` declaration with a `Normalize` fails `Decl.Validate` (`Invalid`, the declaration's field, code `unsupported`), because a secret is never trimmed or rewritten. *Alternative:* keep the map in settings and have regional register normalizers at construction: a second registration path for one key kind, and a seam taken outside `Options`. *Changes:* settings.md Interface (`Decl` gains the field with the rules above; Behavior "Writes" says "trimmed, normalised, parsed by kind, the `Decl.Check` run"); tests `TestSet_NormalizeRunsBeforeCheck` (settings) and `TestDeclValidate_SecretWithNormalize_ReturnsInvalid`; `TestSet_Regional_Table` keeps the canonical-form rows in `regional`. This spec: the `settings` Interface paragraph names the field.
+  6. **OpenAPI names.** *Decision:* accepted: operationIds `regionalPublic`, `regionalTheme`, `regionalLogo`, `regionalSetLogo`, `regionalRemoveLogo`; schemas `RegionalPublic`, `RegionalLogoUpload`, `RegionalLogoResult`; tag `regional`; the five leave settings' fragment. *Reason:* ids and schema names carry the area prefix (api decision 33's convention), and an id named for an area that no longer serves it would mislead the generated client. The only consumer affected is the generated `web/src/api/schema.d.ts`; the shell calls by path. *Changes:* regional.md Summary ("Owns" names the ids and schemas); api.md item 24 lists the renamed ids with the moved paths.
+  7. **The interim demo ceiling in `files`.** *Decision:* accepted as staging, like D3: `files.Options.Settings` is required now (B23 holds) and the service maps it itself; `files.Options.Policy` stays as an optional override and `files.PolicyFrom` stays exported until step 10, when `Options.Ceiling` replaces `Policy`, `PolicyFrom` is unexported and `lazyFilesPolicy` leaves the seam table (its row already says "removed in step 10"). Condition: no caller of `PolicyFrom` but app's demo cap. *Alternative:* land `Ceiling` in step 7: it belongs with demo's `FileCeiling` and the files jobs, which are step 10's. *Changes:* this spec's `files` Interface block gains a one-line note "until step 10: `Policy PolicySource` (optional override) and `PolicyFrom` exported"; files.md item 18's "pending" clause names them.
+  8. **Part order.** No change to the build-order table: files (10) and regional (11) already precede notify (14), and notify's site source reads `regional.Profile`. Row 11's "Takes" becomes "audit, authz.Lookup, db (ReadOnly), settings "regional", settings (revision, `Revise`, terms), files "settings"". As built at step 7 the parts run audit, authz, settings, jobs, auditlog, identity, people, departments, events, files, regional, notify, demo; identity and people move below notify in steps 8 and 9 as the table says, and `TestParts_OrderAndNames_Pinned` pins each step's order.
+  9. **Other observable changes in the diff, accepted or corrected:**
+     - (a) *accepted:* `bms.settings.stale_values` no longer counts a stored `regional.public_url` the canonical-form rule refuses; `regional.Profile` warns once per process (`setting` attribute, no value) and reads it as unset. The counter is settings' own signal for kind and option drift, which it still counts; one key does not earn a `bms.regional.*` instrument (hence no `Meter`, point 3). regional.md's Settings text ("reads as unset with the decision-5 warning") gains "logged once; not counted".
+     - (b) *accepted:* the `ETag` text changes from `"settings-<rev>"` to `"regional-<rev>"`; harmless, because the path changed with it, so no client holds the old tag for the new URL.
+     - (c) *corrected by point 1:* `LogoResult.Revision` is the bumped revision again; the implementation returned the revision read before the write.
+     - (d) *accepted:* `settings.Options.Validate` no longer refuses an outside area named `regional`: the duplicate check refuses a second `regional` area, and `module` reserves the name (api item 24); settings.md Behavior "Construction" drops the clause.
+     - (e) *accepted:* `Public` flattens `Profile`'s fields instead of embedding `settings.Regional`; the JSON is the same (point 2's pinned test). The colours are not in the document (they are in `theme.css`).
+     - (f) *unchanged, confirmed:* the admin document's area order (regional first: app passes it first); the handler order of `PUT /logo` (`settings.manage` before `ReadUpload`, D52(e)); `OpenLogo` through `ByRecord`, never the cache, so a replica never serves a deleted ID.
+  - **Proposed changes elsewhere added by A2** (applied 2026-11-01 by `spec-editor`, all items; the body of this spec, `regional.md`, `settings.md`, `files.md`, `api.md` and `07-abstractions.md`): settings.md (item 17): `Revise`, `Revision`, `Decl.Normalize` and its rules, the construction clause (9d), the action names (4); files.md (item 18): the interim `Policy`/`PolicyFrom` (7); api.md (item 24): the operationIds (6); regional.md: everything listed under "regional.md" above, and Open questions 1 and 2 closed; this spec's Summary: exported names (3) and the `Options` list; `07-abstractions.md` (item 2): the settings entry gains "`Revise`: the revision lock as a seam for `regional`".

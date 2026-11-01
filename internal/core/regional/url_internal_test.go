@@ -1,10 +1,11 @@
-package settings
+package regional
 
 import (
 	"errors"
 	"strings"
 	"testing"
 
+	"github.com/zedgama3/bms/internal/core/settings"
 	"github.com/zedgama3/bms/internal/lib/validate"
 )
 
@@ -61,7 +62,7 @@ func TestCheckPublicURL_Refusals_CarryReason(t *testing.T) {
 		{"space", "https://burn .example.org", "url", "chars"},
 		{"control", "https://burn.example.org/\x01", "url", "chars"},
 		{"zero-width space", "https://burn.example.org/\u200b", "url", "chars"},
-		{"too long", "https://burn.example.org/" + strings.Repeat("a", MaxURLBytes), codeTooLong, ""},
+		{"too long", "https://burn.example.org/" + strings.Repeat("a", settings.MaxURLBytes), "too_long", ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

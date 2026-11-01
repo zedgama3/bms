@@ -315,11 +315,7 @@ func (s *Service) freshSnapshot(ctx context.Context, op string, rev int64) (*sna
 	if err != nil {
 		return nil, wrap(op, err)
 	}
-	sn := snapshotOf(rev, ss, ts)
-	if sn.logo, err = s.logoFileID(ctx); err != nil {
-		return nil, wrap(op, err)
-	}
-	return sn, nil
+	return snapshotOf(rev, ss, ts), nil
 }
 
 // finish records the entries, bumps the revision and arranges for next to replace the
@@ -331,6 +327,11 @@ func (s *Service) finish(ctx context.Context, op string, rev0 int64, next *snaps
 	if err := s.audit.Record(ctx, entries...); err != nil {
 		return 0, wrap(op, err)
 	}
+	return s.bump(ctx, op, rev0, next)
+}
+
+// bump adds one to the revision and arranges for next to replace the snapshot after commit.
+func (s *Service) bump(ctx context.Context, op string, rev0 int64, next *snapshot) (Revision, error) {
 	bumped, err := s.store.BumpRevision(ctx)
 	if err != nil {
 		return 0, revisionErr(op, err)
@@ -352,6 +353,51 @@ func (s *Service) finish(ctx context.Context, op string, rev0 int64, next *snaps
 		return 0, wrap(op, err)
 	}
 	return Revision(bumped), nil
+}
+
+// Revise runs fn inside one Write transaction after taking the revision row lock, which
+// serialises it with Set, SetTerms and every other Revise across instances. When fn reports
+// changed, Revise bumps the revision and, after commit, installs the snapshot it built under
+// the lock (as Set does); when fn reports no change, it commits nothing new and returns the
+// current revision. fn's error rolls everything back and is returned with its kind. Revise
+// records no audit entry (fn records under its own area) and checks no permission: it is a
+// method of *settings.Service, which only app holds (modules see a Reader), and the caller has
+// checked its own permission first. Call it outside any transaction. Consumer: regional
+// (SetLogo, RemoveLogo). It fails errs.Unavailable wrapping db.ErrReadOnly on a read-only
+// copy (before fn runs), errs.Internal when core.setting_revision has no row, and the store's
+// kinds.
+func (s *Service) Revise(ctx context.Context, fn func(ctx context.Context) (changed bool, err error)) (_ Revision, err error) {
+	const op = "settings.Service.Revise"
+	ctx, span := s.start(ctx, "revise")
+	defer endSpan(span, &err)
+	if fn == nil {
+		return 0, errs.E(op, errs.Invalid, errors.New("nil function"))
+	}
+	var rev Revision
+	err = s.inTx(ctx, db.Write, func(ctx context.Context) error {
+		rev0, err := s.store.LockRevision(ctx)
+		if err != nil {
+			return revisionErr(op, err)
+		}
+		changed, err := fn(ctx)
+		if err != nil {
+			return err //nolint:wrapcheck // fn's own error, kept with its kind
+		}
+		if !changed {
+			rev = Revision(rev0)
+			return nil
+		}
+		next, err := s.freshSnapshot(ctx, op, rev0)
+		if err != nil {
+			return err
+		}
+		rev, err = s.bump(ctx, op, rev0, next)
+		return err
+	})
+	if err != nil {
+		return 0, wrap(op, err)
+	}
+	return rev, nil
 }
 
 // Constraint names of the CHECKs a value can break (migration 0001).

@@ -1,0 +1,123 @@
+{
+  "tags": [
+    {"name": "regional", "description": "The regional's public face: its name, language, colours and logo, and the public document the shell reads at boot."}
+  ],
+  "paths": {
+    "/public": {
+      "get": {
+        "tags": ["regional"],
+        "operationId": "regionalPublic",
+        "summary": "The regional's public values and the terms in every language. No session needed. ETag is derived from the settings revision; a matching If-None-Match answers 304.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The public document.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RegionalPublic"}}}
+          },
+          "304": {"description": "The If-None-Match tag is the current one."}
+        }
+      }
+    },
+    "/theme.css": {
+      "get": {
+        "tags": ["regional"],
+        "operationId": "regionalTheme",
+        "summary": "The regional's brand colours as a stylesheet; an empty body when both are the shipped palette. No session needed. ETag and 304 as for /public.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The stylesheet.",
+            "content": {"text/css": {"schema": {"type": "string"}}}
+          },
+          "304": {"description": "The If-None-Match tag is the current one."}
+        }
+      }
+    },
+    "/logo": {
+      "get": {
+        "tags": ["regional"],
+        "operationId": "regionalLogo",
+        "summary": "The regional's logo (PNG, JPEG or WebP). No session needed. The shell requests it as /api/regional/logo?v=<logo>, the file ID from the public document; the query is ignored. ETag is the image's SHA-256 and a matching If-None-Match answers 304. 404 when there is no logo; 503 with Retry-After on a copy that has not yet received the image.",
+        "security": [],
+        "parameters": [
+          {"name": "v", "in": "query", "required": false, "schema": {"type": "string"}, "description": "The logo's file ID, to version the URL; ignored."}
+        ],
+        "responses": {
+          "200": {
+            "description": "The image.",
+            "content": {
+              "image/png": {"schema": {"type": "string", "format": "binary"}},
+              "image/jpeg": {"schema": {"type": "string", "format": "binary"}},
+              "image/webp": {"schema": {"type": "string", "format": "binary"}}
+            }
+          },
+          "304": {"description": "The If-None-Match tag is the image's."}
+        }
+      },
+      "put": {
+        "tags": ["regional"],
+        "operationId": "regionalSetLogo",
+        "summary": "Replace the logo. Needs settings.manage. multipart/form-data with one file part named file (PNG, JPEG or WebP by its bytes, at most 2 MiB; metadata is removed). Field errors use the field file: too_large {max}, type, malformed, required. 409 with code quota when the site is out of file space; 503 read_only on a read-only copy.",
+        "requestBody": {
+          "required": true,
+          "content": {"multipart/form-data": {"schema": {"$ref": "#/components/schemas/RegionalLogoUpload"}}}
+        },
+        "responses": {
+          "200": {
+            "description": "The revision and the new logo's file ID.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RegionalLogoResult"}}}
+          }
+        }
+      },
+      "delete": {
+        "tags": ["regional"],
+        "operationId": "regionalRemoveLogo",
+        "summary": "Remove the logo. Needs settings.manage. With no logo it changes nothing and answers the current revision and an empty logo. 503 read_only on a read-only copy.",
+        "responses": {
+          "200": {
+            "description": "The revision and an empty logo.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RegionalLogoResult"}}}
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "RegionalPublic": {
+        "type": "object",
+        "required": ["name", "contact_email", "public_url", "language", "timezone", "languages", "theme", "logo", "terms"],
+        "properties": {
+          "name": {"type": "string"},
+          "contact_email": {"type": "string", "description": "The regional's shared mailbox, shown to anyone; empty when none."},
+          "public_url": {"type": "string", "description": "No trailing slash; empty when unset."},
+          "language": {"type": "string", "description": "The language before a person chooses."},
+          "timezone": {"type": "string", "description": "An IANA name; empty means the browser's zone."},
+          "languages": {"type": "array", "items": {"type": "string"}},
+          "theme": {"type": "boolean", "description": "Whether /api/regional/theme.css has content."},
+          "logo": {"type": "string", "description": "The logo's file ID; empty when there is none. Request /api/regional/logo?v=<logo>, so a replaced logo is a new URL."},
+          "terms": {
+            "type": "object",
+            "description": "Per language, the term arguments: term_<term>, term_<term>_plural, term_<term>_title, term_<term>_plural_title.",
+            "additionalProperties": {"type": "object", "additionalProperties": {"type": "string"}}
+          }
+        }
+      },
+      "RegionalLogoUpload": {
+        "type": "object",
+        "required": ["file"],
+        "properties": {
+          "file": {"type": "string", "format": "binary", "description": "The image: PNG, JPEG or WebP, at most 2 MiB (2097152 bytes). Send it as the only part."}
+        }
+      },
+      "RegionalLogoResult": {
+        "type": "object",
+        "required": ["revision", "logo"],
+        "properties": {
+          "revision": {"type": "integer", "format": "int64"},
+          "logo": {"type": "string", "description": "The file ID after the call; empty after a removal."}
+        }
+      }
+    }
+  }
+}

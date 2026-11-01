@@ -854,6 +854,8 @@ export interface GeneratedKeys {
   "core.regional.setting.contact_email.description": true;
   "core.regional.setting.contact_email.title": true;
   "core.regional.setting.language.description": true;
+  "core.regional.setting.language.option.en": true;
+  "core.regional.setting.language.option.es": true;
   "core.regional.setting.language.title": true;
   "core.regional.setting.name.description": true;
   "core.regional.setting.name.title": true;

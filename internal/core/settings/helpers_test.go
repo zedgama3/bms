@@ -21,6 +21,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/authz/authztest"
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/identity"
+	"github.com/zedgama3/bms/internal/core/regional"
 	"github.com/zedgama3/bms/internal/core/settings"
 	"github.com/zedgama3/bms/internal/core/telemetry/telemetrytest"
 	"github.com/zedgama3/bms/internal/lib/clock"
@@ -182,6 +183,7 @@ func checkLimits(values map[string]string) error {
 
 func testAreas() []settings.Area {
 	return []settings.Area{
+		{Name: "regional", Core: true, Decls: regional.Settings}, // app passes it, as it passes accounts
 		{Name: "accounts", Core: true, Check: checkLimits, Decls: []settings.Decl{
 			{Key: "login_failure_limit", Kind: settings.Int, Default: "5"},
 			{Key: "client_failure_limit", Kind: settings.Int, Default: "20"},

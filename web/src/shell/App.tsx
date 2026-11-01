@@ -84,7 +84,7 @@ function Boot({ sets, createRouter = browserRouter, onRouter, leave }: AppProps)
     queryFn: async ({ signal }) => {
       // An invalidation (a settings save) re-reads the theme too; a plain refetch does not.
       const saved = client.getQueryState(PUBLIC_KEY)?.isInvalidated === true;
-      const doc = await api.GET("/api/settings/public", { signal });
+      const doc = await api.GET("/api/regional/public", { signal });
       applyPublic(doc, saved);
       return doc;
     },

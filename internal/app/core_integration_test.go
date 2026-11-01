@@ -212,11 +212,11 @@ func TestServe_Integration_AccountsAuditAndHelloEndToEnd(t *testing.T) {
 		t.Errorf("anonymous audit search = %d, want 401", code)
 	}
 	// settings: the public document and the stylesheet need no session; the admin document does.
-	if code, body := itGet(ctx, t, addr, "/api/settings/public"); code != 200 || !strings.Contains(body, `"name":"BMS"`) || !strings.Contains(body, `"term_department"`) {
-		t.Errorf("anonymous GET /api/settings/public = %d %s, want the defaults and the terms", code, body)
+	if code, body := itGet(ctx, t, addr, "/api/regional/public"); code != 200 || !strings.Contains(body, `"name":"BMS"`) || !strings.Contains(body, `"term_department"`) {
+		t.Errorf("anonymous GET /api/regional/public = %d %s, want the defaults and the terms", code, body)
 	}
-	if code, _ := itGet(ctx, t, addr, "/api/settings/theme.css"); code != 200 {
-		t.Errorf("anonymous GET /api/settings/theme.css = %d, want 200", code)
+	if code, _ := itGet(ctx, t, addr, "/api/regional/theme.css"); code != 200 {
+		t.Errorf("anonymous GET /api/regional/theme.css = %d, want 200", code)
 	}
 	if code, _ := itGet(ctx, t, addr, "/api/settings/"); code != 401 {
 		t.Errorf("anonymous GET /api/settings/ = %d, want 401", code)
@@ -270,8 +270,8 @@ func TestServe_Integration_AccountsAuditAndHelloEndToEnd(t *testing.T) {
 	if status != 200 {
 		t.Errorf("superuser PUT /api/settings/values = %d %s, want 200", status, body)
 	}
-	if code, body := itGet(ctx, t, addr, "/api/settings/public"); code != 200 || !strings.Contains(body, `"name":"Quillfeather Burn"`) {
-		t.Errorf("GET /api/settings/public after the change = %d %s", code, body)
+	if code, body := itGet(ctx, t, addr, "/api/regional/public"); code != 200 || !strings.Contains(body, `"name":"Quillfeather Burn"`) {
+		t.Errorf("GET /api/regional/public after the change = %d %s", code, body)
 	}
 	// identity reads its policy through settings: sign-up is now by invitation (501).
 	if status, _, _ = itSend(t, addr, http.MethodPost, "/api/accounts/sign-up", "", credentials("late@example.org", itMemberPass)); status != 501 {

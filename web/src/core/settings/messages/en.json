@@ -74,6 +74,8 @@
   "core.regional.setting.public_url.description": "The web address people use to reach this site, starting with https. Links in messages start with it.",
   "core.regional.setting.language.title": "Default language",
   "core.regional.setting.language.description": "The language people see before they choose their own.",
+  "core.regional.setting.language.option.en": "English",
+  "core.regional.setting.language.option.es": "Español",
   "core.regional.setting.timezone.title": "Time zone",
   "core.regional.setting.timezone.description": "The time zone suggested when someone creates a new {term_event}. Leave it on the browser's zone to suggest none.",
   "core.regional.setting.color_primary.title": "Brand colour",

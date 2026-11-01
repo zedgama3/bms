@@ -28,7 +28,7 @@ function HomeLink({ name }: { name: string }) {
     >
       {showImage ? (
         <img
-          src={`/api/settings/logo?v=${encodeURIComponent(logo)}`}
+          src={`/api/regional/logo?v=${encodeURIComponent(logo)}`}
           alt={name}
           decoding="async"
           className="max-h-8 w-auto max-w-[12rem] object-contain"

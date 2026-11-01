@@ -382,7 +382,7 @@ describe("upload", () => {
   it("sends multipart with the plain fields first and the file last, no Content-Type of its own", async () => {
     const f = installFetch(() => json({ logo: "abc", revision: 2 }));
     const res = await upload<{ logo: string }>(
-      "/api/settings/logo",
+      "/api/regional/logo",
       { file: png(), fields: { note: "x" } },
       { method: "PUT" },
     );
@@ -404,7 +404,7 @@ describe("upload", () => {
 
   it("maps a 413 to payload_too_large, even with another body, and does not retry", async () => {
     const f = installFetch(() => new Response("too big", { status: 413 }));
-    const e = await failure(upload("/api/settings/logo", { file: png() }, { method: "PUT" }));
+    const e = await failure(upload("/api/regional/logo", { file: png() }, { method: "PUT" }));
     expect(e.code).toBe("payload_too_large");
     expect(e.status).toBe(413);
     expect(f).toHaveBeenCalledTimes(1);
@@ -417,7 +417,7 @@ describe("upload", () => {
         fields: [{ field: "file", code: "type", reason: "x" }],
       }),
     );
-    const e = await failure(upload("/api/settings/logo", { file: png() }, { method: "PUT" }));
+    const e = await failure(upload("/api/regional/logo", { file: png() }, { method: "PUT" }));
     expect(e.code).toBe("invalid");
     expect(e.fields[0]?.field).toBe("file");
   });

@@ -3,7 +3,7 @@ import { createStore } from "./store";
 export interface PublicState {
   /** The regional's name (the shipped default until the document arrives). */
   name: string;
-  /** The logo's file ID, to version `/api/settings/logo?v=<logo>`; empty when there is none. */
+  /** The logo's file ID, to version `/api/regional/logo?v=<logo>`; empty when there is none. */
   logo: string;
 }
 

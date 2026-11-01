@@ -13,6 +13,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/notify"
 	"github.com/zedgama3/bms/internal/core/people"
+	"github.com/zedgama3/bms/internal/core/regional"
 	"github.com/zedgama3/bms/internal/core/settings"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/model"
@@ -58,8 +59,8 @@ const accountsOwner = "identity"
 // parts use, mounts the routes and registers the sender loop as a runnable.
 func buildNotify(_ context.Context, a *assembly) error {
 	const op = "app.notify.build"
-	if a.deps.audit == nil || a.deps.authz == nil || a.settings == nil || a.identity == nil || a.people == nil {
-		return errs.E(op, errs.Internal, errors.New("notify is built after audit, settings, identity, authz and people"))
+	if a.deps.audit == nil || a.deps.authz == nil || a.settings == nil || a.regional == nil || a.identity == nil || a.people == nil {
+		return errs.E(op, errs.Internal, errors.New("notify is built after audit, settings, regional, identity, authz and people"))
 	}
 	rec, err := a.deps.audit.Scoped(notifyArea)
 	if err != nil {
@@ -83,7 +84,7 @@ func buildNotify(_ context.Context, a *assembly) error {
 		Authz:     a.deps.authz,
 		Actor:     identity.Actor,
 		Settings:  reader,
-		Site:      siteSource{svc: a.settings},
+		Site:      siteSource{reg: a.regional, terms: a.settings},
 		Addresses: addressSource{accounts: a.identity, contacts: a.people},
 		Languages: languageSource{p: a.people},
 		Names:     nameSource{p: a.people},
@@ -193,16 +194,27 @@ func (r *notifyRunner) stop(ctx context.Context) error {
 
 // ---- adapters over settings ------------------------------------------------------------
 
-// regionalSource is the part of *settings.Service siteSource reads.
-type regionalSource interface {
-	Regional(ctx context.Context) (settings.Regional, error)
-	TermsFor(ctx context.Context, lang string) (map[string]settings.Forms, error)
+// regionalSource is the part of *regional.Service siteSource reads, and termSource the part
+// of *settings.Service.
+type (
+	regionalSource interface {
+		Profile(ctx context.Context) (regional.Profile, error)
+	}
+	termSource interface {
+		TermsFor(ctx context.Context, lang string) (map[string]settings.Forms, error)
+	}
+)
+
+var (
+	_ regionalSource = (*regional.Service)(nil)
+	_ termSource     = (*settings.Service)(nil)
+)
+
+// siteSource is notify's SiteSource over regional's Profile and settings' TermsFor.
+type siteSource struct {
+	reg   regionalSource
+	terms termSource
 }
-
-var _ regionalSource = (*settings.Service)(nil)
-
-// siteSource is notify's SiteSource over settings' Regional and TermsFor.
-type siteSource struct{ svc regionalSource }
 
 var _ notify.SiteSource = siteSource{}
 
@@ -212,7 +224,7 @@ var _ notify.SiteSource = siteSource{}
 // key_title and key_plural_title for its other forms. It fails with the settings' kinds.
 func (s siteSource) Site(ctx context.Context, lang notify.Language) (notify.Site, error) {
 	const op = "app.siteSource.Site"
-	reg, err := s.svc.Regional(ctx)
+	reg, err := s.reg.Profile(ctx)
 	if err != nil {
 		return notify.Site{}, fmt.Errorf("%s: %w", op, err)
 	}
@@ -223,7 +235,7 @@ func (s siteSource) Site(ctx context.Context, lang notify.Language) (notify.Site
 	if !slices.Contains(settings.Languages, use) {
 		use = reg.Language
 	}
-	forms, err := s.svc.TermsFor(ctx, use)
+	forms, err := s.terms.TermsFor(ctx, use)
 	if err != nil {
 		return notify.Site{}, fmt.Errorf("%s: terms in %s: %w", op, use, err)
 	}

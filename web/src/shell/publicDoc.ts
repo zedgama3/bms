@@ -4,10 +4,10 @@ import { addCatalogue, configureLanguages, REGIONAL_OWNER } from "@/i18n/interna
 import { shellLanguages } from "./catalogues";
 import { DEFAULT_LANGUAGE, setRegionalName } from "./regional";
 
-export type PublicDoc = components["schemas"]["SettingsPublic"];
+export type PublicDoc = components["schemas"]["RegionalPublic"];
 
 const THEME_ID = "bms-theme";
-const THEME_HREF = "/api/settings/theme.css";
+const THEME_HREF = "/api/regional/theme.css";
 
 /** `term_theme_camp_plural_title` becomes the catalogue key `term.theme_camp.plural_title`
  *  (the inverse of `termsOf`); the singular is `term.theme_camp`. */

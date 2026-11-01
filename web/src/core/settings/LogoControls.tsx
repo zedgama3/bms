@@ -21,9 +21,9 @@ import { ReadOnlyNote } from "./ReadOnlyNote";
  *  both; the field checks the size first so a phone does not send 2 MB for nothing. */
 export const MAX_LOGO_BYTES = 2_097_152;
 export const LOGO_TYPES = ["image/png", "image/jpeg", "image/webp"] as const;
-const LOGO_ROUTE = "/api/settings/logo";
+const LOGO_ROUTE = "/api/regional/logo";
 
-type LogoResult = components["schemas"]["SettingsLogoResult"];
+type LogoResult = components["schemas"]["RegionalLogoResult"];
 
 /** Puts what the server meant in the shape the field shows: a 413 (the body past the route cap)
  *  is `file: too_large {max}`; a 409 without a field is the site's file quota. */

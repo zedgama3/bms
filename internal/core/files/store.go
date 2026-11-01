@@ -14,12 +14,12 @@ type Content = io.ReadSeekCloser
 
 // Store is what a module gets as Deps.Files and a core part gets from Scoped: every method
 // sees only the owner's files, and every object it writes goes to the owner's bucket.
-// Consumers: volunteers (certificates), settings (the logo), later incidents and afterreports.
+// Consumers: volunteers (certificates), regional (the logo), later incidents and afterreports.
 type Store interface {
 	// Stage spools, sniffs, strips, hashes and puts the upload in the owner's bucket. Called
 	// outside any transaction (Internal inside one). Consumers: every owner's upload
 	// handler, before it opens its transaction. A Body read error that is already a
-	// classified *errs.Error is returned unchanged (settings' MaxLogoBytes reader relies on
+	// classified *errs.Error is returned unchanged (regional's MaxLogoBytes reader relies on
 	// it).
 	Stage(ctx context.Context, up Upload) (Staged, error)
 	// Attach binds a Staged object to a record inside the caller's Write transaction,
@@ -32,16 +32,15 @@ type Store interface {
 	// Get answers one file's metadata. Consumers: an owner showing one attachment.
 	Get(ctx context.Context, id FileID) (File, error)
 	// ByRecord lists a record's files, oldest first. Consumers: an owner listing
-	// attachments, settings finding the logo, an owner's ExportPerson. It may be called
-	// inside a Read transaction (no audit, no store I/O: settings reads the logo in its
-	// snapshot load).
+	// attachments, regional finding the logo, an owner's ExportPerson. It may be called
+	// inside a Read transaction (no audit, no store I/O).
 	ByRecord(ctx context.Context, rec audit.Ref) ([]File, error)
 	// Open answers the metadata and the bytes, auditing the read when the level requires it
 	// (decision 10). Called outside any transaction. Consumers: every owner's content route.
 	Open(ctx context.Context, id FileID) (File, Content, error)
 	// Delete removes one file inside the caller's Write transaction, writes its tombstone
 	// and records files.file.deleted; the object goes after commit. Consumers: an owner
-	// removing one attachment; settings removing the logo.
+	// removing one attachment; regional removing the logo.
 	Delete(ctx context.Context, id FileID) error
 	// DeleteByRecord removes every file of a record (same rules). Consumers: an owner
 	// deleting a record, its retention job, its DeletePerson.

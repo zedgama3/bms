@@ -305,8 +305,9 @@ func TestNew_DuplicateArea_ReturnsInvalid(t *testing.T) {
 		areas []settings.Area
 	}{
 		{"two areas with one name", []settings.Area{{Name: "mail", Decls: []settings.Decl{good}}, {Name: "mail", Core: true, Decls: []settings.Decl{good}}}},
-		{"an outside area named regional", []settings.Area{{Name: "regional", Decls: []settings.Decl{good}}}},
-		{"an outside core area named regional", []settings.Area{{Name: "regional", Core: true, Decls: []settings.Decl{good}}}},
+		// "regional" is no longer reserved (boundaries step 7): it is an area like another, and
+		// declaring it twice is the duplicate.
+		{"regional declared twice", []settings.Area{{Name: "regional", Core: true, Decls: []settings.Decl{good}}, {Name: "regional", Core: true, Decls: []settings.Decl{good}}}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -330,8 +331,11 @@ func TestNew_NoAreasNoSealingKey_Succeeds(t *testing.T) {
 	o.Areas, o.SealingKey = nil, secret.Secret{}
 	svc, err := settings.New(o)
 	wantNoErr(t, err)
-	if _, err := svc.Scoped("regional"); err != nil {
-		t.Errorf("regional is not declared by New: %v", err)
+	// New no longer adds the regional area (app passes regional.Settings as a core area).
+	rd, err := svc.Scoped("regional")
+	wantKind(t, err, errs.Invalid)
+	if rd != nil {
+		t.Error("Scoped returned a reader for an area nobody declared")
 	}
 }
 
@@ -437,13 +441,9 @@ func TestReader_FirstLoadFails_ReturnsUnavailable(t *testing.T) {
 			wantKind(t, err, tc.kind)
 			_, err = rd.Secret(ctx, "password")
 			wantKind(t, err, tc.kind)
-			_, err = r.svc.Regional(ctx)
+			_, err = r.svc.Revision(ctx)
 			wantKind(t, err, tc.kind)
 			_, err = r.svc.TermsFor(ctx, "en")
-			wantKind(t, err, tc.kind)
-			_, err = r.svc.Public(ctx)
-			wantKind(t, err, tc.kind)
-			_, err = r.svc.ThemeCSS(ctx)
 			wantKind(t, err, tc.kind)
 		})
 	}
@@ -855,16 +855,13 @@ type routeSpec struct {
 	public          bool
 }
 
+// specRoutes are the four routes left after the public document, the stylesheet and the logo
+// moved to regional (boundaries step 7).
 var specRoutes = []routeSpec{
-	{"GET", "/public", true},
-	{"GET", "/theme.css", true},
 	{"GET", "/", false},
 	{"PUT", "/values", false},
 	{"GET", "/terms", false},
 	{"PUT", "/terms/{lang}", false},
-	{"GET", "/logo", true}, // logo, 2026-10-21
-	{"PUT", "/logo", false},
-	{"DELETE", "/logo", false},
 }
 
 func TestRoutes_MatchTheSpecTable(t *testing.T) {
@@ -1009,4 +1006,17 @@ func TestService_ConcurrentUse_IsRaceFree(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+// A secret is never trimmed or rewritten, so a Normalize on a Secret declaration is refused
+// (boundaries A2, point 5).
+func TestDeclValidate_SecretWithNormalize_ReturnsInvalid(t *testing.T) {
+	d := settings.Decl{Key: "token", Kind: settings.Secret, Normalize: func(v string) string { return v }}
+	err := d.Validate()
+	wantKind(t, err, errs.Invalid)
+	if !hasField(err, "", "unsupported") {
+		t.Errorf("no unsupported field error: %v", describe(err))
+	}
+	ok := settings.Decl{Key: "name", Kind: settings.Text, Normalize: func(v string) string { return v }}
+	wantNoErr(t, ok.Validate())
 }

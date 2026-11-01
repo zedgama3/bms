@@ -55,22 +55,6 @@ func TestTermsFor_ModuleTerm_DefaultsAndOverride(t *testing.T) {
 	if first(r.svc.TermsFor(ctx, "es"))["shift"].Singular != "shift" {
 		t.Error("an en override leaked into es")
 	}
-	pub, err := r.svc.Public(ctx)
-	wantNoErr(t, err)
-	flat := pub.Terms["en"]
-	for k, want := range map[string]string{
-		"term_shift": "duty", "term_shift_plural": "shifts", "term_shift_title": "Shift", "term_shift_plural_title": "Duties",
-		"term_position": "position", "term_qualification_plural_title": "Qualifications",
-		"term_lead": "lead", "term_lead_plural_title": "Leads", "term_department": "department",
-	} {
-		if flat[k] != want {
-			t.Errorf("Public.Terms[en][%s] = %q, want %q", k, flat[k], want)
-		}
-	}
-	if pub.Terms["es"]["term_shift"] != "shift" {
-		t.Errorf("Public es term_shift = %q, want the en default", pub.Terms["es"]["term_shift"])
-	}
-
 	// A reset restores the default.
 	_, err = r.svc.SetTerms(r.actx(), "en", termsOf(map[string]settings.FormChanges{"shift": {Reset: []string{"singular", "plural_title"}}}))
 	wantNoErr(t, err)
@@ -165,11 +149,6 @@ func TestLoad_UndeclaredTermRow_IgnoredAndKept(t *testing.T) {
 	wantNoErr(t, err)
 	if _, ok := en["shift"]; ok {
 		t.Error("an undeclared term is returned by TermsFor")
-	}
-	pub, err := without.svc.Public(ctx)
-	wantNoErr(t, err)
-	if _, ok := pub.Terms["en"]["term_shift"]; ok {
-		t.Error("an undeclared term reaches Public.Terms")
 	}
 	doc := first(without.svc.Terms(without.actx()))
 	if _, ok := doc.Terms["en"]["shift"]; ok {

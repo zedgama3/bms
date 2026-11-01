@@ -1,6 +1,6 @@
 //go:build integration
 
-package settings_test
+package regional_test
 
 import (
 	"bytes"
@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/zedgama3/bms/internal/core/files"
-	"github.com/zedgama3/bms/internal/core/settings"
+	"github.com/zedgama3/bms/internal/core/regional"
 	"github.com/zedgama3/bms/internal/lib/errs"
 )
 
@@ -76,7 +76,7 @@ func TestSetLogo_RealStore_NoFileRowCarriesTheUploadName(t *testing.T) {
 // D52(e): the cap boundary against the real stack.
 func TestSetLogo_CapBoundary_RealStore(t *testing.T) {
 	r := newRealLogoI(t, files.DefaultPolicy())
-	_, err := r.set("logo.png", padded(pngOf(t, 1), int(settings.MaxLogoBytes)+1))
+	_, err := r.set("logo.png", padded(pngOf(t, 1), int(regional.MaxLogoBytes)+1))
 	wantField(t, err, "file", "too_large")
 	if r.fileRows() != 0 {
 		t.Errorf("%d file rows after a too-large upload", r.fileRows())

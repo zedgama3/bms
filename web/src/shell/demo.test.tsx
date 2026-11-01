@@ -197,7 +197,7 @@ describe("demo banner", () => {
     mountApp({
       routes: {
         "GET /api/demo/": () => json(DEMO),
-        "GET /api/settings/public": () =>
+        "GET /api/regional/public": () =>
           json({
             name: "Dust Bowl",
             logo: "",

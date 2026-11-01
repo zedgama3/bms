@@ -1,4 +1,4 @@
-package settings_test
+package regional_test
 
 // Helpers shared by the logo tests (settings.md, amendment 2026-10-21, F37 to F54). The
 // images are generated or hand-built from invented bytes; nothing here is a real person's.
@@ -17,10 +17,10 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/files"
-	"github.com/zedgama3/bms/internal/core/files/filestest"
-	"github.com/zedgama3/bms/internal/core/settings"
+	"github.com/zedgama3/bms/internal/core/regional"
 	"github.com/zedgama3/bms/internal/lib/httpx"
 	"github.com/zedgama3/bms/internal/model"
 )
@@ -80,6 +80,8 @@ type spyStore struct {
 	attaches  int
 	discards  int
 	opens     int
+	byRecs    int
+	byRecHook func() // called, unlocked, at the start of ByRecord when set
 	attachErr error
 	openErr   error
 }
@@ -120,6 +122,31 @@ func (s *spyStore) Open(ctx context.Context, id files.FileID) (files.File, files
 	return s.Store.Open(ctx, id) //nolint:wrapcheck // test double
 }
 
+func (s *spyStore) ByRecord(ctx context.Context, rec audit.Ref) ([]files.File, error) {
+	s.mu.Lock()
+	hook := s.byRecHook
+	s.mu.Unlock()
+	if hook != nil {
+		hook()
+	}
+	s.mu.Lock()
+	s.byRecs++
+	s.mu.Unlock()
+	return s.Store.ByRecord(ctx, rec) //nolint:wrapcheck // test double
+}
+
+func (s *spyStore) setByRecHook(h func()) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.byRecHook = h
+}
+
+func (s *spyStore) byRecords() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.byRecs
+}
+
 func (s *spyStore) setOpenErr(err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -134,35 +161,22 @@ func (s *spyStore) counts() (stages, attaches, discards int) {
 
 // ---- the unit rig with a files store ----------------------------------------------------
 
-// logoUnit is a unit rig whose Options.Files is a spy over filestest.NewFake("settings").
-type logoUnit struct {
-	*unit
-	fs    *filestest.Fake
-	spy   *spyStore
-	admin model.PersonID // holds settings.manage
-}
+// logoUnit is the rig: its Options.Files is a spy over filestest.NewFake("settings").
+type logoUnit = rig
 
-func newLogoUnit(t *testing.T) *logoUnit {
-	t.Helper()
-	fs := filestest.NewFake("settings")
-	spy := &spyStore{Store: fs}
-	u := newUnit(t, func(o *settings.Options) { o.Files = spy })
-	return &logoUnit{unit: u, fs: fs, spy: spy, admin: u.person(settings.PermissionManage)}
-}
-
-func (u *logoUnit) actx() context.Context { return asPerson(context.Background(), u.admin) }
+func newLogoUnit(t *testing.T) *logoUnit { t.Helper(); return newRig(t) }
 
 // seedLogo puts data on LogoRef directly through the fake store (a logo that already
 // exists), inside the fake database's Write transaction.
-func (u *logoUnit) seedLogo(t *testing.T, name string, data []byte) files.File {
+func (r *rig) seedLogo(t *testing.T, name string, data []byte) files.File {
 	t.Helper()
 	var f files.File
 	ctx := context.Background()
-	st, err := u.fs.Stage(ctx, files.Upload{Name: name, Accept: files.Brand, Body: bytes.NewReader(data)})
+	st, err := r.fs.Stage(ctx, files.Upload{Name: name, Accept: files.Brand, Body: bytes.NewReader(data)})
 	wantNoErr(t, err)
-	wantNoErr(t, u.fake.Transact(ctx, db.Write, func(ctx context.Context) error {
+	wantNoErr(t, r.fake.Transact(ctx, db.Write, func(ctx context.Context) error {
 		var aerr error
-		f, aerr = u.fs.Attach(ctx, st, files.Attachment{Record: settings.LogoRef, Level: model.SensitivityPublic})
+		f, aerr = r.fs.Attach(ctx, st, files.Attachment{Record: regional.LogoRef, Level: model.SensitivityPublic})
 		return aerr //nolint:wrapcheck // test double
 	}))
 	return f
@@ -211,7 +225,7 @@ func (r *rig) send(ctx context.Context, method, path string, body []byte, conten
 	if body != nil {
 		rd = bytes.NewReader(body)
 	}
-	req := httptest.NewRequestWithContext(ctx, method, "/api/settings"+path, rd)
+	req := httptest.NewRequestWithContext(ctx, method, "/api/regional"+path, rd)
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
 	}
@@ -223,7 +237,7 @@ func (r *rig) send(ctx context.Context, method, path string, body []byte, conten
 	return w, f
 }
 
-func logoRoute(t testing.TB, svc *settings.Service, method string) httpx.Route {
+func logoRoute(t testing.TB, svc *regional.Service, method string) httpx.Route {
 	t.Helper()
 	for _, rt := range svc.Routes() {
 		if rt.Method == method && rt.Pattern == "/logo" {
