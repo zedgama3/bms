@@ -617,7 +617,7 @@ func TestDeleteRole_StarterRole_StaysDeletedAfterSeed(t *testing.T) {
 	r := newRig(t)
 	ro := r.roleKey(authz.RoleEventAdmin)
 	wantNoErr(t, r.svc.DeleteRole(r.sctx(), ro.ID))
-	res, err := r.svc.Seed(r.sctx(), r.opts.Declared)
+	res, err := r.svc.Seed(r.sctx(), r.declared)
 	wantNoErr(t, err)
 	if res.Added != 0 {
 		t.Errorf("Added = %d, want 0", res.Added)
@@ -628,5 +628,56 @@ func TestDeleteRole_StarterRole_StaysDeletedAfterSeed(t *testing.T) {
 		if x.Key == authz.RoleEventAdmin {
 			t.Fatal("deleted starter role came back")
 		}
+	}
+}
+
+// One catalogue: the Service reads the Lookup's declarations. A permission declared to the
+// Lookup is listed by ListPermissions and stored as declared by CreateRole; one not declared
+// to it is absent from ListPermissions and, per decision 13 (an undeclared name is stored
+// and "not available"), stored by CreateRole with Declared false.
+func TestPermissionCatalogue_IsTheLookups_ListedAndMarkedDeclaredOnlyWhenDeclaredToIt(t *testing.T) {
+	const extra authz.Permission = "extra.things.read"
+	r := newRig(t)
+
+	with := r.opts
+	r.declared = append(slices.Clone(r.declared),
+		authz.PermissionDecl{Name: extra, Scope: authz.ScopeSite, Reaches: model.SensitivityInternal})
+	with.Lookup = r.lookupFor()
+	svcWith, err := authz.New(with)
+	wantNoErr(t, err)
+
+	listed := func(svc *authz.Service) bool {
+		t.Helper()
+		got, err := svc.ListPermissions(r.sctx())
+		wantNoErr(t, err)
+		return slices.ContainsFunc(got, func(in authz.PermissionInfo) bool { return in.Name == extra })
+	}
+	declaredFlag := func(ro authz.Role) bool {
+		for _, rp := range ro.Permissions {
+			if rp.Name == extra {
+				return rp.Declared
+			}
+		}
+		t.Fatalf("role %q does not carry %s", ro.Name, extra)
+		return false
+	}
+
+	if !listed(svcWith) {
+		t.Error("a permission declared to the Lookup is not listed by ListPermissions")
+	}
+	ro, err := svcWith.CreateRole(r.sctx(), authz.RoleInput{Name: r.name("With"), Scope: authz.ScopeSite, Permissions: []authz.Permission{extra}})
+	wantNoErr(t, err)
+	if !declaredFlag(ro) {
+		t.Error("CreateRole marked a permission declared to the Lookup as undeclared")
+	}
+
+	// r.svc was built from the Lookup without extra.
+	if listed(r.svc) {
+		t.Error("a permission not declared to the Lookup is listed by ListPermissions")
+	}
+	ro, err = r.svc.CreateRole(r.sctx(), authz.RoleInput{Name: r.name("Without"), Scope: authz.ScopeSite, Permissions: []authz.Permission{extra}})
+	wantNoErr(t, err)
+	if declaredFlag(ro) {
+		t.Error("CreateRole marked a permission not declared to the Lookup as declared")
 	}
 }

@@ -53,7 +53,7 @@ func (s *Service) roleOf(r rows.Role, perms []string) Role {
 		Permissions: make([]RolePermission, 0, len(perms)), CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 	}
 	for _, name := range perms {
-		_, ok := s.cat.byName[Permission(name)]
+		_, ok := s.lk.cat.byName[Permission(name)]
 		out.Permissions = append(out.Permissions, RolePermission{Name: Permission(name), Declared: ok})
 	}
 	slices.SortFunc(out.Permissions, func(a, b RolePermission) int { return strings.Compare(string(a.Name), string(b.Name)) })
@@ -144,7 +144,7 @@ func (s *Service) scopeCheck(sc Scope, perms []Permission) error {
 	}
 	v := validate.Errors{Op: "authz.RoleInput.Validate"}
 	for i, p := range perms {
-		if d, ok := s.cat.byName[p]; ok && d.Scope == ScopeSite {
+		if d, ok := s.lk.cat.byName[p]; ok && d.Scope == ScopeSite {
 			v.Addf(fmt.Sprintf("permissions[%d]", i), codeScope, "is site-wide only and cannot be part of a department role")
 		}
 	}

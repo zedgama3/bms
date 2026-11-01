@@ -108,8 +108,9 @@ func newTestService(t *testing.T, st store) *Service {
 	t.Helper()
 	c := telemetrytest.New(t)
 	clk := clock.NewFake(time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC))
+	d := dbtest.NewFake()
 	lk, err := newLookup(LookupOptions{
-		DB: dbtest.NewFake(), Clock: clk, Logger: c.Logger(), Tracer: c.Tracer("authz"),
+		DB: d, Clock: clk, Logger: c.Logger(), Tracer: c.Tracer("authz"),
 		Actor: actorOf, Declared: declaredForTests(), Departments: allActive{},
 	}, st)
 	if err != nil {
@@ -120,9 +121,8 @@ func newTestService(t *testing.T, st store) *Service {
 		t.Fatalf("signalstest.NewFake: %v", err)
 	}
 	s, err := newService(Options{
-		DB: dbtest.NewFake(), Clock: clk,
 		Logger: c.Logger(), Tracer: c.Tracer("authz"), Audit: audittest.NewFake("access"), Signals: bus,
-		Actor: actorOf, Declared: declaredForTests(), Lookup: lk,
+		Lookup: lk,
 	}, st)
 	if err != nil {
 		t.Fatalf("newService: %v", err)

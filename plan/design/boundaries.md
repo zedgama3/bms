@@ -294,7 +294,7 @@ type Lookup struct{ /* unexported */ }
 // decision methods to it so existing callers compile, and owns roles, grants, Seed,
 // ExportPerson, DeletePerson, Routes.
 type Options struct {
-    // ... as today, minus Departments
+    // Logger, Tracer, Audit, Signals, Lookup (DB, Clock, Actor, Meter and Declared come from the Lookup)
     Lookup *Lookup // required
 }
 ```
@@ -863,3 +863,4 @@ Applied by `spec-editor` after approval, in the step that needs each.
 - **E1, 2026-10-31** (erratum, approved by the owner 2026-10-31): an entry with no actor, no marker and no session is anonymous, as before; the earlier text said `errs.Invalid` citing F8, which is the action-grammar failure.
 - **D1, 2026-11-01** (owner): the schema-status closure in `runServe`, found by the blind-spot check, is removed in step 13 by a named reader; it is not listed in the seam table meanwhile.
 - **E2, 2026-11-01** (erratum): the Lookup's failure modes are authz.md's decision rows (F1–F16, F67–F71); the earlier text cited F20 and F21, which are `CreateRole` rows.
+- **D2, 2026-11-01** (owner, from step 4's review): `authz.Options` keeps only Logger, Tracer, Audit, Signals and Lookup; the Service uses the Lookup's DB, clock, actor and catalogue, so the two cannot diverge.

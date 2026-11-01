@@ -16,7 +16,6 @@ import (
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/telemetry"
-	"github.com/zedgama3/bms/internal/lib/clock"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/lib/validate"
 	"github.com/zedgama3/bms/internal/model"
@@ -64,32 +63,24 @@ type store interface {
 var _ store = (*postgres.Store)(nil)
 
 // Options builds the service. Audit and Signals are scoped to "access" by app.
+//
+// The Service takes the Lookup's db.DB, clock, actor function and permission catalogue, so
+// there is one source of each: Grant's Write transaction and the Lookup's reads share one
+// store, the Service and the Lookup agree on who the actor is and what time it is, and
+// ListPermissions, CreateRole and the separation-of-duties checks accept exactly what Allow
+// accepts. The Service counts no decisions either; the Lookup does (its Meter).
 type Options struct {
-	DB       db.DB
-	Clock    clock.Clock
-	Logger   *slog.Logger
-	Tracer   telemetry.Tracer
-	Meter    telemetry.Meter // optional; the Lookup counts the decisions, so the Service records none
-	Audit    audit.Recorder  // scoped to "access"; required
-	Signals  signals.Bus     // scoped to "access"; required
-	Actor    ActorFunc       // required
-	Declared []PermissionDecl
-	Lookup   *Lookup // the read side, built before audit; required
+	Logger  *slog.Logger
+	Tracer  telemetry.Tracer
+	Audit   audit.Recorder // scoped to "access"; required
+	Signals signals.Bus    // scoped to "access"; required
+	Lookup  *Lookup        // the read side, built before audit; required
 }
 
-// Validate fails errs.Invalid joining a validate.FieldError per problem: "authz.db",
-// "authz.clock", "authz.logger", "authz.tracer", "authz.audit", "authz.signals",
-// "authz.actor" (nil), "authz.lookup" (nil), "authz.declared[i].name|scope|reaches|starter_roles[j]" (a
-// declaration that fails PermissionDecl.Validate) and "authz.declared" (two declarations
-// with one name, code duplicate).
+// Validate fails errs.Invalid joining a validate.FieldError per problem: "authz.logger",
+// "authz.tracer", "authz.audit", "authz.signals" and "authz.lookup" (nil).
 func (o Options) Validate() error {
 	v := validate.Errors{Op: "authz.Options.Validate"}
-	if o.DB == nil {
-		v.Addf("authz.db", codeRequired, "must be set")
-	}
-	if o.Clock == nil {
-		v.Addf("authz.clock", codeRequired, "must be set")
-	}
 	if o.Logger == nil {
 		v.Addf("authz.logger", codeRequired, "must be set")
 	}
@@ -102,13 +93,9 @@ func (o Options) Validate() error {
 	if o.Signals == nil {
 		v.Addf("authz.signals", codeRequired, "must be set")
 	}
-	if o.Actor == nil {
-		v.Addf("authz.actor", codeRequired, "must be set")
-	}
 	if o.Lookup == nil {
 		v.Addf("authz.lookup", codeRequired, "must be set")
 	}
-	validateDeclared(&v, o.Declared)
 	return v.Err() //nolint:wrapcheck // Err already carries Op and errs.Invalid
 }
 
@@ -132,7 +119,7 @@ func validateDeclared(v *validate.Errors, declared []PermissionDecl) {
 	}
 }
 
-// catalogue is the declared permissions, frozen at New.
+// catalogue is the declared permissions, frozen at NewLookup.
 type catalogue struct {
 	list   []PermissionDecl // sorted by name
 	byName map[Permission]PermissionDecl
@@ -154,15 +141,11 @@ func newCatalogue(declared []PermissionDecl) catalogue {
 // to close (no goroutines).
 type Service struct {
 	store   store
-	db      db.DB
-	clock   clock.Clock
 	logger  *slog.Logger
 	tracer  telemetry.Tracer
 	audit   audit.Recorder
 	signals signals.Bus
-	actorFn ActorFunc
 	lk      *Lookup
-	cat     catalogue
 }
 
 var (
@@ -177,7 +160,7 @@ func New(o Options) (*Service, error) {
 	if err := o.Validate(); err != nil {
 		return nil, err
 	}
-	st, err := postgres.NewStore(o.DB)
+	st, err := postgres.NewStore(o.Lookup.db)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
@@ -194,14 +177,13 @@ func newService(o Options, st store) (*Service, error) {
 		return nil, errs.E(op, errs.Invalid, errors.New("nil store"))
 	}
 	return &Service{
-		store: st, db: o.DB, clock: o.Clock, logger: o.Logger, tracer: o.Tracer,
-		audit: o.Audit, signals: o.Signals, actorFn: o.Actor, lk: o.Lookup,
-		cat: newCatalogue(o.Declared),
+		store: st, logger: o.Logger, tracer: o.Tracer,
+		audit: o.Audit, signals: o.Signals, lk: o.Lookup,
 	}, nil
 }
 
 // now is the clock's time in UTC.
-func (s *Service) now() time.Time { return s.clock.Now().UTC() }
+func (s *Service) now() time.Time { return s.lk.clock.Now().UTC() }
 
 // start opens the span of one use case, "authz.<name>".
 func (s *Service) start(ctx context.Context, name string) (context.Context, telemetry.Span) {
@@ -255,7 +237,7 @@ func constraintOf(err error) string {
 // actor returns the person making the request: errs.Unauthenticated inside a signal
 // delivery (decision 7), without a session or with a restricted one.
 func (s *Service) actor(ctx context.Context, op string) (Actor, error) {
-	return resolveActor(ctx, s.actorFn, op)
+	return resolveActor(ctx, s.lk.actorFn, op)
 }
 
 // metrics holds the instruments; each method is a no-op without a Meter.
@@ -293,5 +275,5 @@ func (m metrics) decided(ctx context.Context, outcome string) {
 // inTx runs fn in a transaction of the given mode. fn's errors carry their own context, so
 // the transaction's error is returned as it is.
 func (s *Service) inTx(ctx context.Context, mode db.Mode, fn func(ctx context.Context) error) error {
-	return s.db.Transact(ctx, mode, fn) //nolint:wrapcheck // fn's errors are wrapped where they arise
+	return s.lk.db.Transact(ctx, mode, fn) //nolint:wrapcheck // fn's errors are wrapped where they arise
 }

@@ -49,7 +49,7 @@ func TestAllow_RestrictedSession_ReturnsUnauthenticated(t *testing.T) {
 		s, _ := identity.SessionFrom(ctx)
 		return authz.Actor{Person: p, Superuser: s.Superuser}, ok
 	}
-	r2 := newUnitRig(t, dbtest.NewFake(), func(o *authz.Options) { o.Actor = appActor })
+	r2 := newUnitRig(t, dbtest.NewFake(), func(r *rig) { r.lkopts.Actor = appActor })
 	s := identity.Session{
 		ID: model.NewID[identity.SessionID](), Account: model.NewID[model.AccountID](), Person: person,
 		Superuser: true, PasswordChangeRequired: true, IssuedAt: epoch, ExpiresAt: epoch.Add(time.Hour),

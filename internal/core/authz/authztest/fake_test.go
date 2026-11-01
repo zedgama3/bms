@@ -2,9 +2,13 @@ package authztest_test
 
 import (
 	"context"
+	"fmt"
+	"slices"
+	"strings"
 	"sync"
 	"testing"
 
+	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/authz/authztest"
 	"github.com/zedgama3/bms/internal/lib/errs"
@@ -147,4 +151,39 @@ func TestFake_ConcurrentUse_RaceFree(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+func TestFake_TitlesOf_SortedAndCappedLikeTheLookup(t *testing.T) {
+	f := authztest.NewFake()
+	p := model.NewID[model.PersonID]()
+	f.SetTitles(p, "Medic", "Gate lead", "", strings.Repeat("x", audit.MaxTitleBytes+1), "Art liaison")
+	got, err := f.TitlesOf(t.Context(), p)
+	if err != nil {
+		t.Fatalf("TitlesOf: %v", err)
+	}
+	want := []string{"Art liaison", "Gate lead", "Medic"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("titles = %v, want %v", got, want)
+	}
+
+	many := make([]string, audit.MaxTitles+4)
+	for i := range many {
+		many[i] = fmt.Sprintf("Title %02d", len(many)-i)
+	}
+	f.SetTitles(p, many...)
+	got, err = f.TitlesOf(t.Context(), p)
+	if err != nil {
+		t.Fatalf("TitlesOf: %v", err)
+	}
+	if len(got) != audit.MaxTitles || !slices.IsSorted(got) || got[0] != "Title 01" {
+		t.Fatalf("got %d titles %v, want %d sorted from Title 01", len(got), got, audit.MaxTitles)
+	}
+
+	other, err := f.TitlesOf(t.Context(), model.NewID[model.PersonID]())
+	if err != nil {
+		t.Fatalf("TitlesOf: %v", err)
+	}
+	if other != nil {
+		t.Errorf("person without titles got %v, want nil", other)
+	}
 }

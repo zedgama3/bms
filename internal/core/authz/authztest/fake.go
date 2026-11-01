@@ -103,11 +103,26 @@ func (f *Fake) Superuser(person model.PersonID) {
 }
 
 // SetTitles sets the role titles TitlesOf reports for person, as the Lookup does for the
-// roles a person holds. Cannot fail.
+// roles a person holds: sorted, each once, at most audit.MaxTitles of them, and without an empty title
+// or one longer than audit.MaxTitleBytes. Cannot fail.
 func (f *Fake) SetTitles(person model.PersonID, titles ...string) {
+	out := make([]string, 0, len(titles))
+	for _, t := range titles {
+		if t != "" && len(t) <= audit.MaxTitleBytes {
+			out = append(out, t)
+		}
+	}
+	slices.Sort(out)
+	out = slices.Compact(out)
+	if len(out) > audit.MaxTitles {
+		out = out[:audit.MaxTitles]
+	}
+	if len(out) == 0 {
+		out = nil
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.title[person] = slices.Clone(titles)
+	f.title[person] = out
 }
 
 // TitlesOf is audit.TitleSource: the titles set with SetTitles, or nil for a person with

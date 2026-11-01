@@ -133,7 +133,7 @@ type irig struct {
 }
 
 // newRigNoSeed migrates but does not seed starter membership.
-func newRigNoSeed(t *testing.T, mods ...func(*authz.Options)) *irig {
+func newRigNoSeed(t *testing.T, mods ...func(*rig)) *irig {
 	t.Helper()
 	pool := dbtest.TempDB(t)
 	prepareDB(t, pool)
@@ -145,10 +145,10 @@ func newRigNoSeed(t *testing.T, mods ...func(*authz.Options)) *irig {
 }
 
 // newRig migrates and seeds, as bms migrate does.
-func newRig(t *testing.T, mods ...func(*authz.Options)) *irig {
+func newRig(t *testing.T, mods ...func(*rig)) *irig {
 	t.Helper()
 	r := newRigNoSeed(t, mods...)
-	_, err := r.svc.Seed(ctxT(t), r.opts.Declared)
+	_, err := r.svc.Seed(ctxT(t), r.declared)
 	wantNoErr(t, err)
 	return r
 }

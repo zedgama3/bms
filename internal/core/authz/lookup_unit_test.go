@@ -26,7 +26,7 @@ var (
 func validLookupOptions(t testing.TB, d db.DB) authz.LookupOptions {
 	t.Helper()
 	r := validOptions(t, d)
-	return r.lookupOptionsFor(r.opts)
+	return r.lookupOptions()
 }
 
 // boundaries.md step 4 / build-order item 3: the Departments source is required.
@@ -82,9 +82,10 @@ func TestNewLookup_AllNil_ReportsEveryField(t *testing.T) {
 	}
 }
 
-func TestNewLookup_OptionalMeterMayBeNil(t *testing.T) {
+func TestNewLookup_OptionalFieldsMayBeNil(t *testing.T) {
 	o := validLookupOptions(t, db.None())
 	o.Meter = nil
+	o.Declared = nil
 	l, err := authz.NewLookup(o)
 	wantNoErr(t, err)
 	if l == nil {
@@ -98,6 +99,9 @@ func TestNewLookup_DuplicateDeclaration_ReturnsInvalid(t *testing.T) {
 	o.Declared = append(o.Declared, o.Declared[0])
 	_, err := authz.NewLookup(o)
 	wantKind(t, err, errs.Invalid)
+	if !hasField(err, "authz.declared") {
+		t.Fatalf("no authz.declared field error in %v", validate.Fields(err))
+	}
 }
 
 // "does no I/O": a database that refuses every statement still builds a Lookup.
@@ -128,7 +132,7 @@ func TestNew_NilLookup_ReturnsInvalid(t *testing.T) {
 func TestLookup_NoActor_ReturnsUnauthenticated(t *testing.T) {
 	f := dbtest.NewFake()
 	r := validOptions(t, f)
-	l := r.lookupFor(r.opts)
+	l := r.lookupFor()
 	wantKind(t, l.Allow(t.Context(), pGreetRead), errs.Unauthenticated)
 	wantKind(t, l.AllowIn(t.Context(), pShiftManage, r.d1), errs.Unauthenticated)
 	_, err := l.ExtentOf(t.Context(), pShiftManage)
@@ -140,7 +144,7 @@ func TestLookup_NoActor_ReturnsUnauthenticated(t *testing.T) {
 func TestLookup_UndeclaredPermission_ReturnsInvalid(t *testing.T) {
 	f := dbtest.NewFake()
 	r := validOptions(t, f)
-	l := r.lookupFor(r.opts)
+	l := r.lookupFor()
 	ctx := as(t.Context(), model.NewID[model.PersonID]())
 	wantKind(t, l.Allow(ctx, pGhost), errs.Invalid)
 	wantNoStatements(t, f)

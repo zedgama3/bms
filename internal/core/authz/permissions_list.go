@@ -17,8 +17,8 @@ func (s *Service) ListPermissions(ctx context.Context) (_ []PermissionInfo, err 
 	if err != nil {
 		return nil, err
 	}
-	out := make([]PermissionInfo, 0, len(s.cat.list))
-	for _, d := range s.cat.list {
+	out := make([]PermissionInfo, 0, len(s.lk.cat.list))
+	for _, d := range s.lk.cat.list {
 		if !view.full && d.Scope != ScopeDepartment {
 			continue
 		}

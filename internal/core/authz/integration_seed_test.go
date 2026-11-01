@@ -38,8 +38,8 @@ func starterKeys() map[string]bool {
 func TestSeed_FillsStarterRolesOnce(t *testing.T) {
 	r := newRigNoSeed(t)
 	keys := starterKeys()
-	wantPairs, byKey := expectedMembership(r.opts.Declared, func(k string) bool { return keys[k] })
-	res, err := r.svc.Seed(r.sctx(), r.opts.Declared)
+	wantPairs, byKey := expectedMembership(r.declared, func(k string) bool { return keys[k] })
+	res, err := r.svc.Seed(r.sctx(), r.declared)
 	wantNoErr(t, err)
 	if res.Added != wantPairs {
 		t.Fatalf("Added = %d, want %d", res.Added, wantPairs)
@@ -77,9 +77,9 @@ func TestSeed_FillsStarterRolesOnce(t *testing.T) {
 // F58
 func TestSeed_Twice_AddsNothing(t *testing.T) {
 	r := newRigNoSeed(t)
-	_, err := r.svc.Seed(r.sctx(), r.opts.Declared)
+	_, err := r.svc.Seed(r.sctx(), r.declared)
 	wantNoErr(t, err)
-	res, err := r.svc.Seed(r.sctx(), r.opts.Declared)
+	res, err := r.svc.Seed(r.sctx(), r.declared)
 	wantNoErr(t, err)
 	if res.Added != 0 {
 		t.Fatalf("second Seed added %d", res.Added)
@@ -92,7 +92,7 @@ func TestSeed_NeverUndoesLaterEdits(t *testing.T) {
 	keep := slices.DeleteFunc(permNames(aa), func(p authz.Permission) bool { return p == pRolesManage })
 	_, err := r.svc.UpdateRole(r.sctx(), aa.ID, authz.RoleInput{Name: "Access", Permissions: keep})
 	wantNoErr(t, err)
-	res, err := r.svc.Seed(r.sctx(), r.opts.Declared)
+	res, err := r.svc.Seed(r.sctx(), r.declared)
 	wantNoErr(t, err)
 	if res.Added != 0 {
 		t.Errorf("Added = %d", res.Added)
@@ -104,7 +104,7 @@ func TestSeed_NeverUndoesLaterEdits(t *testing.T) {
 
 func TestSeed_NewDeclaration_AddsOnlyTheNewPair(t *testing.T) {
 	r := newRig(t)
-	more := append(append([]authz.PermissionDecl(nil), r.opts.Declared...),
+	more := append(append([]authz.PermissionDecl(nil), r.declared...),
 		authz.PermissionDecl{Name: "later.thing.read", Scope: authz.ScopeSite, Reaches: model.SensitivityInternal, StarterRoles: []string{authz.RoleEventAdmin, authz.RoleSettingsAdmin}})
 	res, err := r.svc.Seed(r.sctx(), more)
 	wantNoErr(t, err)
@@ -142,11 +142,11 @@ func TestSeed_SkipsDeletedStarterRole(t *testing.T) {
 	r := newRigNoSeed(t)
 	ro := r.roleKey(authz.RoleSettingsAdmin)
 	wantNoErr(t, r.svc.DeleteRole(r.sctx(), ro.ID))
-	res, err := r.svc.Seed(r.sctx(), r.opts.Declared)
+	res, err := r.svc.Seed(r.sctx(), r.declared)
 	wantNoErr(t, err)
 	keys := starterKeys()
 	delete(keys, authz.RoleSettingsAdmin)
-	want, _ := expectedMembership(r.opts.Declared, func(k string) bool { return keys[k] })
+	want, _ := expectedMembership(r.declared, func(k string) bool { return keys[k] })
 	if res.Added != want {
 		t.Fatalf("Added = %d, want %d", res.Added, want)
 	}
@@ -171,7 +171,7 @@ func TestSeed_InvalidDeclaration_ReturnsInvalid(t *testing.T) {
 
 func TestSeed_RunsWithoutAnActor(t *testing.T) {
 	r := newRigNoSeed(t)
-	_, err := r.svc.Seed(ctxT(t), r.opts.Declared) // bms migrate has no session
+	_, err := r.svc.Seed(ctxT(t), r.declared) // bms migrate has no session
 	wantNoErr(t, err)
 }
 
@@ -179,20 +179,20 @@ func TestSeed_RunsWithoutAnActor(t *testing.T) {
 func TestSeed_ReadOnly_ReturnsReadOnly(t *testing.T) {
 	r := newRigNoSeed(t)
 	r.fdb.set(func(f *faultDB) { f.ro = true })
-	_, err := r.svc.Seed(r.sctx(), r.opts.Declared)
+	_, err := r.svc.Seed(r.sctx(), r.declared)
 	wantReadOnly(t, err)
 }
 
 func TestSeed_StoreFails_ReturnsStoreKind(t *testing.T) {
 	r := newRigNoSeed(t)
 	r.fdb.set(func(f *faultDB) { f.txErr, f.readErr = errDown, errDown })
-	_, err := r.svc.Seed(r.sctx(), r.opts.Declared)
+	_, err := r.svc.Seed(r.sctx(), r.declared)
 	wantKind(t, err, errs.Unavailable)
 }
 
 func TestSeed_AddsPermissions_RecordsOneRoleChangePerPermission(t *testing.T) {
 	r := newRigNoSeed(t)
-	res, err := r.svc.Seed(r.sctx(), r.opts.Declared)
+	res, err := r.svc.Seed(r.sctx(), r.declared)
 	wantNoErr(t, err)
 	es := r.entries("access.role.changed")
 	if res.Added == 0 || len(es) != res.Added {
@@ -204,7 +204,7 @@ func TestSeed_AddsPermissions_RecordsOneRoleChangePerPermission(t *testing.T) {
 		}
 	}
 	// A second run adds nothing and records nothing.
-	res, err = r.svc.Seed(r.sctx(), r.opts.Declared)
+	res, err = r.svc.Seed(r.sctx(), r.declared)
 	wantNoErr(t, err)
 	if res.Added != 0 || len(r.entries("access.role.changed")) != len(es) {
 		t.Errorf("repeat Added = %d, entries = %d", res.Added, len(r.entries("access.role.changed")))
@@ -215,7 +215,7 @@ func TestSeed_AddsPermissions_RecordsOneRoleChangePerPermission(t *testing.T) {
 // it at the next Seed, and the upgrade is audited.
 func TestSeed_StewardGainsGrantsRead_OnUpgrade_Audited(t *testing.T) {
 	r := newRigNoSeed(t)
-	old := slices.Clone(r.opts.Declared)
+	old := slices.Clone(r.declared)
 	for i, d := range old {
 		if d.Name == pGrantsRead {
 			old[i].StarterRoles = slices.DeleteFunc(slices.Clone(d.StarterRoles), func(k string) bool { return k == authz.RoleDepartmentSteward })
@@ -227,7 +227,7 @@ func TestSeed_StewardGainsGrantsRead_OnUpgrade_Audited(t *testing.T) {
 		t.Fatal("the old declarations already give the steward access.grants.read")
 	}
 	before := len(r.entries("access.role.changed"))
-	res, err := r.svc.Seed(r.sctx(), r.opts.Declared)
+	res, err := r.svc.Seed(r.sctx(), r.declared)
 	wantNoErr(t, err)
 	if res.Added != 1 {
 		t.Fatalf("Added = %d, want 1 (steward, access.grants.read)", res.Added)

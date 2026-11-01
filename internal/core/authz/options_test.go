@@ -11,7 +11,6 @@ import (
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/telemetry"
-	"github.com/zedgama3/bms/internal/lib/clock"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/lib/validate"
 	"github.com/zedgama3/bms/internal/model"
@@ -32,13 +31,10 @@ func TestNew_NilDependency_ReturnsInvalid(t *testing.T) {
 		field string
 		mod   func(*authz.Options)
 	}{
-		{"authz.db", func(o *authz.Options) { o.DB = nil }},
-		{"authz.clock", func(o *authz.Options) { o.Clock = clock.Clock(nil) }},
 		{"authz.logger", func(o *authz.Options) { o.Logger = (*slog.Logger)(nil) }},
 		{"authz.tracer", func(o *authz.Options) { o.Tracer = telemetry.Tracer(nil) }},
 		{"authz.audit", func(o *authz.Options) { o.Audit = audit.Recorder(nil) }},
 		{"authz.signals", func(o *authz.Options) { o.Signals = signals.Bus(nil) }},
-		{"authz.actor", func(o *authz.Options) { o.Actor = nil }},
 		{"authz.lookup", func(o *authz.Options) { o.Lookup = nil }},
 	}
 	for _, tc := range tests {
@@ -61,21 +57,10 @@ func TestNew_NilDependency_ReturnsInvalid(t *testing.T) {
 func TestNew_AllNilReportsEveryField(t *testing.T) {
 	err := authz.Options{}.Validate()
 	wantKind(t, err, errs.Invalid)
-	for _, f := range []string{"authz.db", "authz.clock", "authz.logger", "authz.tracer", "authz.audit", "authz.signals", "authz.actor", "authz.lookup"} {
+	for _, f := range []string{"authz.logger", "authz.tracer", "authz.audit", "authz.signals", "authz.lookup"} {
 		if !hasField(err, f) {
 			t.Errorf("missing field error %q", f)
 		}
-	}
-}
-
-func TestNew_OptionalFieldsMayBeNil(t *testing.T) {
-	r := validOptions(t, db.None())
-	r.opts.Meter = nil
-	r.opts.Declared = nil
-	svc, err := authz.New(r.opts)
-	wantNoErr(t, err)
-	if svc == nil {
-		t.Fatal("nil service")
 	}
 }
 
@@ -86,18 +71,7 @@ func TestNew_NoIO_WorksAgainstNoneDB(t *testing.T) {
 	}
 }
 
-// F2
-func TestNew_DuplicateDeclaration_ReturnsInvalid(t *testing.T) {
-	r := validOptions(t, db.None())
-	r.opts.Declared = append(r.opts.Declared, r.opts.Declared[0])
-	_, err := authz.New(r.opts)
-	wantKind(t, err, errs.Invalid)
-	if !hasField(err, "authz.declared") {
-		t.Fatalf("no authz.declared field error in %v", validate.Fields(err))
-	}
-}
-
-func TestNew_InvalidDeclaration_ReportsIndexedFields(t *testing.T) {
+func TestNewLookup_InvalidDeclaration_ReportsIndexedFields(t *testing.T) {
 	long := strings.Repeat("a", 70)
 	tests := []struct {
 		name  string
@@ -113,9 +87,9 @@ func TestNew_InvalidDeclaration_ReportsIndexedFields(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			r := validOptions(t, db.None())
-			r.opts.Declared = []authz.PermissionDecl{tc.decl}
-			_, err := authz.New(r.opts)
+			o := validLookupOptions(t, db.None())
+			o.Declared = []authz.PermissionDecl{tc.decl}
+			_, err := authz.NewLookup(o)
 			wantKind(t, err, errs.Invalid)
 			if !hasField(err, tc.field) {
 				t.Fatalf("no field error %q in %v", tc.field, validate.Fields(err))

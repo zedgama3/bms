@@ -51,7 +51,7 @@ func coordinatorDecls(base []authz.PermissionDecl, withVolunteers bool) []authz.
 // newCoordRig is a migrated, unseeded rig whose service declares the coordinator's permissions.
 func newCoordRig(t *testing.T) *irig {
 	t.Helper()
-	return newRigNoSeed(t, func(o *authz.Options) { o.Declared = coordinatorDecls(o.Declared, true) })
+	return newRigNoSeed(t, func(r *rig) { r.declared = coordinatorDecls(r.declared, true) })
 }
 
 func (r *irig) ledger(key string) int {
@@ -122,7 +122,7 @@ func TestVolunteerCoordinator_CanBeDeleted(t *testing.T) {
 
 func TestSeed_VolunteerCoordinator_GetsExactlyItsDeclaredPermissions(t *testing.T) {
 	r := newCoordRig(t)
-	decls := r.opts.Declared
+	decls := r.declared
 	_, err := r.svc.Seed(r.sctx(), decls)
 	wantNoErr(t, err)
 	ro := r.roleKey(authz.RoleVolunteerCoordinator)
@@ -142,7 +142,7 @@ func TestSeed_VolunteerCoordinator_GetsExactlyItsDeclaredPermissions(t *testing.
 // A person granted the role is allowed the four reads and refused shift management.
 func TestVolunteerCoordinator_Granted_AllowsReadsAndNotShiftManagement(t *testing.T) {
 	r := newCoordRig(t)
-	_, err := r.svc.Seed(r.sctx(), r.opts.Declared)
+	_, err := r.svc.Seed(r.sctx(), r.declared)
 	wantNoErr(t, err)
 	p := r.person()
 	r.give(p, r.roleKey(authz.RoleVolunteerCoordinator), model.DepartmentID{}, time.Time{})
@@ -199,7 +199,7 @@ func TestSeed_CoordinatorPairBeforeRole_AppliedAtNextSeedAndAudited(t *testing.T
 	r := newCoordRig(t)
 	ro := r.roleKey(authz.RoleVolunteerCoordinator)
 	wantNoErr(t, r.svc.DeleteRole(r.sctx(), ro.ID)) // as if migration 0003 had not run yet
-	decls := r.opts.Declared
+	decls := r.declared
 	_, err := r.svc.Seed(r.sctx(), decls)
 	wantNoErr(t, err)
 	before := len(r.entries("access.role.changed"))
@@ -250,7 +250,7 @@ func TestSeed_KeyWithNoRole_DoesNotBlockOtherPairs(t *testing.T) {
 // unrecorded pairs.
 func TestSeed_AfterRetry_NeverUndoesLaterEditToCoordinator(t *testing.T) {
 	r := newCoordRig(t)
-	decls := r.opts.Declared
+	decls := r.declared
 	_, err := r.svc.Seed(r.sctx(), decls)
 	wantNoErr(t, err)
 	ro := r.roleKey(authz.RoleVolunteerCoordinator)
@@ -267,7 +267,7 @@ func TestSeed_AfterRetry_NeverUndoesLaterEditToCoordinator(t *testing.T) {
 // A coordinator role the regional deleted after its pairs were recorded stays deleted.
 func TestSeed_DeletedCoordinatorAfterSeeding_DoesNotReturn(t *testing.T) {
 	r := newCoordRig(t)
-	decls := r.opts.Declared
+	decls := r.declared
 	_, err := r.svc.Seed(r.sctx(), decls)
 	wantNoErr(t, err)
 	wantNoErr(t, r.svc.DeleteRole(r.sctx(), r.roleKey(authz.RoleVolunteerCoordinator).ID))

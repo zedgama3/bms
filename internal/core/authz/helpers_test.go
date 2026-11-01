@@ -153,6 +153,12 @@ type rig struct {
 	d2    model.DepartmentID // active
 	dOff  model.DepartmentID // archived
 	su    model.PersonID     // the superuser's person
+	// declared is what the Lookup is built with (the one catalogue the Service reads too)
+	// and what the tests hand to Seed.
+	declared []authz.PermissionDecl
+	// lkopts is what the Lookup is built from; DB, Clock and Actor live only here (the
+	// Service takes them from the Lookup).
+	lkopts authz.LookupOptions
 }
 
 func validOptions(t testing.TB, d db.DB) *rig {
@@ -167,34 +173,33 @@ func validOptions(t testing.TB, d db.DB) *rig {
 		d1: newDept(), d2: newDept(), dOff: newDept()}
 	r.depts = &deptSource{active: map[model.DepartmentID]bool{r.d1: true, r.d2: true}}
 	r.opts = authz.Options{
-		DB:       d,
-		Clock:    clk,
-		Logger:   c.Logger(),
-		Tracer:   c.Tracer("authz"),
-		Meter:    c.Meter("authz"),
-		Audit:    rec,
-		Signals:  bus,
-		Actor:    actorFromCtx,
-		Declared: declared(),
+		Logger:  c.Logger(),
+		Tracer:  c.Tracer("authz"),
+		Audit:   rec,
+		Signals: bus,
 	}
-	r.opts.Lookup = r.lookupFor(r.opts)
+	r.declared = declared()
+	r.lkopts = authz.LookupOptions{
+		DB: d, Clock: clk, Logger: c.Logger(), Tracer: c.Tracer("authz"), Meter: c.Meter("authz"),
+		Actor: actorFromCtx, Departments: r.depts,
+	}
+	r.opts.Lookup = r.lookupFor()
 	return r
 }
 
-// lookupOptionsFor is the read side's options matching o: what the app would hand both
-// halves. The departments source is the rig's.
-func (r *rig) lookupOptionsFor(o authz.Options) authz.LookupOptions {
-	return authz.LookupOptions{
-		DB: o.DB, Clock: o.Clock, Logger: o.Logger, Tracer: o.Tracer, Meter: o.Meter,
-		Actor: o.Actor, Declared: o.Declared, Departments: r.depts,
-	}
+// lookupOptions is the read side's options: the rig's, with the declarations. The
+// departments source is the rig's.
+func (r *rig) lookupOptions() authz.LookupOptions {
+	o := r.lkopts
+	o.Declared = r.declared
+	return o
 }
 
-// lookupFor builds the Lookup for o (use it after changing o.Actor or o.Declared so the
+// lookupFor builds the Lookup (use it after changing r.lkopts.Actor or r.declared so the
 // decisions follow).
-func (r *rig) lookupFor(o authz.Options) *authz.Lookup {
+func (r *rig) lookupFor() *authz.Lookup {
 	r.t.Helper()
-	l, err := authz.NewLookup(r.lookupOptionsFor(o))
+	l, err := authz.NewLookup(r.lookupOptions())
 	if err != nil {
 		r.t.Fatalf("authz.NewLookup: %v", err)
 	}
@@ -202,13 +207,13 @@ func (r *rig) lookupFor(o authz.Options) *authz.Lookup {
 }
 
 // newUnitRig builds a service over d (db.None or a dbtest fake).
-func newUnitRig(t testing.TB, d db.DB, mods ...func(*authz.Options)) *rig {
+func newUnitRig(t testing.TB, d db.DB, mods ...func(*rig)) *rig {
 	t.Helper()
 	r := validOptions(t, d)
 	for _, m := range mods {
-		m(&r.opts)
+		m(r)
 	}
-	r.opts.Lookup = r.lookupFor(r.opts) // after the mods, so Actor and Declared reach the Lookup
+	r.opts.Lookup = r.lookupFor() // after the mods, so Actor and Declared reach the Lookup
 	svc, err := authz.New(r.opts)
 	if err != nil {
 		t.Fatalf("authz.New: %v", err)

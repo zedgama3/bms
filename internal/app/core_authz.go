@@ -7,7 +7,6 @@ import (
 	"slices"
 
 	"github.com/zedgama3/bms/internal/core/authz"
-	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/lib/errs"
 )
@@ -41,7 +40,8 @@ func declareAuthz(a *assembly) error {
 }
 
 // buildAuthz constructs the service (no I/O: it succeeds against db.None() and on a
-// read-only copy) on top of the authz.Lookup, and mounts the access routes. The declared permissions are the core's and the enabled modules'.
+// read-only copy) on top of the authz.Lookup, and mounts the access routes. The permission
+// catalogue, the db, the clock and the actor are the Lookup's; NewLookup validated them.
 func buildAuthz(_ context.Context, a *assembly) error {
 	const op = "app.authz.build"
 	if a.deps.audit == nil || a.authzLookup == nil {
@@ -55,21 +55,16 @@ func buildAuthz(_ context.Context, a *assembly) error {
 	if err != nil {
 		return fmt.Errorf("%s: signals scope: %w", op, err)
 	}
-	tr, m, err := a.scopes("authz")
+	tr, _, err := a.scopes("authz")
 	if err != nil {
 		return err
 	}
 	svc, err := authz.New(authz.Options{
-		DB:       a.dbc,
-		Clock:    a.clock,
-		Logger:   a.component("authz"),
-		Tracer:   tr,
-		Meter:    m,
-		Audit:    rec,
-		Signals:  bus,
-		Actor:    identity.Actor,
-		Declared: declaredPermissions(a),
-		Lookup:   a.authzLookup,
+		Logger:  a.component("authz"),
+		Tracer:  tr,
+		Audit:   rec,
+		Signals: bus,
+		Lookup:  a.authzLookup,
 	})
 	if err != nil {
 		return err //nolint:wrapcheck // authz.New names itself

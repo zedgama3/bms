@@ -27,8 +27,8 @@ func ruleOf(r rows.Rule) Rule {
 
 // declaredRows is the catalogue as list_rules.sql takes it.
 func (s *Service) declaredRows() []rows.Declared {
-	out := make([]rows.Declared, len(s.cat.list))
-	for i, d := range s.cat.list {
+	out := make([]rows.Declared, len(s.lk.cat.list))
+	for i, d := range s.lk.cat.list {
 		out[i] = rows.Declared{Name: string(d.Name), Reaches: d.Reaches.String()}
 	}
 	return out

@@ -7,7 +7,7 @@
 - **Amendment 2026-10-19 (approved, owner, 2026-10-20, D40):** `HoldersOf` returns explicit grant holders only and never enumerates the base role: confirmed, with the reason; F70 and F71 added. See "Amendment 2026-10-19 (approved, owner, 2026-10-20, D40): `HoldersOf` and the base role" before Open questions.
 - **Accepted 2026-10-20 (owner, D40):** the implementation deviations marked "(implementation, 2026-10-19)" in this spec are accepted as written; no text changed.
 - **Amendment 2026-10-28 (approved, owner, D53, demo.md Proposed change 4):** `EnsureGrant` (writer-only bootstrap grant); section "Amendment 2026-10-28" before Open questions; F72 to F75.
-- **Amendment 2026-11-01 (boundaries step 4):** `NewLookup`/`Lookup` (read side, built before audit); `Options` loses `Departments`, gains `Lookup`; F41 retired; F1–F16 and F67–F71 are the Lookup's. See "Amendment 2026-11-01" before Open questions.
+- **Amendment 2026-11-01 (boundaries step 4):** Follow-up: the Service takes DB, Clock, Actor and the catalogue from the Lookup; `Options` keeps Logger, Tracer, Audit, Signals, Lookup. `NewLookup`/`Lookup` (read side, built before audit); `Options` loses `Departments`, `DB`, `Clock`, `Actor`, `Meter`, `Declared` and gains `Lookup`; F41 retired; F1–F16 and F67–F71 are the Lookup's. See "Amendment 2026-11-01" before Open questions.
 - **Package:** `internal/core/authz` (contract and service), `internal/core/authz/postgres`
   (the store, SQL and migrations), `internal/core/authz/authztest` (the fake modules test
   with). **UI:** `web/src/core/access/` (screen set `access`, keys `core.access.*`).
@@ -42,7 +42,7 @@
 - `Authorizer` (= `module.Deps.Authz`): `Allow(ctx, Permission) error` (site-wide; also satisfies `api.PermissionChecker`, `audit.PermissionChecker`, `identity.PermissionChecker`); `AllowIn(ctx, Permission, model.DepartmentID) error` (held site-wide or for that department); `ExtentOf(ctx, Permission) (Extent, error)` (the batch primitive: `Extent{Site bool, Departments []model.DepartmentID}`, +`Covers(d)`, `IsZero()`).
 - `RoleID`, `GrantID`, `RuleID` (= `model.ID[...]`); `Role{ID, Key, Name, Description, Scope, Base bool, Permissions []RolePermission, CreatedAt, UpdatedAt}`, `RolePermission{Name Permission, Declared bool}`, `RoleInput{Name, Description, Scope, Permissions []Permission}`; `Grant{ID, Person, Role RoleID, Department model.DepartmentID, EndsAt, GrantedBy model.PersonID, CreatedAt}`, `GrantInput{Person, Role, Department, EndsAt}`, `GrantQuery{Person, Role, RoleKey string (D38), Department, Permission, IncludeEnded bool, After Cursor, Limit int}`, `GrantPage{Grants, Next Cursor}`, `Cursor` (opaque `created_at`,`id`); `Rule{ID, Role RoleID, Permission Permission, Reaches model.Sensitivity, Note string, Affected int, CreatedAt}`, `RuleInput{Role, Permission, Reaches, Note}`; `PermissionInfo{PermissionDecl}` (the catalogue row, `Module()` derived); `SeedResult{Added int}`.
 - `DepartmentSource{Active(ctx, model.DepartmentID) (bool, error)}` (departments-events, M3; the `departments.Lookup` implements it; `LookupOptions.Departments` is required, so department-scoped grants are never `Unsupported`, boundaries step 4).
-- `Options{DB, Clock, Logger, Tracer, Meter, Audit audit.Recorder (scoped "access"), Signals signals.Bus (scoped "access"), Actor ActorFunc, Declared []PermissionDecl, Lookup *Lookup (required, field `authz.lookup`)}` (+`Validate`); `New(Options) (*Service, error)` (no I/O; works against `db.None()`). `Departments` moved to `LookupOptions` (boundaries step 4, 2026-11-01).
+- `Options{Logger, Tracer, Audit audit.Recorder (scoped "access"), Signals signals.Bus (scoped "access"), Lookup *Lookup (required, field `authz.lookup`)}` (+`Validate`); the Service takes the DB, clock, actor function and permission catalogue from the Lookup, so the two cannot diverge; `New(Options) (*Service, error)` (no I/O; works against `db.None()`). `Departments`, `DB`, `Clock`, `Actor`, `Meter` and `Declared` are on `LookupOptions` only (boundaries step 4 and its follow-up, 2026-11-01).
 - `LookupOptions{DB, Clock, Logger, Tracer, Meter (optional), Actor, Declared, Departments DepartmentSource (required)}` (+`Validate`, `errs.Invalid`, fields `authz.db|clock|logger|tracer|actor|departments|declared…`); `NewLookup(LookupOptions) (*Lookup, error)` (no I/O); `*Lookup` (safe for concurrent use; nothing to close) implements `Allow`, `AllowIn`, `ExtentOf`, `PermissionsOf`, `TitlesOf`, `HoldersOf`, `StarterRoleIDs`; it audits nothing and writes nothing. The decision failure modes F1–F16 and F67–F71 belong to the Lookup, unchanged (F1 and F2 apply to `NewLookup` for its own fields); the Service forwards the decision methods to it (boundaries step 4).
 - `*Service` (safe for concurrent use; nothing to close): the `Authorizer` methods; `StarterRoleIDs(ctx, keys []string) (map[string]RoleID, error)` (build deviation 2026-10-29: actor-less, read-only lookup of starter role IDs by key for the demo seed; no permission check, no audit; `Invalid keys` for none or an empty key, `NotFound keys unknown` for a key naming no starter role); `EnsureGrant(ctx, GrantInput) (Grant, bool, error)` (D53; writer-only bootstrap, site-scoped, rules checked, operator-audited, `false` when the grant exists); `HoldersOf(ctx, Permission) ([]model.PersonID, error)` (D39; a system read: the persons who hold the permission site-wide now; a superuser appears only through an explicit grant to their person (decision 6)
   (implementation, 2026-10-19); only explicit grant holders are returned, the base role is never enumerated (owner, 2026-10-20, D40; F70, F71); for `app`'s superuser-alert adapter and people's deletion notice; never on a route); `PermissionsOf(ctx, model.PersonID) ([]string, error)` (= `identity.PermissionLister`; `p` for site, `p@<department-id>` for departments; every declared name for the superuser); `TitlesOf(ctx, model.PersonID) ([]string, error)` (= `audit.TitleSource`; keys or names of the non-base roles held now); `ListPermissions(ctx) ([]PermissionInfo, error)`; `ListRoles(ctx) ([]Role, error)`; `GetRole(ctx, RoleID) (Role, error)`; `CreateRole(ctx, RoleInput) (Role, error)`; `UpdateRole(ctx, RoleID, RoleInput) (Role, error)`; `DeleteRole(ctx, RoleID) error`; `ListGrants(ctx, GrantQuery) (GrantPage, error)`; `Grant(ctx, GrantInput)
@@ -71,7 +71,7 @@
 17 regional differences are data: roles, grants, rules; this spec owns no settings.
 18 no event scope and no "own records" scope: terms are end dates, and self-access is each service's `identity.PersonFrom` check.
 
-**Errs kinds callers handle.** `Allow`/`AllowIn`/`ExtentOf`: `Unauthenticated`, `Permission` (not held, or forbidden by a rule), `Invalid` (undeclared permission; zero department), store kinds (`Unavailable`, `Timeout`, `Canceled`). Role, grant and rule methods: `Unauthenticated`; `Permission`; `NotFound` (unknown ID, or outside the caller's extent); `Invalid` with field codes `required`, `malformed`, `too_long {max}`, `duplicate`, `scope`, `mismatch`, `range`, `base`, `immutable`, `self`, `one_of`; `Conflict` with codes `taken` (role name), `duplicate` (grant exists), `separation_of_duties {rule}`, `in_use`, `last_access_admin`; `Unsupported` (department grant without a `DepartmentSource`); `Unavailable` wrapping `db.ErrReadOnly`. `Seed`/`DeletePerson`: `Invalid`, `Unavailable` wrapping `db.ErrReadOnly`, `Conflict` (`last_access_admin`). `New`/`Options.Validate`: `Invalid` with fields `authz.db`, `authz.clock`, `authz.logger`, `authz.tracer`, `authz.audit`, `authz.signals`, `authz.actor`, `authz.declared[i].*`, `authz.declared` (duplicate). No sentinels.
+**Errs kinds callers handle.** `Allow`/`AllowIn`/`ExtentOf`: `Unauthenticated`, `Permission` (not held, or forbidden by a rule), `Invalid` (undeclared permission; zero department), store kinds (`Unavailable`, `Timeout`, `Canceled`). Role, grant and rule methods: `Unauthenticated`; `Permission`; `NotFound` (unknown ID, or outside the caller's extent); `Invalid` with field codes `required`, `malformed`, `too_long {max}`, `duplicate`, `scope`, `mismatch`, `range`, `base`, `immutable`, `self`, `one_of`; `Conflict` with codes `taken` (role name), `duplicate` (grant exists), `separation_of_duties {rule}`, `in_use`, `last_access_admin`; `Unsupported` (department grant without a `DepartmentSource`); `Unavailable` wrapping `db.ErrReadOnly`. `Seed`/`DeletePerson`: `Invalid`, `Unavailable` wrapping `db.ErrReadOnly`, `Conflict` (`last_access_admin`). `New`/`Options.Validate`: `Invalid` with fields `authz.logger`, `authz.tracer`, `authz.audit`, `authz.signals`, `authz.lookup`. `NewLookup`/`LookupOptions.Validate`: `authz.db`, `authz.clock`, `authz.actor`, `authz.declared[i].*`, `authz.declared` (duplicate), plus its logger, tracer and departments. No sentinels.
 
 **Owns.** Tables `core.role`, `core.role_permission`, `core.role_grant`, `core.sod_rule`, `core.role_seed` (all `internal`; nothing personal beyond person IDs). The six permissions, two signals, eight audit actions, route set `access` (`GET /permissions`, `GET|POST /roles`, `GET|PUT|DELETE /roles/{role}`, `GET|POST /grants`, `DELETE /grants/{grant}`, `GET|POST /rules`, `DELETE /rules/{rule}`), screens `/access/roles`, `/access/roles/new`, `/access/roles/:role`, `/access/grants`, `/access/grants/new`, `/access/rules`; keys `core.access.*`; spans `authz.allow`, `authz.allow-in`, `authz.extent`, `authz.<use-case>`; metric `bms.authz.decisions{outcome}`. No settings, no config keys.
 
@@ -115,7 +115,7 @@ Decide whether a person may perform an action, from the permissions the core and
 
 | Name | Purpose (one line) | Notes |
 |---|---|---|
-| Catalogue | hold the declared permissions and say what each reaches | `Options.Declared`, `ListPermissions`; in memory, frozen at `New` |
+| Catalogue | hold the declared permissions and say what each reaches | `LookupOptions.Declared` (the Service reads it through the Lookup), `ListPermissions`; in memory, frozen at `NewLookup` |
 | Roles | hold named permission sets with a scope, the base role and the starter roles | `core.role`, `core.role_permission`; `*Role` methods; `Seed` |
 | Grants | hold who holds which role where and until when | `core.role_grant`; `Grant`, `Revoke`, `ListGrants` |
 | Rules | hold what a role holder may never also hold | `core.sod_rule`; `*Rule` methods |
@@ -175,27 +175,23 @@ type DepartmentSource interface {
 
 // Options builds the service. Audit and Signals are scoped to "access" by app.
 type Options struct {
-	DB          db.DB
-	Clock       clock.Clock
-	Logger      *slog.Logger
-	Tracer      telemetry.Tracer
-	Meter       telemetry.Meter // optional
-	Audit       audit.Recorder
-	Signals     signals.Bus
-	Actor       ActorFunc
-	Declared    []PermissionDecl // api.PermissionModulesRead, each core part's, Plan.Permissions()
-	Lookup      *Lookup          // required (authz.lookup); built before audit; replaces Departments (boundaries step 4)
+	Logger  *slog.Logger
+	Tracer  telemetry.Tracer
+	Audit   audit.Recorder
+	Signals signals.Bus
+	Lookup  *Lookup // required (authz.lookup); built before audit. DB, Clock, Actor, Meter and Declared come from it (boundaries step 4 and follow-up)
 }
 
 // LookupOptions builds the read side (decisions and lookups; nothing audited or written).
 // Fields: DB, Clock, Logger, Tracer, Meter (optional), Actor, Declared, Departments
-// DepartmentSource (required). NewLookup validates (errs.Invalid) and does no I/O.
+// DepartmentSource (required). NewLookup validates (errs.Invalid) and does no I/O; it
+// reports authz.db, authz.clock, authz.actor, authz.declared[i].* and the duplicate authz.declared.
 type LookupOptions struct{ /* as listed */ }
 func NewLookup(o LookupOptions) (*Lookup, error)
 
-// Validate fails errs.Invalid joining a validate.FieldError per problem (fields authz.db,
-// authz.clock, authz.logger, authz.tracer, authz.audit, authz.signals, authz.actor,
-// authz.declared[i].name|scope|reaches|starter_roles[j], authz.declared for a duplicate).
+// Validate fails errs.Invalid joining a validate.FieldError per problem (fields authz.logger,
+// authz.tracer, authz.audit, authz.signals, authz.lookup). The db, clock, actor and
+// declared fields are LookupOptions.Validate's.
 func (o Options) Validate() error
 
 // New validates and builds. No I/O, so it works against db.None() (app decision 7).
@@ -531,8 +527,8 @@ Store kinds (`Unavailable`, `Timeout`, `Canceled`) apply to every method that to
 
 | # | Method | Condition | errs kind | Caller is expected to | Test |
 |---|---|---|---|---|---|
-| F1 | `New` | nil `DB`, `Clock`, `Logger`, `Tracer`, `Audit`, `Signals` or `Actor` | Invalid | fail start-up, name the field | `TestNew_NilDependency_ReturnsInvalid` |
-| F2 | `New` | a declaration invalid, or two with the same name | Invalid (`authz.declared[i]`, `authz.declared`) | fail start-up | `TestNew_DuplicateDeclaration_ReturnsInvalid` |
+| F1 | `New` | nil `Logger`, `Tracer`, `Audit`, `Signals` or `Lookup` (for `NewLookup`: nil `DB`, `Clock`, `Logger`, `Tracer` or `Actor`) | Invalid | fail start-up, name the field | `TestNew_NilDependency_ReturnsInvalid` |
+| F2 | `NewLookup` | a declaration invalid, or two with the same name | Invalid (`authz.declared[i]`, `authz.declared`) | fail start-up | `TestNewLookup_DuplicateDeclaration_ReturnsInvalid`, `TestNewLookup_InvalidDeclaration_ReportsIndexedFields` |
 | F3 | `Allow` | no session in ctx | Unauthenticated | 401 | `TestAllow_NoActor_ReturnsUnauthenticated` |
 | F4 | `Allow` | `signals.InDelivery(ctx)` even with a session value in ctx | Unauthenticated | handler uses its system path | `TestAllow_InDelivery_ReturnsUnauthenticated` |
 | F5 | `Allow` | permission not declared | Invalid | fix the module | `TestAllow_Undeclared_ReturnsInvalid` |
@@ -653,7 +649,7 @@ Success path: `TestEnsureGrant_Creates_AuditsOperatorAndPublishes`.
 
 ## Amendment 2026-11-01 (boundaries step 4, spec `boundaries.md`)
 
-`authz.NewLookup` and `LookupOptions{DB, Clock, Logger, Tracer, Meter, Actor, Declared, Departments}` add the read side, built before `audit.New`: it implements `Allow`, `AllowIn`, `ExtentOf`, `PermissionsOf`, `TitlesOf`, `HoldersOf` and `StarterRoleIDs`, audits nothing and writes nothing. `Options` loses `Departments` and gains `Lookup *Lookup` (required, `authz.lookup`); the Service forwards the decision methods. `Departments` is required, so F41 is retired. F1–F16 and F67–F71 belong to the Lookup, unchanged. `app` builds the Lookup before audit and hands it to audit, identity, settings, api and every module; `a.titles` and the lazy adapters are gone.
+`authz.NewLookup` and `LookupOptions{DB, Clock, Logger, Tracer, Meter, Actor, Declared, Departments}` add the read side, built before `audit.New`: it implements `Allow`, `AllowIn`, `ExtentOf`, `PermissionsOf`, `TitlesOf`, `HoldersOf` and `StarterRoleIDs`, audits nothing and writes nothing. `Options` loses `Departments` and gains `Lookup *Lookup` (required, `authz.lookup`); the Service forwards the decision methods. `Departments` is required, so F41 is retired. F1–F16 and F67–F71 belong to the Lookup, unchanged. Follow-up: the Service takes DB, Clock, Actor and the catalogue from the Lookup; `Options` keeps Logger, Tracer, Audit, Signals, Lookup. `app` builds the Lookup before audit and hands it to audit, identity, settings, api and every module; `a.titles` and the lazy adapters are gone.
 
 ## Open questions
 

@@ -325,7 +325,7 @@ func (s *Service) checkSeparation(ctx context.Context, op string, person model.P
 	// as in a decision and in ListRules's Affected.
 	names := make(map[string]struct{}, len(held))
 	for _, h := range held {
-		if _, ok := s.cat.byName[Permission(h.Permission)]; ok {
+		if _, ok := s.lk.cat.byName[Permission(h.Permission)]; ok {
 			names[h.Permission] = struct{}{}
 		}
 	}
@@ -335,7 +335,7 @@ func (s *Service) checkSeparation(ctx context.Context, op string, person model.P
 			return wrap(op, err)
 		}
 		for _, name := range forbidden {
-			if _, declared := s.cat.byName[Permission(name)]; !declared {
+			if _, declared := s.lk.cat.byName[Permission(name)]; !declared {
 				continue
 			}
 			if _, ok := names[name]; ok {
