@@ -236,6 +236,7 @@ func newFx(t testing.TB, mods ...func(*audit.Options)) *fx {
 		Instance:    "test-copy",
 		DataDir:     f.dir,
 		Actor:       sessionActor,
+		Titles:      f.titles,
 		Permissions: f.perms,
 	}
 	for _, m := range mods {

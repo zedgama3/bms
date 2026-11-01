@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -36,6 +37,9 @@ func declareAudit(a *assembly) error {
 // copy), keeps it unscoped in a.deps for provision to scope per module, adds the "audit"
 // route set, and registers the importer as a runnable. The Close closer is a.closers().
 func buildAudit(_ context.Context, a *assembly) error {
+	if a.authzLookup == nil {
+		return errs.E("app.audit.build", errs.Internal, errors.New("audit is built after the authz lookup"))
+	}
 	tr, m, err := a.scopes("audit")
 	if err != nil {
 		return err
@@ -49,8 +53,8 @@ func buildAudit(_ context.Context, a *assembly) error {
 		Instance:    a.cfg.Instance.Name,
 		DataDir:     a.cfg.Data.Dir,
 		Actor:       identity.AuditActor,
-		Titles:      lazyTitles{a: a},
-		Permissions: lazyPermissions{a: a},
+		Titles:      a.authzLookup,
+		Permissions: a.authzLookup,
 	})
 	if err != nil {
 		return err //nolint:wrapcheck // audit.New names itself

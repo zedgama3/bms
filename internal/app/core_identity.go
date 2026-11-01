@@ -41,12 +41,12 @@ func declareIdentity(a *assembly) error {
 
 // buildIdentity constructs the service (no I/O: it succeeds against db.None() and on a
 // read-only copy), hands the shell its Authenticator and mounts the accounts routes. The
-// permission checker, the permission lister and the name source are the lazy adapters,
-// because settings, authz and people are built after identity (app.md, rows 3 to 5).
+// permission checker and the permission lister are the authz.Lookup, built before it; the
+// name source is a lazy adapter, because people is built after identity.
 func buildIdentity(_ context.Context, a *assembly) error {
 	const op = "app.identity.build"
-	if a.deps.audit == nil {
-		return errs.E(op, errs.Internal, errors.New("identity is built before audit"))
+	if a.deps.audit == nil || a.authzLookup == nil {
+		return errs.E(op, errs.Internal, errors.New("identity is built after audit and the authz lookup"))
 	}
 	rec, err := a.deps.audit.Scoped("identity")
 	if err != nil {
@@ -70,8 +70,8 @@ func buildIdentity(_ context.Context, a *assembly) error {
 		AllowPlaintext: a.cfg.HTTP.AllowPlaintext,
 		Audit:          rec,
 		Signals:        bus,
-		Permissions:    lazyPermissions{a: a},
-		Lister:         lazyLister{a: a},
+		Permissions:    a.authzLookup,
+		Lister:         a.authzLookup,
 		Names:          lazyNames{a: a},
 		Policy:         lazyIdentityPolicy{a: a},
 		Notify:         lazyNotifier{a: a, owner: accountsOwner},

@@ -37,7 +37,6 @@ func TestNew_Valid_DoesNoIO(t *testing.T) {
 func TestNew_OptionalDependenciesMayBeNil(t *testing.T) {
 	o := validOptions(t)
 	o.Meter = nil
-	o.Titles = nil
 	o.Permissions = nil
 	o.ImportInterval = 0
 	_, err := audit.New(o)
@@ -55,6 +54,7 @@ func TestNew_NilDependency_ReturnsInvalid(t *testing.T) {
 		{"logger", "audit.logger", func(o *audit.Options) { o.Logger = nil }},
 		{"tracer", "audit.tracer", func(o *audit.Options) { o.Tracer = nil }},
 		{"actor", "audit.actor", func(o *audit.Options) { o.Actor = nil }},
+		{"titles", "audit.titles", func(o *audit.Options) { o.Titles = nil }},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -72,7 +72,7 @@ func TestNew_NilDependency_ReturnsInvalid(t *testing.T) {
 	t.Run("all nil reports every field", func(t *testing.T) {
 		_, err := audit.New(audit.Options{Instance: "x", DataDir: "d"})
 		wantKind(t, err, errs.Invalid)
-		for _, f := range []string{"audit.db", "audit.clock", "audit.logger", "audit.tracer", "audit.actor"} {
+		for _, f := range []string{"audit.db", "audit.clock", "audit.logger", "audit.tracer", "audit.actor", "audit.titles"} {
 			wantField(t, err, f)
 		}
 	})

@@ -52,7 +52,7 @@ func (s *Service) ListGrants(ctx context.Context, q GrantQuery) (_ GrantPage, er
 	case a.Superuser || own:
 		f.WholeSite = true
 	default:
-		acc, err := s.load(ctx, a.Person, PermissionGrantsRead)
+		acc, err := s.lk.load(ctx, a.Person, PermissionGrantsRead)
 		if err != nil {
 			return GrantPage{}, wrap(op, err)
 		}
@@ -176,7 +176,7 @@ func canManageAny(a Actor, acc *access) bool {
 // invariants lock: it checks the caller (Permission, F35, F36), refuses a grant to oneself
 // (Invalid, field person, code self, F37; the superuser is exempt) and of the base role
 // (Invalid, field role, code base, F38), checks the department against the role's scope
-// (Invalid mismatch or required, F40; Unsupported without a DepartmentSource, F41;
+// (Invalid mismatch or required, F40; F41 is gone: the Lookup requires a DepartmentSource;
 // Invalid unknown for an archived or unknown department, F42) and EndsAt (Invalid, field
 // ends_at, code range, F43), inserts the row (Conflict duplicate, F44), then checks the
 // person's permissions, the new role included, against the separation-of-duties rules
@@ -201,7 +201,7 @@ func (s *Service) Grant(ctx context.Context, in GrantInput) (_ Grant, err error)
 		if err := s.store.LockInvariants(ctx); err != nil {
 			return wrap(op, err)
 		}
-		acc, err := s.accessOf(ctx, a, "")
+		acc, err := s.lk.accessOf(ctx, a, "")
 		if err != nil {
 			return err
 		}
@@ -288,10 +288,7 @@ func (s *Service) activeDepartment(ctx context.Context, op string, r rows.Role, 
 	if r.Scope != rows.ScopeDepartment {
 		return nil
 	}
-	if s.depts == nil {
-		return errs.E(op, errs.Unsupported, errors.New("department grants need departments, which this installation does not have"))
-	}
-	active, err := s.depts.Active(ctx, d)
+	active, err := s.lk.depts.Active(ctx, d)
 	if err != nil {
 		return wrap(op, err)
 	}
@@ -333,7 +330,7 @@ func (s *Service) checkSeparation(ctx context.Context, op string, person model.P
 		}
 	}
 	for _, r := range rules {
-		forbidden, err := s.forbiddenBy(r)
+		forbidden, err := s.lk.forbiddenBy(r)
 		if err != nil {
 			return wrap(op, err)
 		}
@@ -375,7 +372,7 @@ func (s *Service) Revoke(ctx context.Context, id GrantID) (err error) {
 		if err := s.store.LockInvariants(ctx); err != nil {
 			return wrap(op, err)
 		}
-		acc, err := s.accessOf(ctx, a, "")
+		acc, err := s.lk.accessOf(ctx, a, "")
 		if err != nil {
 			return err
 		}

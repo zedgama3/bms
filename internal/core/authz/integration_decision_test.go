@@ -501,6 +501,7 @@ func TestDepartmentRole_PermissionLaterDeclaredSiteOnly_HasNoEffect(t *testing.T
 	o := r.opts
 	o.Declared = append(append([]authz.PermissionDecl(nil), r.opts.Declared...),
 		authz.PermissionDecl{Name: late, Scope: authz.ScopeSite, Reaches: model.SensitivityInternal})
+	o.Lookup = r.lookupFor(o) // the decisions follow the new declarations
 	svc2, err := authz.New(o)
 	wantNoErr(t, err)
 

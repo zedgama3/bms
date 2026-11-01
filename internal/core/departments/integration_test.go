@@ -997,17 +997,28 @@ func newAuthzRig(t *testing.T) *authzRig {
 	wantNoErr(t, err)
 	super := newPerson()
 	declared := append(append([]authz.PermissionDecl(nil), authz.Permissions...), departments.Permissions...)
-	svc, err := authz.New(authz.Options{
+	lk, err := authz.NewLookup(authz.LookupOptions{
 		DB:          pool,
 		Clock:       clock.NewFake(epoch),
 		Logger:      c.Logger(),
 		Tracer:      c.Tracer("authz"),
 		Meter:       c.Meter("authz"),
-		Audit:       audittest.NewFake("access"),
-		Signals:     bus,
 		Actor:       actorOf,
 		Declared:    declared,
-		Departments: dr.svc,
+		Departments: dr.opts.Lookup, // the departments.Lookup is the DepartmentSource
+	})
+	wantNoErr(t, err)
+	svc, err := authz.New(authz.Options{
+		DB:       pool,
+		Clock:    clock.NewFake(epoch),
+		Logger:   c.Logger(),
+		Tracer:   c.Tracer("authz"),
+		Meter:    c.Meter("authz"),
+		Audit:    audittest.NewFake("access"),
+		Signals:  bus,
+		Actor:    actorOf,
+		Declared: declared,
+		Lookup:   lk,
 	})
 	wantNoErr(t, err)
 	_, err = svc.Seed(ctxT(t), declared)

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/lib/errs"
@@ -38,9 +39,13 @@ type Fake struct {
 	super map[model.PersonID]bool
 	site  map[model.PersonID]map[authz.Permission]bool
 	depts map[model.PersonID]map[authz.Permission]map[model.DepartmentID]bool
+	title map[model.PersonID][]string
 }
 
-var _ authz.Authorizer = (*Fake)(nil)
+var (
+	_ authz.Authorizer  = (*Fake)(nil)
+	_ audit.TitleSource = (*Fake)(nil)
+)
 
 // NewFake returns a Fake that denies everything and reads the actor from WithActor. Cannot
 // fail.
@@ -50,6 +55,7 @@ func NewFake() *Fake {
 		super: map[model.PersonID]bool{},
 		site:  map[model.PersonID]map[authz.Permission]bool{},
 		depts: map[model.PersonID]map[authz.Permission]map[model.DepartmentID]bool{},
+		title: map[model.PersonID][]string{},
 	}
 }
 
@@ -94,6 +100,22 @@ func (f *Fake) Superuser(person model.PersonID) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.super[person] = true
+}
+
+// SetTitles sets the role titles TitlesOf reports for person, as the Lookup does for the
+// roles a person holds. Cannot fail.
+func (f *Fake) SetTitles(person model.PersonID, titles ...string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.title[person] = slices.Clone(titles)
+}
+
+// TitlesOf is audit.TitleSource: the titles set with SetTitles, or nil for a person with
+// none. It needs no actor. Cannot fail.
+func (f *Fake) TitlesOf(_ context.Context, person model.PersonID) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.title[person]), nil
 }
 
 // who returns the actor, or errs.Unauthenticated (no actor, or inside a signal delivery),

@@ -263,6 +263,9 @@ func validOptions(t *testing.T, d db.DB) (departments.Options, *rig) {
 		Authz:   az,
 		Actor:   actorOf,
 	}
+	lk, err := departments.NewLookup(departments.LookupOptions{DB: d, Tracer: c.Tracer("departments")})
+	wantNoErr(t, err)
+	o.Lookup = lk
 	return o, r
 }
 

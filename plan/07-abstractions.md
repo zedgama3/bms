@@ -81,12 +81,7 @@ A row is one type in `internal/app` (or one top-level function, for a closure th
 
 | Type | Waits for | Reason |
 |---|---|---|
-| `lazyPermissions` | a.permissions, which authz's part sets | audit and identity need authz's decisions, and authz records through audit (audit ↔ authz); removed in step 4. |
-| `lazyTitles` | a.titles, which authz's part sets | audit asks authz for titles when it records, and authz records through audit (audit ↔ authz); removed in step 4. |
-| `lazyLister` | a.lister, which authz's part sets | identity needs `PermissionsOf` and is built before authz; the pair is order only (identity ↔ authz); removed in step 4. |
 | `lazyNames` | a.names, which people's part sets | identity needs the playa name and people needs identity (identity ↔ people); removed in step 8. |
-| `lazyDepartments` | a.departments, which the departments part sets after authz is built | authz needs `Active` and departments needs the Authorizer (authz ↔ departments); removed in step 4. |
-| `lazyAuthorizer` | a.authz, which authz's part sets after settings is built | settings needs the Authorizer and is built before authz; the pair is order only (settings ↔ authz); removed in step 4. |
 | `lazyFilesStore` | a.files, which files' part sets after settings is built | settings holds the logo in files, and files reads its policy from settings (settings ↔ files); removed in step 7. |
 | `lazyIdentityPolicy` | a.settings, which settings' part sets after identity is built | identity reads its policy keys from settings and is built first; order, not imports, is the cause (F2); removed in step 5. |
 | `lazyPeoplePolicy` | a.settings, resolved when called | people reads its policy keys from settings through app; same cause as `lazyIdentityPolicy` (F2); removed in step 5. |

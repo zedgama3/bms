@@ -38,8 +38,8 @@ func declareDepartments(a *assembly) error {
 // the departments routes.
 func buildDepartments(_ context.Context, a *assembly) error {
 	const op = "app.departments.build"
-	if a.deps.audit == nil || a.deps.authz == nil {
-		return errs.E(op, errs.Internal, errors.New("departments is built after audit and authz"))
+	if a.deps.audit == nil || a.deps.authz == nil || a.departmentsLookup == nil {
+		return errs.E(op, errs.Internal, errors.New("departments is built after audit, authz and the departments lookup"))
 	}
 	rec, err := a.deps.audit.Scoped(departmentsArea)
 	if err != nil {
@@ -63,6 +63,7 @@ func buildDepartments(_ context.Context, a *assembly) error {
 		Signals: bus,
 		Authz:   a.deps.authz,
 		Actor:   identity.Actor,
+		Lookup:  a.departmentsLookup,
 	})
 	if err != nil {
 		return err //nolint:wrapcheck // departments.New names itself

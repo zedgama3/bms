@@ -12,9 +12,10 @@ import (
 	"github.com/zedgama3/bms/internal/lib/errs"
 )
 
-// authzPart is core part 4: roles, grants, separation-of-duties rules and the decisions
-// (authz.md; app.md "How later core services plug in", row 4). It is built after identity
-// and audit, whose lazy seams it fills.
+// authzPart is the authz core part: roles, grants, separation-of-duties rules and the admin service
+// (authz.md; boundaries.md "The build order", item 5). It is built after audit, whose
+// recorder it takes, and before identity and settings, which take the authz.Lookup built
+// earlier; the decisions are the Lookup's.
 var authzPart = part{
 	name:    "authz",
 	declare: declareAuthz,
@@ -40,12 +41,11 @@ func declareAuthz(a *assembly) error {
 }
 
 // buildAuthz constructs the service (no I/O: it succeeds against db.None() and on a
-// read-only copy), fills the seams of the shell, audit and identity, and mounts the access
-// routes. The declared permissions are the core's and the enabled modules'.
+// read-only copy) on top of the authz.Lookup, and mounts the access routes. The declared permissions are the core's and the enabled modules'.
 func buildAuthz(_ context.Context, a *assembly) error {
 	const op = "app.authz.build"
-	if a.deps.audit == nil {
-		return errs.E(op, errs.Internal, errors.New("authz is built before audit"))
+	if a.deps.audit == nil || a.authzLookup == nil {
+		return errs.E(op, errs.Internal, errors.New("authz is built after audit and the authz lookup"))
 	}
 	rec, err := a.deps.audit.Scoped(accessArea)
 	if err != nil {
@@ -69,17 +69,12 @@ func buildAuthz(_ context.Context, a *assembly) error {
 		Signals:  bus,
 		Actor:    identity.Actor,
 		Declared: declaredPermissions(a),
-
-		Departments: lazyDepartments{a},
+		Lookup:   a.authzLookup,
 	})
 	if err != nil {
 		return err //nolint:wrapcheck // authz.New names itself
 	}
 	a.authz = svc
-	a.permissions = svc
-	a.titles = svc
-	a.lister = svc
-	a.deps.authz = svc
 	if err := a.addCoreRoutes(accessArea, svc.Routes(), svc.OpenAPI()); err != nil {
 		return err
 	}

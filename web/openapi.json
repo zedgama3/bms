@@ -9770,16 +9770,16 @@
       "name": "audit"
     },
     {
+      "description": "Roles, grants and separation-of-duties rules: who may do what.",
+      "name": "access"
+    },
+    {
       "description": "Who is signed in, and the local accounts: sign-up, sign-in, passwords and the account admin.",
       "name": "accounts"
     },
     {
       "description": "What the regional configures while bms runs: values, terminology and the public document.",
       "name": "settings"
-    },
-    {
-      "description": "Roles, grants and separation-of-duties rules: who may do what.",
-      "name": "access"
     },
     {
       "description": "Who each participant is: profiles, emergency contacts, consents, search, and export or deletion of a person's data.",

@@ -18,8 +18,8 @@ import (
 
 // settingsPart is core part 3: the typed, validated, audited values a regional configures
 // while bms runs (settings.md; app.md "How later core services plug in", row 3). It is
-// built after audit, whose recorder it takes, and before authz, so its Authz is a lazy
-// adapter (app.md amendment 2026-10-19).
+// built after audit, whose recorder it takes, and after the authz.Lookup, which it takes as
+// its Authz.
 var settingsPart = part{
 	name:    "settings",
 	declare: declareSettings,
@@ -52,8 +52,8 @@ func declareSettings(a *assembly) error {
 // this part.
 func buildSettings(_ context.Context, a *assembly) error {
 	const op = "app.settings.build"
-	if a.deps.audit == nil {
-		return errs.E(op, errs.Internal, errors.New("settings is built after audit"))
+	if a.deps.audit == nil || a.authzLookup == nil {
+		return errs.E(op, errs.Internal, errors.New("settings is built after audit and the authz lookup"))
 	}
 	rec, err := a.deps.audit.Scoped(settingsArea)
 	if err != nil {
@@ -70,7 +70,7 @@ func buildSettings(_ context.Context, a *assembly) error {
 		Tracer:     tr,
 		Meter:      m,
 		Audit:      rec,
-		Authz:      lazyAuthorizer{a: a},
+		Authz:      a.authzLookup,
 		Actor:      identity.Actor,
 		Files:      lazyFilesStore{a: a},
 		Areas:      settingsAreas(a),

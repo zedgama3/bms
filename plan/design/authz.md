@@ -7,6 +7,7 @@
 - **Amendment 2026-10-19 (approved, owner, 2026-10-20, D40):** `HoldersOf` returns explicit grant holders only and never enumerates the base role: confirmed, with the reason; F70 and F71 added. See "Amendment 2026-10-19 (approved, owner, 2026-10-20, D40): `HoldersOf` and the base role" before Open questions.
 - **Accepted 2026-10-20 (owner, D40):** the implementation deviations marked "(implementation, 2026-10-19)" in this spec are accepted as written; no text changed.
 - **Amendment 2026-10-28 (approved, owner, D53, demo.md Proposed change 4):** `EnsureGrant` (writer-only bootstrap grant); section "Amendment 2026-10-28" before Open questions; F72 to F75.
+- **Amendment 2026-11-01 (boundaries step 4):** `NewLookup`/`Lookup` (read side, built before audit); `Options` loses `Departments`, gains `Lookup`; F41 retired; F1–F16 and F67–F71 are the Lookup's. See "Amendment 2026-11-01" before Open questions.
 - **Package:** `internal/core/authz` (contract and service), `internal/core/authz/postgres`
   (the store, SQL and migrations), `internal/core/authz/authztest` (the fake modules test
   with). **UI:** `web/src/core/access/` (screen set `access`, keys `core.access.*`).
@@ -40,8 +41,9 @@
 - `Actor{Person model.PersonID, Superuser bool}`; `ActorFunc func(ctx) (Actor, bool)` (no I/O; false for no session or a restricted one; authz also returns false itself inside `signals.InDelivery`).
 - `Authorizer` (= `module.Deps.Authz`): `Allow(ctx, Permission) error` (site-wide; also satisfies `api.PermissionChecker`, `audit.PermissionChecker`, `identity.PermissionChecker`); `AllowIn(ctx, Permission, model.DepartmentID) error` (held site-wide or for that department); `ExtentOf(ctx, Permission) (Extent, error)` (the batch primitive: `Extent{Site bool, Departments []model.DepartmentID}`, +`Covers(d)`, `IsZero()`).
 - `RoleID`, `GrantID`, `RuleID` (= `model.ID[...]`); `Role{ID, Key, Name, Description, Scope, Base bool, Permissions []RolePermission, CreatedAt, UpdatedAt}`, `RolePermission{Name Permission, Declared bool}`, `RoleInput{Name, Description, Scope, Permissions []Permission}`; `Grant{ID, Person, Role RoleID, Department model.DepartmentID, EndsAt, GrantedBy model.PersonID, CreatedAt}`, `GrantInput{Person, Role, Department, EndsAt}`, `GrantQuery{Person, Role, RoleKey string (D38), Department, Permission, IncludeEnded bool, After Cursor, Limit int}`, `GrantPage{Grants, Next Cursor}`, `Cursor` (opaque `created_at`,`id`); `Rule{ID, Role RoleID, Permission Permission, Reaches model.Sensitivity, Note string, Affected int, CreatedAt}`, `RuleInput{Role, Permission, Reaches, Note}`; `PermissionInfo{PermissionDecl}` (the catalogue row, `Module()` derived); `SeedResult{Added int}`.
-- `DepartmentSource{Active(ctx, model.DepartmentID) (bool, error)}` (departments-events, M3; nil means department-scoped grants are `Unsupported`).
-- `Options{DB, Clock, Logger, Tracer, Meter, Audit audit.Recorder (scoped "access"), Signals signals.Bus (scoped "access"), Actor ActorFunc, Declared []PermissionDecl, Departments DepartmentSource}` (+`Validate`); `New(Options) (*Service, error)` (no I/O; works against `db.None()`).
+- `DepartmentSource{Active(ctx, model.DepartmentID) (bool, error)}` (departments-events, M3; the `departments.Lookup` implements it; `LookupOptions.Departments` is required, so department-scoped grants are never `Unsupported`, boundaries step 4).
+- `Options{DB, Clock, Logger, Tracer, Meter, Audit audit.Recorder (scoped "access"), Signals signals.Bus (scoped "access"), Actor ActorFunc, Declared []PermissionDecl, Lookup *Lookup (required, field `authz.lookup`)}` (+`Validate`); `New(Options) (*Service, error)` (no I/O; works against `db.None()`). `Departments` moved to `LookupOptions` (boundaries step 4, 2026-11-01).
+- `LookupOptions{DB, Clock, Logger, Tracer, Meter (optional), Actor, Declared, Departments DepartmentSource (required)}` (+`Validate`, `errs.Invalid`, fields `authz.db|clock|logger|tracer|actor|departments|declared…`); `NewLookup(LookupOptions) (*Lookup, error)` (no I/O); `*Lookup` (safe for concurrent use; nothing to close) implements `Allow`, `AllowIn`, `ExtentOf`, `PermissionsOf`, `TitlesOf`, `HoldersOf`, `StarterRoleIDs`; it audits nothing and writes nothing. The decision failure modes F1–F16 and F67–F71 belong to the Lookup, unchanged (F1 and F2 apply to `NewLookup` for its own fields); the Service forwards the decision methods to it (boundaries step 4).
 - `*Service` (safe for concurrent use; nothing to close): the `Authorizer` methods; `StarterRoleIDs(ctx, keys []string) (map[string]RoleID, error)` (build deviation 2026-10-29: actor-less, read-only lookup of starter role IDs by key for the demo seed; no permission check, no audit; `Invalid keys` for none or an empty key, `NotFound keys unknown` for a key naming no starter role); `EnsureGrant(ctx, GrantInput) (Grant, bool, error)` (D53; writer-only bootstrap, site-scoped, rules checked, operator-audited, `false` when the grant exists); `HoldersOf(ctx, Permission) ([]model.PersonID, error)` (D39; a system read: the persons who hold the permission site-wide now; a superuser appears only through an explicit grant to their person (decision 6)
   (implementation, 2026-10-19); only explicit grant holders are returned, the base role is never enumerated (owner, 2026-10-20, D40; F70, F71); for `app`'s superuser-alert adapter and people's deletion notice; never on a route); `PermissionsOf(ctx, model.PersonID) ([]string, error)` (= `identity.PermissionLister`; `p` for site, `p@<department-id>` for departments; every declared name for the superuser); `TitlesOf(ctx, model.PersonID) ([]string, error)` (= `audit.TitleSource`; keys or names of the non-base roles held now); `ListPermissions(ctx) ([]PermissionInfo, error)`; `ListRoles(ctx) ([]Role, error)`; `GetRole(ctx, RoleID) (Role, error)`; `CreateRole(ctx, RoleInput) (Role, error)`; `UpdateRole(ctx, RoleID, RoleInput) (Role, error)`; `DeleteRole(ctx, RoleID) error`; `ListGrants(ctx, GrantQuery) (GrantPage, error)`; `Grant(ctx, GrantInput)
   (Grant, error)`; `Revoke(ctx, GrantID) error`; `ListRules(ctx) ([]Rule, error)`; `CreateRule(ctx, RuleInput) (Rule, error)`; `DeleteRule(ctx, RuleID) error`; `Seed(ctx, []PermissionDecl) (SeedResult, error)` (`bms migrate`, writer only); `ExportPerson(ctx, model.PersonID) (json.RawMessage, error)`; `DeletePerson(ctx, model.PersonID) (int, error)`; `Routes() []Route`; `OpenAPI() []byte`. `Route{Method, Pattern string, Handler http.Handler}` (all signed-in; `app` converts).
@@ -63,7 +65,7 @@
 11 revocation deletes the grant row; the audit log is the history; ended (expired) rows stay until `DeletePerson`.
 12 **starter roles** are created by migration `0001` (keys, scope, base; no permissions); membership comes from `PermissionDecl.StarterRoles`, applied by `Seed` during `bms migrate`, once per (role key, permission) through `core.role_seed`, so a regional's later edits are never undone and a deleted starter role never returns.
 13 a role or rule may name a permission that is not declared in this installation (a disabled module, a later milestone); it is stored, shown as "not available" and has no effect; `Allow` on an undeclared name is a programming error (`Invalid`) (owner, 2026-10-18).
-14 authz's own code does not verify that a person exists: the foreign key does, from migration `0002` (`core.role_grant.person_id → core.person(id)` ON DELETE RESTRICT, `granted_by → core.person(id)` ON DELETE SET NULL; people's set runs before authz's; people.md Proposed change 9(f)); authz asks `DepartmentSource.Active` for departments (M3; nil → `Unsupported`).
+14 authz's own code does not verify that a person exists: the foreign key does, from migration `0002` (`core.role_grant.person_id → core.person(id)` ON DELETE RESTRICT, `granted_by → core.person(id)` ON DELETE SET NULL; people's set runs before authz's; people.md Proposed change 9(f)); the Lookup asks `DepartmentSource.Active` for departments (M3; required since boundaries step 4, so never `Unsupported`).
 15 no cache: a decision is at most three statements; the api asks once per request and a service once per use case; revisit with traces.
 16 writes that touch the invariants (grant, revoke, role change, role delete, create rule, delete person) take `pg_advisory_xact_lock` on one key, so the duplicate and last-admin checks are serialised.
 17 regional differences are data: roles, grants, rules; this spec owns no settings.
@@ -73,7 +75,7 @@
 
 **Owns.** Tables `core.role`, `core.role_permission`, `core.role_grant`, `core.sod_rule`, `core.role_seed` (all `internal`; nothing personal beyond person IDs). The six permissions, two signals, eight audit actions, route set `access` (`GET /permissions`, `GET|POST /roles`, `GET|PUT|DELETE /roles/{role}`, `GET|POST /grants`, `DELETE /grants/{grant}`, `GET|POST /rules`, `DELETE /rules/{rule}`), screens `/access/roles`, `/access/roles/new`, `/access/roles/:role`, `/access/grants`, `/access/grants/new`, `/access/rules`; keys `core.access.*`; spans `authz.allow`, `authz.allow-in`, `authz.extent`, `authz.<use-case>`; metric `bms.authz.decisions{outcome}`. No settings, no config keys.
 
-**Expects of dependencies.** `app`: part 4 (`declare`: `Set`, `Permissions`, the two signal names; `build`: `New` over `a.corePerms` + `a.plan.Permissions()`, the actor closure, `audit.Scoped("access")`, `a.disp.Scope("access", ...)`; sets `a.permissions`, `a.titles`, `a.deps.authz`, route set `access`; a `seed` step in `migrate`; lazy adapters for identity's `Permissions` and `Lister`, built before authz). `module-contract`: `Deps.Authz authz.Authorizer`, `PermissionDecl.StarterRoles`, `moduletest` supplying `authztest.NewFake()`. `identity`: `SessionFrom`/`PersonFrom` semantics (restricted session is not an actor), `PermissionLister` called with the session's own person. `audit`: `Recorder` honours the ctx transaction; `TitlesOf` may be called inside a `Write` transaction. `db`: `Transact`, `AfterCommit`, `Wrap`, `*Error.Constraint`, `ErrReadOnly`. `signals`: a scoped `Bus`; `InDelivery`. `web-shell`: `session.permissions` entries `p` and `p@<dept>`; `NavEntry.access` matching `p` or any `p@`; the M1 "empty list shows everything" placeholder removed. `people` (M2): `GET /api/people/search` and a batch names route for the grant screens; `ExportPerson`/`DeletePerson` called from its orchestration. `departments-events` (M3): `DepartmentSource`, a departments list route for the grant form.
+**Expects of dependencies.** `app`: part 4 (`declare`: `Set`, `Permissions`, the two signal names; `build`: `New` over `a.corePerms` + `a.plan.Permissions()`, the actor closure, `audit.Scoped("access")`, `a.disp.Scope("access", ...)`; sets `a.deps.authz`, route set `access`; a `seed` step in `migrate`). Since boundaries step 4, `app` builds `authz.NewLookup` before `audit.New` and passes it to audit (`Titles`), identity, settings, api and every module through `Deps.Authz`; there is no `a.titles` and there are no lazy adapters. `module-contract`: `Deps.Authz authz.Authorizer`, `PermissionDecl.StarterRoles`, `moduletest` supplying `authztest.NewFake()`. `identity`: `SessionFrom`/`PersonFrom` semantics (restricted session is not an actor), `PermissionLister` called with the session's own person. `audit`: `Recorder` honours the ctx transaction; `TitlesOf` may be called inside a `Write` transaction. `db`: `Transact`, `AfterCommit`, `Wrap`, `*Error.Constraint`, `ErrReadOnly`. `signals`: a scoped `Bus`; `InDelivery`. `web-shell`: `session.permissions` entries `p` and `p@<dept>`; `NavEntry.access` matching `p` or any `p@`; the M1 "empty list shows everything" placeholder removed. `people` (M2): `GET /api/people/search` and a batch names route for the grant screens; `ExportPerson`/`DeletePerson` called from its orchestration. `departments-events` (M3): `DepartmentSource`, a departments list route for the grant form.
 
 **Open questions:** None (the five were settled 2026-10-18, folded into decisions 2, 5, 6, 9 and 13). **Proposed changes elsewhere:** 18, listed at the end; 17 applied (15 on 2026-10-18, 10 with departments-events, D37; 11, 12 and 18 on 2026-10-19, D39). The last-access-admin check counts separation-of-duties rules and `CreateRule` is refused when it would leave none; `Seed` audits an upgrade that adds a permission to a starter role (D37).
 
@@ -166,7 +168,7 @@ type Authorizer interface {
 }
 
 // DepartmentSource says whether a department exists and is not archived.
-// departments-events implements it (M3); nil refuses department grants (Unsupported).
+// The departments.Lookup implements it; LookupOptions.Departments is required (boundaries step 4).
 type DepartmentSource interface {
 	Active(ctx context.Context, d model.DepartmentID) (bool, error)
 }
@@ -182,8 +184,14 @@ type Options struct {
 	Signals     signals.Bus
 	Actor       ActorFunc
 	Declared    []PermissionDecl // api.PermissionModulesRead, each core part's, Plan.Permissions()
-	Departments DepartmentSource // optional
+	Lookup      *Lookup          // required (authz.lookup); built before audit; replaces Departments (boundaries step 4)
 }
+
+// LookupOptions builds the read side (decisions and lookups; nothing audited or written).
+// Fields: DB, Clock, Logger, Tracer, Meter (optional), Actor, Declared, Departments
+// DepartmentSource (required). NewLookup validates (errs.Invalid) and does no I/O.
+type LookupOptions struct{ /* as listed */ }
+func NewLookup(o LookupOptions) (*Lookup, error)
 
 // Validate fails errs.Invalid joining a validate.FieldError per problem (fields authz.db,
 // authz.clock, authz.logger, authz.tracer, authz.audit, authz.signals, authz.actor,
@@ -564,7 +572,7 @@ Store kinds (`Unavailable`, `Timeout`, `Canceled`) apply to every method that to
 | F38 | `Grant` | the base role | Invalid (`role` `base`) | explain | `TestGrant_BaseRole_ReturnsInvalid` |
 | F39 | `Grant` | unknown role | NotFound | 404 | `TestGrant_UnknownRole_ReturnsNotFound` |
 | F40 | `Grant` | department given for a site role / missing for a department role | Invalid (`department` `mismatch`/`required`) | field error | `TestGrant_DepartmentMismatch_ReturnsInvalid` |
-| F41 | `Grant` | department role and no `DepartmentSource` (M2) | Unsupported | hide the option | `TestGrant_NoDepartmentSource_ReturnsUnsupported` |
+| F41 | `Grant` | (retired 2026-11-01, boundaries step 4: `LookupOptions.Departments` is required, so a missing source fails `NewLookup` with `Invalid` `authz.departments`, test `TestNewLookup_NilDepartments_ReturnsInvalid`) department role and no `DepartmentSource` (M2) | ~~Unsupported~~ | ~~hide the option~~ | ~~`TestGrant_NoDepartmentSource_ReturnsUnsupported`~~ |
 | F42 | `Grant` | `DepartmentSource.Active` false | Invalid (`department` `unknown`) | field error | `TestGrant_InactiveDepartment_ReturnsInvalid` |
 | F43 | `Grant` | `EndsAt` not after now | Invalid (`ends_at` `range`) | field error | `TestGrant_EndsInPast_ReturnsInvalid` |
 | F44 | `Grant` | same person, role and department already active or ended | Conflict (`duplicate`) | explain | `TestGrant_Duplicate_ReturnsConflict` |
@@ -642,6 +650,10 @@ Success path: `TestEnsureGrant_Creates_AuditsOperatorAndPublishes`.
 ## Accepted implementation deviations (demo build, 2026-10-29)
 
 `StarterRoleIDs` (Interface above) is new: the demo seed (demo.md Behavior step 3) names starter roles before any account holds a permission, and `ListRoles` is permission-checked. It is the actor-less, read-only sibling of `EnsureGrant`: no superuser session is used. Failure modes: `StarterRoleIDs` with no key or an empty key is `Invalid` (`keys`, `required`) (`TestStarterRoleIDs_NoKeys_ReturnsInvalid`); an unknown key is `NotFound` (`keys`, `unknown`) (`TestStarterRoleIDs_UnknownKey_ReturnsNotFound`); it works on a read-only copy.
+
+## Amendment 2026-11-01 (boundaries step 4, spec `boundaries.md`)
+
+`authz.NewLookup` and `LookupOptions{DB, Clock, Logger, Tracer, Meter, Actor, Declared, Departments}` add the read side, built before `audit.New`: it implements `Allow`, `AllowIn`, `ExtentOf`, `PermissionsOf`, `TitlesOf`, `HoldersOf` and `StarterRoleIDs`, audits nothing and writes nothing. `Options` loses `Departments` and gains `Lookup *Lookup` (required, `authz.lookup`); the Service forwards the decision methods. `Departments` is required, so F41 is retired. F1–F16 and F67–F71 belong to the Lookup, unchanged. `app` builds the Lookup before audit and hands it to audit, identity, settings, api and every module; `a.titles` and the lazy adapters are gone.
 
 ## Open questions
 

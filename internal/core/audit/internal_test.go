@@ -26,6 +26,11 @@ import (
 	"github.com/zedgama3/bms/internal/model"
 )
 
+// noTitles is a TitleSource that knows no titles. authztest would cycle back to audit.
+type noTitles struct{}
+
+func (noTitles) TitlesOf(context.Context, model.PersonID) ([]string, error) { return nil, nil }
+
 // readOnlyLog builds a Log over a read-only fake database, so Record goes to the spool.
 func readOnlyLog(t *testing.T) *Log {
 	t.Helper()
@@ -40,6 +45,7 @@ func readOnlyLog(t *testing.T) *Log {
 		Instance: "test-copy",
 		DataDir:  t.TempDir(),
 		Actor:    func(context.Context) (Actor, bool) { return Actor{}, false },
+		Titles:   noTitles{},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -145,6 +151,7 @@ func newLogOn(t *testing.T, d db.DB, dir string) (*Log, *telemetrytest.Capture) 
 		Instance: "test-copy",
 		DataDir:  dir,
 		Actor:    func(context.Context) (Actor, bool) { return Actor{}, false },
+		Titles:   noTitles{},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

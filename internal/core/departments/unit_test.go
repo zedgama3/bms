@@ -59,6 +59,7 @@ func TestNew_MissingDependency_ReturnsInvalid(t *testing.T) {
 		{"departments.signals", func(o *departments.Options) { o.Signals = nil }},
 		{"departments.authz", func(o *departments.Options) { o.Authz = nil }},
 		{"departments.actor", func(o *departments.Options) { o.Actor = nil }},
+		{"departments.lookup", func(o *departments.Options) { o.Lookup = nil }},
 	}
 	for _, tc := range tests {
 		t.Run(tc.field, func(t *testing.T) {
@@ -82,7 +83,7 @@ func TestOptions_Validate_Table(t *testing.T) {
 	all := departments.Options{}
 	err := all.Validate()
 	wantKind(t, err, errs.Invalid)
-	for _, f := range []string{"db", "clock", "logger", "tracer", "meter", "audit", "signals", "authz", "actor"} {
+	for _, f := range []string{"db", "clock", "logger", "tracer", "meter", "audit", "signals", "authz", "actor", "lookup"} {
 		if !hasField(err, "departments."+f, "") {
 			t.Errorf("zero Options does not report departments.%s", f)
 		}

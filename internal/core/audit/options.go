@@ -79,13 +79,14 @@ type Options struct {
 	Instance       string            // config instance.name grammar: 1..64, [a-z0-9]([a-z0-9-]*[a-z0-9])?
 	DataDir        string            // the spool lives in filepath.Join(DataDir, SpoolDirName)
 	Actor          ActorFunc         // required
-	Titles         TitleSource       // optional (M1: nil)
+	Titles         TitleSource       // the authz.Lookup; required
 	Permissions    PermissionChecker // optional (M1: nil, deny)
 	ImportInterval time.Duration     // 0 = DefaultImportInterval; else 1s..10m
 }
 
 // Validate fails errs.Invalid joining a validate.FieldError per problem: "audit.db",
-// "audit.clock", "audit.logger", "audit.tracer", "audit.actor" (nil), "instance.name",
+// "audit.clock", "audit.logger", "audit.tracer", "audit.actor" (nil), "audit.titles" (nil),
+// "instance.name",
 // "data.dir" (empty or NUL), "audit.import_interval".
 func (o Options) Validate() error {
 	v := validate.Errors{Op: "audit.Options.Validate"}
@@ -103,6 +104,9 @@ func (o Options) Validate() error {
 	}
 	if o.Actor == nil {
 		v.Addf("audit.actor", validate.CodeRequired, "must be set")
+	}
+	if o.Titles == nil {
+		v.Addf("audit.titles", validate.CodeRequired, "must be set")
 	}
 	if len(o.Instance) > maxInstanceBytes || !instanceRE.MatchString(o.Instance) {
 		v.Addf("instance.name", codeMalformed, "must be 1 to %d characters of a-z, 0-9 and hyphens, not starting or ending with a hyphen", maxInstanceBytes)

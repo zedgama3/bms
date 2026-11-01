@@ -167,18 +167,38 @@ func validOptions(t testing.TB, d db.DB) *rig {
 		d1: newDept(), d2: newDept(), dOff: newDept()}
 	r.depts = &deptSource{active: map[model.DepartmentID]bool{r.d1: true, r.d2: true}}
 	r.opts = authz.Options{
-		DB:          d,
-		Clock:       clk,
-		Logger:      c.Logger(),
-		Tracer:      c.Tracer("authz"),
-		Meter:       c.Meter("authz"),
-		Audit:       rec,
-		Signals:     bus,
-		Actor:       actorFromCtx,
-		Declared:    declared(),
-		Departments: r.depts,
+		DB:       d,
+		Clock:    clk,
+		Logger:   c.Logger(),
+		Tracer:   c.Tracer("authz"),
+		Meter:    c.Meter("authz"),
+		Audit:    rec,
+		Signals:  bus,
+		Actor:    actorFromCtx,
+		Declared: declared(),
 	}
+	r.opts.Lookup = r.lookupFor(r.opts)
 	return r
+}
+
+// lookupOptionsFor is the read side's options matching o: what the app would hand both
+// halves. The departments source is the rig's.
+func (r *rig) lookupOptionsFor(o authz.Options) authz.LookupOptions {
+	return authz.LookupOptions{
+		DB: o.DB, Clock: o.Clock, Logger: o.Logger, Tracer: o.Tracer, Meter: o.Meter,
+		Actor: o.Actor, Declared: o.Declared, Departments: r.depts,
+	}
+}
+
+// lookupFor builds the Lookup for o (use it after changing o.Actor or o.Declared so the
+// decisions follow).
+func (r *rig) lookupFor(o authz.Options) *authz.Lookup {
+	r.t.Helper()
+	l, err := authz.NewLookup(r.lookupOptionsFor(o))
+	if err != nil {
+		r.t.Fatalf("authz.NewLookup: %v", err)
+	}
+	return l
 }
 
 // newUnitRig builds a service over d (db.None or a dbtest fake).
@@ -188,6 +208,7 @@ func newUnitRig(t testing.TB, d db.DB, mods ...func(*authz.Options)) *rig {
 	for _, m := range mods {
 		m(&r.opts)
 	}
+	r.opts.Lookup = r.lookupFor(r.opts) // after the mods, so Actor and Declared reach the Lookup
 	svc, err := authz.New(r.opts)
 	if err != nil {
 		t.Fatalf("authz.New: %v", err)

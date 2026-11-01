@@ -8,8 +8,10 @@ import (
 
 	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/authz/rows"
+	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/telemetry"
 	"github.com/zedgama3/bms/internal/lib/errs"
+	"github.com/zedgama3/bms/internal/lib/validate"
 	"github.com/zedgama3/bms/internal/model"
 )
 
@@ -60,16 +62,16 @@ func (a *access) anywhere(p Permission) bool { return !a.extent(p).IsZero() }
 // forbiddenBy returns the permission names rule r forbids: its permission, or every
 // declared name reaching at least its level. A level the table cannot hold is a broken
 // invariant: errs.Internal, so the decision fails closed instead of forbidding nothing.
-func (s *Service) forbiddenBy(r rows.HeldRule) ([]string, error) {
+func (l *Lookup) forbiddenBy(r rows.HeldRule) ([]string, error) {
 	if r.Permission != "" {
 		return []string{r.Permission}, nil
 	}
 	level, err := model.ParseSensitivity(r.Reaches)
 	if err != nil {
-		return nil, errs.E("authz.Service.forbiddenBy", errs.Internal, errors.New("a stored rule has no permission and no valid level"))
+		return nil, errs.E("authz.Lookup.forbiddenBy", errs.Internal, errors.New("a stored rule has no permission and no valid level"))
 	}
 	var out []string
-	for _, d := range s.cat.list {
+	for _, d := range l.cat.list {
 		if d.Reaches >= level {
 			out = append(out, string(d.Name))
 		}
@@ -78,10 +80,10 @@ func (s *Service) forbiddenBy(r rows.HeldRule) ([]string, error) {
 }
 
 // forbiddenSet is the union of what every rule forbids.
-func (s *Service) forbiddenSet(rules []rows.HeldRule) (map[string]struct{}, error) {
+func (l *Lookup) forbiddenSet(rules []rows.HeldRule) (map[string]struct{}, error) {
 	out := map[string]struct{}{}
 	for _, r := range rules {
-		names, err := s.forbiddenBy(r)
+		names, err := l.forbiddenBy(r)
 		if err != nil {
 			return nil, err
 		}
@@ -95,17 +97,17 @@ func (s *Service) forbiddenSet(rules []rows.HeldRule) (map[string]struct{}, erro
 // load reads the person's grants (all permissions, or only one when only is not empty) and
 // the rules of the roles they hold, and returns the effective set (decision 3, steps 3a and
 // 3b). With no grant rows there is nothing a rule could remove, so the rules are not read.
-func (s *Service) load(ctx context.Context, person model.PersonID, only Permission) (*access, error) {
-	const op = "authz.Service.load"
-	now := s.now()
+func (l *Lookup) load(ctx context.Context, person model.PersonID, only Permission) (*access, error) {
+	const op = "authz.Lookup.load"
+	now := l.now()
 	var (
 		held []rows.Held
 		err  error
 	)
 	if only != "" {
-		held, err = s.store.EffectiveFor(ctx, person, now, string(only))
+		held, err = l.store.EffectiveFor(ctx, person, now, string(only))
 	} else {
-		held, err = s.store.EffectivePermissions(ctx, person, now)
+		held, err = l.store.EffectivePermissions(ctx, person, now)
 	}
 	if err != nil {
 		return nil, wrap(op, err)
@@ -114,11 +116,11 @@ func (s *Service) load(ctx context.Context, person model.PersonID, only Permissi
 	if len(held) == 0 {
 		return out, nil
 	}
-	rules, err := s.store.RulesHeldBy(ctx, person, now)
+	rules, err := l.store.RulesHeldBy(ctx, person, now)
 	if err != nil {
 		return nil, wrap(op, err)
 	}
-	forbidden, err := s.forbiddenSet(rules)
+	forbidden, err := l.forbiddenSet(rules)
 	if err != nil {
 		return nil, wrap(op, err)
 	}
@@ -130,7 +132,7 @@ func (s *Service) load(ctx context.Context, person model.PersonID, only Permissi
 		// Fail closed: a permission declared site-only is never held for a department,
 		// whatever the row says (a department role given it while it was undeclared, or a
 		// module that changed the scope since).
-		if d, ok := s.cat.byName[p]; ok && d.Scope == ScopeSite && !h.Department.IsZero() {
+		if d, ok := l.cat.byName[p]; ok && d.Scope == ScopeSite && !h.Department.IsZero() {
 			continue
 		}
 		set := out.sets[p]
@@ -148,20 +150,20 @@ func (s *Service) load(ctx context.Context, person model.PersonID, only Permissi
 }
 
 // accessOf is the actor's own effective set: everything for the superuser, without a query.
-func (s *Service) accessOf(ctx context.Context, a Actor, only Permission) (*access, error) {
+func (l *Lookup) accessOf(ctx context.Context, a Actor, only Permission) (*access, error) {
 	if a.Superuser {
 		return &access{super: true}, nil
 	}
-	return s.load(ctx, a.Person, only)
+	return l.load(ctx, a.Person, only)
 }
 
 // declaredCheck fails errs.Invalid for a permission nobody declared (F5): the caller
 // is a module that asked about a name it did not declare.
-func (s *Service) declaredCheck(op string, p Permission) error {
+func (l *Lookup) declaredCheck(op string, p Permission) error {
 	if err := p.Validate(); err != nil {
 		return fieldInvalid(op, "permission", codeMalformed, "must be <module>.<ident>(.<ident>)*")
 	}
-	if _, ok := s.cat.byName[p]; !ok {
+	if _, ok := l.cat.byName[p]; !ok {
 		return fieldInvalid(op, "permission", codeUnknown, "is not declared by the core or an enabled module")
 	}
 	return nil
@@ -170,19 +172,19 @@ func (s *Service) declaredCheck(op string, p Permission) error {
 // resolve is the decision for one permission: where the actor holds p. super reports the
 // superuser path (no query). The returned error is already classified; the caller counts
 // the outcome.
-func (s *Service) resolve(ctx context.Context, op string, span telemetry.Span, p Permission) (ext Extent, super bool, err error) {
-	if err := s.declaredCheck(op, p); err != nil {
+func (l *Lookup) resolve(ctx context.Context, op string, span telemetry.Span, p Permission) (ext Extent, super bool, err error) {
+	if err := l.declaredCheck(op, p); err != nil {
 		return Extent{}, false, err
 	}
 	span.SetAttrs(telemetry.Token("permission", string(p)))
-	a, err := s.actor(ctx, op)
+	a, err := l.actor(ctx, op)
 	if err != nil {
 		return Extent{}, false, err
 	}
 	if a.Superuser {
 		return Extent{Site: true}, true, nil
 	}
-	acc, err := s.load(ctx, a.Person, p)
+	acc, err := l.load(ctx, a.Person, p)
 	if err != nil {
 		return Extent{}, false, err
 	}
@@ -190,12 +192,12 @@ func (s *Service) resolve(ctx context.Context, op string, span telemetry.Span, p
 }
 
 // countError counts the outcome of a decision that failed before it was made.
-func (s *Service) countError(ctx context.Context, err error) {
+func (l *Lookup) countError(ctx context.Context, err error) {
 	if errs.Is(err, errs.Unauthenticated) {
-		s.metrics.decided(ctx, outcomeUnauthenticated)
+		l.metrics.decided(ctx, outcomeUnauthenticated)
 		return
 	}
-	s.metrics.decided(ctx, outcomeError)
+	l.metrics.decided(ctx, outcomeError)
 }
 
 func denied(op string, p Permission, what string) error {
@@ -207,59 +209,59 @@ func denied(op string, p Permission, what string) error {
 // session; errs.Invalid for a permission nobody declared; and the store's kinds. The
 // superuser is allowed before any query. A denial is not audited: the caller audits its
 // use case.
-func (s *Service) Allow(ctx context.Context, p Permission) (err error) {
-	const op = "authz.Service.Allow"
-	ctx, span := s.start(ctx, "allow")
+func (l *Lookup) Allow(ctx context.Context, p Permission) (err error) {
+	const op = "authz.Lookup.Allow"
+	ctx, span := l.start(ctx, "allow")
 	defer endSpan(span, &err)
-	ext, super, err := s.resolve(ctx, op, span, p)
+	ext, super, err := l.resolve(ctx, op, span, p)
 	switch {
 	case err != nil:
-		s.countError(ctx, err)
+		l.countError(ctx, err)
 		return err
 	case super:
-		s.metrics.decided(ctx, outcomeSuperuser)
+		l.metrics.decided(ctx, outcomeSuperuser)
 		span.SetAttrs(telemetry.Token("outcome", outcomeSuperuser))
 		return nil
 	case !ext.Site:
-		s.metrics.decided(ctx, outcomeDenied)
+		l.metrics.decided(ctx, outcomeDenied)
 		span.SetAttrs(telemetry.Token("outcome", outcomeDenied))
 		return denied(op, p, "the permission")
 	}
-	s.metrics.decided(ctx, outcomeAllowed)
+	l.metrics.decided(ctx, outcomeAllowed)
 	span.SetAttrs(telemetry.Token("outcome", outcomeAllowed))
 	return nil
 }
 
 // AllowIn fails errs.Permission unless the actor holds p site-wide or for d. It fails
 // errs.Invalid for the zero department or an undeclared permission, and as Allow does.
-func (s *Service) AllowIn(ctx context.Context, p Permission, d model.DepartmentID) (err error) {
-	const op = "authz.Service.AllowIn"
-	ctx, span := s.start(ctx, "allow-in")
+func (l *Lookup) AllowIn(ctx context.Context, p Permission, d model.DepartmentID) (err error) {
+	const op = "authz.Lookup.AllowIn"
+	ctx, span := l.start(ctx, "allow-in")
 	defer endSpan(span, &err)
-	if err := s.declaredCheck(op, p); err != nil {
-		s.countError(ctx, err)
+	if err := l.declaredCheck(op, p); err != nil {
+		l.countError(ctx, err)
 		return err
 	}
 	if d.IsZero() {
 		err := fieldInvalid(op, "department", codeRequired, "must be set")
-		s.countError(ctx, err)
+		l.countError(ctx, err)
 		return err
 	}
-	ext, super, err := s.resolve(ctx, op, span, p)
+	ext, super, err := l.resolve(ctx, op, span, p)
 	switch {
 	case err != nil:
-		s.countError(ctx, err)
+		l.countError(ctx, err)
 		return err
 	case super:
-		s.metrics.decided(ctx, outcomeSuperuser)
+		l.metrics.decided(ctx, outcomeSuperuser)
 		span.SetAttrs(telemetry.Token("outcome", outcomeSuperuser))
 		return nil
 	case !ext.Covers(d):
-		s.metrics.decided(ctx, outcomeDenied)
+		l.metrics.decided(ctx, outcomeDenied)
 		span.SetAttrs(telemetry.Token("outcome", outcomeDenied))
 		return denied(op, p, "the permission")
 	}
-	s.metrics.decided(ctx, outcomeAllowed)
+	l.metrics.decided(ctx, outcomeAllowed)
 	span.SetAttrs(telemetry.Token("outcome", outcomeAllowed))
 	return nil
 }
@@ -267,22 +269,22 @@ func (s *Service) AllowIn(ctx context.Context, p Permission, d model.DepartmentI
 // ExtentOf returns where the actor holds p, after the rules: {Site: true} for the
 // superuser, the distinct departments otherwise; a zero Extent and nil when nowhere. It
 // fails as Allow does.
-func (s *Service) ExtentOf(ctx context.Context, p Permission) (_ Extent, err error) {
-	const op = "authz.Service.ExtentOf"
-	ctx, span := s.start(ctx, "extent")
+func (l *Lookup) ExtentOf(ctx context.Context, p Permission) (_ Extent, err error) {
+	const op = "authz.Lookup.ExtentOf"
+	ctx, span := l.start(ctx, "extent")
 	defer endSpan(span, &err)
-	ext, super, err := s.resolve(ctx, op, span, p)
+	ext, super, err := l.resolve(ctx, op, span, p)
 	switch {
 	case err != nil:
-		s.countError(ctx, err)
+		l.countError(ctx, err)
 		return Extent{}, err
 	case super:
-		s.metrics.decided(ctx, outcomeSuperuser)
+		l.metrics.decided(ctx, outcomeSuperuser)
 		return ext, nil
 	case ext.IsZero():
-		s.metrics.decided(ctx, outcomeDenied)
+		l.metrics.decided(ctx, outcomeDenied)
 	default:
-		s.metrics.decided(ctx, outcomeAllowed)
+		l.metrics.decided(ctx, outcomeAllowed)
 	}
 	return ext, nil
 }
@@ -291,11 +293,11 @@ func (s *Service) ExtentOf(ctx context.Context, p Permission) (_ Extent, err err
 // holds after the rules, "p" for site and "p@<department-id>" for a department, sorted and
 // unique, never nil; every declared name for the superuser. person must be the actor's
 // own (errs.Permission otherwise); fails errs.Unauthenticated without an actor.
-func (s *Service) PermissionsOf(ctx context.Context, person model.PersonID) (_ []string, err error) {
-	const op = "authz.Service.PermissionsOf"
-	ctx, span := s.start(ctx, "permissions-of")
+func (l *Lookup) PermissionsOf(ctx context.Context, person model.PersonID) (_ []string, err error) {
+	const op = "authz.Lookup.PermissionsOf"
+	ctx, span := l.start(ctx, "permissions-of")
 	defer endSpan(span, &err)
-	a, err := s.actor(ctx, op)
+	a, err := l.actor(ctx, op)
 	if err != nil {
 		return nil, err
 	}
@@ -304,17 +306,17 @@ func (s *Service) PermissionsOf(ctx context.Context, person model.PersonID) (_ [
 	}
 	out := []string{}
 	if a.Superuser {
-		for _, d := range s.cat.list {
+		for _, d := range l.cat.list {
 			out = append(out, string(d.Name))
 		}
 		return out, nil
 	}
-	acc, err := s.load(ctx, a.Person, "")
+	acc, err := l.load(ctx, a.Person, "")
 	if err != nil {
 		return nil, err
 	}
 	for p := range acc.sets {
-		if _, ok := s.cat.byName[p]; !ok {
+		if _, ok := l.cat.byName[p]; !ok {
 			continue // not available in this installation: no effect (decision 13)
 		}
 		ext := acc.extent(p)
@@ -340,26 +342,26 @@ func (s *Service) PermissionsOf(ctx context.Context, person model.PersonID) (_ [
 // actor, no permission check, not audited, never on a route; the consumers are app's
 // superuser-alert adapter and people's deletion notice. It fails errs.Invalid for a
 // permission nobody declared and with the store's kinds (Unavailable, Timeout, Canceled).
-func (s *Service) HoldersOf(ctx context.Context, p Permission) (_ []model.PersonID, err error) {
-	const op = "authz.Service.HoldersOf"
-	ctx, span := s.start(ctx, "holders-of")
+func (l *Lookup) HoldersOf(ctx context.Context, p Permission) (_ []model.PersonID, err error) {
+	const op = "authz.Lookup.HoldersOf"
+	ctx, span := l.start(ctx, "holders-of")
 	defer endSpan(span, &err)
-	if err := s.declaredCheck(op, p); err != nil {
+	if err := l.declaredCheck(op, p); err != nil {
 		return nil, err
 	}
 	span.SetAttrs(telemetry.Token("permission", string(p)))
-	now := s.now()
-	candidates, err := s.store.PermissionHolders(ctx, string(p), now)
+	now := l.now()
+	candidates, err := l.store.PermissionHolders(ctx, string(p), now)
 	if err != nil {
 		return nil, wrap(op, err)
 	}
 	out := make([]model.PersonID, 0, len(candidates))
 	for _, person := range candidates {
-		rules, err := s.store.RulesHeldBy(ctx, person, now)
+		rules, err := l.store.RulesHeldBy(ctx, person, now)
 		if err != nil {
 			return nil, wrap(op, err)
 		}
-		forbidden, err := s.forbiddenSet(rules)
+		forbidden, err := l.forbiddenSet(rules)
 		if err != nil {
 			return nil, wrap(op, err)
 		}
@@ -375,14 +377,14 @@ func (s *Service) HoldersOf(ctx context.Context, p Permission) (_ []model.Person
 // TitlesOf is audit.TitleSource: the key (or, when renamed, the name) of each non-base role
 // the person holds now, sorted, at most audit.MaxTitles; nil for none. It needs no actor
 // and opens no transaction, so the recorder may call it inside a Write transaction.
-func (s *Service) TitlesOf(ctx context.Context, person model.PersonID) (_ []string, err error) {
-	const op = "authz.Service.TitlesOf"
-	ctx, span := s.start(ctx, "titles-of")
+func (l *Lookup) TitlesOf(ctx context.Context, person model.PersonID) (_ []string, err error) {
+	const op = "authz.Lookup.TitlesOf"
+	ctx, span := l.start(ctx, "titles-of")
 	defer endSpan(span, &err)
 	if person.IsZero() {
 		return nil, nil
 	}
-	titles, err := s.store.TitlesOf(ctx, person, s.now(), audit.MaxTitles)
+	titles, err := l.store.TitlesOf(ctx, person, l.now(), audit.MaxTitles)
 	if err != nil {
 		return nil, wrap(op, err)
 	}
@@ -399,50 +401,44 @@ func (s *Service) TitlesOf(ctx context.Context, person model.PersonID) (_ []stri
 	return out, nil
 }
 
-// ListPermissions returns the catalogue sorted by name. It needs access.roles.read
-// site-wide, or any of access.grants.read, access.grants.manage and
-// access.department-grants.manage in any extent (then only the permissions that can be
-// granted for a department). Fails errs.Permission, errs.Unauthenticated and store kinds.
-func (s *Service) ListPermissions(ctx context.Context) (_ []PermissionInfo, err error) {
-	const op = "authz.Service.ListPermissions"
-	ctx, span := s.start(ctx, "list-permissions")
+// StarterRoleIDs returns the ID of each starter role named in keys ("access-admin", ...). It
+// is the actor-less, read-only lookup of the demo seed (D53), which must name roles before
+// any account holds one: it checks no permission and records no audit entry, because it
+// reads only role keys and IDs, which are not personal data, and it changes nothing. A
+// request never reaches it. Works on a read-only copy.
+//
+// Fails errs.Invalid (field keys) for no keys or an empty key, errs.NotFound (field keys,
+// code unknown) when a key names no starter role, and store kinds. The result holds exactly
+// the requested keys.
+func (l *Lookup) StarterRoleIDs(ctx context.Context, keys []string) (_ map[string]RoleID, err error) {
+	const op = "authz.Lookup.StarterRoleIDs"
+	ctx, span := l.start(ctx, "starter-role-ids")
 	defer endSpan(span, &err)
-	view, err := s.viewer(ctx, op)
+	if len(keys) == 0 || slices.Contains(keys, "") {
+		return nil, fieldInvalid(op, "keys", codeRequired, "name at least one starter role key, none empty")
+	}
+	var rs []rows.Role
+	err = l.inTx(ctx, db.Read, func(ctx context.Context) error {
+		var lerr error
+		rs, lerr = l.store.ListRoles(ctx, "")
+		return wrap(op, lerr)
+	})
 	if err != nil {
 		return nil, err
 	}
-	out := make([]PermissionInfo, 0, len(s.cat.list))
-	for _, d := range s.cat.list {
-		if !view.full && d.Scope != ScopeDepartment {
-			continue
+	byKey := make(map[string]RoleID, len(rs))
+	for _, r := range rs {
+		if r.Key != "" {
+			byKey[r.Key] = r.ID
 		}
-		d.StarterRoles = slices.Clone(d.StarterRoles)
-		out = append(out, PermissionInfo{PermissionDecl: d})
+	}
+	out := make(map[string]RoleID, len(keys))
+	for _, k := range keys {
+		id, ok := byKey[k]
+		if !ok {
+			return nil, errs.E(op, errs.NotFound, &validate.FieldError{Field: "keys", Code: "unknown", Reason: "a key names no starter role"})
+		}
+		out[k] = id
 	}
 	return out, nil
-}
-
-// viewer is the caller of a catalogue or role read: full with access.roles.read, otherwise
-// limited to department material when a grants permission is held in any extent.
-type viewer struct{ full bool }
-
-func (s *Service) viewer(ctx context.Context, op string) (viewer, error) {
-	a, err := s.actor(ctx, op)
-	if err != nil {
-		return viewer{}, err
-	}
-	if a.Superuser {
-		return viewer{full: true}, nil
-	}
-	acc, err := s.load(ctx, a.Person, "")
-	if err != nil {
-		return viewer{}, err
-	}
-	if acc.site(PermissionRolesRead) {
-		return viewer{full: true}, nil
-	}
-	if acc.anywhere(PermissionGrantsRead) || acc.anywhere(PermissionGrantsManage) || acc.anywhere(PermissionDepartmentGrantsManage) {
-		return viewer{}, nil
-	}
-	return viewer{}, denied(op, PermissionRolesRead, "the permission")
 }

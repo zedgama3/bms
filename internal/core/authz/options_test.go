@@ -39,6 +39,7 @@ func TestNew_NilDependency_ReturnsInvalid(t *testing.T) {
 		{"authz.audit", func(o *authz.Options) { o.Audit = audit.Recorder(nil) }},
 		{"authz.signals", func(o *authz.Options) { o.Signals = signals.Bus(nil) }},
 		{"authz.actor", func(o *authz.Options) { o.Actor = nil }},
+		{"authz.lookup", func(o *authz.Options) { o.Lookup = nil }},
 	}
 	for _, tc := range tests {
 		t.Run(tc.field, func(t *testing.T) {
@@ -60,7 +61,7 @@ func TestNew_NilDependency_ReturnsInvalid(t *testing.T) {
 func TestNew_AllNilReportsEveryField(t *testing.T) {
 	err := authz.Options{}.Validate()
 	wantKind(t, err, errs.Invalid)
-	for _, f := range []string{"authz.db", "authz.clock", "authz.logger", "authz.tracer", "authz.audit", "authz.signals", "authz.actor"} {
+	for _, f := range []string{"authz.db", "authz.clock", "authz.logger", "authz.tracer", "authz.audit", "authz.signals", "authz.actor", "authz.lookup"} {
 		if !hasField(err, f) {
 			t.Errorf("missing field error %q", f)
 		}
@@ -70,7 +71,6 @@ func TestNew_AllNilReportsEveryField(t *testing.T) {
 func TestNew_OptionalFieldsMayBeNil(t *testing.T) {
 	r := validOptions(t, db.None())
 	r.opts.Meter = nil
-	r.opts.Departments = nil
 	r.opts.Declared = nil
 	svc, err := authz.New(r.opts)
 	wantNoErr(t, err)

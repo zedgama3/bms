@@ -7,10 +7,8 @@ import (
 
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/people"
-	"github.com/zedgama3/bms/internal/core/settings"
 	"github.com/zedgama3/bms/internal/core/settings/settingstest"
 	"github.com/zedgama3/bms/internal/lib/errs"
-	"github.com/zedgama3/bms/internal/model"
 )
 
 func TestSettingsPolicy_Defaults_AreIdentityDefaultPolicy(t *testing.T) {
@@ -152,39 +150,5 @@ func TestRefresher_StopWithExpiredContext_ReturnsTimeout(t *testing.T) {
 	defer cancel()
 	if err := r.stop(ctx); !errs.Is(err, errs.Timeout) {
 		t.Errorf("err = %v, want Timeout", err)
-	}
-}
-
-// Once authz's part has run, the lazy authorizer is authz: it answers what the service does.
-func TestLazyAuthorizer_AfterAuthz_Delegates(t *testing.T) {
-	a := builtCore(t)
-	if a.authz == nil {
-		t.Fatal("authz was not built")
-	}
-	l := lazyAuthorizer{a: a}
-	super := identity.WithSession(context.Background(), identity.Session{
-		Person: model.PersonID{9}, Superuser: true,
-	})
-	for name, ctx := range map[string]context.Context{"no actor": context.Background(), "superuser": super} {
-		t.Run(name, func(t *testing.T) {
-			wantAllow := a.authz.Allow(ctx, settings.PermissionRead)
-			if got := l.Allow(ctx, settings.PermissionRead); errs.KindOf(got) != errs.KindOf(wantAllow) || (got == nil) != (wantAllow == nil) {
-				t.Errorf("Allow = %v, want authz's %v", got, wantAllow)
-			}
-			wantIn := a.authz.AllowIn(ctx, settings.PermissionRead, model.DepartmentID{1})
-			if got := l.AllowIn(ctx, settings.PermissionRead, model.DepartmentID{1}); errs.KindOf(got) != errs.KindOf(wantIn) || (got == nil) != (wantIn == nil) {
-				t.Errorf("AllowIn = %v, want authz's %v", got, wantIn)
-			}
-			wantExt, wantErr := a.authz.ExtentOf(ctx, settings.PermissionRead)
-			gotExt, gotErr := l.ExtentOf(ctx, settings.PermissionRead)
-			if gotExt.Site != wantExt.Site || len(gotExt.Departments) != len(wantExt.Departments) || errs.KindOf(gotErr) != errs.KindOf(wantErr) || (gotErr == nil) != (wantErr == nil) {
-				t.Errorf("ExtentOf = (%+v, %v), want authz's (%+v, %v)", gotExt, gotErr, wantExt, wantErr)
-			}
-		})
-	}
-	// The denial of the lazy adapter before authz is a Permission; authz's own answer for a
-	// request with no actor is not, so the test above tells delegation from the fallback.
-	if err := a.authz.Allow(context.Background(), settings.PermissionRead); errs.Is(err, errs.Permission) {
-		t.Errorf("authz answered Permission for no actor (%v): the test cannot tell delegation from the fallback", err)
 	}
 }

@@ -32,6 +32,7 @@ func realRecorder(t *testing.T, area string) audit.Recorder {
 		Tracer:   c.Tracer("audit"),
 		Instance: "test-copy",
 		DataDir:  t.TempDir(),
+		Titles:   noTitles{},
 		Actor:    func(context.Context) (audit.Actor, bool) { return audit.Actor{}, false },
 	})
 	if err != nil {
@@ -226,3 +227,8 @@ func TestFake_InsideReadTx_ReturnsInternal(t *testing.T) {
 		t.Errorf("Recorded = %d after a write transaction, want 1", n)
 	}
 }
+
+// noTitles is a TitleSource that knows nobody (audit.Options.Titles is required).
+type noTitles struct{}
+
+func (noTitles) TitlesOf(context.Context, model.PersonID) ([]string, error) { return nil, nil }

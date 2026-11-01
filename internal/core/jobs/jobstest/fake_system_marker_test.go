@@ -14,6 +14,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/jobs/jobstest"
 	"github.com/zedgama3/bms/internal/core/telemetry/telemetrytest"
 	"github.com/zedgama3/bms/internal/lib/clock"
+	"github.com/zedgama3/bms/internal/model"
 )
 
 // Fake.Run hands the handler a ctx with audit's system marker, as the real runner does
@@ -32,6 +33,7 @@ func TestFakeRun_HandlerContext_CarriesTheSystemMarker(t *testing.T) {
 		Meter:    c.Meter("audit"),
 		Instance: "test-copy",
 		DataDir:  dir,
+		Titles:   noTitles{},
 		Actor:    func(context.Context) (audit.Actor, bool) { return audit.Actor{}, false },
 	})
 	if err != nil {
@@ -79,3 +81,8 @@ func TestFakeRun_HandlerContext_CarriesTheSystemMarker(t *testing.T) {
 		t.Errorf("%d system entries spooled, want 1:\n%s", n, all.String())
 	}
 }
+
+// noTitles is a TitleSource that knows nobody (audit.Options.Titles is required).
+type noTitles struct{}
+
+func (noTitles) TitlesOf(context.Context, model.PersonID) ([]string, error) { return nil, nil }

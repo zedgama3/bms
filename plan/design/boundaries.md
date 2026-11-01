@@ -287,7 +287,7 @@ func NewLookup(o LookupOptions) (*Lookup, error)
 
 // Lookup implements Authorizer (Allow, AllowIn, ExtentOf), PermissionLister (PermissionsOf),
 // audit.TitleSource (TitlesOf), HoldersOf and StarterRoleIDs, with authz.md's failure modes
-// unchanged (F1–F6, F20, F21).
+// unchanged (F1–F16, F67–F71).
 type Lookup struct{ /* unexported */ }
 
 // Options (the admin Service) loses Departments and gains Lookup; the Service forwards the
@@ -841,7 +841,7 @@ Applied by `spec-editor` after approval, in the step that needs each.
    - *(applied 2026-10-31)* "a core package takes a seam as an `Options` or `Decl` field, never as a method argument it retains" (A1). The rest of this item lands with its steps.
 10. **`plan/design/app.md`**: remove "The superuser alert", the four lazy amendments (2026-10-19, 2026-10-21, the demo adapters of 2026-10-28), `authzActor`/`auditActor`; replace "How later core services plug in" with the build order table above; the Imports section drops `core/demo/postgres`, `core/notify/postgres`, `core/notify/smtp`, `core/notify/channel` and adds `core/auditlog`, `core/regional`, `core/datarights`; narratives go to `history/app.md`.
 11. **`plan/design/audit.md`**: the recorder keeps F1–F14 and the spool; Search, Export, CountAbout, retention, `audit.search|export`, the settings and the routes move to a new section "The log reader (`auditlog`)" with F15–F22 unchanged; `Options.Permissions` removed, `Titles` required; `WithSystem`, `WithOperator` and the actor order added.
-12. **`plan/design/authz.md`**: `Lookup` and `LookupOptions`; `Departments` moves to the Lookup; the Service forwards decisions; F1–F6, F20, F21 are the Lookup's.
+12. (applied 2026-11-01, step 4; see E2) **`plan/design/authz.md`**: `Lookup` and `LookupOptions`; `Departments` moves to the Lookup; the Service forwards decisions; F1–F16, F67–F71 are the Lookup's.
 13. **`plan/design/identity.md`**: `Lookup`, `Actor`, `AuditActor`; `Options.Settings` replaces `PolicySource`; `Holders` and `Alerts` replace `Alerter`; "The superuser alert" section moved in from app.md verbatim; identity built after notify and authz.
 14. **`plan/design/people.md`**: `Lookup`; the data-rights sections (export, deletion, requests, the notice, the two commands, their routes, F40–F58, the signal `people.deletion-requested`) move to datarights.md; people answers as a `PeopleSource`; `Options` loses `Access`, `AuditCount`, `Notify`, `Holders`, `Policy` and gains `Lookup`, `Settings`.
 15. **New `plan/design/datarights.md`**, **`regional.md`**, **`auditlog.md`**: written by `spec-editor` from the moved sections and this spec's Interface, each with its own Summary; README rows added as Approved-on-approval-of-this-spec.
@@ -862,3 +862,4 @@ Applied by `spec-editor` after approval, in the step that needs each.
 - **A1, 2026-10-31** (approved by the owner 2026-10-31; folded in 2026-10-31): the seam check's closure rule is defined by where a capture is stored. The narrative, the reason and what was folded in are in `plan/design/history/boundaries.md`.
 - **E1, 2026-10-31** (erratum, approved by the owner 2026-10-31): an entry with no actor, no marker and no session is anonymous, as before; the earlier text said `errs.Invalid` citing F8, which is the action-grammar failure.
 - **D1, 2026-11-01** (owner): the schema-status closure in `runServe`, found by the blind-spot check, is removed in step 13 by a named reader; it is not listed in the seam table meanwhile.
+- **E2, 2026-11-01** (erratum): the Lookup's failure modes are authz.md's decision rows (F1–F16, F67–F71); the earlier text cited F20 and F21, which are `CreateRole` rows.

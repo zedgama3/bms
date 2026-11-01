@@ -14,7 +14,6 @@ import (
 
 	"github.com/zedgama3/bms/internal/api"
 	"github.com/zedgama3/bms/internal/config"
-	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/demo"
@@ -102,9 +101,7 @@ type assembly struct {
 	corePerms     []authz.PermissionDecl      // api.PermissionModulesRead first, then each part's
 	routeSets     []module.ModuleRoutes       // one per core area with routes; Module is the area name
 	authenticator api.Authenticator           // identity (M1); nil until then
-	permissions   api.PermissionChecker       // authz (M2); nil until then
-	titles        audit.TitleSource           // authz (M2); nil until then (audit reads it lazily)
-	lister        identity.PermissionLister   // authz (M2); nil until then (identity reads it lazily)
+	permissions   api.PermissionChecker       // the authz.Lookup; nil before buildLookups
 	names         identity.NameSource         // people (M2); nil until then (identity reads it lazily)
 	deps          coreDeps                    // copied into every module's Deps by provision
 
@@ -119,20 +116,23 @@ type assembly struct {
 
 	settings *settings.Service // the settings part's service (the PolicySource adapters); nil before its build
 
-	departments *departments.Service       // the departments part's service; nil before its build
-	events      *events.Service            // the events part's service; nil before its build
-	notify      *notify.Service            // the notify part's service (the alert, the outbox in export); nil before its build
-	files       *files.Service             // the files part's service (the Start probe, bms check, bms files verify); nil before its build
-	jobs        *jobs.Runner               // the jobs part's runner (lazyDeferrer, audit.purge, bms check); nil before its build
-	notifiers   map[string]notify.Notifier // the Notifiers notify scoped for identity and people (Scoped fails once Run started); nil before its build
-	stdout      io.Writer                  // the command's standard output (migrate's seed line)
-	parts       []part
-	started     []runnable
-	srv         httpServer
-	uiVersion   string
-	demo        *demo.Service      // the demo part's service (demo seed|reset, the lazy adapters); nil before its build
-	filesPolicy files.PolicySource // the settings-backed files policy; the demo part wraps it when enabled
-	forDocument bool               // the openapi command: the client services are built off and empty (usage.go)
+	departments *departments.Service // the departments part's service; nil before its build
+
+	departmentsLookup *departments.Lookup        // built by buildLookups; nil before it
+	authzLookup       *authz.Lookup              // built by buildLookups; audit, identity, settings and api take it; nil before it
+	events            *events.Service            // the events part's service; nil before its build
+	notify            *notify.Service            // the notify part's service (the alert, the outbox in export); nil before its build
+	files             *files.Service             // the files part's service (the Start probe, bms check, bms files verify); nil before its build
+	jobs              *jobs.Runner               // the jobs part's runner (lazyDeferrer, audit.purge, bms check); nil before its build
+	notifiers         map[string]notify.Notifier // the Notifiers notify scoped for identity and people (Scoped fails once Run started); nil before its build
+	stdout            io.Writer                  // the command's standard output (migrate's seed line)
+	parts             []part
+	started           []runnable
+	srv               httpServer
+	uiVersion         string
+	demo              *demo.Service      // the demo part's service (demo seed|reset, the lazy adapters); nil before its build
+	filesPolicy       files.PolicySource // the settings-backed files policy; the demo part wraps it when enabled
+	forDocument       bool               // the openapi command: the client services are built off and empty (usage.go)
 }
 
 // newAssembly returns the assembly of one command run over cfg. Telemetry and everything

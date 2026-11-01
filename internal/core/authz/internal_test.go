@@ -99,17 +99,30 @@ func declaredForTests() []PermissionDecl {
 	)
 }
 
+// allActive is a DepartmentSource for which every department is active.
+type allActive struct{}
+
+func (allActive) Active(context.Context, model.DepartmentID) (bool, error) { return true, nil }
+
 func newTestService(t *testing.T, st store) *Service {
 	t.Helper()
 	c := telemetrytest.New(t)
+	clk := clock.NewFake(time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC))
+	lk, err := newLookup(LookupOptions{
+		DB: dbtest.NewFake(), Clock: clk, Logger: c.Logger(), Tracer: c.Tracer("authz"),
+		Actor: actorOf, Declared: declaredForTests(), Departments: allActive{},
+	}, st)
+	if err != nil {
+		t.Fatalf("newLookup: %v", err)
+	}
 	bus, err := signalstest.NewFake("access", []signals.Name{SignalGrantCreated, SignalGrantRevoked}, nil)
 	if err != nil {
 		t.Fatalf("signalstest.NewFake: %v", err)
 	}
 	s, err := newService(Options{
-		DB: dbtest.NewFake(), Clock: clock.NewFake(time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)),
+		DB: dbtest.NewFake(), Clock: clk,
 		Logger: c.Logger(), Tracer: c.Tracer("authz"), Audit: audittest.NewFake("access"), Signals: bus,
-		Actor: actorOf, Declared: declaredForTests(),
+		Actor: actorOf, Declared: declaredForTests(), Lookup: lk,
 	}, st)
 	if err != nil {
 		t.Fatalf("newService: %v", err)
@@ -128,7 +141,7 @@ func TestLoad_RuleRemovesThePermissionInEveryExtent(t *testing.T) {
 		rules: []rows.HeldRule{{ID: model.NewID[rows.RuleID](), Role: model.NewID[rows.RoleID](), Permission: string(pShiftManage)}},
 	}
 	s := newTestService(t, fs)
-	acc, err := s.load(t.Context(), model.NewID[model.PersonID](), "")
+	acc, err := s.lk.load(t.Context(), model.NewID[model.PersonID](), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +156,7 @@ func TestLoad_RuleRemovesThePermissionInEveryExtent(t *testing.T) {
 func TestLoad_NothingHeld_SkipsTheRulesQuery(t *testing.T) {
 	fs := &fakeStore{}
 	s := newTestService(t, fs)
-	if _, err := s.load(t.Context(), model.NewID[model.PersonID](), ""); err != nil {
+	if _, err := s.lk.load(t.Context(), model.NewID[model.PersonID](), ""); err != nil {
 		t.Fatal(err)
 	}
 	if fs.queries != 1 {
@@ -153,11 +166,11 @@ func TestLoad_NothingHeld_SkipsTheRulesQuery(t *testing.T) {
 
 func TestForbiddenBy_LevelRuleCoversDeclaredAtOrAbove(t *testing.T) {
 	s := newTestService(t, &fakeStore{})
-	got, err := s.forbiddenBy(rows.HeldRule{Reaches: "sensitive"})
+	got, err := s.lk.forbiddenBy(rows.HeldRule{Reaches: "sensitive"})
 	if err != nil || !slices.Equal(got, []string{string(pMedRead)}) {
 		t.Errorf("sensitive rule forbids %v (%v), want only %s", got, err, pMedRead)
 	}
-	internal, err := s.forbiddenBy(rows.HeldRule{Reaches: "internal"})
+	internal, err := s.lk.forbiddenBy(rows.HeldRule{Reaches: "internal"})
 	if err != nil || !slices.Contains(internal, string(pShiftRead)) || !slices.Contains(internal, string(pMedRead)) {
 		t.Errorf("internal rule forbids %v (%v), want shifts and med reports", internal, err)
 	}
@@ -165,7 +178,7 @@ func TestForbiddenBy_LevelRuleCoversDeclaredAtOrAbove(t *testing.T) {
 
 func TestForbiddenBy_UnreadableLevel_ReturnsInternal(t *testing.T) {
 	s := newTestService(t, &fakeStore{})
-	if _, err := s.forbiddenBy(rows.HeldRule{Reaches: "no such level"}); !errs.Is(err, errs.Internal) {
+	if _, err := s.lk.forbiddenBy(rows.HeldRule{Reaches: "no such level"}); !errs.Is(err, errs.Internal) {
 		t.Errorf("forbiddenBy = %v, want Internal", err)
 	}
 	fs := &fakeStore{

@@ -89,7 +89,7 @@ func (s *Service) CreateRule(ctx context.Context, in RuleInput) (_ Rule, err err
 		}
 		// Only a rule that forbids access.grants.manage can leave no effective access admin;
 		// for any other the two counts are skipped (D37, F65).
-		forbidden, err := s.forbiddenBy(rows.HeldRule{Permission: r.Permission, Reaches: r.Reaches})
+		forbidden, err := s.lk.forbiddenBy(rows.HeldRule{Permission: r.Permission, Reaches: r.Reaches})
 		if err != nil {
 			return wrap(op, err)
 		}

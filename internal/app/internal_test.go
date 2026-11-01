@@ -26,7 +26,6 @@ import (
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/demo"
 	"github.com/zedgama3/bms/internal/core/module"
-	"github.com/zedgama3/bms/internal/core/settings"
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/telemetry/telemetrytest"
 	"github.com/zedgama3/bms/internal/lib/clock"
@@ -242,7 +241,7 @@ func TestAssembly_CorePermsStartWithModulesRead(t *testing.T) {
 
 // coreOrder is the order in which the core's services plug in (app.md "How later core
 // services plug in"); coreParts must be a subsequence of it.
-var coreOrder = []string{"audit", "identity", "settings", "authz", "people", "departments", "events", "jobs", "notify", "files", "demo"}
+var coreOrder = []string{"audit", "authz", "identity", "settings", "people", "departments", "events", "jobs", "notify", "files", "demo"}
 
 func TestParts_OrderAndNames_Pinned(t *testing.T) {
 	pos := -1
@@ -735,9 +734,10 @@ func TestCoreParts_Declare_SetsPermissionsSignalAndCommand(t *testing.T) {
 	for _, d := range a.corePerms {
 		perms = append(perms, string(d.Name))
 	}
-	want := "core.modules.read,audit.search,audit.export,accounts.read,accounts.manage," +
-		"settings.read,settings.manage," +
+	want := "core.modules.read,audit.search,audit.export," +
 		"access.roles.read,access.roles.manage,access.rules.manage,access.grants.read,access.grants.manage,access.department-grants.manage," +
+		"accounts.read,accounts.manage," +
+		"settings.read,settings.manage," +
 		"people.directory.read,people.contacts.read,people.profiles.manage,people.data.export,people.data.delete," +
 		"departments.manage,departments.details.manage,events.manage," +
 		"jobs.read,jobs.manage," +
@@ -816,30 +816,6 @@ func TestAddCoreSet_Table(t *testing.T) {
 	}
 }
 
-type allowOnly authz.Permission
-
-func (a allowOnly) Allow(_ context.Context, p authz.Permission) error {
-	if authz.Permission(a) == p {
-		return nil
-	}
-	return errs.E("test.Allow", errs.Permission, errors.New("no"))
-}
-
-func TestLazyPermissions_DeniesUntilAuthzSetsTheChecker(t *testing.T) {
-	a := &assembly{}
-	l := lazyPermissions{a: a}
-	if err := l.Allow(context.Background(), audit.PermissionSearch); !errs.Is(err, errs.Permission) {
-		t.Fatalf("with no authorizer: err = %v, want Permission", err)
-	}
-	a.permissions = allowOnly(audit.PermissionSearch)
-	if err := l.Allow(context.Background(), audit.PermissionSearch); err != nil {
-		t.Errorf("after authz is wired the adapter must ask it: %v", err)
-	}
-	if err := l.Allow(context.Background(), audit.PermissionExport); !errs.Is(err, errs.Permission) {
-		t.Errorf("another permission: err = %v, want Permission", err)
-	}
-}
-
 // The built route sets, not hand-made input: every accounts route is public exactly when
 // identity marks it public (the shell asks GET /session before anyone has signed in; sign-in,
 // sign-up and the password flows are public too), and every audit route is signed in.
@@ -909,8 +885,8 @@ func TestBuildParts_AgainstNoDatabase_SetsAuthenticatorRoutesAndRunnable(t *test
 			t.Errorf("route set %s has %d routes and %d bytes of fragment", rs.Module, len(rs.Routes), len(rs.OpenAPI))
 		}
 	}
-	if strings.Join(areas, ",") != "audit,accounts,settings,access,people,departments,events,jobs,notify" {
-		t.Errorf("route sets = %v, want audit, accounts, settings, access, people, departments, events, jobs, notify", areas)
+	if strings.Join(areas, ",") != "audit,access,accounts,settings,people,departments,events,jobs,notify" {
+		t.Errorf("route sets = %v, want audit, access, accounts, settings, people, departments, events, jobs, notify", areas)
 	}
 	var runnables []string
 	for _, r := range a.runnables {
@@ -969,23 +945,6 @@ func TestProvision_ScopesSettingsPerModule(t *testing.T) {
 		Name: "zqbeta", Settings: []module.SettingDecl{{Key: "k", Kind: module.SettingText}},
 	}); !errs.Is(err, errs.Invalid) {
 		t.Errorf("a module whose area the service does not know: err = %v, want Invalid", err)
-	}
-}
-
-// settings is built before authz, so its authorizer denies until authz is wired and then asks it.
-func TestLazyAuthorizer_BeforeAuthz_DeniesAndEmptyExtent(t *testing.T) {
-	a := &assembly{}
-	l := lazyAuthorizer{a: a}
-	ctx := context.Background()
-	if err := l.Allow(ctx, settings.PermissionRead); !errs.Is(err, errs.Permission) {
-		t.Errorf("Allow: err = %v, want Permission", err)
-	}
-	if err := l.AllowIn(ctx, settings.PermissionRead, model.DepartmentID{1}); !errs.Is(err, errs.Permission) {
-		t.Errorf("AllowIn: err = %v, want Permission", err)
-	}
-	ext, err := l.ExtentOf(ctx, settings.PermissionRead)
-	if err != nil || ext.Site || len(ext.Departments) != 0 {
-		t.Errorf("ExtentOf = (%+v, %v), want a zero Extent and nil", ext, err)
 	}
 }
 
@@ -1187,23 +1146,6 @@ func TestRequireSessionKey_Table(t *testing.T) {
 	}
 }
 
-func TestLazyTitles_NoneUntilAuthzSetsTheSource(t *testing.T) {
-	a := &assembly{}
-	l := lazyTitles{a: a}
-	person := model.NewID[model.PersonID]()
-	if got, err := l.TitlesOf(context.Background(), person); err != nil || got != nil {
-		t.Fatalf("with no source: %v, %v; want nil, nil", got, err)
-	}
-	a.titles = titlesStub{"Gate lead"}
-	if got, err := l.TitlesOf(context.Background(), person); err != nil || len(got) != 1 || got[0] != "Gate lead" {
-		t.Errorf("after authz is wired: %v, %v", got, err)
-	}
-}
-
-type titlesStub []string
-
-func (s titlesStub) TitlesOf(context.Context, model.PersonID) ([]string, error) { return s, nil }
-
 func TestCheck_AuditSpoolUnreadable_ExitUsage(t *testing.T) {
 	blocker := filepath.Join(t.TempDir(), "file")
 	if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
@@ -1267,8 +1209,8 @@ func TestBuildParts_AuthzAndPeople_FillTheLazySeams(t *testing.T) {
 	if a.departments == nil || a.events == nil || a.deps.departments == nil || a.deps.events == nil {
 		t.Fatalf("departments=%v events=%v deps.departments=%v deps.events=%v, want all set", a.departments, a.events, a.deps.departments, a.deps.events)
 	}
-	if a.permissions == nil || a.titles == nil || a.lister == nil || a.names == nil {
-		t.Errorf("permissions=%v titles=%v lister=%v names=%v, want all set", a.permissions, a.titles, a.lister, a.names)
+	if a.names == nil {
+		t.Errorf("names=%v, want set", a.names)
 	}
 	deps, err := a.provision(context.Background(), module.Manifest{Name: "zqalpha"})
 	if err != nil {
@@ -1282,20 +1224,8 @@ func TestBuildParts_AuthzAndPeople_FillTheLazySeams(t *testing.T) {
 func TestLazyAdapters_BeforeTheirPartsAreBuilt_AnswerNothing(t *testing.T) {
 	a := &assembly{}
 	ctx := context.Background()
-	if err := (lazyPermissions{a: a}).Allow(ctx, "x.y"); !errs.Is(err, errs.Permission) {
-		t.Errorf("Allow = %v, want Permission", err)
-	}
-	if got, err := (lazyLister{a: a}).PermissionsOf(ctx, model.PersonID{}); err != nil || got == nil || len(got) != 0 {
-		t.Errorf("PermissionsOf = %v, %v, want an empty non-nil list", got, err)
-	}
 	if got, err := (lazyNames{a: a}).PlayaNameOf(ctx, model.PersonID{}); err != nil || got != "" {
 		t.Errorf("PlayaNameOf = %q, %v, want empty", got, err)
-	}
-	if got, err := (lazyTitles{a: a}).TitlesOf(ctx, model.PersonID{}); err != nil || got != nil {
-		t.Errorf("TitlesOf = %v, %v, want nil", got, err)
-	}
-	if got, err := (lazyDepartments{a: a}).Active(ctx, model.DepartmentID{}); !errs.Is(err, errs.Unsupported) || got {
-		t.Errorf("Active = %v, %v, want false and Unsupported", got, err)
 	}
 }
 

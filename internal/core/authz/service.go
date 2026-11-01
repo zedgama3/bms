@@ -65,21 +65,21 @@ var _ store = (*postgres.Store)(nil)
 
 // Options builds the service. Audit and Signals are scoped to "access" by app.
 type Options struct {
-	DB          db.DB
-	Clock       clock.Clock
-	Logger      *slog.Logger
-	Tracer      telemetry.Tracer
-	Meter       telemetry.Meter // optional: nil records no metrics
-	Audit       audit.Recorder  // scoped to "access"; required
-	Signals     signals.Bus     // scoped to "access"; required
-	Actor       ActorFunc       // required
-	Declared    []PermissionDecl
-	Departments DepartmentSource // optional: nil refuses department grants (Unsupported)
+	DB       db.DB
+	Clock    clock.Clock
+	Logger   *slog.Logger
+	Tracer   telemetry.Tracer
+	Meter    telemetry.Meter // optional; the Lookup counts the decisions, so the Service records none
+	Audit    audit.Recorder  // scoped to "access"; required
+	Signals  signals.Bus     // scoped to "access"; required
+	Actor    ActorFunc       // required
+	Declared []PermissionDecl
+	Lookup   *Lookup // the read side, built before audit; required
 }
 
 // Validate fails errs.Invalid joining a validate.FieldError per problem: "authz.db",
 // "authz.clock", "authz.logger", "authz.tracer", "authz.audit", "authz.signals",
-// "authz.actor" (nil), "authz.declared[i].name|scope|reaches|starter_roles[j]" (a
+// "authz.actor" (nil), "authz.lookup" (nil), "authz.declared[i].name|scope|reaches|starter_roles[j]" (a
 // declaration that fails PermissionDecl.Validate) and "authz.declared" (two declarations
 // with one name, code duplicate).
 func (o Options) Validate() error {
@@ -105,9 +105,19 @@ func (o Options) Validate() error {
 	if o.Actor == nil {
 		v.Addf("authz.actor", codeRequired, "must be set")
 	}
-	seen := make(map[Permission]struct{}, len(o.Declared))
+	if o.Lookup == nil {
+		v.Addf("authz.lookup", codeRequired, "must be set")
+	}
+	validateDeclared(&v, o.Declared)
+	return v.Err() //nolint:wrapcheck // Err already carries Op and errs.Invalid
+}
+
+// validateDeclared adds a FieldError to v per declaration that fails PermissionDecl.Validate
+// and one for a name declared twice.
+func validateDeclared(v *validate.Errors, declared []PermissionDecl) {
+	seen := make(map[Permission]struct{}, len(declared))
 	dup := false
-	for i, d := range o.Declared {
+	for i, d := range declared {
 		prefix := "authz.declared[" + strconv.Itoa(i) + "]."
 		for _, fe := range validate.Fields(d.Validate()) {
 			v.Addf(prefix+fe.Field, fe.Code, "%s", fe.Reason)
@@ -120,7 +130,6 @@ func (o Options) Validate() error {
 	if dup {
 		v.Addf("authz.declared", codeDuplicate, "a permission is declared twice")
 	}
-	return v.Err() //nolint:wrapcheck // Err already carries Op and errs.Invalid
 }
 
 // catalogue is the declared permissions, frozen at New.
@@ -140,7 +149,9 @@ func newCatalogue(declared []PermissionDecl) catalogue {
 	return c
 }
 
-// Service is authz. Safe for concurrent use; nothing to close (no goroutines).
+// Service is authz, the admin side: roles, grants, rules, seeding and the person's data.
+// The decision methods forward to the Lookup it was given. Safe for concurrent use; nothing
+// to close (no goroutines).
 type Service struct {
 	store   store
 	db      db.DB
@@ -150,9 +161,8 @@ type Service struct {
 	audit   audit.Recorder
 	signals signals.Bus
 	actorFn ActorFunc
-	depts   DepartmentSource
+	lk      *Lookup
 	cat     catalogue
-	metrics metrics
 }
 
 var (
@@ -161,8 +171,7 @@ var (
 )
 
 // New validates o and returns the service over postgres.Store. No I/O: it works against
-// db.None() (app decision 7) and on a read-only copy. Fails errs.Invalid (F1, F2) and the
-// meter's kind when an instrument cannot be created.
+// db.None() (app decision 7) and on a read-only copy. Fails errs.Invalid (F1, F2).
 func New(o Options) (*Service, error) {
 	const op = "authz.New"
 	if err := o.Validate(); err != nil {
@@ -184,14 +193,10 @@ func newService(o Options, st store) (*Service, error) {
 	if st == nil {
 		return nil, errs.E(op, errs.Invalid, errors.New("nil store"))
 	}
-	m, err := newMetrics(o.Meter)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", op, err)
-	}
 	return &Service{
 		store: st, db: o.DB, clock: o.Clock, logger: o.Logger, tracer: o.Tracer,
-		audit: o.Audit, signals: o.Signals, actorFn: o.Actor, depts: o.Departments,
-		cat: newCatalogue(o.Declared), metrics: m,
+		audit: o.Audit, signals: o.Signals, actorFn: o.Actor, lk: o.Lookup,
+		cat: newCatalogue(o.Declared),
 	}, nil
 }
 
@@ -250,14 +255,7 @@ func constraintOf(err error) string {
 // actor returns the person making the request: errs.Unauthenticated inside a signal
 // delivery (decision 7), without a session or with a restricted one.
 func (s *Service) actor(ctx context.Context, op string) (Actor, error) {
-	if signals.InDelivery(ctx) {
-		return Actor{}, errs.E(op, errs.Unauthenticated, errors.New("a signal handler acts as the system, not as a person"))
-	}
-	a, ok := s.actorFn(ctx)
-	if !ok || (a.Person.IsZero() && !a.Superuser) {
-		return Actor{}, errs.E(op, errs.Unauthenticated, errors.New("no signed-in person"))
-	}
-	return a, nil
+	return resolveActor(ctx, s.actorFn, op)
 }
 
 // metrics holds the instruments; each method is a no-op without a Meter.
@@ -272,7 +270,7 @@ func newMetrics(m telemetry.Meter) (metrics, error) {
 	c, err := m.Counter("bms.authz.decisions", telemetry.WithUnit("{decision}"),
 		telemetry.WithDescription("Authorization decisions by outcome."))
 	if err != nil {
-		return metrics{}, fmt.Errorf("authz.New: %w", err)
+		return metrics{}, fmt.Errorf("authz.NewLookup: %w", err)
 	}
 	return metrics{decisions: c}, nil
 }

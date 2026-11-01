@@ -60,48 +60,6 @@ func (s *Service) roleOf(r rows.Role, perms []string) Role {
 	return out
 }
 
-// StarterRoleIDs returns the ID of each starter role named in keys ("access-admin", ...). It
-// is the actor-less, read-only lookup of the demo seed (D53), which must name roles before
-// any account holds one: it checks no permission and records no audit entry, because it
-// reads only role keys and IDs, which are not personal data, and it changes nothing. A
-// request never reaches it. Works on a read-only copy.
-//
-// Fails errs.Invalid (field keys) for no keys or an empty key, errs.NotFound (field keys,
-// code unknown) when a key names no starter role, and store kinds. The result holds exactly
-// the requested keys.
-func (s *Service) StarterRoleIDs(ctx context.Context, keys []string) (_ map[string]RoleID, err error) {
-	const op = "authz.Service.StarterRoleIDs"
-	ctx, span := s.start(ctx, "starter-role-ids")
-	defer endSpan(span, &err)
-	if len(keys) == 0 || slices.Contains(keys, "") {
-		return nil, fieldInvalid(op, "keys", codeRequired, "name at least one starter role key, none empty")
-	}
-	var rs []rows.Role
-	err = s.inTx(ctx, db.Read, func(ctx context.Context) error {
-		var lerr error
-		rs, lerr = s.store.ListRoles(ctx, "")
-		return wrap(op, lerr)
-	})
-	if err != nil {
-		return nil, err
-	}
-	byKey := make(map[string]RoleID, len(rs))
-	for _, r := range rs {
-		if r.Key != "" {
-			byKey[r.Key] = r.ID
-		}
-	}
-	out := make(map[string]RoleID, len(keys))
-	for _, k := range keys {
-		id, ok := byKey[k]
-		if !ok {
-			return nil, errs.E(op, errs.NotFound, &validate.FieldError{Field: "keys", Code: "unknown", Reason: "a key names no starter role"})
-		}
-		out[k] = id
-	}
-	return out, nil
-}
-
 // ListRoles returns the roles sorted by name (key for an unrenamed starter role), each with
 // its permissions. Same permission rule as ListPermissions; a caller who sees departments
 // only gets the department roles. Works on a read-only copy.
@@ -332,7 +290,7 @@ func (s *Service) effectiveAdmins(ctx context.Context, op string, q rows.Holders
 			if err != nil {
 				return 0, 0, wrap(op, err)
 			}
-			forbidden, err := s.forbiddenSet(rules)
+			forbidden, err := s.lk.forbiddenSet(rules)
 			if err != nil {
 				return 0, 0, wrap(op, err)
 			}

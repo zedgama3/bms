@@ -269,17 +269,6 @@ func TestGrant_DepartmentMismatch_ReturnsInvalid(t *testing.T) {
 	wantField(t, err, "department", "required")
 }
 
-// F41
-func TestGrant_NoDepartmentSource_ReturnsUnsupported(t *testing.T) {
-	r := newRig(t, func(o *authz.Options) { o.Departments = nil })
-	deptRole := r.mkRole(authz.ScopeDepartment, pShiftRead)
-	_, err := r.grantAs(r.sctx(), r.person(), deptRole, r.d1)
-	wantKind(t, err, errs.Unsupported)
-	// Site-wide grants still work.
-	_, err = r.grantAs(r.sctx(), r.person(), r.mkRole(authz.ScopeSite, pMedRead), noDept)
-	wantNoErr(t, err)
-}
-
 // F42
 func TestGrant_InactiveDepartment_ReturnsInvalid(t *testing.T) {
 	r := newRig(t)

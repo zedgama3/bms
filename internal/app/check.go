@@ -540,7 +540,7 @@ func (r *checkReport) smtpConfig(ctx context.Context, a *assembly) (notify.SMTPC
 	}
 	svc, err := settings.New(settings.Options{
 		DB: a.pool, Clock: a.clock, Logger: a.component("settings"), Tracer: tr, Meter: m, Audit: rec,
-		Authz: lazyAuthorizer{a: a}, Actor: identity.Actor, Areas: settingsAreas(a), SealingKey: a.cfg.Settings.SealingKey,
+		Authz: a.authzLookup, Actor: identity.Actor, Areas: settingsAreas(a), SealingKey: a.cfg.Settings.SealingKey,
 	})
 	if err != nil {
 		return notify.SMTPConfig{}, err //nolint:wrapcheck // printed with its kind

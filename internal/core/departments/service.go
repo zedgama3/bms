@@ -67,12 +67,13 @@ type Options struct {
 	Signals signals.Bus
 	Authz   authz.Authorizer
 	Actor   authz.ActorFunc
+	Lookup  *Lookup // NamesOf and Active; built before authz; required
 }
 
 // Validate fails errs.Invalid joining a validate.FieldError per nil dependency (fields
 // departments.db, departments.clock, departments.logger, departments.tracer,
 // departments.meter, departments.audit, departments.signals, departments.authz,
-// departments.actor).
+// departments.actor, departments.lookup).
 func (o Options) Validate() error {
 	v := validate.Errors{Op: "departments.Options.Validate"}
 	for _, d := range []struct {
@@ -88,6 +89,7 @@ func (o Options) Validate() error {
 		{"departments.signals", o.Signals == nil},
 		{"departments.authz", o.Authz == nil},
 		{"departments.actor", o.Actor == nil},
+		{"departments.lookup", o.Lookup == nil},
 	} {
 		if d.nil {
 			v.Addf(d.field, codeRequired, "must be set")
@@ -107,6 +109,7 @@ type Service struct {
 	signals signals.Bus
 	authz   authz.Authorizer
 	actorFn authz.ActorFunc
+	lookup  *Lookup
 }
 
 var (
@@ -139,8 +142,18 @@ func newService(o Options, st store) (*Service, error) {
 	}
 	return &Service{
 		store: st, db: o.DB, clock: o.Clock, logger: o.Logger, tracer: o.Tracer, audit: o.Audit,
-		signals: o.Signals, authz: o.Authz, actorFn: o.Actor,
+		signals: o.Signals, authz: o.Authz, actorFn: o.Actor, lookup: o.Lookup,
 	}, nil
+}
+
+// NamesOf is Lookup.NamesOf.
+func (s *Service) NamesOf(ctx context.Context, ids []model.DepartmentID) (map[model.DepartmentID]string, error) {
+	return s.lookup.NamesOf(ctx, ids)
+}
+
+// Active is Lookup.Active.
+func (s *Service) Active(ctx context.Context, id model.DepartmentID) (bool, error) {
+	return s.lookup.Active(ctx, id)
 }
 
 // now is the clock's time in UTC.
