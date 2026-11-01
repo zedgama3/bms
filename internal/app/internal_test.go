@@ -446,10 +446,10 @@ func TestAssembly_RouteSetsAppendedAfterModules(t *testing.T) {
 	if err := a.resolve(ctx, reg, []string{"zqalpha", "zqbeta"}); err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
+	a.dbc = db.None()
 	if err := a.newDispatcher(); err != nil {
 		t.Fatalf("newDispatcher: %v", err)
 	}
-	a.dbc = db.None()
 	if err := a.buildModules(ctx, skipSchema{}); err != nil {
 		t.Fatalf("buildModules: %v", err)
 	}

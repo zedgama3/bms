@@ -12,6 +12,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/telemetry"
 	"github.com/zedgama3/bms/internal/lib/errs"
+	"github.com/zedgama3/bms/internal/lib/retry"
 )
 
 // wireDelivery is the stored form of a signals.Delivery: identifiers, names and times, and a
@@ -86,18 +87,29 @@ func (r *Runner) Defer(ctx context.Context, d signals.Delivery) (err error) {
 	if r.db.ReadOnly() {
 		return readOnlyErr(op)
 	}
-	args, err := encodeDelivery(d)
+	now := r.now()
+	trace, _ := telemetry.TraceIDFrom(ctx)
+	n, err := redeliverRow(d, now, r.retry, r.jitter(), trace)
 	if err != nil {
 		return wrap(op, err)
 	}
-	now := r.now()
-	trace, _ := telemetry.TraceIDFrom(ctx)
 	span.SetAttrs(telemetry.Token("job_name", string(NameRedeliver)), telemetry.ID("signal_id", d.Signal.ID))
-	_, err = r.store.Defer(ctx, rows.New{
-		ID: newJobID(), Name: string(NameRedeliver), Key: d.Signal.ID.String() + ":" + d.Subscriber, Args: args,
-		RunAt: now.Add(r.retry.Delay(d.Attempt+1, r.jitter())), TraceID: trace,
-	}, now)
+	_, err = r.store.Defer(ctx, n, now)
 	return wrap(op, err)
+}
+
+// redeliverRow is the signals.redeliver row both Runner.Defer and Deferrer.Defer insert: key
+// "<signal id>:<subscriber>", the encoded delivery as args, RunAt = now + p.Delay(d.Attempt +
+// 1, u), and the caller's trace. One function, so the two paths cannot write different rows.
+func redeliverRow(d signals.Delivery, now time.Time, p retry.Policy, u float64, trace string) (rows.New, error) {
+	args, err := encodeDelivery(d)
+	if err != nil {
+		return rows.New{}, err
+	}
+	return rows.New{
+		ID: newJobID(), Name: string(NameRedeliver), Key: d.Signal.ID.String() + ":" + d.Subscriber, Args: args,
+		RunAt: now.Add(p.Delay(d.Attempt+1, u)), TraceID: trace,
+	}, nil
 }
 
 // errDropped is what the redelivery handler returns when the subscriber is gone: the row ends

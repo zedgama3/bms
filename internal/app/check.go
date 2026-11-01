@@ -394,12 +394,12 @@ func (r *checkReport) api(ctx context.Context, a *assembly) {
 		// Already recorded as a problem (step 1); the build still runs to count the API.
 		a.cfg.Session.Key = secret.New(placeholderSessionKey)
 	}
+	a.dbc = db.None()
 	if err := a.newDispatcher(); err != nil {
 		r.printf("api: %s\n", indent(err.Error()))
 		r.record(ExitFailure)
 		return
 	}
-	a.dbc = db.None()
 	if err := a.buildModules(ctx, skipSchema{}); err != nil {
 		r.printf("api: %s\n", indent(problemText(err)))
 		r.record(statusOf(err, ExitUsage))

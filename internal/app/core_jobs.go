@@ -8,13 +8,12 @@ import (
 
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/jobs"
-	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/lib/errs"
 )
 
 // jobsPart is the job runner (jobs.md). It is built after audit, authz and settings, and
-// before auditlog, which registers audit.purge with it. signals, which is constructed before
-// the parts, reaches it through lazyDeferrer.
+// before auditlog, which registers audit.purge with it. The dispatcher's Deferrer is
+// jobs.NewDeferrer, built before the parts and independent of the runner.
 var jobsPart = part{
 	name:    "jobs",
 	declare: declareJobs,
@@ -96,22 +95,6 @@ func linkJobs(_ context.Context, a *assembly) error {
 	r := &jobsRunner{svc: a.jobs, logger: a.component("jobs")}
 	a.runnables = append(a.runnables, runnable{name: "jobs", start: r.start, stop: r.stop})
 	return nil
-}
-
-// lazyDeferrer is signals' Deferrer over a.jobs, which the jobs part builds after signals.New
-// has run: until then Defer fails errs.Unavailable (the dispatcher logs it beside the
-// handler's error and the delivery is final), so no setter is needed. It does no I/O of its
-// own.
-type lazyDeferrer struct{ a *assembly }
-
-var _ signals.Deferrer = lazyDeferrer{}
-
-// Defer stores the delivery through the runner, when there is one.
-func (l lazyDeferrer) Defer(ctx context.Context, d signals.Delivery) error {
-	if l.a.jobs == nil {
-		return errs.E("app.lazyDeferrer.Defer", errs.Unavailable, errors.New("the job runner is not built yet"))
-	}
-	return l.a.jobs.Defer(ctx, d) //nolint:wrapcheck // the runner's own error
 }
 
 // loopService is jobs.Runner's Run and Close, the two calls the runnable makes.

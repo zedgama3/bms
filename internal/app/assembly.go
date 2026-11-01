@@ -128,7 +128,7 @@ type assembly struct {
 	regional          *regional.Service          // the regional part's service (notify's site source); nil before its build
 	files             *files.Service             // the files part's service (the Start probe, bms check, bms files verify); nil before its build
 	auditlog          *auditlog.Service          // the auditlog part's service (people's deletion report, the audit routes); nil before its build
-	jobs              *jobs.Runner               // the jobs part's runner (lazyDeferrer, audit.purge, bms check); nil before its build
+	jobs              *jobs.Runner               // the jobs part's runner (audit.purge, bms check); nil before its build
 	notifiers         map[string]notify.Notifier // the Notifiers notify scoped for identity and people (Scoped fails once Run started); nil before its build
 	stdout            io.Writer                  // the command's standard output (migrate's seed line)
 	parts             []part
@@ -279,11 +279,17 @@ func (a *assembly) openDatabase(ctx context.Context) error {
 	return nil
 }
 
-// newDispatcher builds the signals dispatcher (decision 9, step 6).
+// newDispatcher builds the jobs Deferrer, then the signals dispatcher over it (boundaries.md
+// decision 2, step 11): the Deferrer needs only the database and the clock, so nothing here
+// waits for the job runner.
 func (a *assembly) newDispatcher() error {
 	tr, m, err := a.scopes("signals")
 	if err != nil {
 		return err
+	}
+	def, err := jobs.NewDeferrer(jobs.DeferrerOptions{DB: a.dbc, Clock: a.clock, Instance: a.cfg.Instance.Name})
+	if err != nil {
+		return err //nolint:wrapcheck // jobs.NewDeferrer names itself
 	}
 	d, err := signals.New(signals.Options{
 		Logger:         a.component("signals"),
@@ -291,7 +297,7 @@ func (a *assembly) newDispatcher() error {
 		Meter:          m,
 		Clock:          a.clock,
 		HandlerTimeout: handlerTimeout,
-		Deferrer:       lazyDeferrer{a: a},
+		Deferrer:       def,
 	})
 	if err != nil {
 		return err //nolint:wrapcheck // signals.New names itself

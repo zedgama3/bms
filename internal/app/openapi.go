@@ -56,10 +56,10 @@ func runOpenAPI(ctx context.Context, p *process) int {
 	if err := a.resolve(ctx, p.registry, enabled); err != nil {
 		return bail(err, ExitUsage)
 	}
+	a.dbc = db.None()
 	if err := a.newDispatcher(); err != nil {
 		return bail(err, ExitFailure)
 	}
-	a.dbc = db.None()
 	if err := a.buildModules(ctx, skipSchema{}); err != nil {
 		return bail(err, statusOf(err, ExitUsage))
 	}

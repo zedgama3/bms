@@ -17,13 +17,14 @@ Never `core/settings`, `core/identity`, `core/people`, `core/notify`, `core/modu
 **Exported (`jobs`).**
 - `Name` (`<owner>.<ident>`, the `signals.Name` grammar, at most 96 bytes; `Validate`, `Owner`); `JobID = model.ID[job]`; `Args = signals.Payload` (record references only, at most `signals.MaxRefs`); `Status` (`Queued`, `Running`, `Done`, `Failed`, `Canceled`; `String`, `ParseStatus`, `MarshalText`/`UnmarshalText`: a JSON string and a usable map key).
 - `Job{ID, Name, Key string, Args, Attempt int, RunAt time.Time}` (what a handler receives); `Handler func(ctx, Job) error`; `Decl{Name, Every, Timeout time.Duration, Handler}` (+`Validate`; `Every` 0 = on demand only, else `MinEvery`..`MaxEvery`); `Request{Name, Key string, Args, RunAt time.Time}` (+`Validate` on the wall clock and `ValidateAt(now time.Time) error`, an accepted deviation so jobstest's fake validates against its own clock; zero `RunAt` = now; `Key` dedupes per `(name, key)`).
+- `Deferrer` (`NewDeferrer(DeferrerOptions{DB, Clock, Instance}) (*Deferrer, error)`; implements `signals.Deferrer` over `core.job` alone; `Invalid` for nil DB/Clock or a missing or malformed instance, fields `jobs.db`, `jobs.clock`, `jobs.instance`; `Defer` validates the delivery, is `Unavailable` wrapping `db.ErrReadOnly` on a read-only copy, and inserts one `signals.redeliver` row built by the runner's own `redeliverRow`; uses `DefaultRetry`, opens no span), built before the dispatcher (boundaries step 11, 2026-11-01).
 - `Registrar{Register(Decl) error; Enqueue(ctx, Request) (JobID, error)}` = `module.Deps.Jobs`, scoped to one owner by `(*Runner).Scoped(owner)`.
 - `Redeliverer{Redeliver(ctx, signals.Delivery) error}` (the `*signals.Dispatcher`, through `app`).
 - `Record{ID, Name, Key, Status, Attempts int, RunAt, StartedAt, FinishedAt time.Time, LastError, Instance, TraceID string}` (`LogValue` = ID and name); `Registered{Name, Owner string, Every, Timeout time.Duration, Last *Record, NextDue time.Time}`; `StatusView{ReadOnly bool, Registered []Registered, Counts map[Status]int, Recent []Record}`; `Ran{Scheduled, Ran, Failed, Retried, Released int}`.
 - `Options{DB, Clock, Logger, Tracer, Meter, Audit audit.Recorder (scoped "jobs"), Authz authz.Authorizer, Actor authz.ActorFunc, Redeliverer, Instance string, PollInterval, Lease, RunTimeout time.Duration, Workers int, Retry retry.Policy}` (+`Validate`); `New(Options) (*Runner, error)` (no I/O; works against `db.None()`).
-- `*Runner` (safe for concurrent use): `Scoped(owner) (Registrar, error)`; `Defer(ctx, signals.Delivery) error` (implements `signals.Deferrer`); `Run(ctx) error` (the scheduler tick and the workers, an `app` runnable); `RunOnce(ctx) (Ran, error)`; `Close(ctx) error` (idempotent); `Status(ctx) (StatusView, error)`; `RunNow(ctx, Name) (JobID, error)`; `Retry(ctx, JobID) error`; `Cancel(ctx, JobID) error`; `Routes() []Route`; `OpenAPI() []byte`; `Declared() []Registered` (what is registered here, no I/O, no permission; `bms check`).
+- `*Runner` (safe for concurrent use): `Scoped(owner) (Registrar, error)`; `Defer(ctx, signals.Delivery) error` (the same insert as `Deferrer.Defer`; app no longer calls it, 2026-11-01); `Run(ctx) error` (the scheduler tick and the workers, an `app` runnable); `RunOnce(ctx) (Ran, error)`; `Close(ctx) error` (idempotent); `Status(ctx) (StatusView, error)`; `RunNow(ctx, Name) (JobID, error)`; `Retry(ctx, JobID) error`; `Cancel(ctx, JobID) error`; `Routes() []Route`; `OpenAPI() []byte`; `Declared() []Registered` (what is registered here, no I/O, no permission; `bms check`).
 `Route{Method, Pattern string, Handler http.Handler}` (all signed-in; `app` converts).
-`InJob(ctx) bool` (true inside a handler; `app`'s audit actor answers `ActorSystem`).
+`InJob(ctx) bool` (true inside a handler). The runner also sets `audit.WithSystem` on every run, beside `rules.WithJob`, so the audit actor is the system without any help from `app`; the `jobstest` fake does the same.
 - Constants: `MaxNameBytes = 96`, `MinTimeout = 1s`, `MinEvery = 1m`, `MaxEvery = 168h`, `MaxRunTimeout = 1h`, `MaxDelay = 366 * 24h`, `MaxKeyBytes = 128`, `DefaultPollInterval = 10s`, `DefaultLease = 2m`, `DefaultRunTimeout = 5m`, `DefaultWorkers = 2`, `MaxWorkers = 32`, `DoneTTL = 7 days`, `MaxRecent = 50`, `MaxBatch = 1000`, `NameRedeliver Name = "signals.redeliver"`, `NamePurge Name = "jobs.purge"`; `DefaultRetry = retry.Policy{Initial: 1m, Max: 1h, Multiplier: 2, MaxAttempts: 10}`.
 - Permissions `jobs.read` (site, reach `internal`, starter roles `authz.SiteAdminRoles`), `jobs.manage` (site, `internal`, starter `settings-admin`); `Permissions []authz.PermissionDecl`. No signals, no settings. Audit actions `jobs.job.run`, `jobs.job.retried`, `jobs.job.canceled`. `postgres.Migrations fs.FS`; `Set = db.Set{Name: "jobs", Schema: "core"}`.
 - `jobstest.NewFake(owner, opts ...Option) *Fake` with `WithClock(clock.Clock)` (a `Registrar` that validates like the real one and keeps one row per `(name, key)` with the real states and transitions: `Registered() []Decl`, `Enqueued() []Request` (every request heard, recorded after commit), `Queued() []Request` (the rows now waiting, with the `RunAt` and `Args` the queue would hold, by `RunAt`), `Run(ctx, Name, Job) error` drives a registered handler with `InJob` true and moves the key's row through `running` and out of it by the key rule, `RunDue(ctx, now) (int, error)` runs every waiting row due at `now` with the row's current `Args` (a row created by `Run` is tracked; a retryable error requeues it; the Fake skips retry delays, D52(c)), `Fail(err)` makes the next `Enqueue` fail once).
@@ -89,7 +90,7 @@ A handler that re-enqueues its own key from inside its run (volunteers' reminder
 - `authz`: `Allow`, `SiteAdminRoles`.
 - `telemetry`: typed attributes, `TraceIDFrom`, `telemetrytest`; the metric rows (Proposed change 5).
 - `module-contract`: `Deps.Jobs jobs.Registrar` scoped by name; `jobstest.NewFake` in `Conformance`; `jobs` a reserved core area.
-- `app`: part 8 (declare, build, link, the runnable, `lazyDeferrer`, the `audit.purge` closure, `auditActor` answering `ActorSystem` when `InJob`); `bms check` prints the registered jobs.
+- `app`: part 8 (declare, build, link, the runnable, the `audit.purge` closure; no job-aware audit actor, the runner sets `audit.WithSystem`); `bms check` prints the registered jobs.
 - `web-shell`: `web/src/core/jobs/` as a core area.
 
 **Open questions:** Q-JOBS1 to Q-JOBS7 below (the screen in M4, the give-up policy, notify's tick staying put, daily schedules Later, `DoneTTL` a constant, the audit actor through `InJob`, no new config keys); Q-JOBS8 to Q-JOBS13 (from the review: `Retry` while a row of the name is open, a run past its fence, `bms check` and a failing `Start`, counting a reclaim, the fake's clock, no person ID in a dedupe key).
@@ -278,8 +279,8 @@ type Registrar interface {
 	Enqueue(ctx context.Context, r Request) (JobID, error)
 }
 
-// InJob reports whether ctx is a handler's ctx. app's audit ActorFunc answers ActorSystem
-// when it is true; authz has no actor and refuses permission-checked use cases, as inside a
+// InJob reports whether ctx is a handler's ctx. The runner also sets audit.WithSystem on
+// it, so audit records the system as the actor; authz has no actor and refuses permission-checked use cases, as inside a
 // signal delivery. Cannot fail.
 func InJob(ctx context.Context) bool
 
@@ -341,7 +342,8 @@ func (r *Runner) Scoped(owner string) (Registrar, error)
 // (signal, subscriber) is a no-op in every state (its own insert, ON CONFLICT DO NOTHING;
 // unchanged: a delivery is immutable, so a repeat is the same work, not a newer
 // request).
-// Consumer: signals (Options.Deferrer, through app's lazyDeferrer).
+// Consumer: none since 2026-11-01 (boundaries step 11): signals receives jobs.Deferrer,
+// which inserts the same row.
 func (r *Runner) Defer(ctx context.Context, d signals.Delivery) error
 
 // Run is the loop: at once and then every PollInterval, when the database is writable,
@@ -567,7 +569,7 @@ func (f *Fake) Fail(err error)
 | `Status` | the screen | `jobs.read` | a consistent view (one `Read` transaction) |
 | `RunNow`, `Retry`, `Cancel` | the screen | `jobs.manage`; the row's status as required | the row changed; one audit entry in the same `Write` transaction |
 | `Scoped` | `app` | valid owner | a view accepting that owner's names |
-| `InJob` | `app`'s audit actor, modules' handlers | — | true inside a handler |
+| `InJob` | modules' handlers | — | true inside a handler |
 | `Declared` | `bms check` | — | the registered names with owner and schedule, no I/O, no permission |
 
 ## Types
@@ -976,6 +978,8 @@ axe on the full page. Accessible names: `Run now: Delete finished job records`, 
 
 ## Amendments
 
+- **Amended 2026-11-01 (boundaries step 11; boundaries.md Proposed change 20, `NewDeferrer` part):** `jobs.NewDeferrer(DeferrerOptions{DB, Clock, Instance}) (*Deferrer, error)` implements `signals.Deferrer` over `core.job` alone (`Invalid` for nil DB/Clock or a missing or malformed instance, fields `jobs.db`, `jobs.clock`, `jobs.instance`; no I/O at build). `Defer` validates the delivery (`Invalid`), fails `Unavailable` wrapping `db.ErrReadOnly` on a read-only copy (F14), and inserts one `signals.redeliver` row built by the same function as the runner's (`redeliverRow`: key `<signal id>:<subscriber>`, args, `run_at` = now + `Delay(attempt+1)` with jitter, trace ID). It uses `DefaultRetry` (a runner with a custom `Retry` would not be mirrored) and opens no span. `app` builds it in `newDispatcher` and passes it to `signals.New`; `lazyDeferrer` is gone. The runner keeps `Redeliverer` and the `signals.redeliver` handler; `Runner.Defer` still exists but `app` no longer calls it. Tests: B27 `TestNewDeferrer_NilDB_ReturnsInvalid`, B28 `TestDefer_ReadOnlyCopy_ReturnsUnavailable`, `TestDefer_RowIsRunnableByTheRunner` (integration). The second half of item 20 is also applied: the runner sets `audit.WithSystem` on every run, beside `rules.WithJob` in `internal/core/jobs/run.go` (code at step 3, commit bfcbfc9; documented here at step 11), and the `jobstest` fake does the same. App's `auditActor` no longer answers `ActorSystem` for `InJob`; the Summary lines on `InJob` and `app` and Q-JOBS6 say so.
+
 Amendments J1 (D50), J-W1 (D57, D58), the two amendments of 2026-10-20 (D44), the amendment of 2026-10-28 (D52) and the Summary notes that went with them are folded into the text above. Their narratives, the reasons for each choice, what the reviews found and the superseded wording are in `plan/design/history/jobs.md`.
 
 ## Open questions
@@ -987,7 +991,7 @@ None. Every question is answered and folded into the text above; the questions, 
 - Q-JOBS3 (D43): decision 10 (notify keeps its own sender loop).
 - Q-JOBS4 (D43): decision 13 (`Every` only; a daily time in `regional.timezone` is Later).
 - Q-JOBS5 (D43): `DoneTTL` is a constant (Data, retention).
-- Q-JOBS6 (D43, corrected D44): the actor inside a job is the system, through `app`'s `auditActor` over `InJob` (Expects of dependencies; decision 5).
+- Q-JOBS6 (D43, corrected D44): the actor inside a job is the system, through `audit.WithSystem`, set by the runner on every run (code at boundaries step 3, documented at step 11; was `app`'s `auditActor` over `InJob`).
 - Q-JOBS7 (D43): no settings, no new config keys (Settings).
 - Q-JOBS8 (owner, 2026-10-20, D44): decision 18 and F51.
 - Q-JOBS9 (owner, 2026-10-20, D44): decision 19 and F52.
