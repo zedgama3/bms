@@ -20,9 +20,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/objects"
 	"github.com/zedgama3/bms/internal/core/objects/disk"
 	"github.com/zedgama3/bms/internal/core/objects/s3"
-	"github.com/zedgama3/bms/internal/core/people"
 	"github.com/zedgama3/bms/internal/lib/errs"
-	"github.com/zedgama3/bms/internal/model"
 )
 
 // filesPart is core part 10: the attachment service and the object store under it (files.md;
@@ -201,32 +199,6 @@ func startFiles(svc *files.Service) func(context.Context) error {
 		}
 		return err //nolint:wrapcheck // Start names itself
 	}
-}
-
-// filesSource is the "files" source of people's export and deletion, linked after the
-// modules.
-func filesSource(svc *files.Service) people.Source {
-	return people.Source{Name: filesArea, Exporter: filesData{svc: svc}}
-}
-
-type filesData struct{ svc *files.Service }
-
-// ExportPerson is files' export as people's Export.
-func (d filesData) ExportPerson(ctx context.Context, person model.PersonID) (people.Export, error) {
-	raw, err := d.svc.ExportPerson(ctx, person)
-	if err != nil {
-		return people.Export{}, err //nolint:wrapcheck // people names the source
-	}
-	return people.Export{Data: raw}, nil
-}
-
-// DeletePerson is files' backstop deletion as people's ModuleDeletion.
-func (d filesData) DeletePerson(ctx context.Context, person model.PersonID) (people.ModuleDeletion, error) {
-	del, err := d.svc.DeletePerson(ctx, person)
-	if err != nil {
-		return people.ModuleDeletion{}, err //nolint:wrapcheck // people names the source
-	}
-	return people.ModuleDeletion{Deleted: del.Deleted, Anonymized: del.Anonymized}, nil
 }
 
 // filesDirsWarning is the one line migrate prints when it cannot create a files directory.

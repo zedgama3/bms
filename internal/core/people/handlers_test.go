@@ -16,6 +16,15 @@ import (
 
 // ---- permissions ------------------------------------------------------------------------
 
+// The data permissions are declared by datarights now (boundaries decision 12).
+func TestPermissions_DataRightsPermissionsAreNotPeoples(t *testing.T) {
+	for _, d := range people.Permissions {
+		if d.Name == permExport || d.Name == permDelete {
+			t.Errorf("people still declares %s, which datarights declares", d.Name)
+		}
+	}
+}
+
 func TestPermissions_MatchTheSpecTable(t *testing.T) {
 	type want struct {
 		scope   authz.Scope
@@ -30,8 +39,6 @@ func TestPermissions_MatchTheSpecTable(t *testing.T) {
 		// volunteer-coordinator and the department-admin.
 		permContacts: {authz.ScopeDepartment, model.SensitivityPersonal, []string{authz.RoleAccountAdmin, authz.RoleVolunteerCoordinator, authz.RoleDepartmentAdmin}},
 		permManage:   {authz.ScopeSite, model.SensitivityPersonal, []string{authz.RoleAccountAdmin}},
-		permExport:   {authz.ScopeSite, model.SensitivitySensitive, []string{authz.RoleAccountAdmin}},
-		permDelete:   {authz.ScopeSite, model.SensitivitySensitive, []string{authz.RoleAccountAdmin}},
 	}
 	if len(people.Permissions) != len(table) {
 		t.Fatalf("%d declarations, want %d", len(people.Permissions), len(table))
@@ -125,18 +132,12 @@ var specRoutes = []string{
 	"GET /me", "PUT /me",
 	"POST /me/contacts", "PUT /me/contacts/{contact}", "DELETE /me/contacts/{contact}",
 	"PUT /me/consents/{purpose}",
-	"GET /me/export",
-	"GET /me/requests", "POST /me/requests", "POST /me/requests/{request}/withdraw",
 	"GET /search", "GET /names",
 	"POST /",
 	"GET /{person}", "PUT /{person}",
 	"POST /{person}/contacts", "PUT /{person}/contacts/{contact}", "DELETE /{person}/contacts/{contact}",
 	"PUT /{person}/consents/{purpose}",
 	"POST /{person}/link-account",
-	"GET /{person}/export",
-	"DELETE /{person}",
-	"GET /requests",
-	"POST /requests/{request}/decline", "POST /requests/{request}/fulfil",
 }
 
 func TestRoutes_MatchTheSpecTable(t *testing.T) {
@@ -206,17 +207,13 @@ func TestHandlers_Errors_MapToProblem(t *testing.T) {
 		{"update me without a session", "PUT", "/me", `{"playa_name":"x"}`, false, nil, errs.Unauthenticated, 401},
 		{"names are served to the system but the id list is checked", "GET", "/names?ids=not-a-uuid", "", true, nil, errs.Invalid, 400},
 		{"bad person id", "GET", "/not-a-uuid", "", true, nil, errs.Invalid, 400},
-		{"bad person id on export", "GET", "/not-a-uuid/export", "", true, nil, errs.Invalid, 400},
 		{"bad contact id", "DELETE", "/me/contacts/nope", "", true, nil, errs.Invalid, 400},
-		{"bad request id", "POST", "/me/requests/nope/withdraw", "", true, nil, errs.Invalid, 400},
 		{"body is not json", "PUT", "/me", `{nope`, true, nil, errs.Invalid, 400},
 		{"body is an array", "PUT", "/me", `[]`, true, nil, errs.Invalid, 400},
 		{"search too short", "GET", "/search?q=a", "", true, []authz.Permission{permDirectory}, errs.Invalid, 400},
 		{"search limit not a number", "GET", "/search?q=ember&limit=abc", "", true, []authz.Permission{permDirectory}, errs.Invalid, 400},
 		{"search without permission", "GET", "/search?q=ember", "", true, nil, errs.Permission, 403},
 		{"other person without permission", "GET", "/" + newPerson().String(), "", true, nil, errs.Permission, 403},
-		{"delete without permission", "DELETE", "/" + newPerson().String(), "", true, nil, errs.Permission, 403},
-		{"requests list without permission", "GET", "/requests", "", true, nil, errs.Permission, 403},
 		{"consent with a bad purpose", "PUT", "/me/consents/nodot", `{"granted":true}`, true, nil, errs.Invalid, 400},
 	}
 	for _, tc := range tests {
@@ -284,7 +281,7 @@ func TestHandlers_GETRoutes_ChangeNothing(t *testing.T) {
 	u := newUnit(t)
 	me := newPerson()
 	u.az.Grant(me, permDirectory)
-	for _, path := range []string{"/me", "/search?q=ember", "/names?ids=" + newPerson().String(), "/me/requests"} {
+	for _, path := range []string{"/me", "/search?q=ember", "/names?ids=" + newPerson().String()} {
 		u.fake.SetReadOnly(true)
 		w, f := u.do(asPerson(ctxT(t), me), "GET", path, "")
 		if f.count() != 0 || w.Code != http.StatusOK {

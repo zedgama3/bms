@@ -19,6 +19,7 @@
 - **Amended 2026-10-30 (D58; jobs J-W1 Proposed change 16, in `plan/design/history/jobs.md`):** decision 8's derived keys gain `module.<name>.job.<ident>.title` for every job name the module registers in `Start` (checked by `TestMessageCatalogues_EnglishCoversJobs` in `internal/app`); `jobs.Decl` carries no title.
 - **Amendment 2026-10-30 (approved, owner, D57; module-volunteers Amendment V3 in `plan/design/history/module-volunteers.md`, Proposed change 17):** `Manifest.Terms []TermDecl` (aliases `module.TermDecl`, `module.TermForms`); `Validate` runs each `TermDecl.Validate` and the duplicate and reserved checks under `terms[i]`; `ModuleSettings.Terms`; decision 8's derived keys gain `module.<name>.term.<key>` and its three forms; a module's messages and templates use only `CoreTerms` and its own `Terms` (enforced by an `app` test); F67.
 - **Amendment D1 (approved 2026-10-29, D56; demo.md Proposed change 18, applied 2026-10-29):** `demoseed_provider_valid` registers the request's event with dates (Thursday 10:00 to Monday 12:00, at least 21 days after the rig's clock, zone `UTC`) and calls the module's `Start` before `Provider.Seed` and `Stop` after, as `bms demo seed` does, so a provider may rely on what `Start` registered and carries no default-date rule of its own.
+- **Amended 2026-11-01 (boundaries step 12; boundaries.md Proposed change 23):** `PersonData`, `Export`, `Deletion` and `Kept` are aliases of `datarights`' types (`type PersonData = datarights.PersonData`, and the same for the other three): the shapes, the method contracts and the `moduletest` rules are unchanged, so every module and every `Conformance` run compiles and passes as written. The orchestrator of an export or a deletion is `datarights` (not `people`), which runs `Set.PersonData()` behind `people.data.export` and `people.data.delete` (declared by `datarights`, names unchanged); the `export` and `delete` commands are `datarights`'. The type definitions printed under Interface are `datarights`' own, kept here for the module author. `datarights` joins the reserved core area names (api.md item 24: it is a core route-set name, so no module may be called `datarights`); the pinned reserved list and its test gain it with the code. `CoreRoutes` is not part of this step.
 - **Package:** `internal/core/module` (Go module `github.com/zedgama3/bms`), plus the test
   helper package `internal/core/module/moduletest`. **UI:** none of its own; the admin
   "modules" screen is `web-shell.md`'s, fed by `GET /api/admin/modules` (`api.md`), both
@@ -43,7 +44,7 @@
   "Types" and Proposed changes 2 and 3.
   **Used by:** `app` (composition root: resolves, builds, starts and stops the modules; the
   `migrate` and `check` commands), `api` (mounts routes, serves the graph), `authz` (receives
-  the declared permissions), `settings` (receives the declared settings), `people` (export
+  the declared permissions), `settings` (receives the declared settings), `datarights` (export
   and deletion across modules), `signals` (the declared names), every module (`Manifest`,
   `Register`, `Deps`, `Links`), and the `hello` reference module (09-core-features §1).
 
@@ -67,7 +68,7 @@ Exported names (package `module`):
   (mandatory for a RouteProvider), `CapabilityProvider.Capabilities() map[Capability]any`,
   `Contributor.Contributions() map[ExtensionPoint]any`. `PersonData{ExportPerson(ctx,
   PersonID) (Export, error); DeletePerson(ctx, PersonID) (Deletion, error)}`; `Export{Data
-  json.RawMessage}`, `Deletion{Deleted, Anonymized int, Kept []Kept}`, `Kept{Kind, Count}`.
+  json.RawMessage}`, `Deletion{Deleted, Anonymized int, Kept []Kept}`, `Kept{Kind, Count}` (aliases of `datarights`' types since boundaries step 12; the shapes are unchanged).
 - `Route{Method, Pattern, Access, Handler, MaxBodyBytes, Timeout}` (relative to `/api/<name>`; `Validate`; the last two raise the shell's body cap and request timeout for one route, zero = the shell's, ceilings 1 GiB and 10 minutes, D44),
   `Access` (`AccessSignedIn` zero default, `AccessPublic`). `Deps{Logger, Tracer
   telemetry.Tracer, Clock, Links *Links, DB db.DB, Signals signals.Bus}`; later fields
@@ -118,14 +119,14 @@ zero PersonID), `Conflict` (duplicate name, two providers, `Start` twice, schema
 
 Owns: permission `core.modules.read` (declared by `api`; graph at `GET /api/admin/modules`;
 public `GET /api/modules` lists enabled names only); `people.data.export`/`.delete` are
-`people`'s. No signals, no settings; config key `modules.disabled` (config.md). Route prefix
+`datarights`'. No signals, no settings; config key `modules.disabled` (config.md). Route prefix
 `/api/<name>/`; message-key convention in decision 8; web catalogues are web-shell's.
 Expects of dependencies: lib-errs (kinds, `errs.E`/`Is`); lib-core (`clock.Clock`,
 `validate.Errors`/`FieldError`); model (`PersonID`, `Sensitivity.Validate`); db (`db.DB`,
 `db.ErrReadOnly`, `*db.Migrator` as `SchemaChecker`, `dbtest.Fake`); telemetry (`Tracer`,
 `telemetrytest`, `Scrub`'s `[email]` token); signals (`Bus`, `Name`, `signalstest.NewFake`).
 Of consumers: `app` supplies `Env`, `Provision`, the checker and the order Build, Start, Stop;
-`api` mounts `Set.Routes`; `authz`/`settings` take `Plan.Permissions`/`Plan.Settings`; `people` runs `Set.PersonData`.
+`api` mounts `Set.Routes`; `authz`/`settings` take `Plan.Permissions`/`Plan.Settings`; `datarights` runs `Set.PersonData`.
 Compatibility (Q-UPGRADE): semver; the contract is the public API for forks' modules, breaking changes only in a major version.
 Proposed changes: 1, 3, 4, 6, 7, 9–12, 14 applied; 2 and 8 applied 2026-10-18; 5 and 13 (notify) applied 2026-10-19 (D39), 13 (jobs) applied 2026-10-20 (D43);
 15–17 (hello, skills; none for telemetry or app) applied 2026-10-17.
@@ -164,7 +165,7 @@ knowing it.
 | Delivering signals, the catalogue of payloads, after-commit semantics | `signals` (`signals.md`). This spec validates names and tells `signals` which names each module declared. |
 | Storing, typing and editing settings; terminology; retention settings per module and level (D30) | `settings` (`settings.md`). This spec hands it the declared settings; `settings` adds the retention keys for every module itself. |
 | Running jobs, and running them only on the writing copy | `jobs` (`jobs.md`). A module registers its jobs through `Deps.Jobs` in `Start`. |
-| Orchestrating "export everything about person X" and "delete everything about person X" across modules, checking the permission for it and auditing it | `people` (`people.md`). This spec defines the `PersonData` interface every module must implement and gives `people` the list. |
+| Orchestrating "export everything about person X" and "delete everything about person X" across modules, checking the permission for it and auditing it | `datarights` (`datarights.md`; `people.md` until boundaries step 12). This spec defines the `PersonData` interface every module must implement (as aliases of `datarights`' types) and gives `datarights` the list. |
 | The shapes of capabilities and extension points (the Go interfaces and data types) | `internal/contracts/<name>/` (D19). This spec carries only their names and checks the wiring. |
 | The module's UI: screens, navigation, its message catalogue, the build-time web registry (D31) | `web-shell.md`. The manifest does not declare "has UI"; see decision 9. |
 | Forms (D32), terminology, any feature a burner sees | the module's own spec, written with `add-module`. |
@@ -366,12 +367,14 @@ type Module interface {
 	Stop(ctx context.Context) error
 }
 
+// PersonData, Export, Deletion and Kept are aliases of datarights' types (boundaries step 12);
+// the definitions are shown here for the module author.
 // PersonData is how a module answers "export everything about person X" and "delete
 // everything about person X" (privacy-data). Every module implements it, including one
 // that holds no personal data (it returns an empty Export and a zero Deletion), so the
 // obligation is visible in code and tested by moduletest. The caller is the core
-// (people.md) with an actor who has already been authorized for people.data.export or
-// people.data.delete and whose action people audits; a module does not re-check that
+// (datarights.md) with an actor who has already been authorized for people.data.export or
+// people.data.delete and whose action datarights audits; a module does not re-check that
 // permission, and these methods are never reachable through a module's own routes.
 type PersonData interface {
 	// ExportPerson returns every record this module holds about person, at every
@@ -717,7 +720,7 @@ type ModuleRoutes struct {
 	OpenAPI []byte
 }
 
-// PersonData returns every module's PersonData with its name, in build order, for people
+// PersonData returns every module's PersonData with its name, in build order, for datarights
 // (export and deletion run over all of them). Cannot fail.
 func (s *Set) PersonData() []ModulePersonData
 
@@ -857,7 +860,7 @@ type Subject struct {
 | `Manifest`, `Validate` | every module (`var Manifest = module.Manifest{...}`); `Registry.Add`; `app` (`migrate`, `check`); `db` (reads `Migrations` through `Plan.Order`) | — | every problem reported at once |
 | `Factory` | every module (`func New(ctx, deps) (module.Module, error)`); `Register`; `Build` | — | a module or an error, never both nil |
 | `Module` (`Start`, `Stop`) | `Set.Start`/`Stop` for `app` | built | started; stopped and waited |
-| `PersonData`, `Export`, `Deletion`, `Kept` | every module (`privacy.go`); `people` (orchestrates); `moduletest` | actor authorized by `people` | all records, all levels; deletion idempotent |
+| `PersonData`, `Export`, `Deletion`, `Kept` | every module (`privacy.go`); `datarights` (orchestrates; owns the definitions); `moduletest` | actor authorized by `datarights` | all records, all levels; deletion idempotent |
 | `RouteProvider`, `Route`, `Access`, `Route.Validate` | modules with an API; `Build` (validates); `api` (mounts, from `Set.Routes`) | handlers built | relative, validated routes |
 | `APIDescriber` | modules with an API; `api` (merges fragments) | embedded | non-empty bytes |
 | `CapabilityProvider` | providing modules; `Build` (checks keys); consumers through `Links` | built | one value per declared name |
@@ -872,7 +875,7 @@ type Subject struct {
 | `Plan.Graph`, `Graph`, `Node`, `Edge`, `Warning` | `api` (`GET /api/admin/modules`; enabled names only on the public `GET /api/modules`), `app` (`check`, logs warnings) | resolved | serializable |
 | `SchemaChecker` | `Build`; implemented by `db` | — | D17 check |
 | `Provision` | `app` | — | scoped `Deps` |
-| `Plan.Build`, `Set` and accessors | `app`; `api` (`Routes`); `people` (`PersonData`) | resolved; database reachable | every module verified |
+| `Plan.Build`, `Set` and accessors | `app`; `api` (`Routes`); `datarights` (`PersonData`) | resolved; database reachable | every module verified |
 | `moduletest.Conformance` | every module's tests; `hello` | — | contract kept |
 
 ## Types
@@ -983,7 +986,7 @@ The actor is not a `Deps` field. A module that needs the signed-in person calls 
 
 None. `module` owns no tables and no files. The table of schema versions per module is
 `db`'s (D17); the settings values are `settings`'; grants are `authz`'s. Nothing here holds
-personal data: `Export` and `Deletion` pass through `people`, which audits them, and are
+personal data: `Export` and `Deletion` pass through `datarights`, which audits them, and are
 never logged by this package (the `Logger` rule in go-conventions); `moduletest`'s
 `no_personal_data_in_logs` checks the module side.
 
@@ -996,7 +999,7 @@ specs expose on this spec's data:
 | Permission | Allows | Scoped by | Default roles | Declared by |
 |---|---|---|---|---|
 | `core.modules.read` | read the module graph and schema versions (`GET /api/admin/modules`, 09 §7); the enabled names alone are public on `GET /api/modules` (api.md decision 27) | site | every site-admin starter role | `api.md` (`api.PermissionModulesRead`, declared where it is checked), registered with `authz` by `app` (api.md Proposed change 10) |
-| `people.data.export`, `people.data.delete` | run `PersonData` across modules for one person | site | account admin (09 §11) | `people.md` (Proposed change 8, applied 2026-10-18) |
+| `people.data.export`, `people.data.delete` | run `PersonData` across modules for one person | site | account admin (09 §11) | `datarights.md` (was `people.md`, Proposed change 8, applied 2026-10-18; moved at boundaries step 12) |
 
 Every module's own routes name their permissions in the module's spec.
 
@@ -1181,7 +1184,7 @@ None of its own. What this spec provides for screens elsewhere:
 ### Reserved module names
 
 `Manifest.Validate` rejects: the core areas (`core`, `people`, `accounts`, `access`,
-`identity`, `authz`, `departments`, `events`, `signals`, `notify`, `audit`, `files`, `jobs`, `demo` (D53),
+`identity`, `authz`, `departments`, `events`, `signals`, `notify`, `audit`, `files`, `jobs`, `demo` (D53), `datarights` (boundaries step 12: the core route set and audit area),
 `settings`, `telemetry`, `db`, `module`, `modules`), `regional` (the settings area of the regional's own values, D39; reserved so no module can declare `regional.*` keys; `IsCoreArea` is unchanged), the shell packages (`api`, `app`,
 `config`, `web`, `admin`, `client`), and PostgreSQL's (`public`, `information`, anything
 starting with `pg`). The list is a constant in the package and a test pins it. `func IsCoreArea(name string) bool`

@@ -2,11 +2,9 @@ package people
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -15,7 +13,6 @@ import (
 	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/identity"
-	"github.com/zedgama3/bms/internal/core/notify"
 	"github.com/zedgama3/bms/internal/core/people/postgres"
 	"github.com/zedgama3/bms/internal/core/people/rows"
 	"github.com/zedgama3/bms/internal/core/settings"
@@ -73,23 +70,10 @@ type store interface {
 	SetConsent(ctx context.Context, c rows.Consent) (rows.Consent, error)
 	DeleteConsentsOf(ctx context.Context, person model.PersonID) (int, error)
 
-	// Deletion requests. Withdraw and Decline report decided=false when the request is
-	// not open (or not the person's); the service then reads GetRequest to tell NotFound
-	// from Conflict.
-	InsertRequest(ctx context.Context, id RequestID, person model.PersonID, note string, at time.Time) (rows.Request, error)
-	GetRequest(ctx context.Context, id RequestID) (rows.Request, error)
-	RequestForUpdate(ctx context.Context, id RequestID) (rows.Request, error)
-	MyRequests(ctx context.Context, person model.PersonID, limit int) ([]rows.Request, error)
-	ListRequests(ctx context.Context, status string, person model.PersonID, limit int) ([]rows.Request, error)
-	WithdrawRequest(ctx context.Context, id RequestID, person model.PersonID, at time.Time) (row rows.Request, decided bool, err error)
-	DeclineRequest(ctx context.Context, id RequestID, by model.PersonID, note string, at time.Time) (row rows.Request, decided bool, err error)
-	DeleteRequestsOf(ctx context.Context, person model.PersonID) (int, error)
-
-	// The export document's parts.
+	// The export document's parts (datarights asks for them through PeopleSource).
 	ExportPerson(ctx context.Context, id model.PersonID) (rows.Person, error)
 	ExportContacts(ctx context.Context, id model.PersonID) ([]rows.Contact, error)
 	ExportConsents(ctx context.Context, id model.PersonID) ([]rows.Consent, error)
-	ExportRequests(ctx context.Context, id model.PersonID) ([]rows.Request, error)
 }
 
 var _ store = (*postgres.Store)(nil)
@@ -103,31 +87,6 @@ var _ store = (*postgres.Store)(nil)
 type Accounts interface {
 	EmailOf(ctx context.Context, person model.PersonID) (model.Email, error)
 	LinkAccount(ctx context.Context, email model.Email, person model.PersonID) (model.AccountID, model.PersonID, error)
-	ExportPerson(ctx context.Context, person model.PersonID) (json.RawMessage, error)
-	DeletePerson(ctx context.Context, person model.PersonID) (int, error)
-}
-
-// Access is authz's seam (its ExportPerson and DeletePerson).
-type Access interface {
-	ExportPerson(ctx context.Context, person model.PersonID) (json.RawMessage, error)
-	DeletePerson(ctx context.Context, person model.PersonID) (int, error)
-}
-
-// AuditCounter is auditlog.Service's CountAbout, for the deletion report.
-type AuditCounter interface {
-	CountAbout(ctx context.Context, person model.PersonID) (int, error)
-}
-
-// PersonData is what app adapts each module.ModulePersonData to.
-type PersonData interface {
-	ExportPerson(ctx context.Context, person model.PersonID) (Export, error)
-	DeletePerson(ctx context.Context, person model.PersonID) (ModuleDeletion, error)
-}
-
-// Source is one module's PersonData with its name, in build order.
-type Source struct {
-	Name     string
-	Exporter PersonData
 }
 
 // SectionProvider is one module's contribution to people.person-page.
@@ -160,24 +119,18 @@ type SessionFunc func(ctx context.Context) (identity.Session, bool)
 
 // Options builds the service. Audit and Signals are scoped to "people" by app.
 type Options struct {
-	DB         db.DB
-	Clock      clock.Clock
-	Logger     *slog.Logger
-	Tracer     telemetry.Tracer
-	Meter      telemetry.Meter // optional: nil records no metrics
-	Audit      audit.Recorder  // scoped "people"
-	Signals    signals.Bus     // scoped "people": publishes the three, subscribes identity.account-created
-	Authz      authz.Authorizer
-	Actor      authz.ActorFunc // app: identity.PersonFrom + SessionFrom.Superuser
-	Session    SessionFunc     // app: identity.SessionFrom; Me reads IssuedAt for the first-sign-in prompt
-	Accounts   Accounts
-	Access     Access
-	AuditCount AuditCounter
-	Settings   settings.Reader // scoped "people"; required; the field policy is read per use case, never cached
-	// Notify sends the deletion-request notice (scoped "people"); optional: nil means no
-	// notice. Holders says who gets it; optional: nil means no notice.
-	Notify  notify.Notifier
-	Holders Holders
+	DB       db.DB
+	Clock    clock.Clock
+	Logger   *slog.Logger
+	Tracer   telemetry.Tracer
+	Meter    telemetry.Meter // optional: nil records no metrics
+	Audit    audit.Recorder  // scoped "people"
+	Signals  signals.Bus     // scoped "people": publishes the three, subscribes identity.account-created
+	Authz    authz.Authorizer
+	Actor    authz.ActorFunc // app: identity.PersonFrom + SessionFrom.Superuser
+	Session  SessionFunc     // app: identity.SessionFrom; Me reads IssuedAt for the first-sign-in prompt
+	Accounts Accounts
+	Settings settings.Reader // scoped "people"; required; the field policy is read per use case, never cached
 	// Lookup is the five system-level reads (NamesOf, PlayaNameOf, LanguageOf, ConsentOf,
 	// ContactEmailOf); built before notify and identity; required.
 	Lookup *Lookup
@@ -185,7 +138,7 @@ type Options struct {
 
 // Validate fails errs.Invalid joining a validate.FieldError per nil dependency (fields
 // people.db, people.clock, people.logger, people.tracer, people.audit, people.signals,
-// people.authz, people.actor, people.session, people.accounts, people.access, people.audit_count, people.settings, people.lookup).
+// people.authz, people.actor, people.session, people.accounts, people.settings, people.lookup).
 func (o Options) Validate() error {
 	v := validate.Errors{Op: "people.Options.Validate"}
 	for _, d := range []struct {
@@ -202,8 +155,6 @@ func (o Options) Validate() error {
 		{"people.actor", o.Actor == nil},
 		{"people.session", o.Session == nil},
 		{"people.accounts", o.Accounts == nil},
-		{"people.access", o.Access == nil},
-		{"people.audit_count", o.AuditCount == nil},
 		{"people.settings", o.Settings == nil},
 		{"people.lookup", o.Lookup == nil},
 	} {
@@ -216,33 +167,27 @@ func (o Options) Validate() error {
 
 // linkState is what Link hands the service, frozen.
 type linkState struct {
-	sources    []Source
 	sections   []SectionProvider
 	membership []MembershipProvider
 }
 
 // Service is people. Safe for concurrent use; nothing to close (no goroutines of its own).
 type Service struct {
-	store      store
-	db         db.DB
-	clock      clock.Clock
-	logger     *slog.Logger
-	tracer     telemetry.Tracer
-	audit      audit.Recorder
-	signals    signals.Bus
-	authz      authz.Authorizer
-	actorFn    authz.ActorFunc
-	sessionFn  SessionFunc
-	accounts   Accounts
-	access     Access
-	auditCount AuditCounter
-	settings   settings.Reader
-	notify     notify.Notifier
-	holders    Holders
-	lookup     *Lookup
-	metrics    metrics
-	linked     atomic.Pointer[linkState]
-	cooldown   *cooldown
+	store     store
+	db        db.DB
+	clock     clock.Clock
+	logger    *slog.Logger
+	tracer    telemetry.Tracer
+	audit     audit.Recorder
+	signals   signals.Bus
+	authz     authz.Authorizer
+	actorFn   authz.ActorFunc
+	sessionFn SessionFunc
+	accounts  Accounts
+	settings  settings.Reader
+	lookup    *Lookup
+	metrics   metrics
+	linked    atomic.Pointer[linkState]
 }
 
 var (
@@ -306,8 +251,8 @@ func newService(o Options, st store) (*Service, error) {
 	}
 	s := &Service{
 		store: st, db: o.DB, clock: o.Clock, logger: o.Logger, tracer: o.Tracer, audit: o.Audit,
-		signals: o.Signals, authz: o.Authz, actorFn: o.Actor, sessionFn: o.Session, accounts: o.Accounts, access: o.Access,
-		auditCount: o.AuditCount, settings: o.Settings, notify: o.Notify, holders: o.Holders, lookup: o.Lookup, metrics: m, cooldown: newCooldown(),
+		signals: o.Signals, authz: o.Authz, actorFn: o.Actor, sessionFn: o.Session, accounts: o.Accounts,
+		settings: o.Settings, lookup: o.Lookup, metrics: m,
 	}
 	if err := o.Signals.Subscribe(identity.SignalAccountCreated, s.handleAccountCreated); err != nil {
 		return nil, fmt.Errorf("%s: subscribe: %w", op, err)
@@ -462,22 +407,11 @@ func policyFrom(ctx context.Context, r settings.Reader) (Policy, error) {
 	return pol, nil
 }
 
-// constraintOf returns the constraint name a database error carries, or "".
-func constraintOf(err error) string {
-	var pe *db.Error
-	if errors.As(err, &pe) {
-		return pe.Constraint
-	}
-	return ""
-}
-
 // ---- metrics ----------------------------------------------------------------------------
 
 // metrics holds the instruments; each method is a no-op without a Meter.
 type metrics struct {
-	exports   telemetry.Counter
-	deletions telemetry.Counter
-	sections  telemetry.Counter
+	sections telemetry.Counter
 }
 
 func newMetrics(m telemetry.Meter) (metrics, error) {
@@ -488,14 +422,6 @@ func newMetrics(m telemetry.Meter) (metrics, error) {
 		out metrics
 		err error
 	)
-	if out.exports, err = m.Counter("bms.people.exports", telemetry.WithUnit("{export}"),
-		telemetry.WithDescription("Per-person exports by outcome.")); err != nil {
-		return metrics{}, fmt.Errorf("people.New: %w", err)
-	}
-	if out.deletions, err = m.Counter("bms.people.deletions", telemetry.WithUnit("{deletion}"),
-		telemetry.WithDescription("Per-person deletions by outcome.")); err != nil {
-		return metrics{}, fmt.Errorf("people.New: %w", err)
-	}
 	if out.sections, err = m.Counter("bms.people.sections", telemetry.WithUnit("{section}"),
 		telemetry.WithDescription("Person-page sections by module and outcome.")); err != nil {
 		return metrics{}, fmt.Errorf("people.New: %w", err)
@@ -503,24 +429,11 @@ func newMetrics(m telemetry.Meter) (metrics, error) {
 	return out, nil
 }
 
-// The outcomes the counters take.
+// The outcomes the counter takes.
 const (
-	outcomeOK      = "ok"
-	outcomeFailed  = "failed"
-	outcomeLimited = "limited"
+	outcomeOK     = "ok"
+	outcomeFailed = "failed"
 )
-
-func (m metrics) export(ctx context.Context, outcome string) {
-	if m.exports != nil {
-		m.exports.Add(ctx, 1, telemetry.Token("outcome", outcome))
-	}
-}
-
-func (m metrics) deletion(ctx context.Context, outcome string) {
-	if m.deletions != nil {
-		m.deletions.Add(ctx, 1, telemetry.Token("outcome", outcome))
-	}
-}
 
 func (m metrics) section(ctx context.Context, module, outcome string) {
 	if m.sections != nil {
@@ -528,77 +441,16 @@ func (m metrics) section(ctx context.Context, module, outcome string) {
 	}
 }
 
-// ---- the export cooldown ----------------------------------------------------------------
-
-// cooldown remembers when each person last exported their own data, bounded by
-// MaxTrackedExports (decision 10 and "Cooldown"). Per process, in memory.
-type cooldown struct {
-	mu   sync.Mutex
-	last map[model.PersonID]time.Time
-}
-
-func newCooldown() *cooldown { return &cooldown{last: make(map[model.PersonID]time.Time)} }
-
-// take reserves an export for person at now. It reports false while the last one is
-// younger than ExportCooldown. At the bound it first drops expired entries, then the oldest.
-func (c *cooldown) take(person model.PersonID, now time.Time) bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if at, ok := c.last[person]; ok && now.Sub(at) < ExportCooldown {
-		return false
-	}
-	if _, ok := c.last[person]; !ok && len(c.last) >= MaxTrackedExports {
-		c.evict(now)
-	}
-	c.last[person] = now
-	return true
-}
-
-// release forgets a reservation whose export failed, so the person may retry at once.
-func (c *cooldown) release(person model.PersonID, at time.Time) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.last[person].Equal(at) {
-		delete(c.last, person)
-	}
-}
-
-// evict makes room for one entry. The caller holds the lock.
-func (c *cooldown) evict(now time.Time) {
-	var (
-		oldest   model.PersonID
-		oldestAt time.Time
-		first    = true
-	)
-	for p, at := range c.last {
-		if now.Sub(at) >= ExportCooldown {
-			delete(c.last, p)
-			continue
-		}
-		if first || at.Before(oldestAt) {
-			oldest, oldestAt, first = p, at, false
-		}
-	}
-	if len(c.last) >= MaxTrackedExports && !first {
-		delete(c.last, oldest)
-	}
-}
-
 // ---- Link -------------------------------------------------------------------------------
 
-// Link hands the service the modules' PersonData and page providers, once, from app's link
-// step (after module Build, before api.New). Fails errs.Internal on a second call, a nil
-// provider or exporter, or a source without a name. Before Link, Export and Delete fail
-// errs.Internal and pages carry no sections. members are the modules' contributions to
-// people.membership (D44), in build order; with none (nil or empty), a department-scoped
-// directory or contacts extent reaches every person (decision 9).
-func (s *Service) Link(sources []Source, sections []SectionProvider, members []MembershipProvider) error {
+// Link hands the service the modules' person-page and membership providers, once, from
+// app's link step (after module Build, before api.New). Fails errs.Internal on a second
+// call, a nil provider or a provider without a module name. Before Link pages carry no
+// sections. members are the modules' contributions to people.membership (D44), in build
+// order; with none (nil or empty), a department-scoped directory or contacts extent reaches
+// every person (decision 9). The modules' PersonData goes to datarights, not here.
+func (s *Service) Link(sections []SectionProvider, members []MembershipProvider) error {
 	const op = "people.Service.Link"
-	for _, src := range sources {
-		if src.Name == "" || src.Exporter == nil {
-			return errs.E(op, errs.Internal, errors.New("a source needs a name and a PersonData"))
-		}
-	}
 	for _, sec := range sections {
 		if sec.Module == "" || sec.Provider == nil {
 			return errs.E(op, errs.Internal, errors.New("a section provider needs a module name and a provider"))
@@ -610,8 +462,7 @@ func (s *Service) Link(sources []Source, sections []SectionProvider, members []M
 		}
 	}
 	st := &linkState{
-		sources: append([]Source(nil), sources...), sections: append([]SectionProvider(nil), sections...),
-		membership: append([]MembershipProvider(nil), members...),
+		sections: append([]SectionProvider(nil), sections...), membership: append([]MembershipProvider(nil), members...),
 	}
 	if !s.linked.CompareAndSwap(nil, st) {
 		return errs.E(op, errs.Internal, errors.New("Link was already called"))
@@ -625,13 +476,4 @@ func (s *Service) links() (st *linkState, ok bool) {
 		return st, true
 	}
 	return &linkState{}, false
-}
-
-// requireLinked fails errs.Internal before Link (F31).
-func (s *Service) requireLinked(op string) (*linkState, error) {
-	st, ok := s.links()
-	if !ok {
-		return nil, errs.E(op, errs.Internal, errors.New("Link has not been called"))
-	}
-	return st, nil
 }

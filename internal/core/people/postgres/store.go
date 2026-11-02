@@ -62,19 +62,10 @@ var (
 	sqlListConsents      = mustSQL("list_consents_by_person.sql")
 	sqlUpsertConsent     = mustSQL("upsert_consent.sql")
 	sqlDeleteConsents    = mustSQL("delete_consents_by_person.sql")
-	sqlInsertRequest     = mustSQL("insert_request.sql")
-	sqlGetRequest        = mustSQL("get_request.sql")
-	sqlRequestForUpdate  = mustSQL("get_request_for_update.sql")
-	sqlMyRequests        = mustSQL("list_requests_by_person.sql")
-	sqlListRequests      = mustSQL("list_requests.sql")
-	sqlWithdrawRequest   = mustSQL("withdraw_request.sql")
-	sqlDeclineRequest    = mustSQL("decline_request.sql")
-	sqlDeleteRequests    = mustSQL("delete_requests_by_person.sql")
 	sqlExportPerson      = mustSQL("export_person.sql")
 	sqlMarkNamePrompted  = mustSQL("mark_name_prompted.sql")
 	sqlExportContacts    = mustSQL("export_contacts_by_person.sql")
 	sqlExportConsents    = mustSQL("export_consents_by_person.sql")
-	sqlExportRequests    = mustSQL("export_requests_by_person.sql")
 	consentPersonFKeyKey = "person_consent_person_id_fkey"
 )
 
@@ -143,14 +134,6 @@ func idOf[T ~[16]byte](raw *[16]byte) T {
 		return T{}
 	}
 	return T(*raw)
-}
-
-// utcOf converts a scanned optional time; NULL is the zero time.
-func utcOf(t *time.Time) time.Time {
-	if t == nil {
-		return time.Time{}
-	}
-	return t.UTC()
 }
 
 func uuids[T ~[16]byte](ids []T) [][16]byte {
@@ -332,23 +315,6 @@ func scanConsent(sc scanner) (rows.Consent, error) {
 	}
 	c.Person, c.RecordedBy, c.ChangedAt = model.PersonID(pid), idOf[model.PersonID](by), changed.UTC()
 	return c, nil
-}
-
-// scanRequest reads the columns R: id, person_id, kind, status, note, created_at,
-// decided_at, decided_by, decision_note.
-func scanRequest(sc scanner) (rows.Request, error) {
-	var (
-		r       rows.Request
-		id, pid [16]byte
-		at      *time.Time
-		by      *[16]byte
-	)
-	if err := sc.Scan(&id, &pid, &r.Kind, &r.Status, &r.Note, &r.CreatedAt, &at, &by, &r.DecisionNote); err != nil {
-		return rows.Request{}, err //nolint:wrapcheck // queryAll wraps with db.Wrap
-	}
-	r.ID, r.Person = rows.RequestID(id), model.PersonID(pid)
-	r.CreatedAt, r.DecidedAt, r.DecidedBy = r.CreatedAt.UTC(), utcOf(at), idOf[model.PersonID](by)
-	return r, nil
 }
 
 // ---- person -----------------------------------------------------------------------------
@@ -765,77 +731,4 @@ func (s *Store) SetConsent(ctx context.Context, c rows.Consent) (rows.Consent, e
 // DeleteConsentsOf deletes every consent of the person and reports how many.
 func (s *Store) DeleteConsentsOf(ctx context.Context, person model.PersonID) (int, error) {
 	return s.count(ctx, "people.postgres.DeleteConsentsOf", sqlDeleteConsents, [16]byte(person))
-}
-
-// ---- requests ---------------------------------------------------------------------------
-
-// InsertRequest adds an open deletion request. A second open request for the person fails
-// errs.Conflict with *db.Error.Constraint data_request_open_idx.
-func (s *Store) InsertRequest(ctx context.Context, id rows.RequestID, person model.PersonID, note string, at time.Time) (rows.Request, error) {
-	const op = "people.postgres.InsertRequest"
-	r, ok, err := queryOne(ctx, s.db, op, sqlInsertRequest, scanRequest, [16]byte(id), [16]byte(person), note, at.UTC())
-	if err != nil {
-		return rows.Request{}, err
-	}
-	if !ok {
-		return rows.Request{}, errs.E(op, errs.Internal, errors.New("insert returned no row"))
-	}
-	return r, nil
-}
-
-// GetRequest returns one request. Fails errs.NotFound when there is none.
-func (s *Store) GetRequest(ctx context.Context, id rows.RequestID) (rows.Request, error) {
-	return s.request(ctx, "people.postgres.GetRequest", sqlGetRequest, id)
-}
-
-// RequestForUpdate is GetRequest with a row lock, for a Write transaction.
-func (s *Store) RequestForUpdate(ctx context.Context, id rows.RequestID) (rows.Request, error) {
-	return s.request(ctx, "people.postgres.RequestForUpdate", sqlRequestForUpdate, id)
-}
-
-func (s *Store) request(ctx context.Context, op, query string, id rows.RequestID) (rows.Request, error) {
-	r, ok, err := queryOne(ctx, s.db, op, query, scanRequest, [16]byte(id))
-	if err != nil {
-		return rows.Request{}, err
-	}
-	if !ok {
-		return rows.Request{}, notFound(op, "request")
-	}
-	return r, nil
-}
-
-// MyRequests returns the person's own requests, newest first, at most limit.
-func (s *Store) MyRequests(ctx context.Context, person model.PersonID, limit int) ([]rows.Request, error) {
-	return queryAll(ctx, s.db, "people.postgres.MyRequests", sqlMyRequests, scanRequest,
-		[16]byte(person), nil, nil, int32(limit)) //nolint:gosec // limit is a small constant
-}
-
-// ListRequests returns the requests with status (rows.StatusOpen and the others), oldest
-// first, at most limit; a zero person is any person.
-func (s *Store) ListRequests(ctx context.Context, status string, person model.PersonID, limit int) ([]rows.Request, error) {
-	return queryAll(ctx, s.db, "people.postgres.ListRequests", sqlListRequests, scanRequest,
-		status, uuidOrNil(person), nil, nil, int32(limit)) //nolint:gosec // limit is a small constant
-}
-
-// ExportRequests is every request of the person for the export document, oldest first.
-func (s *Store) ExportRequests(ctx context.Context, person model.PersonID) ([]rows.Request, error) {
-	return queryAll(ctx, s.db, "people.postgres.ExportRequests", sqlExportRequests, scanRequest, [16]byte(person))
-}
-
-// WithdrawRequest withdraws the person's own open request; decided is false when it is not
-// open or not theirs.
-func (s *Store) WithdrawRequest(ctx context.Context, id rows.RequestID, person model.PersonID, at time.Time) (rows.Request, bool, error) {
-	return queryOne(ctx, s.db, "people.postgres.WithdrawRequest", sqlWithdrawRequest, scanRequest,
-		[16]byte(id), [16]byte(person), at.UTC())
-}
-
-// DeclineRequest declines an open request; decided is false when it is not open.
-func (s *Store) DeclineRequest(ctx context.Context, id rows.RequestID, by model.PersonID, note string, at time.Time) (rows.Request, bool, error) {
-	return queryOne(ctx, s.db, "people.postgres.DeclineRequest", sqlDeclineRequest, scanRequest,
-		[16]byte(id), at.UTC(), uuidOrNil(by), note)
-}
-
-// DeleteRequestsOf deletes every request of the person and reports how many.
-func (s *Store) DeleteRequestsOf(ctx context.Context, person model.PersonID) (int, error) {
-	return s.count(ctx, "people.postgres.DeleteRequestsOf", sqlDeleteRequests, [16]byte(person))
 }

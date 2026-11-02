@@ -69,7 +69,7 @@ func TestGet_DepartmentContactsReadNoProvider_OmitsPersonalFields(t *testing.T) 
 		r := newWB(t)
 		r.az.GrantIn(r.me, PermissionDirectoryRead, dept)
 		r.az.GrantIn(r.me, PermissionContactsRead, dept)
-		if err := r.svc.Link(nil, nil, nil); err != nil {
+		if err := r.svc.Link(nil, nil); err != nil {
 			t.Fatalf("Link: %v", err)
 		}
 		r.st.person = row
@@ -122,7 +122,7 @@ func TestSearch_DepartmentContactsReadNoProvider_NoPersonalMatch(t *testing.T) {
 		r.svc.store = spy
 		r.az.GrantIn(r.me, PermissionDirectoryRead, dept)
 		r.az.GrantIn(r.me, PermissionContactsRead, dept)
-		if err := r.svc.Link(nil, nil, nil); err != nil {
+		if err := r.svc.Link(nil, nil); err != nil {
 			t.Fatalf("Link: %v", err)
 		}
 		got, err := r.svc.Search(r.ctx, SearchQuery{Q: "ferndale"})
@@ -167,7 +167,7 @@ func TestLegalNamesOf_DepartmentContactsReadNoProvider_ReturnsSelfOnly(t *testin
 		r := newWB(t)
 		r.svc.store = &searchSpy{fakeStore: fakeStore{person: rows.Person{ID: r.me}}, legal: legal}
 		r.az.GrantIn(r.me, PermissionContactsRead, dept)
-		if err := r.svc.Link(nil, nil, nil); err != nil {
+		if err := r.svc.Link(nil, nil); err != nil {
 			t.Fatalf("Link: %v", err)
 		}
 		got, err := r.svc.LegalNamesOf(r.ctx, []model.PersonID{a, b})
@@ -190,7 +190,7 @@ func TestLegalNamesOf_DepartmentContactsReadNoProvider_ReturnsSelfOnly(t *testin
 		own := map[model.PersonID]string{a: f73Legal, b: "Rowan Example", r.me: "Wren Example"}
 		r.svc.store = &searchSpy{fakeStore: fakeStore{person: rows.Person{ID: r.me}}, legal: own}
 		r.az.GrantIn(r.me, PermissionContactsRead, dept)
-		if err := r.svc.Link(nil, nil, nil); err != nil {
+		if err := r.svc.Link(nil, nil); err != nil {
 			t.Fatalf("Link: %v", err)
 		}
 		got, err := r.svc.LegalNamesOf(r.ctx, []model.PersonID{a, r.me, b})
@@ -258,7 +258,7 @@ func TestLegalNamesOf_DepartmentContactsReadWithProvider_ReturnsAndAuditsOnlyMem
 	}}
 	r.az.GrantIn(r.me, PermissionContactsRead, dept)
 	prov := deptMembers{of: map[model.PersonID][]model.DepartmentID{member: {dept}, stranger: {other}}}
-	if err := r.svc.Link(nil, nil, []MembershipProvider{{Module: "m", Provider: prov}}); err != nil {
+	if err := r.svc.Link(nil, []MembershipProvider{{Module: "m", Provider: prov}}); err != nil {
 		t.Fatalf("Link: %v", err)
 	}
 	got, err := r.svc.LegalNamesOf(r.ctx, []model.PersonID{member, stranger, loner})

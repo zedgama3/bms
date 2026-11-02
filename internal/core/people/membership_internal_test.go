@@ -95,7 +95,7 @@ func TestReachOf_ExtentAndProviders(t *testing.T) {
 			case tc.dept:
 				r.az.GrantIn(r.me, perm, dept)
 			}
-			if err := r.svc.Link(nil, nil, tc.providers); err != nil {
+			if err := r.svc.Link(nil, tc.providers); err != nil {
 				t.Fatalf("Link: %v", err)
 			}
 			got, err := r.svc.reachOf(r.ctx, perm, []model.PersonID{in, out})
@@ -114,7 +114,7 @@ func TestReachOf_ProviderFails_FailsClosed(t *testing.T) {
 	r := newWB(t)
 	r.az.GrantIn(r.me, PermissionDirectoryRead, dept)
 	boom := errs.E("volunteers.DepartmentsOf", errs.Unavailable, errors.New("down"))
-	if err := r.svc.Link(nil, nil, []MembershipProvider{{Module: "volunteers", Provider: deptMembers{err: boom}}}); err != nil {
+	if err := r.svc.Link(nil, []MembershipProvider{{Module: "volunteers", Provider: deptMembers{err: boom}}}); err != nil {
 		t.Fatalf("Link: %v", err)
 	}
 	_, err := r.svc.reachOf(r.ctx, PermissionDirectoryRead, []model.PersonID{model.NewID[model.PersonID]()})
@@ -125,7 +125,7 @@ func TestReachOf_ProviderFails_FailsClosed(t *testing.T) {
 
 func TestLink_MembershipProviderWithoutName_ReturnsInternal(t *testing.T) {
 	r := newWB(t)
-	err := r.svc.Link(nil, nil, []MembershipProvider{{Provider: deptMembers{}}})
+	err := r.svc.Link(nil, []MembershipProvider{{Provider: deptMembers{}}})
 	if !errs.Is(err, errs.Internal) {
 		t.Errorf("kind = %v, want Internal", errs.KindOf(err))
 	}
@@ -143,7 +143,7 @@ func TestSearch_DepartmentExtentWithProvider_ReturnsOnlyMembersAndAuditsLegalNam
 	r.az.GrantIn(r.me, PermissionDirectoryRead, dept)
 	r.az.GrantIn(r.me, PermissionContactsRead, dept)
 	prov := deptMembers{of: map[model.PersonID][]model.DepartmentID{member: {dept}}}
-	if err := r.svc.Link(nil, nil, []MembershipProvider{{Module: "m", Provider: prov}}); err != nil {
+	if err := r.svc.Link(nil, []MembershipProvider{{Module: "m", Provider: prov}}); err != nil {
 		t.Fatalf("Link: %v", err)
 	}
 	got, err := r.svc.Search(r.ctx, SearchQuery{Q: "ember"})
@@ -170,7 +170,7 @@ func TestGet_DepartmentExtentWithProvider_NonMemberIsNotFound(t *testing.T) {
 	r := newWB(t)
 	r.az.GrantIn(r.me, PermissionDirectoryRead, dept)
 	prov := deptMembers{of: map[model.PersonID][]model.DepartmentID{member: {dept}}}
-	if err := r.svc.Link(nil, nil, []MembershipProvider{{Module: "m", Provider: prov}}); err != nil {
+	if err := r.svc.Link(nil, []MembershipProvider{{Module: "m", Provider: prov}}); err != nil {
 		t.Fatalf("Link: %v", err)
 	}
 	r.st.person = rows.Person{ID: member, PlayaName: "Dusty Ember"}

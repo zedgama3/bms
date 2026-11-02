@@ -1,4 +1,4 @@
-package people_test
+package datarights_test
 
 import (
 	"io/fs"
@@ -6,26 +6,26 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/zedgama3/bms/internal/core/datarights"
 	"github.com/zedgama3/bms/internal/core/notify"
-	"github.com/zedgama3/bms/internal/core/people"
 )
 
 // notify.Register would refuse these files, so check them the way Register does.
 func TestTemplates_PassNotifyChecks(t *testing.T) {
-	if err := notify.CheckTemplates("people", people.Templates); err != nil {
+	if err := notify.CheckTemplates("datarights", datarights.Templates); err != nil {
 		t.Fatalf("CheckTemplates: %v", err)
 	}
 }
 
 func TestTemplates_DeletionRequested_EnAndEsOnly_NamesNobody(t *testing.T) {
-	entries, err := fs.ReadDir(people.Templates, ".")
+	entries, err := fs.ReadDir(datarights.Templates, ".")
 	if err != nil {
 		t.Fatalf("ReadDir: %v", err)
 	}
 	var names []string
 	for _, e := range entries {
 		names = append(names, e.Name())
-		raw, err := fs.ReadFile(people.Templates, e.Name())
+		raw, err := fs.ReadFile(datarights.Templates, e.Name())
 		if err != nil {
 			t.Fatalf("ReadFile %s: %v", e.Name(), err)
 		}

@@ -41,7 +41,7 @@ const list = [
     ],
   },
   {
-    name: "people.deletion-requested",
+    name: "datarights.deletion-requested",
     available: true,
     vars: [],
     languages: [{ language: "en", overridden: false }],
@@ -146,6 +146,7 @@ describe("/notify/templates", () => {
     });
     expect(await screen.findByRole("heading", { name: "Password-reset link" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Deletion request waiting" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Your data" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Test message" })).toBeInTheDocument();
     // module.hello.template.greeted.title already exists
     expect(screen.getByRole("heading", { name: "Greeting sent" })).toBeInTheDocument();

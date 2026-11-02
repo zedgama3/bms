@@ -1,7 +1,6 @@
 package people
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -24,73 +23,11 @@ import (
 	"github.com/zedgama3/bms/internal/core/telemetry/telemetrytest"
 	"github.com/zedgama3/bms/internal/lib/clock"
 	"github.com/zedgama3/bms/internal/lib/errs"
-	"github.com/zedgama3/bms/internal/lib/httpx"
 	"github.com/zedgama3/bms/internal/lib/validate"
 	"github.com/zedgama3/bms/internal/model"
 )
 
 func ptr(s string) *string { return &s }
-
-func TestCooldown_Take_Table(t *testing.T) {
-	start := time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)
-	p := model.NewID[model.PersonID]()
-	tests := []struct {
-		name string
-		at   time.Duration
-		want bool
-	}{
-		{"first export", 0, true},
-		{"a minute later", time.Minute, false},
-		{"just before the cooldown ends", ExportCooldown - time.Nanosecond, false},
-		{"when the cooldown ends", ExportCooldown, true},
-	}
-	c := newCooldown()
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := c.take(p, start.Add(tc.at)); got != tc.want {
-				t.Errorf("take at +%v = %v, want %v", tc.at, got, tc.want)
-			}
-		})
-	}
-}
-
-func TestCooldown_Release_AllowsAnImmediateRetry(t *testing.T) {
-	now := time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)
-	p := model.NewID[model.PersonID]()
-	c := newCooldown()
-	if !c.take(p, now) {
-		t.Fatal("first take refused")
-	}
-	c.release(p, now)
-	if !c.take(p, now) {
-		t.Error("take after release refused")
-	}
-	// A later reservation is not released by an earlier one's failure.
-	c.release(p, now.Add(-time.Second))
-	if c.take(p, now.Add(time.Second)) {
-		t.Error("a stale release removed a newer reservation")
-	}
-}
-
-func TestCooldown_AtTheBound_EvictsTheOldest(t *testing.T) {
-	now := time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)
-	c := newCooldown()
-	first := model.NewID[model.PersonID]()
-	c.take(first, now)
-	for range MaxTrackedExports - 1 {
-		c.take(model.NewID[model.PersonID](), now.Add(time.Second))
-	}
-	if len(c.last) != MaxTrackedExports {
-		t.Fatalf("tracked %d, want %d", len(c.last), MaxTrackedExports)
-	}
-	c.take(model.NewID[model.PersonID](), now.Add(2*time.Second))
-	if len(c.last) != MaxTrackedExports {
-		t.Errorf("tracked %d after the bound, want %d", len(c.last), MaxTrackedExports)
-	}
-	if _, kept := c.last[first]; kept {
-		t.Error("the oldest entry was not evicted")
-	}
-}
 
 func TestProfileInput_Normalize_Table(t *testing.T) {
 	tests := []struct {
@@ -191,38 +128,6 @@ func TestComplete_Table(t *testing.T) {
 	}
 }
 
-func TestWriteReport_OneLinePerPart(t *testing.T) {
-	r := DeletionReport{
-		Person: model.NewID[model.PersonID](), People: 4, Identity: 1, Access: 2,
-		Modules: map[string]ModuleDeletion{
-			"hello": {Deleted: 3},
-			"alpha": {Anonymized: 1, Kept: []Kept{{Kind: "report", Count: 2}}},
-		},
-		Kept: []Kept{{Kind: auditEntryKind, Count: 9}},
-	}
-	var b bytes.Buffer
-	if err := writeReport(&b, r); err != nil {
-		t.Fatalf("writeReport: %v", err)
-	}
-	want := "person " + r.Person.String() + "\npeople 4\nidentity 1\naccess 2\n" +
-		"module alpha deleted=0 anonymized=1\nmodule alpha kept report 2\nmodule hello deleted=3 anonymized=0\n" +
-		"kept audit.entry 9\n"
-	if got := b.String(); got != want {
-		t.Errorf("report:\n%s\nwant:\n%s", got, want)
-	}
-}
-
-func TestStatusOf_RoundTrips(t *testing.T) {
-	for _, st := range []RequestStatus{RequestOpen, RequestWithdrawn, RequestDeclined} {
-		if got := statusOf(st.String()); got != st {
-			t.Errorf("statusOf(%q) = %v, want %v", st.String(), got, st)
-		}
-	}
-	if statusOf("nonsense") != 0 {
-		t.Error("an unknown word has a status")
-	}
-}
-
 // ---- white-box rig: a service over a recording fake store -------------------------------
 
 // fakeStore implements the part of store a test overrides; calling any other method
@@ -287,7 +192,6 @@ func (f *fakeStore) DeleteOrphan(context.Context, model.PersonID) (bool, error) 
 	return f.orphanGone, nil
 }
 
-func (f *fakeStore) DeleteRequestsOf(context.Context, model.PersonID) (int, error) { return 0, nil }
 func (f *fakeStore) DeleteConsentsOf(context.Context, model.PersonID) (int, error) { return 0, nil }
 func (f *fakeStore) DeleteContactsOf(context.Context, model.PersonID) (int, error) { return 0, nil }
 
@@ -309,10 +213,6 @@ func (f *fakeStore) ExportContacts(context.Context, model.PersonID) ([]rows.Cont
 }
 
 func (f *fakeStore) ExportConsents(context.Context, model.PersonID) ([]rows.Consent, error) {
-	return nil, nil
-}
-
-func (f *fakeStore) ExportRequests(context.Context, model.PersonID) ([]rows.Request, error) {
 	return nil, nil
 }
 
@@ -338,33 +238,6 @@ func (a *wbAccounts) EmailOf(context.Context, model.PersonID) (model.Email, erro
 func (a *wbAccounts) LinkAccount(context.Context, model.Email, model.PersonID) (model.AccountID, model.PersonID, error) {
 	a.calls = append(a.calls, "LinkAccount")
 	return model.NewID[model.AccountID](), a.orphan, a.err
-}
-
-func (*wbAccounts) ExportPerson(context.Context, model.PersonID) (json.RawMessage, error) {
-	return json.RawMessage(`{"account":null}`), nil
-}
-
-func (*wbAccounts) DeletePerson(context.Context, model.PersonID) (int, error) { return 1, nil }
-
-type wbAccess struct{}
-
-func (wbAccess) ExportPerson(context.Context, model.PersonID) (json.RawMessage, error) {
-	return json.RawMessage(`{"grants":[]}`), nil
-}
-func (wbAccess) DeletePerson(context.Context, model.PersonID) (int, error) { return 0, nil }
-
-type wbCounter struct{}
-
-func (wbCounter) CountAbout(context.Context, model.PersonID) (int, error) { return 0, nil }
-
-// failingSource is a PersonData whose export fails.
-type failingSource struct{ err error }
-
-func (s failingSource) ExportPerson(context.Context, model.PersonID) (Export, error) {
-	return Export{}, s.err
-}
-func (failingSource) DeletePerson(context.Context, model.PersonID) (ModuleDeletion, error) {
-	return ModuleDeletion{}, nil
 }
 
 type wbRig struct {
@@ -404,7 +277,7 @@ func newWB(t *testing.T, grants ...authz.Permission) *wbRig {
 		Logger: c.Logger(), Tracer: c.Tracer("people"), Audit: rec, Signals: bus, Authz: az,
 		Actor:    func(context.Context) (authz.Actor, bool) { return authz.Actor{Person: me}, true },
 		Session:  identity.SessionFrom,
-		Accounts: acc, Access: wbAccess{}, AuditCount: wbCounter{},
+		Accounts: acc,
 		Settings: settingstest.NewFake("people", Settings), Lookup: lk,
 	}, st)
 	if err != nil {
@@ -520,14 +393,15 @@ func TestLinkAccount_DroppedOrphan_IsAuditedAsTheSystemWithALinkReason(t *testin
 	}
 }
 
-func TestDelete_LocksThePersonRow(t *testing.T) {
-	r := newWB(t, PermissionDataDelete)
-	if err := r.svc.Link(nil, nil, nil); err != nil {
-		t.Fatalf("Link: %v", err)
-	}
+func TestDeletePerson_LocksThePersonRowBeforeDeleting(t *testing.T) {
+	r := newWB(t)
 	victim := model.NewID[model.PersonID]()
-	if _, err := r.svc.Delete(r.ctx, victim); err != nil {
-		t.Fatalf("Delete: %v", err)
+	err := r.svc.db.Transact(r.ctx, db.Write, func(ctx context.Context) error {
+		_, err := r.svc.DeletePerson(ctx, victim)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("DeletePerson: %v", err)
 	}
 	if !slices.Contains(r.st.calls, "GetForUpdate") || slices.Contains(r.st.calls, "GetPerson") {
 		t.Errorf("store calls = %v, want GetForUpdate and no plain GetPerson", r.st.calls)
@@ -535,28 +409,45 @@ func TestDelete_LocksThePersonRow(t *testing.T) {
 	if i, j := slices.Index(r.st.calls, "GetForUpdate"), slices.Index(r.st.calls, "DeletePerson"); i < 0 || j < i {
 		t.Errorf("the row is locked after it is deleted: %v", r.st.calls)
 	}
+	if got := r.bus.Published(); len(got) != 1 || got[0].Name != SignalPersonDeleted {
+		t.Errorf("published %v, want people.person-deleted once", got)
+	}
+	if got := r.actions(); len(got) != 0 {
+		t.Errorf("recorded %v: datarights audits the deletion, people records nothing", got)
+	}
 }
 
-// exportTwice exports the actor's own data twice and returns both errors and how many times
-// the profile row was read.
-func exportTwice(r *wbRig) (reads int, first, second error) {
-	_, first = r.svc.Export(r.ctx, r.me)
-	_, second = r.svc.Export(r.ctx, r.me)
-	return strings.Count(strings.Join(r.st.calls, ","), "ExportPerson"), first, second
-}
-
-func TestExport_FailureBeforeTheAuditEntry_ReleasesTheCooldown(t *testing.T) {
+func TestDeletePerson_OutsideAWriteTransaction_ReturnsInternal(t *testing.T) {
 	r := newWB(t)
-	if err := r.svc.Link(nil, nil, nil); err != nil {
-		t.Fatalf("Link: %v", err)
+	if _, err := r.svc.DeletePerson(r.ctx, model.NewID[model.PersonID]()); !errs.Is(err, errs.Internal) {
+		t.Errorf("DeletePerson outside a transaction = %v, want Internal", err)
 	}
-	r.st.exportErr = errs.E("test", errs.Unavailable, errors.New("down"))
-	reads, first, second := exportTwice(r)
-	if !errs.Is(first, errs.Unavailable) || !errs.Is(second, errs.Unavailable) || errors.Is(second, httpx.ErrRateLimited) {
-		t.Fatalf("errors = %v, %v; want the store's twice", first, second)
+	if len(r.st.calls) != 0 {
+		t.Errorf("store calls = %v, want none", r.st.calls)
 	}
-	if reads != 2 {
-		t.Errorf("the second export did not run (%d reads)", reads)
+}
+
+func TestExists_Table(t *testing.T) {
+	notFound := errs.E("test", errs.NotFound, errors.New("no row"))
+	tests := []struct {
+		name    string
+		person  model.PersonID
+		rowErr  error
+		wantErr errs.Kind
+	}{
+		{"there", model.NewID[model.PersonID](), nil, 0},
+		{"no row", model.NewID[model.PersonID](), notFound, errs.NotFound},
+		{"zero person", model.PersonID{}, nil, errs.Invalid},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newWB(t)
+			r.st.personErr = tc.rowErr
+			err := r.svc.Exists(r.ctx, tc.person)
+			if tc.wantErr == 0 && err != nil || tc.wantErr != 0 && !errs.Is(err, tc.wantErr) {
+				t.Errorf("Exists = %v, want kind %v", err, tc.wantErr)
+			}
+		})
 	}
 }
 
@@ -568,43 +459,6 @@ func TestUpdateMe_RepairWithoutAnAccount_IsUnauthenticatedEvenForAnInvalidBody(t
 	_, err := r.svc.UpdateMe(r.ctx, ProfileInput{Pronouns: ptr("they/them")}) // no playa name: Invalid for a live person
 	if !errs.Is(err, errs.Unauthenticated) {
 		t.Fatalf("kind = %v (%v), want Unauthenticated", errs.KindOf(err), err)
-	}
-}
-
-func TestExport_FailureAfterTheAuditEntry_KeepsTheCooldown(t *testing.T) {
-	for _, kind := range []errs.Kind{errs.Unavailable, errs.Canceled} {
-		t.Run(kind.String(), func(t *testing.T) {
-			r := newWB(t)
-			bad := failingSource{err: errs.E("test", kind, errors.New("down"))}
-			if err := r.svc.Link([]Source{{Name: "gamma", Exporter: bad}}, nil, nil); err != nil {
-				t.Fatalf("Link: %v", err)
-			}
-			_, first, second := exportTwice(r)
-			if !errs.Is(first, kind) {
-				t.Fatalf("first error = %v, want kind %v", first, kind)
-			}
-			if !errors.Is(second, httpx.ErrRateLimited) {
-				t.Errorf("second error = %v, want the rate limit", second)
-			}
-			if got := r.actions(); len(got) != 1 || got[0] != "people.person.exported" {
-				t.Errorf("recorded %v", got)
-			}
-		})
-	}
-}
-
-func TestExport_CanceledBeforeTheAuditEntry_KeepsTheCooldown(t *testing.T) {
-	r := newWB(t)
-	if err := r.svc.Link(nil, nil, nil); err != nil {
-		t.Fatalf("Link: %v", err)
-	}
-	r.st.exportErr = errs.E("test", errs.Canceled, errors.New("gone"))
-	_, first, second := exportTwice(r)
-	if !errs.Is(first, errs.Canceled) {
-		t.Fatalf("first error = %v, want Canceled", first)
-	}
-	if !errors.Is(second, httpx.ErrRateLimited) {
-		t.Errorf("second error = %v, want the rate limit", second)
 	}
 }
 

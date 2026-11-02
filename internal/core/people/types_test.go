@@ -29,32 +29,14 @@ func TestConstants_MatchTheSpec(t *testing.T) {
 		{"MaxSearchResults", people.MaxSearchResults, 50},
 		{"DefaultSearchResults", people.DefaultSearchResults, 20},
 		{"MaxNames", people.MaxNames, 200},
-		{"MaxTrackedExports", people.MaxTrackedExports, 10000},
-		{"ExportFormat", people.ExportFormat, 1},
 	}
 	for _, tc := range ints {
 		if tc.got != tc.want {
 			t.Errorf("%s = %d, want %d", tc.name, tc.got, tc.want)
 		}
 	}
-	if people.ExportCooldown != 10*time.Minute {
-		t.Errorf("ExportCooldown = %v, want 10m", people.ExportCooldown)
-	}
 	if people.SectionTimeout != 2*time.Second {
 		t.Errorf("SectionTimeout = %v, want 2s", people.SectionTimeout)
-	}
-}
-
-func TestRequestStatus_ValuesAreDistinctAndNonZero(t *testing.T) {
-	seen := map[people.RequestStatus]bool{}
-	for _, s := range []people.RequestStatus{people.RequestOpen, people.RequestWithdrawn, people.RequestDeclined} {
-		if s == 0 {
-			t.Error("a status is the zero value")
-		}
-		if seen[s] {
-			t.Errorf("status %d repeated", s)
-		}
-		seen[s] = true
 	}
 }
 

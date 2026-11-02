@@ -154,7 +154,7 @@ export function profileOf(playa: string, over: Record<string, unknown> = {}) {
  *  with a cookie it never issued and sign the page out). */
 export async function mockMe(page: Page, playa = "Dusty", over: Record<string, unknown> = {}) {
   await page.route("**/api/people/me", (r) => r.fulfill({ json: profileOf(playa, over) }));
-  await page.route("**/api/people/me/requests", (r) => r.fulfill({ json: { requests: [] } }));
+  await page.route("**/api/datarights/me/requests", (r) => r.fulfill({ json: { requests: [] } }));
 }
 
 /** A tap on a phone, a click on the desktop: every flow must work with touch alone. */

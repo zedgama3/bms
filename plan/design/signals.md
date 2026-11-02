@@ -1,6 +1,7 @@
 # signals: in-process domain events
 
 - **Status:** Implemented (2026-10-17); Approved (2026-10-16)
+- **Amended 2026-11-01 (boundaries step 12; boundaries.md Summary, decision 11):** the core signal `people.deletion-requested {request, person}` is now `datarights.deletion-requested {request, person}`, published by `datarights.RequestDeletion` under the scope `datarights` (this spec's owner rule: the publisher segment must equal the scope's owner). `Env.CoreSignals` lists it in place of the old name; `people.person-created` and `people.person-deleted` stay people's. No subscriber exists, so nothing else changes.
 - **Amended 2026-11-01 (boundaries step 11; boundaries.md Proposed change 21):** the `Deferrer` handed to `signals.New` is `jobs.Deferrer` (`jobs.NewDeferrer`), built before the dispatcher over `core.job` alone; `app`'s `lazyDeferrer` is gone. `Deferrer`, `Delivery` and `Redeliver` are unchanged, and so is the in-delivery marker audit reads. `Defer` on a read-only copy is `Unavailable` wrapping `db.ErrReadOnly`: logged beside the handler's error, the delivery final (F23).
 - Amended 2026-10-17 (owner): records accepted, reviewer-approved implementation deviations: published counted after commit, Close waits again, Deferrer gets a fresh deadline, span attrs, `!repeated` key, Fake stamps `clock.Real()`, late deliveries dropped, Redeliver after Close (see Summary, "Accepted deviations").
 - **Amended 2026-10-18 (owner approval of audit/identity):** Proposed change 7 applied for identity (`PersonFrom` is false inside a delivery; the session value is request-scoped; authz still pending); `Env.CoreSignals` gains `identity.account-created` (payload `account`, `person`) (identity.md Proposed change 12).
@@ -82,7 +83,7 @@ Owns: no routes, permissions, settings or signals of its own; names come from ma
 config-like value is `HandlerTimeout` (app passes 5 s). Metrics `bms.signals.published{signal,
 module}` and `bms.signals.delivered{signal,module,outcome}`; never the payload on a log, span
 or metric. Core publishers get their own `Scope` from `app` (`people`, `departments`,
-`events`); in M0 the core publishes none (`Env.CoreSignals` empty; from M1 it lists `identity.account-created`; from M2 also `access.grant-created`, `access.grant-revoked`, `people.person-created`, `people.person-deleted`, `people.deletion-requested`); `hello.greeted` carries
+`events`); in M0 the core publishes none (`Env.CoreSignals` empty; from M1 it lists `identity.account-created`; from M2 also `access.grant-created`, `access.grant-revoked`, `people.person-created`, `people.person-deleted`, and `datarights.deletion-requested` from boundaries step 12, formerly `people.deletion-requested`); `hello.greeted` carries
 `{person}`.
 
 Rules for modules: declare names in the manifest; subscribe once per name in `Module.Start`
@@ -470,7 +471,7 @@ Nothing from `core/module` (it imports this package).
 
 ### Payload keys of the core's signals
 
-None in M0: the core publishes no signal yet, so `Env.CoreSignals` is empty. From M1 it lists `identity.account-created` (payload `{account: AccountID, person: PersonID}`; published inside the `Write` transaction of sign-up and of the superuser's creation; no personal data, identity.md "Signals"). From M2 it also lists `access.grant-created` and `access.grant-revoked` (`{grant, person, role, department?}`; authz.md), and `people.person-created {person}`, `people.person-deleted {person}` and `people.deletion-requested {request, person}` (people.md). From M3 it also lists `departments.department-created|archived|restored {department}` and `events.event-created {event, copied-from?}`, `events.event-changed {event}`, `events.event-closed {event}`, `events.event-reopened {event}` (departments-events.md, scopes `departments` and `events` from `app`; applied 2026-10-18, D37). The `hello`
+None in M0: the core publishes no signal yet, so `Env.CoreSignals` is empty. From M1 it lists `identity.account-created` (payload `{account: AccountID, person: PersonID}`; published inside the `Write` transaction of sign-up and of the superuser's creation; no personal data, identity.md "Signals"). From M2 it also lists `access.grant-created` and `access.grant-revoked` (`{grant, person, role, department?}`; authz.md), and `people.person-created {person}`, `people.person-deleted {person}` (people.md) and `datarights.deletion-requested {request, person}` (datarights.md; named `people.deletion-requested` until boundaries step 12, when the signal moved with the data-rights code: the publisher segment equals the scope's owner; no subscriber exists). From M3 it also lists `departments.department-created|archived|restored {department}` and `events.event-created {event, copied-from?}`, `events.event-changed {event}`, `events.event-closed {event}`, `events.event-reopened {event}` (departments-events.md, scopes `departments` and `events` from `app`; applied 2026-10-18, D37). The `hello`
 module's `hello.greeted` carries `{person}`.
 
 ## Data

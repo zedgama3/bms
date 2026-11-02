@@ -165,7 +165,7 @@ func TestDelete_Integration_PersonWithGrant_AuditedAsOperator(t *testing.T) {
 	if n := pcCount(t, pool, `SELECT count(*) FROM core.role_grant WHERE person_id = $1`, person); n != 0 {
 		t.Error("the person's grant remains")
 	}
-	rows, err := pool.Query(t.Context(), `SELECT action, actor_kind FROM core.audit_entry WHERE action IN ('access.grants.deleted','people.person.deleted')`)
+	rows, err := pool.Query(t.Context(), `SELECT action, actor_kind FROM core.audit_entry WHERE action IN ('access.grants.deleted','datarights.delete')`)
 	if err != nil {
 		t.Fatalf("read the audit table: %v", err)
 	}
@@ -181,7 +181,7 @@ func TestDelete_Integration_PersonWithGrant_AuditedAsOperator(t *testing.T) {
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
-	for _, action := range []string{"access.grants.deleted", "people.person.deleted"} {
+	for _, action := range []string{"access.grants.deleted", "datarights.delete"} {
 		if kinds[action] != "operator" {
 			t.Errorf("%s was recorded with actor_kind %q, want operator (all: %v)", action, kinds[action], kinds)
 		}

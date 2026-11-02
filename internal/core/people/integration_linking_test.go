@@ -165,7 +165,7 @@ func TestLinkAccount_OrphanWithData_Kept(t *testing.T) {
 		}, "keep.consent"},
 		{"data request", func(f *linkFixture, o model.PersonID) {
 			f.exec(`INSERT INTO core.data_request (id, person_id, kind, status, note, created_at) VALUES ($1, $2, 'delete', 'open', '', $3)`,
-				[16]byte(newRequestID()), [16]byte(o), f.clk.Now())
+				[16]byte(newPerson()), [16]byte(o), f.clk.Now())
 		}, "keep.request"},
 		{"foreign key from elsewhere", func(f *linkFixture, o model.PersonID) {
 			f.exec(`CREATE TABLE IF NOT EXISTS core.zz_ref (person_id uuid NOT NULL REFERENCES core.person(id) ON DELETE RESTRICT)`)

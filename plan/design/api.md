@@ -109,7 +109,7 @@
 
 **Pending proposed changes:** items 10 (authz), 15 (settings: trusted origins and Host allowlist; settled 2026-10-20, D40, with `PublicOrigin` deferred), wait on targets not yet written; item 14 is applied (the `docs/operating.md` and front-end examples halves, 2026-10-30); the rest are applied.
 
-**Amendments:** folded into the text; narratives in `plan/design/history/api.md`. **Amended 2026-11-01 (boundaries step 7, item 24, `regional` part):** the public document, stylesheet and logo are served by the core route set `regional` at `/api/regional/public`, `/api/regional/theme.css` and `/api/regional/logo` (formerly `/api/settings/...`); `regional` joins the reserved core area names (a module may not be named `regional`; module-contract already reserves it). The OpenAPI names (boundaries A2 point 6, owner, 2026-11-01): operationIds `regionalPublic`, `regionalTheme`, `regionalLogo`, `regionalSetLogo`, `regionalRemoveLogo`; schemas `RegionalPublic`, `RegionalLogoUpload`, `RegionalLogoResult`; tag `regional`; the five leave settings' fragment (the area prefix follows decision 33; only the generated `web/src/api/schema.d.ts` is affected, the shell calls by path). The `datarights` route set, `PermissionChecker` and the rest of item 24 land with their steps.
+**Amendments:** folded into the text; narratives in `plan/design/history/api.md`. **Amended 2026-11-01 (boundaries step 7, item 24, `regional` part):** the public document, stylesheet and logo are served by the core route set `regional` at `/api/regional/public`, `/api/regional/theme.css` and `/api/regional/logo` (formerly `/api/settings/...`); `regional` joins the reserved core area names (a module may not be named `regional`; module-contract already reserves it). The OpenAPI names (boundaries A2 point 6, owner, 2026-11-01): operationIds `regionalPublic`, `regionalTheme`, `regionalLogo`, `regionalSetLogo`, `regionalRemoveLogo`; schemas `RegionalPublic`, `RegionalLogoUpload`, `RegionalLogoResult`; tag `regional`; the five leave settings' fragment (the area prefix follows decision 33; only the generated `web/src/api/schema.d.ts` is affected, the shell calls by path). **Amended 2026-11-01 (boundaries step 12, item 24, `datarights` part):** the person's export, deletion and deletion-request routes moved from `/api/people/` to the core route set `datarights` at `/api/datarights/` (`GET /me/export`, `GET|POST /me/requests`, `POST /me/requests/{request}/withdraw`, `GET /requests`, `POST /requests/{request}/decline|fulfil`, `GET /people/{person}/export`, `DELETE /people/{person}`; all signed-in); `datarights` joins the reserved core area names (a module may not be named `datarights`). `PermissionChecker` as the `authz.Lookup` and the rest of item 24 land with their steps.
 
 ## Purpose
 
@@ -413,7 +413,7 @@ type Options struct {
 
 	// Routes are the route sets to mount: every module's (module.Set.Routes()) and the
 	// core's (app builds a module.ModuleRoutes per core package with routes: Module is the
-	// core area name, which is a reserved module name, so it cannot collide; `regional` is one, since boundaries step 7). May be
+	// core area name, which is a reserved module name, so it cannot collide; `regional` and `datarights` are, since boundaries steps 7 and 12). May be
 	// empty. Each set's OpenAPI fragment is required when it has routes (decision 11).
 	Routes []module.ModuleRoutes
 
@@ -1517,6 +1517,8 @@ that passes them.
 ## Amendments
 
 Amendment 2026-11-01 (boundaries step 7, `boundaries.md` item 24, `regional` part): the paths of the public document, stylesheet and logo moved from `/api/settings/` to `/api/regional/`, and `regional` is a reserved core route-set name; A2 added the operationIds and schema names (see the header note); folded into the text above (header note, the `Options.Routes` comment, decision 12's `ETag` sentence, F58 and the test-plan line).
+
+Amendment 2026-11-01 (boundaries step 12, `boundaries.md` item 24, `datarights` part): the person's export, deletion and deletion-request routes moved from `/api/people/` to `/api/datarights/` and `datarights` is a reserved core route-set name; folded into the header note and the `Options.Routes` comment. The generated client's operation ids for the moved routes follow `datarights`' OpenAPI fragment (code detail, not fixed here).
 
 The 2026-10-19 amendment (D40: `Cache-Control`, `PublicOrigin`) and the 2026-10-28 amendment (D53 and D54: `NoIndex`, `client-events`, `bms.api.errors`, `RouteTokens`) are folded into the text above, as are the header notes of the 2026-10-17 to 2026-10-19 amendments. Their narratives, the reasons for each choice and the superseded wording are in `plan/design/history/api.md`.
 

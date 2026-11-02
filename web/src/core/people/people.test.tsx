@@ -88,7 +88,7 @@ const contact = {
 type Routes = Record<string, (req: Request) => Response | Promise<Response>>;
 const mine = (p = profile(), over: Routes = {}): Routes => ({
   "GET /api/people/me": () => json(p),
-  "GET /api/people/me/requests": () => json({ requests: [] }),
+  "GET /api/datarights/me/requests": () => json({ requests: [] }),
   ...over,
 });
 const bodyOf = async (
@@ -709,11 +709,11 @@ describe("your data", () => {
     const { fetchMock } = mountApp({
       path: "/people/me",
       session: ident(),
-      routes: mine(profile(), { "GET /api/people/me/export": () => json({ format: 1 }) }),
+      routes: mine(profile(), { "GET /api/datarights/me/export": () => json({ format: 1 }) }),
     });
     await userEvent.click(await screen.findByRole("button", { name: "Download my data" }));
     await screen.findByText("Your data was downloaded");
-    expect(called(fetchMock, "GET", "/api/people/me/export")).toBe(1);
+    expect(called(fetchMock, "GET", "/api/datarights/me/export")).toBe(1);
     expect(click).toHaveBeenCalled();
     expect(created).toHaveLength(1);
     click.mockRestore();
@@ -724,7 +724,7 @@ describe("your data", () => {
       path: "/people/me",
       session: ident(),
       routes: mine(profile(), {
-        "GET /api/people/me/export": () =>
+        "GET /api/datarights/me/export": () =>
           problem(429, { code: "rate_limited" }, { "Retry-After": "420" }),
       }),
     });
@@ -741,7 +741,7 @@ describe("your data", () => {
       session: ident(),
       routes: {
         "GET /api/people/me": () => json(profile()),
-        "GET /api/people/me/requests": () =>
+        "GET /api/datarights/me/requests": () =>
           json({
             requests: open
               ? [
@@ -757,11 +757,11 @@ describe("your data", () => {
                 ]
               : [],
           }),
-        "POST /api/people/me/requests": () => {
+        "POST /api/datarights/me/requests": () => {
           open = true;
           return json({}, { status: 201 });
         },
-        [`POST /api/people/me/requests/${REQ}/withdraw`]: () => {
+        [`POST /api/datarights/me/requests/${REQ}/withdraw`]: () => {
           open = false;
           return noContent();
         },
@@ -772,7 +772,7 @@ describe("your data", () => {
     await userEvent.type(within(dlg).getByLabelText("Note (optional)"), "Please");
     await userEvent.click(within(dlg).getByRole("button", { name: "Request deletion" }));
     expect(await screen.findByText(/You asked for deletion on/)).toBeInTheDocument();
-    expect(await bodyOf(fetchMock, "POST", "/api/people/me/requests")).toEqual({
+    expect(await bodyOf(fetchMock, "POST", "/api/datarights/me/requests")).toEqual({
       kind: "delete",
       note: "Please",
     });
@@ -787,7 +787,7 @@ describe("your data", () => {
       session: ident(),
       routes: {
         "GET /api/people/me": () => json(profile()),
-        "GET /api/people/me/requests": () =>
+        "GET /api/datarights/me/requests": () =>
           json({
             requests: [
               {
@@ -802,7 +802,7 @@ describe("your data", () => {
               },
             ],
           }),
-        "POST /api/people/me/requests": () =>
+        "POST /api/datarights/me/requests": () =>
           problem(409, {
             code: "conflict",
             fields: [{ field: "request", code: "duplicate", reason: "x" }],
@@ -1139,12 +1139,12 @@ describe("/people/:person", () => {
       { export: true },
       {},
       {
-        [`GET /api/people/${PAT}/export`]: () => json({ format: 1 }),
+        [`GET /api/datarights/people/${PAT}/export`]: () => json({ format: 1 }),
       },
     );
     await userEvent.click(await screen.findByRole("button", { name: "Export data" }));
     await screen.findByText("The data was downloaded");
-    expect(called(fetchMock, "GET", `/api/people/${PAT}/export`)).toBe(1);
+    expect(called(fetchMock, "GET", `/api/datarights/people/${PAT}/export`)).toBe(1);
     click.mockRestore();
   });
 
@@ -1153,7 +1153,7 @@ describe("/people/:person", () => {
       { delete: true },
       {},
       {
-        [`DELETE /api/people/${PAT}`]: () =>
+        [`DELETE /api/datarights/people/${PAT}`]: () =>
           json({
             person: PAT,
             people: 1,
@@ -1179,13 +1179,19 @@ describe("/people/:person", () => {
   it.each([
     ["last_access_admin", "last one who can grant roles"],
     ["in_use", "Something else still refers to this person"],
+    ["self", "You can't do this to yourself."],
   ])("deletion refused with %s is explained", async (code, words) => {
     other(
       { delete: true },
       {},
       {
-        [`DELETE /api/people/${PAT}`]: () =>
-          problem(409, { code: "conflict", fields: [{ field: "person", code, reason: "x" }] }),
+        [`DELETE /api/datarights/people/${PAT}`]: () =>
+          problem(409, {
+            code: "conflict",
+            fields: [
+              { field: code === "last_access_admin" ? "role" : "person", code, reason: "x" },
+            ],
+          }),
       },
     );
     await userEvent.click(await screen.findByRole("button", { name: "Delete person" }));
@@ -1246,7 +1252,7 @@ describe("/people/admin/requests", () => {
       path: "/people/admin/requests",
       session: ident({ permissions: ["people.data.delete"] }),
       routes: mine(profile(), {
-        "GET /api/people/requests": () => json({ requests: [req()] }),
+        "GET /api/datarights/requests": () => json({ requests: [req()] }),
         "GET /api/people/names": () => json({ names: { [PAT]: "Pat Dust" } }),
         ...extra,
       }),
@@ -1265,14 +1271,14 @@ describe("/people/admin/requests", () => {
 
   it("declines with a note", async () => {
     const { fetchMock } = admin({
-      [`POST /api/people/requests/${REQ}/decline`]: () => json(req({ status: "declined" })),
+      [`POST /api/datarights/requests/${REQ}/decline`]: () => json(req({ status: "declined" })),
     });
     await userEvent.click(await screen.findByRole("button", { name: "Decline" }));
     const dlg = await screen.findByRole("dialog", { name: "Decline this request?" });
     await userEvent.type(within(dlg).getByLabelText("Note to the person"), "We must keep it");
     await userEvent.click(within(dlg).getByRole("button", { name: "Decline request" }));
     await screen.findByText("Request declined");
-    expect(await bodyOf(fetchMock, "POST", `/api/people/requests/${REQ}/decline`)).toEqual({
+    expect(await bodyOf(fetchMock, "POST", `/api/datarights/requests/${REQ}/decline`)).toEqual({
       note: "We must keep it",
     });
   });
@@ -1280,12 +1286,12 @@ describe("/people/admin/requests", () => {
   it("fulfils after a confirmation and shows the report; last_access_admin is explained", async () => {
     let n = 0;
     admin({
-      [`POST /api/people/requests/${REQ}/fulfil`]: () => {
+      [`POST /api/datarights/requests/${REQ}/fulfil`]: () => {
         n += 1;
         return n === 1
           ? problem(409, {
               code: "conflict",
-              fields: [{ field: "person", code: "last_access_admin", reason: "x" }],
+              fields: [{ field: "role", code: "last_access_admin", reason: "x" }],
             })
           : json({ person: PAT, people: 1, identity: 1, access: 0, modules: {}, kept: [] });
       },
@@ -1299,9 +1305,39 @@ describe("/people/admin/requests", () => {
     expect(report).toHaveTextContent("Profile records removed");
   });
 
+  it.each([
+    ["self", "You can't do this to yourself."],
+    ["status", "This request has already been decided or withdrawn."],
+  ])("fulfilling is refused with %s and explained", async (code, words) => {
+    admin({
+      [`POST /api/datarights/requests/${REQ}/fulfil`]: () =>
+        problem(409, { code: "conflict", fields: [{ field: "request", code, reason: "x" }] }),
+    });
+    await userEvent.click(await screen.findByRole("button", { name: "Fulfil" }));
+    const dlg = await screen.findByRole("dialog", { name: "Delete this person?" });
+    await userEvent.click(within(dlg).getByRole("button", { name: "Delete person" }));
+    expect(await within(dlg).findByRole("alert")).toHaveTextContent(words);
+  });
+
+  it("declining a request that is no longer open is explained", async () => {
+    admin({
+      [`POST /api/datarights/requests/${REQ}/decline`]: () =>
+        problem(409, {
+          code: "conflict",
+          fields: [{ field: "request", code: "status", reason: "x" }],
+        }),
+    });
+    await userEvent.click(await screen.findByRole("button", { name: "Decline" }));
+    const dlg = await screen.findByRole("dialog", { name: "Decline this request?" });
+    await userEvent.click(within(dlg).getByRole("button", { name: "Decline request" }));
+    expect(await within(dlg).findByRole("alert")).toHaveTextContent(
+      "This request has already been decided or withdrawn.",
+    );
+  });
+
   it("F44: fulfilling a request for a protected account shows the shared-account sentence", async () => {
     admin({
-      [`POST /api/people/requests/${REQ}/fulfil`]: () =>
+      [`POST /api/datarights/requests/${REQ}/fulfil`]: () =>
         problem(409, {
           code: "conflict",
           ref: "AB12-CD34",
@@ -1321,7 +1357,7 @@ describe("/people/admin/requests", () => {
   it("switches tabs; empty, forbidden and read-only states", async () => {
     const calls: string[] = [];
     const a = admin({
-      "GET /api/people/requests": (r) => {
+      "GET /api/datarights/requests": (r) => {
         calls.push(new URL(r.url).searchParams.get("status") ?? "");
         return json({ requests: [] });
       },
@@ -1331,7 +1367,7 @@ describe("/people/admin/requests", () => {
     expect(await screen.findByText("No declined requests")).toBeInTheDocument();
     expect(calls).toEqual(["open", "declined"]);
     a.unmount();
-    const b = admin({ "GET /api/people/requests": () => problem(403, { code: "permission" }) });
+    const b = admin({ "GET /api/datarights/requests": () => problem(403, { code: "permission" }) });
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "You don't have access to this screen.",
     );
@@ -1340,7 +1376,7 @@ describe("/people/admin/requests", () => {
       path: "/people/admin/requests",
       session: ident({ permissions: ["people.data.delete"] }),
       routes: mine(profile(), {
-        "GET /api/people/requests": () => json({ requests: [req()] }),
+        "GET /api/datarights/requests": () => json({ requests: [req()] }),
         "GET /api/people/names": () => json({ names: {} }),
       }),
       readOnly: () => true,

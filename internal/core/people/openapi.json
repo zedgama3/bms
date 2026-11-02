@@ -2,7 +2,7 @@
   "tags": [
     {
       "name": "people",
-      "description": "Who each participant is: profiles, emergency contacts, consents, search, and export or deletion of a person's data."
+      "description": "Who each participant is: profiles, emergency contacts, consents and search."
     }
   ],
   "paths": {
@@ -192,108 +192,6 @@
         }
       }
     },
-    "/me/export": {
-      "get": {
-        "tags": [
-          "people"
-        ],
-        "operationId": "peopleExportMe",
-        "summary": "Download everything bms holds about you as one JSON attachment (bms-export-<person>.json). Audited; once every ten minutes (429 with Retry-After).",
-        "responses": {
-          "200": {
-            "description": "The export document, format 1.",
-            "headers": {
-              "Content-Disposition": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            },
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/me/requests": {
-      "get": {
-        "tags": [
-          "people"
-        ],
-        "operationId": "peopleMyRequests",
-        "summary": "Your own deletion requests, newest first.",
-        "responses": {
-          "200": {
-            "description": "Requests.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PeopleRequestList"
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "tags": [
-          "people"
-        ],
-        "operationId": "peopleRequestDeletion",
-        "summary": "Ask for your data to be deleted. A holder of people.data.delete fulfils or declines it. 409 (field request, code duplicate) while one is open; 400 note too_long.",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PeopleRequestInput"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Filed.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PeopleRequest"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/me/requests/{request}/withdraw": {
-      "post": {
-        "tags": [
-          "people"
-        ],
-        "operationId": "peopleWithdrawRequest",
-        "summary": "Withdraw your own open request. 404 when it is not yours; 409 (field request, code status) when it is not open.",
-        "parameters": [
-          {
-            "name": "request",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/ID"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Withdrawn."
-          }
-        }
-      }
-    },
     "/search": {
       "get": {
         "tags": [
@@ -397,122 +295,6 @@
         }
       }
     },
-    "/requests": {
-      "get": {
-        "tags": [
-          "people"
-        ],
-        "operationId": "peopleListRequests",
-        "summary": "Deletion requests by status (default open), oldest first. Needs people.data.delete.",
-        "parameters": [
-          {
-            "name": "status",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "open",
-                "withdrawn",
-                "declined"
-              ]
-            },
-            "description": "Default open."
-          },
-          {
-            "name": "person",
-            "in": "query",
-            "schema": {
-              "$ref": "#/components/schemas/ID"
-            },
-            "description": "Only this person's requests."
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Requests.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PeopleRequestList"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/requests/{request}/decline": {
-      "post": {
-        "tags": [
-          "people"
-        ],
-        "operationId": "peopleDeclineRequest",
-        "summary": "Decline an open request with a note for the person. Needs people.data.delete. 409 (field request, code status) when it is not open.",
-        "parameters": [
-          {
-            "name": "request",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/ID"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PeopleDecisionInput"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Declined.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PeopleRequest"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/requests/{request}/fulfil": {
-      "post": {
-        "tags": [
-          "people"
-        ],
-        "operationId": "peopleFulfilRequest",
-        "summary": "Delete the request's person as DELETE /{person} does. Needs people.data.delete. 409 last_access_admin, in_use, status; 400 self.",
-        "parameters": [
-          {
-            "name": "request",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/ID"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "What was deleted.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PeopleDeletionReport"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/{person}": {
       "get": {
         "tags": [
@@ -576,35 +358,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PeopleProfile"
-                }
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "tags": [
-          "people"
-        ],
-        "operationId": "peopleDelete",
-        "summary": "Delete a person and everything about them across identity, access and every module, in one transaction. Needs people.data.delete. 400 self; 403 for a superuser account; 404; 409 last_access_admin or in_use. Audit rows stay and are counted.",
-        "parameters": [
-          {
-            "name": "person",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/ID"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "What was deleted.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PeopleDeletionReport"
                 }
               }
             }
@@ -816,44 +569,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PeopleLinkResult"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/{person}/export": {
-      "get": {
-        "tags": [
-          "people"
-        ],
-        "operationId": "peopleExport",
-        "summary": "Download everything bms holds about a person as one JSON attachment. Needs people.data.export. Audited.",
-        "parameters": [
-          {
-            "name": "person",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/ID"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The export document, format 1.",
-            "headers": {
-              "Content-Disposition": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            },
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
                 }
               }
             }
@@ -1265,98 +980,6 @@
           "names"
         ]
       },
-      "PeopleRequest": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "$ref": "#/components/schemas/ID"
-          },
-          "person_id": {
-            "$ref": "#/components/schemas/ID"
-          },
-          "kind": {
-            "type": "string",
-            "enum": [
-              "delete"
-            ]
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "open",
-              "withdrawn",
-              "declined"
-            ]
-          },
-          "note": {
-            "type": "string"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "decided_at": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "decided_by": {
-            "$ref": "#/components/schemas/ID"
-          },
-          "decision_note": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "person_id",
-          "kind",
-          "status",
-          "note",
-          "created_at",
-          "decision_note"
-        ]
-      },
-      "PeopleRequestList": {
-        "type": "object",
-        "properties": {
-          "requests": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/PeopleRequest"
-            }
-          }
-        },
-        "required": [
-          "requests"
-        ]
-      },
-      "PeopleRequestInput": {
-        "type": "object",
-        "properties": {
-          "kind": {
-            "type": "string",
-            "enum": [
-              "delete"
-            ]
-          },
-          "note": {
-            "type": "string",
-            "maxLength": 500
-          }
-        },
-        "required": [
-          "kind"
-        ]
-      },
-      "PeopleDecisionInput": {
-        "type": "object",
-        "properties": {
-          "note": {
-            "type": "string",
-            "maxLength": 500
-          }
-        }
-      },
       "PeopleLinkInput": {
         "type": "object",
         "properties": {
@@ -1385,77 +1008,6 @@
         "required": [
           "account_id",
           "orphan_deleted"
-        ]
-      },
-      "PeopleDeletionReport": {
-        "type": "object",
-        "properties": {
-          "person": {
-            "$ref": "#/components/schemas/ID"
-          },
-          "people": {
-            "type": "integer"
-          },
-          "identity": {
-            "type": "integer"
-          },
-          "access": {
-            "type": "integer"
-          },
-          "modules": {
-            "type": "object",
-            "additionalProperties": {
-              "type": "object",
-              "properties": {
-                "deleted": {
-                  "type": "integer"
-                },
-                "anonymized": {
-                  "type": "integer"
-                },
-                "kept": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/PeopleKept"
-                  }
-                }
-              },
-              "required": [
-                "deleted",
-                "anonymized",
-                "kept"
-              ]
-            }
-          },
-          "kept": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/PeopleKept"
-            }
-          }
-        },
-        "required": [
-          "person",
-          "people",
-          "identity",
-          "access",
-          "modules",
-          "kept"
-        ]
-      },
-      "PeopleKept": {
-        "type": "object",
-        "properties": {
-          "kind": {
-            "type": "string"
-          },
-          "count": {
-            "type": "integer"
-          }
-        },
-        "required": [
-          "kind",
-          "count"
         ]
       }
     }

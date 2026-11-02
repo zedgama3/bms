@@ -29,10 +29,8 @@ func TestLookup_ContactEmailOf_Deleted_ReturnsNotFound(t *testing.T) {
 	if got, err := l.ContactEmailOf(ctxT(t), p); err != nil || got != "dusty@example.org" {
 		t.Fatalf("before deletion: ContactEmailOf = %q, %v", got, err)
 	}
-	_, ctx := r.admin(permDelete)
-	_, err := r.svc.Delete(ctx, p)
-	wantNoErr(t, err)
-	_, err = l.ContactEmailOf(ctxT(t), p)
+	r.deletePerson(p)
+	_, err := l.ContactEmailOf(ctxT(t), p)
 	wantKind(t, err, errs.NotFound)
 	_, err = l.PlayaNameOf(ctxT(t), p)
 	wantKind(t, err, errs.NotFound)

@@ -506,6 +506,19 @@ func TestPeople_Integration_ProfileExportAndDeleteEndToEnd(t *testing.T) {
 		t.Fatalf("POST /api/hello/greetings = %d %s", status, body)
 	}
 
+	// The person's own data rights are served by datarights, and people's old paths are gone.
+	if status, body, _ = itSend(t, addr, http.MethodGet, "/api/datarights/me/requests", cookie, ""); status != 200 {
+		t.Errorf("GET /api/datarights/me/requests = %d %s, want 200", status, body)
+	}
+	if status, body, _ = itSend(t, addr, http.MethodGet, "/api/datarights/me/export", cookie, ""); status != 200 || jsonField(t, body, "person.playa_name") != "Dusty Fern" {
+		t.Errorf("GET /api/datarights/me/export = %d %s, want 200 with the profile and hello's data", status, body)
+	}
+	for _, old := range []string{"/api/people/me/export", "/api/people/me/requests"} {
+		if status, _, _ = itSend(t, addr, http.MethodGet, old, cookie, ""); status != 404 && status != 405 {
+			t.Errorf("GET %s = %d, want 404: the data-rights routes moved to /api/datarights", old, status)
+		}
+	}
+
 	// The participant holds no admin permission; the superuser reads the roles.
 	if status, _, _ = itSend(t, addr, http.MethodGet, "/api/access/roles", cookie, ""); status != 403 {
 		t.Errorf("participant GET /api/access/roles = %d, want 403", status)
@@ -567,7 +580,7 @@ func TestPeople_Integration_ProfileExportAndDeleteEndToEnd(t *testing.T) {
 	}
 
 	// The commands wrote as the operator.
-	rows, err := pool.Query(ctx, `SELECT action, actor_kind FROM core.audit_entry WHERE action IN ('people.person.exported','people.person.deleted','access.grants.deleted','identity.account.deleted') ORDER BY at`)
+	rows, err := pool.Query(ctx, `SELECT action, actor_kind FROM core.audit_entry WHERE action IN ('datarights.export','datarights.delete','access.grants.deleted','identity.account.deleted') ORDER BY at`)
 	if err != nil {
 		t.Fatalf("read the audit table: %v", err)
 	}
@@ -583,7 +596,7 @@ func TestPeople_Integration_ProfileExportAndDeleteEndToEnd(t *testing.T) {
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
-	for _, action := range []string{"people.person.exported", "people.person.deleted", "identity.account.deleted"} {
+	for _, action := range []string{"datarights.export", "datarights.delete", "identity.account.deleted"} {
 		if kinds[action] != "operator" {
 			t.Errorf("%s was recorded by %q, want operator (all: %v)", action, kinds[action], kinds)
 		}

@@ -55,7 +55,7 @@ export function Requests() {
   const q = useQuery({
     queryKey: ["people", "requests", status],
     queryFn: ({ signal }) =>
-      api.GET("/api/people/requests", { signal, params: { query: { status } } }),
+      api.GET("/api/datarights/requests", { signal, params: { query: { status } } }),
   });
   const error = q.error instanceof ApiError ? q.error : null;
   const requests = q.data?.requests ?? [];
@@ -69,7 +69,7 @@ export function Requests() {
     const r = fulfilling;
     if (!r) return;
     void fulfil.run(async () => {
-      const res = await api.POST("/api/people/requests/{request}/fulfil", {
+      const res = await api.POST("/api/datarights/requests/{request}/fulfil", {
         params: { path: { request: r.id } },
       });
       setFulfilling(null);
@@ -84,7 +84,7 @@ export function Requests() {
     if (!r) return;
     const note = text(new FormData(e.currentTarget).get("note")).trim();
     void decline.run(async () => {
-      await api.POST("/api/people/requests/{request}/decline", {
+      await api.POST("/api/datarights/requests/{request}/decline", {
         params: { path: { request: r.id } },
         body: { ...(note ? { note } : {}) },
       });

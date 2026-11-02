@@ -2,7 +2,6 @@ package people_test
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -53,10 +52,6 @@ const (
 	permManage    authz.Permission = "people.profiles.manage"
 	permExport    authz.Permission = "people.data.export"
 	permDelete    authz.Permission = "people.data.delete"
-
-	sigCreated   signals.Name = "people.person-created"
-	sigDeleted   signals.Name = "people.person-deleted"
-	sigRequested signals.Name = "people.deletion-requested"
 )
 
 var epoch = time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)
@@ -235,22 +230,17 @@ type fakeAccount struct {
 
 // fakeAccounts is a people.Accounts that keeps accounts in memory.
 type fakeAccounts struct {
-	mu        sync.Mutex
-	log       *callLog
-	byPerson  map[model.PersonID]fakeAccount
-	exportOut json.RawMessage
-	exportErr error
-	deleteN   int
-	deleteErr error
-	linkErr   error
-	deleted   []model.PersonID
-	gone      map[model.PersonID]bool // accounts deleted: no longer signed in
+	mu       sync.Mutex
+	log      *callLog
+	byPerson map[model.PersonID]fakeAccount
+	linkErr  error
+	gone     map[model.PersonID]bool // accounts deleted: no longer signed in
 }
 
 var _ people.Accounts = (*fakeAccounts)(nil)
 
 func newFakeAccounts(log *callLog) *fakeAccounts {
-	return &fakeAccounts{log: log, byPerson: map[model.PersonID]fakeAccount{}, gone: map[model.PersonID]bool{}, exportOut: json.RawMessage(`{"account":null}`), deleteN: 1}
+	return &fakeAccounts{log: log, byPerson: map[model.PersonID]fakeAccount{}, gone: map[model.PersonID]bool{}}
 }
 
 func (f *fakeAccounts) EmailOf(_ context.Context, p model.PersonID) (model.Email, error) {
@@ -289,72 +279,6 @@ func (f *fakeAccounts) LinkAccount(_ context.Context, email model.Email, p model
 		return a.acct, old, nil
 	}
 	return model.AccountID{}, model.PersonID{}, errs.E(op, errs.NotFound, &validate.FieldError{Field: "email", Code: "unknown", Reason: "unknown"})
-}
-
-func (f *fakeAccounts) ExportPerson(context.Context, model.PersonID) (json.RawMessage, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.log.add("accounts.export")
-	return f.exportOut, f.exportErr
-}
-
-func (f *fakeAccounts) DeletePerson(_ context.Context, p model.PersonID) (int, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.log.add("accounts.delete")
-	if f.deleteErr != nil {
-		return 0, f.deleteErr
-	}
-	f.deleted = append(f.deleted, p)
-	delete(f.byPerson, p)
-	f.gone[p] = true
-	return f.deleteN, nil
-}
-
-// fakeAccess is a people.Access.
-type fakeAccess struct {
-	mu        sync.Mutex
-	log       *callLog
-	exportOut json.RawMessage
-	exportErr error
-	deleteN   int
-	deleteErr error
-}
-
-var _ people.Access = (*fakeAccess)(nil)
-
-func newFakeAccess(log *callLog) *fakeAccess {
-	return &fakeAccess{log: log, exportOut: json.RawMessage(`{"grants":[]}`), deleteN: 2}
-}
-
-func (f *fakeAccess) ExportPerson(context.Context, model.PersonID) (json.RawMessage, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.log.add("access.export")
-	return f.exportOut, f.exportErr
-}
-
-func (f *fakeAccess) DeletePerson(context.Context, model.PersonID) (int, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.log.add("access.delete")
-	if f.deleteErr != nil {
-		return 0, f.deleteErr
-	}
-	return f.deleteN, nil
-}
-
-// fakeCounter is a people.AuditCounter.
-type fakeCounter struct {
-	mu  sync.Mutex
-	n   int
-	err error
-}
-
-func (f *fakeCounter) CountAbout(context.Context, model.PersonID) (int, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.n, f.err
 }
 
 // policySrc is a settings.Reader for the "people" area that a test can change as a
@@ -424,33 +348,6 @@ func (s *policySrc) Secret(ctx context.Context, k string) (secret.Secret, error)
 	return f.Secret(ctx, k) //nolint:wrapcheck // test shim: the settingstest.Fake answer is the point
 }
 
-// fakeSource is one module's PersonData.
-type fakeSource struct {
-	name      string
-	log       *callLog
-	data      json.RawMessage
-	exportErr error
-	del       func(ctx context.Context, p model.PersonID) (people.ModuleDeletion, error)
-}
-
-func (s *fakeSource) ExportPerson(context.Context, model.PersonID) (people.Export, error) {
-	s.log.add("module." + s.name + ".export")
-	if s.exportErr != nil {
-		return people.Export{}, s.exportErr
-	}
-	return people.Export{Data: s.data}, nil
-}
-
-func (s *fakeSource) DeletePerson(ctx context.Context, p model.PersonID) (people.ModuleDeletion, error) {
-	s.log.add("module." + s.name + ".delete")
-	if s.del != nil {
-		return s.del(ctx, p)
-	}
-	return people.ModuleDeletion{}, nil
-}
-
-func (s *fakeSource) source() people.Source { return people.Source{Name: s.name, Exporter: s} }
-
 // providerFunc adapts a function to personpage.Provider.
 type providerFunc func(ctx context.Context, ids []model.PersonID) (map[model.PersonID][]personpage.Section, error)
 
@@ -462,22 +359,20 @@ func (f providerFunc) Sections(ctx context.Context, ids []model.PersonID) (map[m
 
 // rig is a people.Service over the given DB with every seam faked.
 type rig struct {
-	t       *testing.T
-	svc     *people.Service
-	opts    people.Options
-	clk     *clock.Fake
-	rec     *audittest.Fake
-	bus     *signalstest.Fake
-	az      *authztest.Fake
-	cap     *telemetrytest.Capture
-	log     *callLog
-	accts   *fakeAccounts
-	access  *fakeAccess
-	counter *fakeCounter
-	pol     *policySrc
+	t     *testing.T
+	svc   *people.Service
+	opts  people.Options
+	clk   *clock.Fake
+	rec   *audittest.Fake
+	bus   *signalstest.Fake
+	az    *authztest.Fake
+	cap   *telemetrytest.Capture
+	log   *callLog
+	accts *fakeAccounts
+	pol   *policySrc
 }
 
-func peopleSignals() []signals.Name { return []signals.Name{sigCreated, sigDeleted, sigRequested} }
+func peopleSignals() []signals.Name { return people.PublishedSignals }
 
 func validOptions(t *testing.T, d db.DB) (people.Options, *rig) {
 	t.Helper()
@@ -491,26 +386,24 @@ func validOptions(t *testing.T, d db.DB) (people.Options, *rig) {
 	log := &callLog{}
 	r := &rig{
 		t: t, clk: clk, rec: rec, bus: bus, az: az, cap: c, log: log,
-		accts: newFakeAccounts(log), access: newFakeAccess(log), counter: &fakeCounter{}, pol: newPolicySrc(),
+		accts: newFakeAccounts(log), pol: newPolicySrc(),
 	}
 	lookup, err := people.NewLookup(people.LookupOptions{DB: d, Tracer: c.Tracer("people")})
 	wantNoErr(t, err)
 	o := people.Options{
-		Lookup:     lookup,
-		DB:         d,
-		Clock:      clk,
-		Logger:     c.Logger(),
-		Tracer:     c.Tracer("people"),
-		Meter:      c.Meter("people"),
-		Audit:      rec,
-		Signals:    bus,
-		Authz:      az,
-		Actor:      actorOf,
-		Session:    identity.SessionFrom,
-		Accounts:   r.accts,
-		Access:     r.access,
-		AuditCount: r.counter,
-		Settings:   r.pol,
+		Lookup:   lookup,
+		DB:       d,
+		Clock:    clk,
+		Logger:   c.Logger(),
+		Tracer:   c.Tracer("people"),
+		Meter:    c.Meter("people"),
+		Audit:    rec,
+		Signals:  bus,
+		Authz:    az,
+		Actor:    actorOf,
+		Session:  identity.SessionFrom,
+		Accounts: r.accts,
+		Settings: r.pol,
 	}
 	return o, r
 }
@@ -530,10 +423,10 @@ func newRig(t *testing.T, d db.DB, mods ...func(*people.Options)) *rig {
 	return r
 }
 
-// link hands the service its sources (no page providers).
-func (r *rig) link(sources ...people.Source) {
+// link hands the service its providers (none): the module sources are datarights' now.
+func (r *rig) link() {
 	r.t.Helper()
-	wantNoErr(r.t, r.svc.Link(sources, nil, nil))
+	wantNoErr(r.t, r.svc.Link(nil, nil))
 }
 
 func actionsOf(es []audit.Entry) []string {

@@ -34,8 +34,6 @@ func TestNew_NilDependency_ReturnsInvalid(t *testing.T) {
 		{"people.actor", func(o *people.Options) { o.Actor = nil }},
 		{"people.session", func(o *people.Options) { o.Session = nil }},
 		{"people.accounts", func(o *people.Options) { o.Accounts = nil }},
-		{"people.access", func(o *people.Options) { o.Access = nil }},
-		{"people.audit_count", func(o *people.Options) { o.AuditCount = nil }},
 		{"people.settings", func(o *people.Options) { o.Settings = nil }},
 		{"people.lookup", func(o *people.Options) { o.Lookup = nil }},
 	}
@@ -58,7 +56,7 @@ func TestOptions_Validate_ReportsEveryProblemAtOnce(t *testing.T) {
 	wantKind(t, err, errs.Invalid)
 	for _, f := range []string{
 		"people.db", "people.clock", "people.logger", "people.tracer", "people.audit", "people.signals",
-		"people.authz", "people.actor", "people.accounts", "people.access", "people.audit_count", "people.session", "people.settings", "people.lookup",
+		"people.authz", "people.actor", "people.accounts", "people.session", "people.settings", "people.lookup",
 	} {
 		if !hasField(err, f, "") {
 			t.Errorf("no field error for %s", f)
@@ -86,34 +84,29 @@ func TestNew_WorksAgainstNoDatabase_AndSubscribes(t *testing.T) {
 // F2
 func TestLink_Twice_ReturnsInternal(t *testing.T) {
 	r := newRig(t, dbtest.NewFake())
-	wantNoErr(t, r.svc.Link(nil, nil, nil))
-	wantKind(t, r.svc.Link(nil, nil, nil), errs.Internal)
+	wantNoErr(t, r.svc.Link(nil, nil))
+	wantKind(t, r.svc.Link(nil, nil), errs.Internal)
 }
 
-func TestLink_NilProviderOrExporter_ReturnsInternal(t *testing.T) {
-	good := &fakeSource{name: "hello", log: &callLog{}}
+func TestLink_NilProvider_ReturnsInternal(t *testing.T) {
 	tests := []struct {
 		name     string
-		sources  []people.Source
 		sections []people.SectionProvider
 	}{
-		{"nil exporter", []people.Source{{Name: "hello", Exporter: nil}}, nil},
-		{"nil exporter after a good one", []people.Source{good.source(), {Name: "other", Exporter: nil}}, nil},
-		{"nil provider", nil, []people.SectionProvider{{Module: "hello", Provider: nil}}},
+		{"nil provider", []people.SectionProvider{{Module: "hello", Provider: nil}}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newRig(t, dbtest.NewFake())
-			wantKind(t, r.svc.Link(tc.sources, tc.sections, nil), errs.Internal)
+			wantKind(t, r.svc.Link(tc.sections, nil), errs.Internal)
 		})
 	}
 }
 
-func TestLink_GoodSourcesAndProviders_Succeeds(t *testing.T) {
+func TestLink_GoodProviders_Succeeds(t *testing.T) {
 	r := newRig(t, dbtest.NewFake())
-	src := &fakeSource{name: "hello", log: r.log}
 	prov := providerFunc(func(context.Context, []model.PersonID) (map[model.PersonID][]personpage.Section, error) {
 		return nil, nil
 	})
-	wantNoErr(t, r.svc.Link([]people.Source{src.source()}, []people.SectionProvider{{Module: "hello", Provider: prov}}, nil))
+	wantNoErr(t, r.svc.Link([]people.SectionProvider{{Module: "hello", Provider: prov}}, nil))
 }

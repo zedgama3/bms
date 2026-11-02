@@ -23,13 +23,12 @@ import (
 // values and then looks for the markers everywhere the service wrote.
 func TestNoPersonalDataInLogsSpansMetricsOrAuditEntries(t *testing.T) {
 	r := newIRig(t, false)
-	good := &fakeSource{name: "alpha", log: r.log, data: []byte(`{"n":1}`)}
 	failing := providerFunc(func(context.Context, []model.PersonID) (map[model.PersonID][]personpage.Section, error) {
 		return nil, errs.E("camps.Sections", errs.Unavailable, errors.New("camp service down"))
 	})
-	wantNoErr(t, r.svc.Link([]people.Source{good.source()}, []people.SectionProvider{{Module: "camps", Provider: failing}}, nil))
+	wantNoErr(t, r.svc.Link([]people.SectionProvider{{Module: "camps", Provider: failing}}, nil))
 
-	_, actx := r.admin(permManage, permDirectory, permContacts, permExport, permDelete)
+	_, actx := r.admin(permManage, permDirectory, permContacts)
 
 	// Create with every personal field, then change and read it.
 	prof, err := r.svc.Create(actx, people.ProfileInput{
@@ -55,16 +54,6 @@ func TestNoPersonalDataInLogsSpansMetricsOrAuditEntries(t *testing.T) {
 	wantNoErr(t, err)
 	_, err = r.svc.UpdateMe(asPerson(ctxT(t), p), people.ProfileInput{Pronouns: str("she/her")})
 	wantNoErr(t, err)
-	_, err = r.svc.Export(asPerson(ctxT(t), p), p)
-	wantNoErr(t, err)
-	req, err := r.svc.RequestDeletion(asPerson(ctxT(t), p), mNote)
-	wantNoErr(t, err)
-	_, err = r.svc.DeclineRequest(actx, req.ID, mDecision)
-	wantNoErr(t, err)
-	_, err = r.svc.RequestDeletion(asPerson(ctxT(t), p), mNote)
-	wantNoErr(t, err)
-	_, err = r.svc.RequestDeletion(asPerson(ctxT(t), p), mNote) // duplicate: an error path
-	wantKind(t, err, errs.Conflict)
 
 	// Failure paths whose errors might echo input.
 	_, err = r.svc.UpdateMe(asPerson(ctxT(t), p), people.ProfileInput{LegalName: str(mLegal + strings.Repeat("x", 300)), Phone: str(mPhone + "zz")})
@@ -79,20 +68,14 @@ func TestNoPersonalDataInLogsSpansMetricsOrAuditEntries(t *testing.T) {
 		t.Error("a link error echoes the address")
 	}
 
-	// Link and delete.
+	// Link and delete (the deletion is datarights' use case; people's share of it is its
+	// PeopleSource.DeletePerson, run here in a transaction as datarights runs it).
 	r.accts.addAccount(newPerson(), mail(t, "marker.link@example.org"), false)
-	_, err = r.svc.Delete(actx, p)
-	wantNoErr(t, err)
+	r.deletePerson(p)
 
 	r.noLeak(allMarkers()...)
 	r.noLeak("marker.link", "+1 555 0178")
 
-	if got := r.measured("bms.people.exports", nil); got != 1 {
-		t.Errorf("bms.people.exports = %v, want 1", got)
-	}
-	if got := r.measured("bms.people.deletions", nil); got != 1 {
-		t.Errorf("bms.people.deletions = %v, want 1", got)
-	}
 	// Metrics take tokens only: no attribute is an ID.
 	for _, m := range r.cap.Measurements() {
 		if !strings.HasPrefix(m.Instrument, "bms.people.") {

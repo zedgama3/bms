@@ -229,7 +229,9 @@ function Actions({
   const submitDelete = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     void del.run(async () => {
-      const res = await api.DELETE("/api/people/{person}", { params: { path: { person: id } } });
+      const res = await api.DELETE("/api/datarights/people/{person}", {
+        params: { path: { person: id } },
+      });
       setOpen(null);
       onDeleted(res);
     });
@@ -237,7 +239,7 @@ function Actions({
 
   const download = () => {
     void exporting.run(async () => {
-      const data = await api.GET("/api/people/{person}/export", {
+      const data = await api.GET("/api/datarights/people/{person}/export", {
         params: { path: { person: id } },
       });
       saveJson(data, `bms-export-${id}.json`);

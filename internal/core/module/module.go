@@ -2,11 +2,11 @@ package module
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 
 	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/authz"
+	"github.com/zedgama3/bms/internal/core/datarights"
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/departments"
 	"github.com/zedgama3/bms/internal/core/events"
@@ -18,7 +18,6 @@ import (
 	"github.com/zedgama3/bms/internal/core/signals"
 	"github.com/zedgama3/bms/internal/core/telemetry"
 	"github.com/zedgama3/bms/internal/lib/clock"
-	"github.com/zedgama3/bms/internal/model"
 )
 
 // Factory builds a module from its dependencies. It validates the fields of deps it uses
@@ -53,43 +52,41 @@ type Module interface {
 // everything about person X" (privacy-data). Every module implements it, including one
 // that holds no personal data (it returns an empty Export and a zero Deletion), so the
 // obligation is visible in code and tested by moduletest. The caller is the core
-// (people.md) with an actor who has already been authorized for people.data.export or
-// people.data.delete and whose action people audits; a module does not re-check that
-// permission, and these methods are never reachable through a module's own routes.
-type PersonData interface {
-	// ExportPerson returns every record this module holds about person, at every
-	// sensitivity level, as one JSON object the module's spec documents (field names are
-	// stable, so a person can read their own data). An empty Data means nothing is held.
-	// Fails with errs.Invalid for a zero person and with the store's kind otherwise.
-	ExportPerson(ctx context.Context, person model.PersonID) (Export, error)
+// (datarights.md, boundaries.md decision 5) with an actor who has already been authorized
+// for people.data.export or people.data.delete and whose action datarights audits; a module
+// does not re-check that permission, and these methods are never reachable through a
+// module's own routes.
+//
+// It is an alias of datarights.PersonData, so a module's value goes to datarights as it is,
+// with no adapter:
+//
+//	ExportPerson(ctx, person model.PersonID) (Export, error)
+//
+// returns every record this module holds about person, at every sensitivity level, as one
+// JSON object the module's spec documents (field names are stable, so a person can read
+// their own data). An empty Data means nothing is held. It fails with errs.Invalid for a
+// zero person and with the store's kind otherwise.
+//
+//	DeletePerson(ctx, person model.PersonID) (Deletion, error)
+//
+// deletes or irreversibly anonymizes every record this module holds about person, including
+// attachments, and reports what it did. Records the module's spec says must be kept (a
+// legal or safety reason) are counted under Kept with their kind. It is idempotent: a
+// person with no records yields a zero Deletion and nil. It fails with errs.Invalid for a
+// zero person; on a read-only copy, with errs.Unavailable wrapping db.ErrReadOnly, the kind
+// db returns for a write (db.md).
+type PersonData = datarights.PersonData
 
-	// DeletePerson deletes or irreversibly anonymizes every record this module holds
-	// about person, including attachments, and reports what it did. Records the module's
-	// spec says must be kept (a legal or safety reason) are counted under Kept with their
-	// kind. It is idempotent: a person with no records yields a zero Deletion and nil.
-	// Fails with errs.Invalid for a zero person; on a read-only copy, with
-	// errs.Unavailable wrapping db.ErrReadOnly, the kind db returns for a write (db.md).
-	DeletePerson(ctx context.Context, person model.PersonID) (Deletion, error)
-}
+// Export is one module's share of a person's data export (an alias of datarights.Export).
+type Export = datarights.Export
 
-// Export is one module's share of a person's data export.
-type Export struct {
-	Data json.RawMessage // a JSON object, or empty when the module holds nothing
-}
-
-// Deletion reports what DeletePerson did.
-type Deletion struct {
-	Deleted    int    // records removed
-	Anonymized int    // records kept with personal fields irreversibly replaced
-	Kept       []Kept // records kept as they are, by the module's spec
-}
+// Deletion reports what DeletePerson did (an alias of datarights.Deletion).
+type Deletion = datarights.Deletion
 
 // Kept is one kind of record a module keeps on deletion; the reason is documented in the
-// module's spec and shown through the message key module.<name>.kept.<kind>.
-type Kept struct {
-	Kind  string // one ident
-	Count int
-}
+// module's spec and shown through the message key module.<name>.kept.<kind> (an alias of
+// datarights.Kept).
+type Kept = datarights.Kept
 
 // APIDescriber is implemented by a RouteProvider that documents its routes; every
 // RouteProvider must implement it. The api shell merges the fragments into one OpenAPI

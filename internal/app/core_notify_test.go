@@ -3,7 +3,6 @@ package app
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"strings"
@@ -12,55 +11,7 @@ import (
 
 	"github.com/zedgama3/bms/internal/core/notify"
 	"github.com/zedgama3/bms/internal/lib/errs"
-	"github.com/zedgama3/bms/internal/model"
 )
-
-// ---- the outbox in export and deletion ----
-
-type fakeOutbox struct {
-	exported, deleted []model.PersonID
-	n                 int
-	err               error
-}
-
-func (f *fakeOutbox) ExportPerson(_ context.Context, p model.PersonID) (json.RawMessage, error) {
-	f.exported = append(f.exported, p)
-	return json.RawMessage(`{"messages":[]}`), f.err
-}
-
-func (f *fakeOutbox) DeletePerson(_ context.Context, p model.PersonID) (int, error) {
-	f.deleted = append(f.deleted, p)
-	return f.n, f.err
-}
-
-func TestNotifySource_ExportAndDelete_ReachTheOutbox(t *testing.T) {
-	person := model.NewID[model.PersonID]()
-	ob := &fakeOutbox{n: 3}
-	src := notifySource(ob)
-	if src.Name != "notify" {
-		t.Errorf("source name = %q, want notify", src.Name)
-	}
-	exp, err := src.Exporter.ExportPerson(t.Context(), person)
-	if err != nil || string(exp.Data) != `{"messages":[]}` || len(ob.exported) != 1 || ob.exported[0] != person {
-		t.Errorf("ExportPerson = %s, %v", exp.Data, err)
-	}
-	del, err := src.Exporter.DeletePerson(t.Context(), person)
-	if err != nil || del.Deleted != 3 || del.Anonymized != 0 || len(del.Kept) != 0 || len(ob.deleted) != 1 {
-		t.Errorf("DeletePerson = %+v, %v, want 3 deleted", del, err)
-	}
-}
-
-func TestNotifySource_OutboxFails_KeepsTheKind(t *testing.T) {
-	ob := &fakeOutbox{err: errs.E("test", errs.Unavailable, errors.New("down"))}
-	src := notifySource(ob)
-	person := model.NewID[model.PersonID]()
-	if _, err := src.Exporter.ExportPerson(t.Context(), person); !errs.Is(err, errs.Unavailable) {
-		t.Errorf("export err = %v, want Unavailable", err)
-	}
-	if _, err := src.Exporter.DeletePerson(t.Context(), person); !errs.Is(err, errs.Unavailable) {
-		t.Errorf("delete err = %v, want Unavailable", err)
-	}
-}
 
 // ---- the runnable ----
 

@@ -9,56 +9,48 @@
   `Sensitivity.ReadIsAudited`. `lib-errs.md`, `lib-core.md` (Implemented): `errs`, `clock`,
   `validate`. `db.md` (Implemented): `DB`, `Transact`, `AfterCommit`, `Wrap`, `ErrReadOnly`,
   `Set`, `dbtest`. `signals.md` (Implemented): `Bus`, `Name`, `Payload`, `Signal`,
-  `InDelivery`. `audit.md` (Implemented): `Recorder`, `Entry`, `Ref`, `CountAbout`.
+  `InDelivery`. `audit.md` (Implemented): `Recorder`, `Entry`, `Ref`.
   `identity.md` (Implemented): `PersonFrom`, `SessionFrom`, `NameSource`,
-  `SignalAccountCreated`, `ExportPerson`, `DeletePerson`; the two methods proposed below
-  (`EmailOf`, `LinkAccount`). `authz.md` (Approved): `Authorizer` (`Allow`, `AllowIn`,
+  `SignalAccountCreated`, `EmailOf`, `LinkAccount`. `authz.md` (Approved): `Authorizer` (`Allow`, `AllowIn`,
   `ExtentOf`), `Actor`/`ActorFunc`, `PermissionDecl.StarterRoles`, the starter role keys,
-  `ExportPerson`, `DeletePerson`, Proposed change 9. `module-contract.md` (Implemented):
-  `PersonData`, `Export`, `Deletion`, `Kept`, `Set.PersonData()`, `Set.Contributors`,
+  Proposed change 9. `module-contract.md` (Implemented):
+  `Set.Contributors`,
   `Env.CoreSignals`, `Env.CoreExtensionPoints` (all reached through `app`; this package
   never imports `core/module`). `telemetry.md`, `api.md` (`httpx`), `web-shell.md`
-  (`ScreenSet`, `NavEntry.access`), `app.md` (part 5) (Implemented). `settings.md` (`Decl`) and `notify.md` (`Notifier`) (D39); `authz.md` (`HoldersOf`, D39).
+  (`ScreenSet`, `NavEntry.access`), `app.md` (part 5) (Implemented). `settings.md` (`Decl`, `Reader`). `datarights.md` (boundaries step 12): the `PeopleSource` this package answers.
 - **Used by:** every module (`Deps.People`, the `people.person-page` point, the
   `people.person-deleted` signal), `identity` (`NameSource`), `authz` and `audit` (the
   `search` and `names` routes behind their screens), the web shell (the profile prompt and
-  the saved language), `app` (part 5, the `export` and `delete` commands), `notify` (`PlayaNameOf`, `LanguageOf`, `ContactEmailOf` through `people.Lookup`, and its outbox as a `Source`), `settings` (`Reader`, `Decl`).
+  the saved language), `app` (part 5), `datarights` (`PeopleSource`), `notify` (`PlayaNameOf`, `LanguageOf`, `ContactEmailOf` through `people.Lookup`), `settings` (`Reader`, `Decl`).
 
 ## Summary
 
-**Purpose.** Hold who each participant is: their profile (playa name first), their contact details and emergency contacts, the consents they gave, and the one place that exports or deletes everything bms holds about them.
+**Purpose.** Hold who each participant is: their profile (playa name first), their contact details and emergency contacts, the consents they gave, and its own rows' share of an export or a deletion (the cross-system export, deletion and requests are `datarights`').
 
-**Imports.** Package `internal/core/people` imports `model`, `lib`, `core/db`, `core/audit`, `core/authz` (the `Authorizer` and leaf types), `core/identity` (`PersonFrom`, `SessionFrom`, taken as `Options.Actor`), `core/signals`, `core/telemetry`, `contracts/personpage`. Never `core/module`, `api`, `app`, `config` or a module: the modules' `PersonData` and the page contributions reach it through `app`'s adapters (`Link`).
+**Imports.** Package `internal/core/people` imports `model`, `lib`, `core/db`, `core/audit`, `core/authz` (the `Authorizer` and leaf types), `core/identity` (`PersonFrom`, `SessionFrom`, taken as `Options.Actor`), `core/signals`, `core/telemetry`, `contracts/personpage`. Never `core/module`, `api`, `app`, `config` or a module: the modules' page contributions reach it through `app`'s adapters (`Link`); the modules' `PersonData` go to `datarights`.
 
 **Names.** `people` is the package, the core part, the migration set, the route set (`/api/people/`), the permission prefix, the audit area, the signal prefix, the settings prefix and the screen set. The extension point's shape lives in `contracts/personpage` so a module never imports two packages called `people`.
 
 **Exported (`people`).**
-- `ContactID`, `RequestID` (= `model.ID[...]`); `Purpose` (a consent purpose, `<owner>.<ident>`, +`Validate`, `Owner`); `FieldMode` (`FieldHidden`, `FieldOptional`, `FieldRequired`; zero invalid; `ParseFieldMode`, `String`); `RequestStatus` (`RequestOpen`, `RequestWithdrawn`, `RequestDeclined`).
+- `ContactID` (= `model.ID[...]`); `Purpose` (a consent purpose, `<owner>.<ident>`, +`Validate`, `Owner`); `FieldMode` (`FieldHidden`, `FieldOptional`, `FieldRequired`; zero invalid; `ParseFieldMode`, `String`).
 - `Person{ID, PlayaName, Pronouns, Language, LegalName, Phone, ContactEmail, Email model.Email, HasAccount, Complete bool, CreatedAt, UpdatedAt}` (+`Validate`, `LogValue` = ID only); `EmergencyContact{ID, Person, Name, Phone, Relationship, Position int, CreatedAt, UpdatedAt}`; `Consent{Person,
-  Purpose, Granted bool, RecordedBy, ChangedAt}`; `Request{ID, Person, Kind, Status, Note, CreatedAt, DecidedAt, DecidedBy, DecisionNote}`; `Profile{Person, Fields []string, Contacts, Consents, Sections []personpage.Section, Can Capabilities, Policy, FirstPrompt bool}`; `Capabilities{Edit,
+  Purpose, Granted bool, RecordedBy, ChangedAt}`; `Profile{Person, Fields []string, Contacts, Consents, Sections []personpage.Section, Can Capabilities, Policy, FirstPrompt bool}`; `Capabilities{Edit,
   ReadContacts, Export, Delete, Link, ViewRoles, ViewAudit bool}`; `Match{ID, PlayaName, Pronouns}`; `ProfileInput{PlayaName, Pronouns, Language, LegalName, Phone, ContactEmail *string}` (nil = unchanged); `ContactInput{Name, Phone, Relationship}`; `SearchQuery{Q string, Limit int}`;
-  `RequestQuery{Status, Person}`; `LinkResult{Account model.AccountID, Orphan model.PersonID, OrphanDeleted bool}`; `ExportFormat = 1`; `DeletionReport{Person, People, Identity, Access int, Modules map[string]ModuleDeletion, Kept []Kept}`, `ModuleDeletion{Deleted, Anonymized int, Kept []Kept}`,
-  `Kept{Kind string, Count int}`, `Export{Data json.RawMessage}` (structural twins of `module`'s; `app` converts).
-- `Policy{LegalName, Phone, EmergencyContacts FieldMode}` (+`Validate`), `DefaultPolicy()` (optional, optional, optional); no `PolicySource` (removed, boundaries step 5): `Options.Settings` is a `settings.Reader` scoped to `people`, and people maps its three keys to a `Policy` itself; `Settings []settings.Decl` (D39: the three enum keys; `emergency_contacts` lists `hidden|optional` only, so `Policy.Validate`'s rule is the declaration); `Templates fs.FS` (`people.deletion-requested`; `en`, `es`; D39).
-- Seams `app` fills: `Accounts{EmailOf(ctx, PersonID) (model.Email, error); LinkAccount(ctx, model.Email, PersonID) (model.AccountID, model.PersonID, error); ExportPerson(ctx, PersonID) (json.RawMessage, error); DeletePerson(ctx, PersonID) (int, error)}` (`*identity.Service`; the two first methods
-  are proposed); `Access{ExportPerson; DeletePerson(ctx, PersonID) (int, error)}` (`*authz.Service`); `AuditCounter{CountAbout(ctx, PersonID) (int, error)}` (`*audit.Log`); `Holders{HoldersOf(ctx, authz.Permission) ([]model.PersonID, error)}` (`*authz.Service`, D39); `Notify notify.Notifier` (scoped
-  `people`, D39); `Source{Name string; Exporter PersonData}` with `PersonData{ExportPerson(ctx, PersonID) (Export, error); DeletePerson(ctx, PersonID) (ModuleDeletion, error)}`; `SectionProvider{Module string; personpage.Provider}`.
+  `LinkResult{Account model.AccountID, Orphan model.PersonID, OrphanDeleted bool}`.
+- `Policy{LegalName, Phone, EmergencyContacts FieldMode}` (+`Validate`), `DefaultPolicy()` (optional, optional, optional); no `PolicySource` (removed, boundaries step 5): `Options.Settings` is a `settings.Reader` scoped to `people`, and people maps its three keys to a `Policy` itself; `Settings []settings.Decl` (D39: the three enum keys; `emergency_contacts` lists `hidden|optional` only, so `Policy.Validate`'s rule is the declaration).
+- Seams `app` fills: `Accounts{EmailOf(ctx, PersonID) (model.Email, error); LinkAccount(ctx, model.Email, PersonID) (model.AccountID, model.PersonID, error)}` (`*identity.Service`; its `ExportPerson` and `DeletePerson` are `datarights`' `Accounts` source since boundaries step 12); `SectionProvider{Module string; personpage.Provider}`. `Access`, `AuditCounter`, `Holders`, `Notify` and the modules' `Source`/`PersonData` went with the data-rights code to `datarights`.
 - `Lookup` (boundaries step 8): `NewLookup(LookupOptions{DB, Tracer}) (*Lookup, error)` (`Invalid` for a nil dependency; there is no `Meter`, the reads carry no metric) holds the system-level reads of `core.person`: `NamesOf`, `PlayaNameOf`, `LanguageOf`, `ConsentOf` (all `internal` level) and `ContactEmailOf` (`personal`: used only to deliver mail, never shown to a viewer). No permission, no audit; `NotFound` for an unknown or deleted person where the method says so today. `*Service` forwards the five reads to it. It is notify's `Profiles` (`PlayaNameOf`, `LanguageOf`, `ContactEmailOf`) and may serve identity's `NameSource`.
 - `Directory` (= `module.Deps.People`): `NamesOf(ctx, []model.PersonID) (map[model.PersonID]string, error)`, `ConsentOf(ctx, model.PersonID, Purpose) (bool, error)`.
-- `Options{DB, Clock, Logger, Tracer, Meter, Audit (scoped "people"), Signals (scoped "people"), Authz authz.Authorizer, Actor authz.ActorFunc, Accounts, Lookup *Lookup (required, step 8), Access, AuditCount AuditCounter, Settings settings.Reader (scoped "people", required), Notify notify.Notifier, Holders Holders, Session SessionFunc}` (+`Validate`, which refuses a
-  nil `Session` (P-W1, D58) as it does the other required fields; `Notify` and `Holders` optional: nil means no notice); `New(Options) (*Service, error)` (no I/O; subscribes to `identity.account-created`; works against `db.None()`); `(*Service).Link(sources []Source, sections []SectionProvider,
-  members []MembershipProvider) error` (once, from `app`'s `link`); `MembershipProvider{Module string; Provider membership.Provider}`.
+- `Options{DB, Clock, Logger, Tracer, Meter, Audit (scoped "people"), Signals (scoped "people"), Authz authz.Authorizer, Actor authz.ActorFunc, Accounts, Lookup *Lookup (required, step 8), Settings settings.Reader (scoped "people", required), Session SessionFunc}` (+`Validate`, which refuses a nil `Session` (P-W1, D58) as it does the other required fields); `New(Options) (*Service, error)` (no I/O; subscribes to `identity.account-created`; works against `db.None()`); `(*Service).Link(sections []SectionProvider, members []MembershipProvider) error` (once, from `app`'s `link`); `MembershipProvider{Module string; Provider membership.Provider}`.
 - `SessionFunc func(ctx) (identity.Session, bool)` (= `identity.SessionFrom`; P-W1, D58): `Me` reads the session's `IssuedAt` through it (decision 34). `Me` records the first-sign-in prompt and sets `Profile.FirstPrompt` (decisions 34 to 36); `Get` never does.
 - `*Service` (safe for concurrent use; nothing to close): `Directory` + `PlayaNameOf` (= `identity.NameSource`); `Directory.LegalNamesOf(ctx, []PersonID) (map[PersonID]string, error)` (D44: needs `people.contacts.read` in some extent and answers only for the people it reaches (D45) and always for
   the actor's own ID (D46, no audit entry for it), audited per other returned person, never on a route); `LanguageOf(ctx, PersonID) (string, error)` and `ContactEmailOf(ctx, PersonID) (model.Email, error)` (D39: system reads for notify's seams: no actor, no audit, `NotFound` when absent, never on a
-  route); `Me`, `UpdateMe`, `Get`, `Create`, `Update`, `AddContact`, `UpdateContact`, `RemoveContact`, `SetConsent`, `Search`, `LinkAccount`, `Export`, `Delete`, `RequestDeletion`, `MyRequests`, `WithdrawRequest`, `ListRequests`, `DeclineRequest`, `FulfilRequest`, `ExportCommand(ctx, io.Writer,
-  string) error`, `DeleteCommand(ctx, io.Writer, string) error`, `Routes() []Route`, `OpenAPI() []byte`; `Route{Method, Pattern string, Handler http.Handler}` (all signed-in; `app` converts).
+  route); `Me`, `UpdateMe`, `Get`, `Create`, `Update`, `AddContact`, `UpdateContact`, `RemoveContact`, `SetConsent`, `Search`, `LinkAccount`, and `datarights.PeopleSource`: `ExportPerson(ctx, PersonID) (json.RawMessage, error)`, `DeletePerson(ctx, PersonID) (int, error)` (the person row, contacts and consents inside the caller's `Write` transaction; publishes `people.person-deleted` after commit; `Conflict` when a module still references the person), `Exists(ctx, PersonID) error` (`NotFound` when there is no row); `Routes() []Route`, `OpenAPI() []byte`; `Route{Method, Pattern string, Handler http.Handler}` (all signed-in; `app` converts).
 - `NameKey(name string) string`: the one rule for "the same playa name" (NFKC, trim, internal whitespace runs to one space, `strings.ToLower`); `""` for a blank name; pure, cannot fail. Modules compare names with it; the store writes it to `playa_name_key`.
-- Constants: `MaxPlayaNameBytes = 100`, `MaxPronounsBytes = 40`, `MaxLegalNameBytes = 200`, `MaxPhoneBytes = 40`, `MaxRelationshipBytes = 60`, `MaxLanguageBytes = 35`, `MaxNoteBytes = 500`, `MaxEmergencyContacts = 10`, `MinSearchBytes = 2`, `MaxSearchBytes = 100`, `MaxSearchResults = 50`, `DefaultSearchResults = 20`, `MaxNames = 200`, `ExportCooldown = 10 * time.Minute`, `MaxTrackedExports = 10000`, `SectionTimeout = 2 * time.Second`.
-- Permissions: `people.directory.read` (department-scopable, reaches `internal`), `people.contacts.read` (department-scopable, `personal`), `people.profiles.manage` (site, `personal`), `people.data.export`, `people.data.delete` (site, `sensitive`); `Permissions []authz.PermissionDecl`. Signals
-  published `people.person-created {person}`, `people.person-deleted {person}`, `people.deletion-requested {request, person}`; subscribed `identity.account-created`. Extension point `people.person-page` (`personpage.Provider`). Settings `people.legal_name`, `people.phone`,
-  `people.emergency_contacts` (enum `hidden|optional|required`; emergency contacts never `required`, Q-CORE7). Audit actions `people.person.read|created|changed|deleted|linked|exported`, `people.search.read`, `people.contact.created|changed|deleted`, `people.consent.changed`,
-  `people.request.created|withdrawn|declined|fulfilled`. `postgres.Migrations fs.FS` (files `0001` to `0004`); `Set = db.Set{Name: "people", Schema: "core"}`. Commands `bms export <person-id>`, `bms delete <person-id>`.
+- Constants: `MaxPlayaNameBytes = 100`, `MaxPronounsBytes = 40`, `MaxLegalNameBytes = 200`, `MaxPhoneBytes = 40`, `MaxRelationshipBytes = 60`, `MaxLanguageBytes = 35`, `MaxEmergencyContacts = 10`, `MinSearchBytes = 2`, `MaxSearchBytes = 100`, `MaxSearchResults = 50`, `DefaultSearchResults = 20`, `MaxNames = 200`, `SectionTimeout = 2 * time.Second`.
+- Permissions: `people.directory.read` (department-scopable, reaches `internal`), `people.contacts.read` (department-scopable, `personal`), `people.profiles.manage` (site, `personal`); `Permissions []authz.PermissionDecl` (`people.data.export` and `people.data.delete` are `datarights`', names unchanged). Signals
+  published `people.person-created {person}`, `people.person-deleted {person}` (`people.deletion-requested` is now `datarights.deletion-requested`); subscribed `identity.account-created`. Extension point `people.person-page` (`personpage.Provider`). Settings `people.legal_name`, `people.phone`,
+  `people.emergency_contacts` (enum `hidden|optional|required`; emergency contacts never `required`, Q-CORE7). Audit actions `people.person.read|created|changed|deleted|linked`, `people.search.read`, `people.contact.created|changed|deleted`, `people.consent.changed` (`people.person.exported` and `people.request.*` are now `datarights.export` and `datarights.request.*`; old entries keep their names). `postgres.Migrations fs.FS` (files `0001` to `0004`); `Set = db.Set{Name: "people", Schema: "core"}`. The `bms export` and `bms delete` commands are `datarights`'.
 - `peopletest.NewFake() *Fake` (a `Directory` with `Fake.Add(id, name)`, `Fake.AddLegalName(id, name)` (D44), `Fake.Consent(id, purpose, granted)`; safe for concurrent use).
 - `personpage` (contract): `Item{Label, Value, Href string}`, `Section{Key string, Items []Item, Failed bool}`, `Provider{Sections(ctx, []model.PersonID) (map[model.PersonID][]Section, error)}`; `Point = "people.person-page"`. `membership` (contract, D44): `Point = "people.membership"`; `Provider{DepartmentsOf(ctx, []model.PersonID) (map[model.PersonID][]model.DepartmentID, error)}`.
 
@@ -75,24 +67,24 @@
 - **9.** `people.directory.read` and `people.contacts.read` are department-scopable so a department role may hold them (authz decision 1); while no `people.membership` provider is registered (D44), holding `people.directory.read` in any extent reaches every person, which the spec says out loud;
   `people.contacts.read` is different (owner, 2026-10-21, D45): while no `people.membership` provider is registered, a site extent reaches everyone and a department-scoped extent reaches nobody (fail closed: there is no way to say who belongs to the department), so `department-admin` keeps
   `people.contacts.read` by default and gains reach only when a provider reports members; `people.contacts.read` was seeded into `account-admin` only in M2 and `department-admin` gained it with D44 (owner, 2026-10-18; amended 2026-10-21).
-- **10.** a self export is immediate (audited, `ExportCooldown`) because it changes nothing and the data is the person's (a "confirm your password" step is Later hardening) (owner, 2026-10-18); a self deletion is a request a holder of `people.data.delete` fulfils or declines, because it is irreversible and touches safety records.
-- **11.** deletion is one `Write` transaction: modules in build order, then files (D44), then authz, then identity, then people's rows; any failure (`last_access_admin`, a superuser account, a module error) rolls everything back; audit rows stay and are reported as `Kept{Kind: "audit.entry"}` (audit decision 10).
-- **12.** export runs in no transaction and people records the one `people.person.exported` entry; modules do not audit inside `ExportPerson`.
+- **10.** moved to `datarights.md`, decision 1 (boundaries step 12).
+- **11.** moved to `datarights.md`, decision 2 (boundaries step 12).
+- **12.** moved to `datarights.md`, decision 3 (boundaries step 12).
 - **13.** `LinkAccount` takes the account's e-mail (no ID pasting on a phone) and goes through identity; the person row sign-up minted for that account is deleted afterwards in a second transaction only when it is empty and unreferenced, else kept and reported.
 - **14.** the person page's module sections come from `people.person-page` through `app`; each provider runs under `SectionTimeout`, a failing provider yields `Section{Failed: true}` and never fails the page.
 - **15.** reads of personal fields about someone else record one `people.person.read` with the fields actually returned; self reads are not audited (`ReadIsAudited(self)`); a search that matched personal fields records `people.search.read` per result.
 - **16.** `Reason` on audit entries is a token (`request:<id>`, `command`, `admin`), never free text.
 - **17.** regional differences are the three settings and role membership; no retention setting yet (nothing measures inactivity; M4 proposes `people.retention.unused` with `jobs`).
 - **18.** the person-facing "your data was viewed" is Later (D22, audit's `ViewsOf`); in M2 the person page links holders of `audit.search` to `/audit?subject=<id>`.
-- **19.** the person's download, deletion requests, the admin's export and delete and the `bms export` / `bms delete` commands ship in M2, not M4 (09 §11 and the milestone table moved) (owner, 2026-10-18).
+- **19.** moved to `datarights.md`, decision 4 (boundaries step 12).
 - **20.** `people.directory.read` is not in the base role by default (no open directory); a regional that wants one adds it to `participant` (owner, 2026-10-18).
 - **21.** (D37) a language-only `PUT /me` (the body sets nothing but `language`) is exempt from the required-fields check, so the shell can save the language before the profile is complete.
 - **22.** (D37) the consent audit entry (`people.consent.changed`) records the purpose and the direction (`Fields: [purpose]`, `Reason` `granted:<purpose>` or `withdrawn:<purpose>`, D38 (s)).
 - **23.** (D37) a walk-on's `contact_email` is cleared when an account is linked (the account's address replaces it).
-- **24.** (D37) reads of deletion-request notes (`MyRequests`, `ListRequests`) by someone other than the requester are audited.
-- **25.** (D37) data rights (`Export`, `Delete`, and the commands) for an account holder with no `core.person` row still run the identity and authz steps.
-- **26.** (D37) `Delete` publishes, through authz's `DeletePerson`, `access.grant-revoked` for each removed grant.
-- **27.** the deletion-request notice is sent by people through its own `Notifier` seam, to the holders of `people.data.delete`, in `RequestDeletion`'s `Write` transaction; notify subscribes to nothing (notify decision 14).
+- **24.** moved to `datarights.md`, decision 5 (boundaries step 12).
+- **25.** moved to `datarights.md`, decision 6 (boundaries step 12).
+- **26.** moved to `datarights.md`, decision 7 (boundaries step 12).
+- **27.** moved to `datarights.md`, decision 8 (boundaries step 12).
 - **28.** `LanguageOf` and `ContactEmailOf` are system reads for notify and never reachable from a route.
 - **29.** a playa name is **unique across the installation** (reverses decision 3's "not unique"): the key column `core.person.playa_name_key` is written by the store from `NameKey(playa_name)` on every write of the name and the partial unique index `person_playa_name_key_idx` (`WHERE playa_name_key
   <> ''`) is the one decider, so two people claiming one name at once cannot both win; a `23505` on that index becomes `Conflict` with field `playa_name` code `taken` on `UpdateMe`, `Create` and `Update`, naming nobody (the name is the caller's own input; who holds it is not said, not even to a
@@ -127,30 +119,28 @@
 - `NamesOf`: `Invalid` (`ids` `too_many`).
 - `SetConsent`: `Invalid` (purpose), `Permission`.
 - `LinkAccount`: `Conflict` (`has_account`, `superuser`), `NotFound` (field `email` code `unknown`; never says more).
-- `Export`: `Permission`, `NotFound`, `Unavailable` wrapping `httpx.ErrRateLimited` (self cooldown).
-- `Delete`/`FulfilRequest`: `Permission`, `NotFound`, `Invalid` (`person` `self`), `Conflict` (`last_access_admin` from authz, `superuser` from identity, `in_use` from a foreign key), the module's error wrapped with its name.
-- Requests: `Conflict duplicate` (an open request exists), `Conflict status` (not open).
 - `UpdateMe`, `Create`, `Update`: `Conflict` with field `playa_name` code `taken` when another person holds the same `NameKey` (the unique index decides, so the race is covered; the error names nobody); `UpdateMe`: `Invalid` `playa_name` `permanent` when a name is set and the new one has a different key; `Update` by a profile manager never fails `permanent`: a different key is written and audited with `Reason "rename"`, for any person including the manager.
 - `Link`: `Internal` (called twice, nil provider).
 - `Me`: `Internal` when a signed-in actor has no session in ctx (a wiring error, F104); the first-sign-in mark failing with a store kind fails `Me` with it, except `db.ErrReadOnly`, which answers `first_prompt` false and no error (F96, F97).
-- `New`/`Options.Validate`: `Invalid` with fields `people.db`, `people.clock`, `people.logger`, `people.tracer`, `people.audit`, `people.signals`, `people.authz`, `people.actor`, `people.accounts`, `people.lookup` (step 8), `people.access`, `people.audit_count`, `people.settings`, `people.session` (P-W1, F102); tests `TestNew_NilDependency_ReturnsInvalid` (`people.lookup` case), `TestOptions_Validate_ReportsEveryProblemAtOnce`.
+- `New`/`Options.Validate`: `Invalid` with fields `people.db`, `people.clock`, `people.logger`, `people.tracer`, `people.audit`, `people.signals`, `people.authz`, `people.actor`, `people.accounts`, `people.lookup` (step 8), `people.settings`, `people.session` (P-W1, F102); tests `TestNew_NilDependency_ReturnsInvalid` (`people.lookup` case), `TestOptions_Validate_ReportsEveryProblemAtOnce`.
 
 **Owns.**
 
-- Tables `core.person` (columns `playa_name_key`, unique index `person_playa_name_key_idx`, migration `0003_playa_name_key.sql`; column `name_prompted_at`, migration `0004_name_prompted_at.sql`), `core.person_emergency_contact`, `core.person_consent`, `core.data_request`.
-- The five permissions; three signals and one subscription; the extension point; the three settings; the audit actions above.
+- Tables `core.person` (columns `playa_name_key`, unique index `person_playa_name_key_idx`, migration `0003_playa_name_key.sql`; column `name_prompted_at`, migration `0004_name_prompted_at.sql`), `core.person_emergency_contact`, `core.person_consent`. (`core.data_request` is `datarights`'; its migration `0002` stays in this set.)
+- The three permissions; two signals and one subscription; the extension point; the three settings; the audit actions above.
 - Route set `people` (listed under Interface); screens `/people/me`, `/people`, `/people/new`, `/people/:person`, `/people/admin/requests`; keys `core.people.*`.
-- Spans `people.<use-case>`, `people.section`; metrics `bms.people.exports{outcome}`, `bms.people.deletions{outcome}`, `bms.people.sections{module,outcome}`. Commands `export`, `delete`.
+- Spans `people.<use-case>`, `people.section`; metric `bms.people.sections{module,outcome}` (the export and deletion metrics are `datarights`').
 
 **Expects of dependencies.**
 
-- (D37: `authz.DeletePerson` publishes `access.grant-revoked` per removed grant.)
-- `identity`: `PersonFrom`/`SessionFrom` semantics; `EmailOf` and `LinkAccount` (proposed); `DeletePerson` refusing a superuser account with `Permission` (proposed); `NameSource` maps `NotFound` to `""`.
-- `authz`: `ExtentOf` for the any-extent checks, `Allow` for site permissions, `Conflict last_access_admin` from `DeletePerson`, migration `0002` adding the foreign key to `core.person`, starter-role seeding from `StarterRoles`.
-- `audit`: a `Recorder` scoped `people`; `CountAbout` callable inside a `Write` transaction; the `/audit?subject=` screen filter.
-- `signals`: a `Bus` scoped `people` (publishes the three, subscribes `identity.account-created`); `InDelivery`.
-- `db`: `Transact` ctx-carried transactions joined by nested calls (so modules' `DeletePerson` run inside people's), `*Error.Constraint`, `ErrReadOnly`.
-- `app`: part 5 (declare, build, link, commands, the `NameSource` adapter for identity, the `Accepts` for the point, `Deps.People`).
+- (D37: `authz.DeletePerson` publishes `access.grant-revoked` per removed grant; `datarights` calls it.)
+- `identity`: `PersonFrom`/`SessionFrom` semantics; `EmailOf` and `LinkAccount`; `NameSource` maps `NotFound` to `""`.
+- `datarights`: calls `PeopleSource` (`ExportPerson`, `DeletePerson` inside its transaction, `Exists`) after the modules, files, notify, access and identity; `NotFound` from `Exists` and `ExportPerson` for no row.
+- `authz`: `ExtentOf` for the any-extent checks, `Allow` for site permissions, migration `0002` adding the foreign key to `core.person`, starter-role seeding from `StarterRoles`.
+- `audit`: a `Recorder` scoped `people`; the `/audit?subject=` screen filter.
+- `signals`: a `Bus` scoped `people` (publishes the two, subscribes `identity.account-created`); `InDelivery`.
+- `db`: `Transact` ctx-carried transactions joined by nested calls (so modules' `DeletePerson` run inside datarights'), `*Error.Constraint`, `ErrReadOnly`.
+- `app`: part 5 (declare, build, link, the `NameSource` adapter for identity, the `Accepts` for the point, `Deps.People`).
 - `module-contract`: `Deps.People people.Directory`; `peopletest.NewFake()` in `Conformance`. `settings` (M2): the three keys through `Options.Settings`.
 - `web-shell`: `GET /api/people/me` read once per session by the frame (language, profile prompt); `web/src/core/people/` as a core area.
 - `identity` (P-W1, D58): `Session.IssuedAt` stays the server time at sign-in, fixed for the session's life; a new session (password change, "sign out everywhere else") carries a new one.
@@ -164,9 +154,7 @@
 
 - Leaf package `people/rows`.
 - Extra exports (`PublishedSignals`, `SubscribedSignals`, `ParseRequestStatus`, `RequestStatus.String`, the Field constants, `personpage.SectionTimeout`).
-- `UpdateMe`, `LinkAccount` and `Delete` take the deletion lock.
-- Export cooldown kept on Canceled.
-- Exit codes of the commands.
+- `UpdateMe`, `LinkAccount` and `Delete` (now datarights') take the deletion lock; the key stays shared.
 - The five owner questions the build raised are answered (decisions 21 to 25, 26). See Behavior, "Accepted implementation deviations (M2 build, 2026-10-18)".
 
 ## Purpose
@@ -182,8 +170,8 @@ Hold who each participant is, so every other part of bms can refer to a person b
 - Create the person row when identity creates an account, and let a profile manager create a person without an account and link an account to them later.
 - Answer name lookups (batch) and a search by playa name (and, for permitted roles, by legal name, phone and contact address) without revealing anyone the searcher may not see.
 - Assemble the person page and "my page": the profile plus the sections every enabled module contributes through `people.person-page`.
-- Export everything bms holds about one person, and delete it, across identity, authz and every module, in one audited operation; take and decide deletion requests; the `export` and `delete` commands.
-- Audit every read of personal fields by someone other than the person and every change; publish `people.person-created`, `people.person-deleted`, `people.deletion-requested`.
+- Answer for its own rows in an export or a deletion (`PeopleSource`: `ExportPerson`, `DeletePerson`, `Exists`); the export, the deletion across the system, the requests and the commands are `datarights`'.
+- Audit every read of personal fields by someone other than the person and every change; publish `people.person-created` and `people.person-deleted`.
 - Fill identity's `NameSource` so the session carries the playa name.
 
 ## Not responsible for
@@ -193,10 +181,10 @@ Hold who each participant is, so every other part of bms can refer to a person b
 | The login address, passwords, sessions, `ChangeEmail` (M4), who is the superuser | `identity` (D21; identity decision 17). People shows the address through `Accounts.EmailOf`. |
 | Deciding who may read or change a profile | `authz`; people names its permissions and calls `Allow`/`ExtentOf`. |
 | Storing audit entries; the person's own "my data was viewed" view (D22) | `audit` (`ViewsOf`, Later). People records entries and links to the audit screen. |
-| Module data about a person (shifts, registrations, incidents) and its export or deletion | each module's `PersonData`; people orchestrates and reports. |
+| Module data about a person (shifts, registrations, incidents) and its export or deletion | each module's `PersonData`; `datarights` orchestrates and reports. |
 | Which people belong to a department (so a lead sees only their volunteers' contacts) | a module that has members contributes a `membership.Provider` to `people.membership` (D44; `volunteers` is the first); the extents filter on what the providers report. |
 | Qualifications, age, certificates, photos, addresses, "about me" | not collected (09 §3; Q-QUAL). |
-| Retention jobs, e-mail to the person or the admins about requests | `jobs` and `notify` (M4), through `people.deletion-requested`. |
+| Export and deletion across the system, deletion requests and the e-mail about them, the `export` and `delete` commands | `datarights`. Retention jobs: `jobs` (M4). |
 | Merging two person rows | Later; `LinkAccount` only tidies an empty orphan (decision 13). |
 | Retiring a playa name (unused for about five years, or vulgar or otherwise inappropriate), approving a new name before it is shown, a second name such as a radio handle | Later (decision 33); until then a profile manager's `Update` is the stopgap. |
 | Invitations, sign-up fields beyond e-mail and password | `identity` (M4). |
@@ -211,7 +199,7 @@ Hold who each participant is, so every other part of bms can refer to a person b
 | Consents | record what a person agreed to, by purpose | `core.person_consent`; `SetConsent`, `ConsentOf` |
 | Linking | create the row behind a new account and join an existing person to an account | the `identity.account-created` handler; `LinkAccount` |
 | Person page | assemble the profile with every module's sections | `personpage.Provider`, `Link`, `SectionTimeout` |
-| Data rights | export and delete one person across the system; take deletion requests | `core.data_request`; `Export`, `Delete`, `Request*`, the commands |
+| Data rights (source) | answer for this package's own rows in an export or a deletion | `PeopleSource`: `ExportPerson`, `DeletePerson`, `Exists`; the rest is `datarights` |
 | People API and screens | expose the above over `/api/people/` and in `web/src/core/people/` | `Routes`, `OpenAPI`, the five screens |
 
 ## Interface
@@ -255,10 +243,9 @@ func (p Policy) Validate() error
 // (a settings.Reader scoped to "people") and builds the Policy itself, per use case.
 
 type contact struct{}
-type request struct{}
 
 type ContactID = model.ID[contact]
-type RequestID = model.ID[request]
+// RequestID is datarights' (boundaries step 12).
 
 // Person is one profile. Personal fields (LegalName, Phone, ContactEmail, Email) are zero
 // when the viewer may not see them; Profile.Fields says which were included. LogValue
@@ -311,28 +298,6 @@ type Consent struct {
 	Granted    bool
 	RecordedBy model.PersonID // the person, or the profile manager who recorded a paper form
 	ChangedAt  time.Time
-}
-
-type RequestStatus uint8
-
-const (
-	RequestOpen RequestStatus = iota + 1
-	RequestWithdrawn
-	RequestDeclined
-)
-
-// Request is a person's deletion request. Kind is "delete" in M2 (the column exists so an
-// export request can be added without a migration). Note and DecisionNote are personal.
-type Request struct {
-	ID           RequestID
-	Person       model.PersonID
-	Kind         string
-	Status       RequestStatus
-	Note         string
-	CreatedAt    time.Time
-	DecidedAt    time.Time // zero while open
-	DecidedBy    model.PersonID
-	DecisionNote string
 }
 
 // Capabilities tells the shell which actions the viewer may take on this profile. The
@@ -391,49 +356,10 @@ type Match struct {
 	Pronouns  string
 }
 
-type RequestQuery struct {
-	Status RequestStatus  // zero = open
-	Person model.PersonID // zero = any
-}
-
 type LinkResult struct {
 	Account       model.AccountID
 	Orphan        model.PersonID // the row sign-up minted for the account; zero if none
 	OrphanDeleted bool
-}
-
-// Export, ModuleDeletion and Kept are structural twins of module.Export, module.Deletion
-// and module.Kept (this package never imports core/module; app converts).
-type Export struct{ Data json.RawMessage }
-type Kept struct {
-	Kind  string
-	Count int
-}
-type ModuleDeletion struct {
-	Deleted, Anonymized int
-	Kept                []Kept
-}
-
-// DeletionReport is what Delete, FulfilRequest and the delete command return.
-type DeletionReport struct {
-	Person   model.PersonID
-	People   int                       // rows this package deleted
-	Identity int                       // account rows
-	Access   int                       // grant rows
-	Modules  map[string]ModuleDeletion // by module name
-	Kept     []Kept                    // always includes {"audit.entry", n} when n > 0
-}
-
-// PersonData is what app adapts each module.ModulePersonData to.
-type PersonData interface {
-	ExportPerson(ctx context.Context, person model.PersonID) (Export, error)
-	DeletePerson(ctx context.Context, person model.PersonID) (ModuleDeletion, error)
-}
-
-// Source is one module's PersonData with its name, in build order.
-type Source struct {
-	Name     string
-	Exporter PersonData
 }
 
 // SectionProvider is one module's contribution to people.person-page.
@@ -451,24 +377,7 @@ type SectionProvider struct {
 type Accounts interface {
 	EmailOf(ctx context.Context, person model.PersonID) (model.Email, error)
 	LinkAccount(ctx context.Context, email model.Email, person model.PersonID) (model.AccountID, model.PersonID, error)
-	ExportPerson(ctx context.Context, person model.PersonID) (json.RawMessage, error)
-	DeletePerson(ctx context.Context, person model.PersonID) (int, error)
-}
-
-// Access is authz's seam (its ExportPerson/DeletePerson).
-type Access interface {
-	ExportPerson(ctx context.Context, person model.PersonID) (json.RawMessage, error)
-	DeletePerson(ctx context.Context, person model.PersonID) (int, error)
-}
-
-// AuditCounter is audit.Log's CountAbout, for the deletion report.
-type AuditCounter interface {
-	CountAbout(ctx context.Context, person model.PersonID) (int, error)
-}
-
-// Holders is authz's seam (HoldersOf, D39): the explicit site-wide holders of a permission.
-type Holders interface {
-	HoldersOf(ctx context.Context, p authz.Permission) ([]model.PersonID, error)
+	// identity's ExportPerson and DeletePerson are datarights' Accounts source (step 12).
 }
 
 // MembershipProvider is one module's contribution to people.membership (D44), in build order.
@@ -479,9 +388,6 @@ type MembershipProvider struct {
 
 // Settings declares people.legal_name, people.phone and people.emergency_contacts (D39).
 var Settings []settings.Decl
-
-// Templates holds the deletion-request notice, people.deletion-requested (en, es; D39).
-var Templates fs.FS
 
 // Directory is what every module receives as Deps.People.
 type Directory interface {
@@ -513,16 +419,12 @@ type Options struct {
 	Tracer     telemetry.Tracer
 	Meter      telemetry.Meter // optional
 	Audit      audit.Recorder  // scoped "people"
-	Signals    signals.Bus     // scoped "people": publishes the three, subscribes identity.account-created
+	Signals    signals.Bus     // scoped "people": publishes the two, subscribes identity.account-created
 	Authz      authz.Authorizer
 	Actor      authz.ActorFunc // app: identity.PersonFrom + SessionFrom.Superuser
 	Accounts   Accounts
 	Lookup     *Lookup         // required (field people.lookup); the five system reads (step 8)
-	Access     Access
-	AuditCount AuditCounter
 	Settings   settings.Reader // scoped "people"; required (field people.settings)
-	Notify     notify.Notifier // optional (D39); scoped "people"; nil = no deletion-request notice
-	Holders    Holders         // optional (D39); nil = no notice
 	Session    SessionFunc     // app: identity.SessionFrom; Validate fails Invalid field people.session when nil (decision 34)
 }
 
@@ -532,7 +434,7 @@ type SessionFunc func(ctx context.Context) (identity.Session, bool)
 
 // Validate fails errs.Invalid joining a validate.FieldError per nil dependency (fields
 // people.db, people.clock, people.logger, people.tracer, people.audit, people.signals,
-// people.authz, people.actor, people.accounts, people.lookup, people.access, people.audit_count,
+// people.authz, people.actor, people.accounts, people.lookup, people.settings,
 // people.session).
 func (o Options) Validate() error
 
@@ -544,10 +446,11 @@ func New(o Options) (*Service, error)
 // concurrent use; nothing to close.
 type Service struct{ /* unexported */ }
 
-// Link hands the service the modules' PersonData and page providers, once, from app's
+// Link hands the service the modules' page providers, once, from app's
 // link step (after module Build, before api.New). Fails Internal on a second call or a
-// nil provider. Before Link, Export and Delete fail Internal and pages carry no sections.
-func (s *Service) Link(sources []Source, sections []SectionProvider, members []MembershipProvider) error
+// nil provider. Before Link pages carry no sections. (The modules' PersonData go to
+// datarights.Link.)
+func (s *Service) Link(sections []SectionProvider, members []MembershipProvider) error
 
 // Directory and NameSource. NamesOf, ConsentOf, PlayaNameOf, LanguageOf and ContactEmailOf
 // forward to Options.Lookup (boundaries step 8); behaviour and kinds are unchanged.
@@ -578,15 +481,10 @@ func (s *Service) SetConsent(ctx context.Context, person model.PersonID, purpose
 // Linking.
 func (s *Service) LinkAccount(ctx context.Context, person model.PersonID, email model.Email) (LinkResult, error)
 
-// Data rights.
-func (s *Service) Export(ctx context.Context, person model.PersonID) (json.RawMessage, error)
-func (s *Service) Delete(ctx context.Context, person model.PersonID) (DeletionReport, error)
-func (s *Service) RequestDeletion(ctx context.Context, note string) (Request, error)
-func (s *Service) MyRequests(ctx context.Context) ([]Request, error)
-func (s *Service) WithdrawRequest(ctx context.Context, id RequestID) error
-func (s *Service) ListRequests(ctx context.Context, q RequestQuery) ([]Request, error)
-func (s *Service) DeclineRequest(ctx context.Context, id RequestID, note string) (Request, error)
-func (s *Service) FulfilRequest(ctx context.Context, id RequestID) (DeletionReport, error)
+// datarights.PeopleSource (boundaries step 12): this package's own rows as one more data-rights source, last in the deletion order. DeletePerson runs inside the caller's Write transaction and publishes people.person-deleted after commit; Conflict when a module still references the person (FK RESTRICT). Exists answers NotFound when there is no row. No permission: datarights has authorized the caller.
+func (s *Service) ExportPerson(ctx context.Context, person model.PersonID) (json.RawMessage, error)
+func (s *Service) DeletePerson(ctx context.Context, person model.PersonID) (int, error)
+func (s *Service) Exists(ctx context.Context, person model.PersonID) error
 
 // System reads for notify's Profiles (D39, decision 28): no actor, no audit, never on a route.
 // The Service forwards both to Options.Lookup (step 8); notify takes the Lookup directly.
@@ -597,12 +495,6 @@ func (s *Service) ContactEmailOf(ctx context.Context, person model.PersonID) (mo
 
 // LegalNamesOf is Directory's method (D44, D45, D46); see Directory above.
 func (s *Service) LegalNamesOf(ctx context.Context, ids []model.PersonID) (map[model.PersonID]string, error)
-
-// Commands (app's export and delete; actor audit.ActorOperator; no permission check: the
-// operator has the database). ExportCommand writes the JSON to out; DeleteCommand writes
-// the report, one line per part. id is parsed with model.ParseID (Invalid, exit 2).
-func (s *Service) ExportCommand(ctx context.Context, out io.Writer, id string) error
-func (s *Service) DeleteCommand(ctx context.Context, out io.Writer, id string) error
 
 // Routes are relative to /api/people, all signed-in; app converts to module.Route.
 func (s *Service) Routes() []Route
@@ -693,16 +585,8 @@ MarkNamePrompted(ctx context.Context, person model.PersonID, issued, now time.Ti
 | `AddContact`/`UpdateContact`/`RemoveContact` | profile and person page | self or `people.profiles.manage`; `EmergencyContacts != FieldHidden`; `Name` and `Phone` non-empty; count ≤ `MaxEmergencyContacts` | row changed; `people.contact.<verb>` in the transaction |
 | `SetConsent` | profile screen (a module's section links to `/people/me#consents`; `Directory` has no setter, so a module can only read consent) | self, or `people.profiles.manage` (a paper form) | row upserted with `RecordedBy`; `people.consent.changed` with `Fields: [purpose]` and `Reason` `granted:<purpose>` or `withdrawn:<purpose>` (D37, D38 (s)). |
 | `LinkAccount` | person page "Link account" | `people.profiles.manage`; person has no account | account re-pointed through identity; `people.person.linked` (record = person, fields none); orphan handling per decision 13 |
-| `Export` | profile "Download my data"; person page export; admin | self (cooldown) or `people.data.export`; `Link` done | one JSON document (shape under Behavior); `people.person.exported` (level sensitive) recorded before the body is written |
-| `Delete` | person page delete; admin | `people.data.delete`; not self; `Link` done | everything gone in one transaction; `people.person.deleted`; `people.person-deleted` published |
-| `RequestDeletion` | profile screen | an actor; no open request; note ≤ `MaxNoteBytes` | open request; `people.request.created`; `people.deletion-requested` published |
-| `MyRequests` | profile screen | an actor | own requests, newest first (the requester's own read is not audited) |
-| `WithdrawRequest` | profile screen | own and open | status withdrawn; `people.request.withdrawn` |
-| `ListRequests` | requests screen | `people.data.delete` | requests by status (default open), oldest first, with the person's playa name resolved by the shell through `/names`; records one `people.request.read` (`Level: personal`, `Fields: [note]`, `Subject` the requester) per returned request that has a note and is not the actor's own (D37, D38 (u)). |
-| `DeclineRequest` | requests screen | `people.data.delete`; open | status declined, note; `people.request.declined` |
-| `FulfilRequest` | requests screen | `people.data.delete`; open; not self | `Delete` of the request's person; `Reason: "request:<id>"` |
-| `ExportCommand`/`DeleteCommand` | `app` | writing copy for delete; `Link` done | as `Export`/`Delete` with `ActorOperator`, `Reason: "command"` |
-| `Link` | `app` | once | sources and providers frozen |
+| `ExportPerson`, `DeletePerson`, `Exists` | `datarights` (`PeopleSource`) | inside its transaction (`DeletePerson`) | this package's rows exported, deleted or checked; `people.person-deleted` published after commit; `Conflict in_use` when a module still references the person |
+| `Link` | `app` | once | providers frozen |
 | `Routes`/`OpenAPI` | `app` → `api` | — | the table below; a fragment that matches |
 
 **Routes** (relative to `/api/people`, all signed-in):
@@ -713,8 +597,6 @@ MarkNamePrompted(ctx context.Context, person model.PersonID, issued, now time.Ti
 | `PUT /me` | `UpdateMe` | body `ProfileInput`; answers a `Profile` without `first_prompt` |
 | `POST /me/contacts`, `PUT /me/contacts/{contact}`, `DELETE /me/contacts/{contact}` | contacts (self) | |
 | `PUT /me/consents/{purpose}` | `SetConsent` (self) | body `{granted}` |
-| `GET /me/export` | `Export` (self) | `Content-Disposition: attachment; filename="bms-export-<person>.json"` |
-| `GET /me/requests`, `POST /me/requests`, `POST /me/requests/{request}/withdraw` | requests (self) | body `{kind: "delete", note}` |
 | `GET /search?q=&limit=` | `Search` | |
 | `GET /names?ids=` | `NamesOf` | comma-separated, ≤ 200 |
 | `POST /` | `Create` | |
@@ -722,11 +604,6 @@ MarkNamePrompted(ctx context.Context, person model.PersonID, issued, now time.Ti
 | `POST /{person}/contacts`, `PUT /{person}/contacts/{contact}`, `DELETE /{person}/contacts/{contact}` | contacts (manage) | |
 | `PUT /{person}/consents/{purpose}` | `SetConsent` (manage) | |
 | `POST /{person}/link-account` | `LinkAccount` | body `{email}` |
-| `GET /{person}/export` | `Export` | attachment as above |
-| `DELETE /{person}` | `Delete` | returns the report |
-| `GET /requests?status=&person=` | `ListRequests` | |
-| `POST /requests/{request}/decline` | `DeclineRequest` | body `{note}` |
-| `POST /requests/{request}/fulfil` | `FulfilRequest` | returns the report |
 
 Handlers are thin (`httpx.ReadJSON`, the service, `httpx.WriteJSON`, `httpx.Fail`); path IDs through `model.ParseID`; `GET` routes change nothing (`Me` on a missing row does not write).
 
@@ -790,7 +667,7 @@ Safe on a live database at a regional's scale (one short exclusive lock on a tab
 | `position` | `integer` | NOT NULL, UNIQUE `(person_id, position)` deferrable | — |
 | `created_at`, `updated_at` | `timestamptz` | NOT NULL | — |
 
-The cascade is a safety net only; `Delete` removes contacts explicitly so the count is reported.
+The cascade is a safety net only; `PeopleSource.DeletePerson` removes contacts explicitly so the count is reported.
 
 **`core.person_consent`**
 
@@ -805,30 +682,16 @@ The cascade is a safety net only; `Delete` removes contacts explicitly so the co
 
 History of grants and revocations is the audit log (`people.consent.changed`, `Fields: [purpose]`, `Reason` `granted:<purpose>` or `withdrawn:<purpose>`; D37, D38 (s)).
 
-**`core.data_request`**
-
-| Column | Type | Constraints | Level |
-|---|---|---|---|
-| `id` | `uuid` | PK | — |
-| `person_id` | `uuid` | NOT NULL, FK `core.person(id)` ON DELETE CASCADE | — |
-| `kind` | `text` | NOT NULL, CHECK `kind = 'delete'` (widened later) | — |
-| `status` | `text` | NOT NULL, CHECK in `('open','withdrawn','declined')` | — |
-| `note` | `text` | NOT NULL DEFAULT '', `<= 500` | personal (the person's words) |
-| `created_at` | `timestamptz` | NOT NULL | — |
-| `decided_at` | `timestamptz` | NULL | — |
-| `decided_by` | `uuid` | NULL, FK `core.person(id)` ON DELETE SET NULL | — |
-| `decision_note` | `text` | NOT NULL DEFAULT '', `<= 500` | personal |
-
-Partial unique index `data_request_open_idx ON (person_id) WHERE status = 'open'` (one open request per person; a race answers `Conflict duplicate` through `*db.Error.Constraint`). A fulfilled request disappears with its person; the trail is `people.request.fulfilled` and `people.person.deleted`.
+**`core.data_request`** is `datarights`' table (`datarights.md`, Data). Its migration, `0002_requests.sql`, stays in this set (forward-only); its foreign key to `core.person` cascades on delete.
 
 **Backfill.** `0001_person.sql` ends with `INSERT INTO core.person (id, created_at, updated_at) SELECT person_id, created_at, now() FROM core.account ON CONFLICT (id) DO NOTHING`, so an M1 installation gets a row for every existing account (identity's set runs before people's in db's fixed order). It is the one place people's SQL touches identity's table, in a migration only, never in a query.
 
 **Foreign keys from elsewhere** (proposed, not people's migrations): `core.role_grant.person_id → core.person(id)` (authz `0002`, ON DELETE RESTRICT: authz's own `DeletePerson` runs first), `core.role_grant.granted_by → core.person(id)` ON DELETE SET NULL, `hello.greeting.person_id →
 core.person(id)` (hello `0002`, RESTRICT). **No foreign key from `core.account`:** identity inserts the account before the person row exists (decision 2), so the constraint cannot hold; the backfill above and the repair path cover the gap, and decision 2 records the owner's choice of the signal plus
-repair over a synchronous alternative that would allow one. Module authors: foreign keys to `core.person(id)` are allowed (D10) and `ON DELETE RESTRICT` is the rule, because `people` calls every module's `DeletePerson` before it deletes the row and a cascade would hide a module that forgot
+repair over a synchronous alternative that would allow one. Module authors: foreign keys to `core.person(id)` are allowed (D10) and `ON DELETE RESTRICT` is the rule, because `datarights` calls every module's `DeletePerson` before `people` deletes the row and a cascade would hide a module that forgot
 something.
 
-**Personal data never leaves these tables except:** to the person; to holders of the permissions below (audited); in `Export`. Nothing here goes to a log, span, metric, signal, error message or `Reason` (`Person.LogValue`, `Email.LogValue`; decision 16).
+**Personal data never leaves these tables except:** to the person; to holders of the permissions below (audited); in `datarights`' export. Nothing here goes to a log, span, metric, signal, error message or `Reason` (`Person.LogValue`, `Email.LogValue`; decision 16).
 
 ## Permissions
 
@@ -837,10 +700,10 @@ something.
 | `people.directory.read` | `Search`; `Get` with internal fields; the person page; the `/people` menu entry | department-scopable; any extent reaches every person until a `people.membership` provider is registered (decision 9; the contract exists from D44, the behaviour changes only when an enabled module contributes a provider) | internal | `account-admin`, `access-admin`, `audit-reviewer`, `department-steward`, `department-admin`, `volunteer-coordinator` (D44) |
 | `people.contacts.read` | personal fields and emergency contacts of others in `Get`; personal-field matches in `Search` | department-scopable; a site extent reaches every person; a department-scoped extent reaches nobody while no `people.membership` provider is registered, and only the members the providers report once one is (decision 9, D45; unlike the row above, where any extent reaches everyone until a provider exists) | personal | `account-admin` only in M2 (decision 9); from D44 also `volunteer-coordinator` and `department-admin` |
 | `people.profiles.manage` | `Create`, `Update` and contacts for others, `SetConsent` for others, `LinkAccount`; consents shown in `Get` | site | personal | `account-admin` |
-| `people.data.export` | `Export` of any person | site | sensitive (the export spans every module) | `account-admin` (09 §11) |
-| `people.data.delete` | `Delete`, `ListRequests`, `DeclineRequest`, `FulfilRequest`; the requests screen | site | sensitive | `account-admin` (09 §11) |
 
-Own records need no permission: `Me`, `UpdateMe`, own contacts and consents, own `Export`, own requests, `NamesOf` (internal), all through `identity.PersonFrom`. The base role `participant` holds none of these by default (decision 20). Every list is filtered by `ExtentOf`: with no
+`people.data.export` and `people.data.delete` are declared by `datarights` (names unchanged, boundaries decision 12; see `datarights.md`, Permissions). `people` still asks `Allow` for them to fill `Capabilities.Export` and `Capabilities.Delete`.
+
+Own records need no permission: `Me`, `UpdateMe`, own contacts and consents, `NamesOf` (internal), all through `identity.PersonFrom`. The base role `participant` holds none of these by default (decision 20). Every list is filtered by `ExtentOf`: with no
 `people.membership` provider registered the extent is "nowhere" or "everyone" (a department-scoped grant reaches every person, decision 9); the department filter applies only once an enabled module contributes a provider (D44), and needs no permission change. "Registered" is decided at assembly: a
 deployment with `volunteers` disabled has no provider and behaves as decision 9 says.
 
@@ -851,8 +714,7 @@ deployment with `volunteers` disabled has no provider and behaves as decision 9 
 | Name | When | Payload |
 |---|---|---|
 | `people.person-created` | a person row is created (`Create`, the `identity.account-created` handler, the `UpdateMe` repair) | `{person: PersonID}` |
-| `people.person-deleted` | `Delete` commits (published inside its transaction, after the modules' `DeletePerson`) | `{person: PersonID}` (the row is gone; subscribers clear caches, nothing more) |
-| `people.deletion-requested` | `RequestDeletion` | `{request: RequestID, person: PersonID}` (no subscriber in M4: people sends the notice itself, D39; the signal stays for modules that want it) |
+| `people.person-deleted` | `PeopleSource.DeletePerson` (published inside `datarights`' deletion transaction, after the modules' `DeletePerson`, delivered after commit) | `{person: PersonID}` (the row is gone; subscribers clear caches, nothing more) |
 
 **Subscribed:** `identity.account-created {account, person}` → `INSERT INTO core.person (id, ...) VALUES ($person, '', ...) ON CONFLICT (id) DO NOTHING`, publishing `people.person-created` only when a row was inserted; runs as the system (no actor; audit `ActorSystem`, `people.person.created`).
 Idempotent on the person ID, so a redelivery (`jobs`, M4) is harmless. **If it fails** (database down, read-only copy): signals logs and counts it; nothing retries in M2; the person's first `UpdateMe` creates the row (decision 2) and `Me`, `PlayaNameOf`, `NamesOf` answer empty until then. A module
@@ -875,7 +737,7 @@ Declared as `people.Settings` in the settings core area `people` (D39; titles ar
 - **My profile** (`/people/me`).
   - Sections: *About you* (playa name, pronouns, language; legal name and phone when their mode is not `hidden`, marked required when `required`), *Login e-mail* (read-only, "change it from your account" until M4), *Emergency contacts* (cards; add, edit, remove through dialogs; hidden when the mode
     is `hidden`), *Consents* (each granted purpose with its owner's title and a revoke switch; empty: "You haven't been asked for any consent yet"), the modules' *sections* (title from `module.<m>.section.<ident>.title`; a `Failed` section shows "This part couldn't be loaded" with the reference),
-    *Your data* ("Download my data" → `GET /me/export`, with the cooldown shown as a toast on 429; "Request deletion" → dialog with an optional note; an open request shows its date and a "Withdraw" button; a declined one shows the decision note).
+    *Your data* ("Download my data" → `GET /api/datarights/me/export`, with the cooldown shown as a toast on 429; "Request deletion" → dialog with an optional note; an open request shows its date and a "Withdraw" button; a declined one shows the decision note).
   - **First sign-in:** the frame sends the person to `/people/me?first=1`, passing the intended page as `next`, when `GET /me` answers `first_prompt: true` and on nothing else (the server decides and records it: once per session, never for the superuser or a person with a name, decisions 34 to 36).
     The frame acts once per answer with in-memory state, reset on sign-out, and uses no browser storage. The screen shows a banner "Tell us your playa name" and focuses the field; the person may navigate away. The banner and the field's hint say, before the first save, that the name is permanent and
     must be one nobody else here uses (`core.people.me.first` loses "you can change it any time"; `core.people.profile.playa_name_hint` becomes "The name other people see. Choose carefully: it can't be changed later, and it must be one no one else here is using.").
@@ -890,7 +752,7 @@ Declared as `people.Settings` in the settings core area `people` (D39; titles ar
   name. The change is recorded."), for any person including the manager's own page, and a `taken` conflict shows inline; "Link account" dialog (e-mail field) when `Can.Link` and the person has no account, with the result ("account linked; the empty profile it came with was removed" or "...was
   kept"); "Roles" link to `/access/grants?person=<id>` when `Can.ViewRoles` (holders of `access.grants.read`, or self); "Audit log" link to `/audit?subject=<id>` when `Can.ViewAudit` (holders of `audit.search`; the "export views" button lives on that screen, audit UI); "Export data" (`Can.Export`)
   and "Delete person" (`Can.Delete`; a confirm dialog that repeats the playa name and lists what will happen; shows the report afterwards). The modules' sections as on My profile. Own ID redirects to `/people/me`. **Not found:** the shell's not-found state. **Forbidden:** as People.
-- **Deletion requests** (`/people/admin/requests`, `people.data.delete`). Tabs open / declined / withdrawn; cards with playa name (through `/names`), date, note; "Fulfil" (confirm dialog, then the report) and "Decline" (dialog with a note). **Empty:** "No open requests". **Read-only copy:** decisions disabled.
+- **Deletion requests** (`/people/admin/requests`, `people.data.delete`). Tabs open / declined / withdrawn; cards with playa name (through `/names`), date, note (the API is `datarights`': `/api/datarights/requests`); "Fulfil" (confirm dialog, then the report) and "Decline" (dialog with a note). **Empty:** "No open requests". **Read-only copy:** decisions disabled.
 - The participant's own "who viewed my data" is **Later** (D22, audit `ViewsOf`); this spec adds no screen for it. The admin's "who viewed whose contact details" (M2 milestone) is audit's screen, reached from the person page.
 
 ## Behavior
@@ -898,20 +760,12 @@ Declared as `people.Settings` in the settings core area `people` (D39; titles ar
 - **Actor and permissions.** Each use case takes the actor from `Options.Actor` (`Unauthenticated` when absent, restricted, or inside `signals.InDelivery`, except `NamesOf`/`ConsentOf`, which serve the system), decides self versus other, then asks authz: `Allow` for site permissions, `ExtentOf(p).IsZero()` for the any-extent ones. The superuser passes authz (D23) and is audited like anyone.
 - **Visibility.** `Get` builds `Profile.Fields` from the viewer: internal always; personal when `people.contacts.read` reaches the person (decision 9, D45) or self; consents when self or `people.profiles.manage`. Hidden-mode fields are absent even for the person. Personal fields the viewer may not
   see are zero in the JSON and absent from `Fields`. Personal fields show per person: a site extent shows them for everyone; a department-scoped extent shows them only for members of those departments as the `people.membership` providers report them, and for nobody while none is registered (D45).
-- **Audit.** Changes record inside their `Write` transaction (`Record` ref kinds `people.person`, `people.contact`, `people.request`; `Subject` the person; `Fields` the names changed).
+- **Audit.** Changes record inside their `Write` transaction (`Record` ref kinds `people.person`, `people.contact`; `Subject` the person; `Fields` the names changed).
   - Reads of personal fields about someone else record one `people.person.read` after loading and before returning, `Level: personal`, `Fields` the personal groups included (`legal_name`, `phone`, `contact_email`, `email`, `emergency_contacts`), outside any `Read` transaction (audit decision 12).
-  - `Export` records `people.person.exported` (`Level: sensitive`, `Fields: ["all"]`) before writing the body; a self export too (the export reaches sensitive data).
   - `Search` records `people.search.read` per result that matched a personal field.
-  - `ListRequests` records one `people.request.read` per returned request that carries a note and is not the actor's own (`Subject` the requester), after loading and before returning, outside any `Read` transaction (D37, D38 (u)).
   - A `Record` error fails the use case (audit decision 3).
-- **Export without a row (D37).** If there is no `core.person` row but `Accounts.EmailOf` finds an account for the ID, `Export` still calls identity, authz and each module and returns a document with `person` absent; `NotFound` only when no account exists either.
-- **Transactions.** `UpdateMe`, `Create`, `Update`, contacts, consents, requests: one `Write` transaction each, publishing inside it. `Get`, `Search`, `Me`: plain reads, no transaction. `Export`: no transaction; identity, authz and each module in build order are called in turn; a failing source fails the export (a partial export would be mistaken for complete).
-- **Deletion, step by step** (`Delete`, `FulfilRequest`, `DeleteCommand`): take a `pg_advisory_xact_lock` on `hashtext('people.delete:' || person)` so two deletions of one person serialise; load the person (`NotFound`, unless the person has no row but `Accounts.EmailOf` finds an account for the ID: then the module, authz and identity steps below still run, people's own deletes are no-ops and no `people.person-deleted` is published, D37);
-  - for each `Source` in build order call `DeletePerson` with the transaction's ctx (nested `Transact` joins, db decision 6), wrapping an error with the module name;
-  - `Access.DeletePerson` (`Conflict last_access_admin` ends it); `Accounts.DeletePerson` (`Permission` for a superuser account ends it);
-  - delete requests, consents, contacts, the person row (a foreign-key violation from a module that forgot a table becomes `Conflict in_use` naming the constraint);
-  - `AuditCount.CountAbout` for `Kept`; record `people.person.deleted` (`Reason` token, `Record` ref the person) and `people.request.fulfilled` when applicable; publish `people.person-deleted`; commit.
-  - The report is returned to the caller and never logged (counts only on the span). Idempotency: a second call answers `NotFound`.
+- **Transactions.** `UpdateMe`, `Create`, `Update`, contacts, consents: one `Write` transaction each, publishing inside it. `Get`, `Search`, `Me`: plain reads, no transaction.
+- **Deletion and export (moved).** The cross-system order, the advisory lock, the transaction and the report are `datarights.md`'s. The people source: `PeopleSource.ExportPerson` returns this package's rows (person, contacts, consents) as raw JSON; `DeletePerson` deletes the consents, contacts and the person row inside the caller's `Write` transaction (a foreign-key violation from a module that forgot a table becomes `Conflict in_use` naming the constraint) and publishes `people.person-deleted` after commit; `Exists` answers `NotFound` when there is no row. The deletion lock key is shared with `UpdateMe` and `LinkAccount` (accepted deviation below).
 - **Linking, step by step.** Transaction 1: load person (`NotFound`), `Conflict has_account` if `EmailOf` succeeds; `Accounts.LinkAccount(email, person)` moves the account's `person_id` (identity records `identity.account.linked`) and returns the account ID and the orphan (the person ID the account pointed at before); clear the person's `contact_email` (the account's address replaces it; the audit entry's `Fields` lists `contact_email`, D37); record `people.person.linked`; commit.
   - Transaction 2 (best effort, logged on failure): delete the orphan row only if its `playa_name`, `legal_name`, `phone`, `pronouns` are empty and it has no contacts, consents or requests, and the delete does not hit a foreign key; on success publish `people.person-deleted` for the orphan and set `OrphanDeleted`.
   - The session of the linked account keeps working: identity re-reads the account row on every request (identity decision 2), so the next request carries the new person ID; the shell refreshes the session on the next load.
@@ -924,20 +778,10 @@ Declared as `people.Settings` in the settings core area `people` (D39; titles ar
   - The superuser and a named row answer `false` without writing (F95). `Get` of one's own ID never reports or records the prompt (F101).
   - The mark is not a profile change: `updated_at` is untouched, nothing is audited, nothing is published; the column is exported with the person and never cleared. Idempotent per session; nothing retries. The span `people.me` carries `telemetry.Bool("first_prompt", v)`; no metric.
   - A forged cross-site `GET /api/people/me` could at most mark the person prompted, which reveals nothing (the cross-origin guard covers unsafe methods only, api decision 6).
-- **Deletion-request notice (D39, decisions 27, 28).** `RequestDeletion`, after the request row and `people.request.created` are written, inside the same `Write` transaction: if `Notify` and `Holders` are non-nil, `Holders.HoldersOf(ctx, "people.data.delete")` (site-wide explicit grant holders,
-  superusers excluded; the base role is not enumerated, so a permission only the base role carries yields nobody: authz amendment, D40), then `Notify.Send(Message{Template: "people.deletion-requested", To: holders, Key: "deletion-requested:" + requestID, Link: "/people/admin/requests"})` with no
-  `Vars`.
-  - The body says only "A deletion request is waiting"; it names no person and carries no note.
-  - No holders: nothing is sent and one info log line records the count (never a person). `Send` answering `Unsupported` (e-mail not configured) or a nil `Notify` means "no e-mail": one info log line, the request still succeeds.
-  - Delivery (implementation, 2026-10-19, accepted D40): the notice sends in batches of `notify.MaxRecipients` under one `Key`. `Notify.Configured` is probed once before the loop, and the whole notice is skipped (one info log line) if it is off. An `Unsupported` partway through the loop rolls the transaction back as `Unavailable`. Any other `Send` or `HoldersOf` error fails the request with its kind and rolls the transaction back (nothing is half-recorded).
-- **Linked sources (D39, D44).** `app`'s `link` registers `Source{Name: "notify", Exporter: a.notify}` (notify's messages without bodies or addresses) and `Source{Name: "files", Exporter: adapter}` after the modules, so their `ExportPerson` and `DeletePerson` run inside people's transaction like a
-  module's. The export document gains `"files": {...}` (files.md Behavior: `about` with content, `uploaded` metadata only); the deletion report's `Modules["files"]` carries `Anonymized` (the `uploaded_by` references cleared). A module's `DeletePerson` must delete its files whose subject is the
-  person; otherwise files' `DeletePerson` answers `Conflict in_use` naming the module and the whole deletion rolls back (F70). The bytes leave the store within the hour (`files.reap`); the operator note for `bms delete` is carried to `docs/operating.md` (not yet written).
 - **Legal names (D44, D46).** `LegalNamesOf` returns an empty map with no store call and no audit when the regional's legal-name mode is hidden (F72). Reach follows decision 9 (D45): a site extent answers for every ID; a department-scoped extent answers for nobody else while no `people.membership`
   provider is registered (empty map, no audit, no `Permission`); reach never excludes the actor (D46). The caller's relation check is the further scope. Under decision 7, per-field visibility choices, when people asks for them, are `privacy` groups (privacy-tags Q-PRIV2: later).
 - **Membership (D44).** With providers registered, a department-scoped extent reaches only the people the providers report as members of that department; a provider failure fails the call closed with its kind; `Search` over-fetches up to `MaxSearchResults` and filters, so pages can be short (F71).
-- **Read-only copy.** `Me`, `Get`, `Search`, `NamesOf`, `ConsentOf`, `PlayaNameOf`, `Export`, `MyRequests`, `ListRequests` work (audit entries spool). Every write fails `Unavailable` wrapping `db.ErrReadOnly` (`503 read_only`); the account-created handler's insert fails the same way and is counted as `read_only` by signals.
-- **Cooldown.** Self exports: an in-memory map person → last export time, bounded by `MaxTrackedExports` (oldest evicted), per process; within `ExportCooldown` the call fails `Unavailable` wrapping `httpx.ErrRateLimited` (429, `Retry-After`). Admin exports and the command are not limited.
+- **Read-only copy.** `Me`, `Get`, `Search`, `NamesOf`, `ConsentOf`, `PlayaNameOf`, `ExportPerson` work (audit entries spool). Every write fails `Unavailable` wrapping `db.ErrReadOnly` (`503 read_only`); the account-created handler's insert fails the same way and is counted as `read_only` by signals.
 - **Playa name (decisions 29 to 32).** On every write path that sets `playa_name` (`UpdateMe` including its repair insert, `Create`, `Update`) the service computes `NameKey` and the store writes both columns in the same statement.
   - **Permanence** is checked under the row lock `UpdateMe` already takes (`GetForUpdate`): if `cur.PlayaName != ""` and the input's key differs from the stored `playa_name_key` (the stored key, not a recomputation, so a backfilled row compares against what the index holds), the call fails `Invalid`
     `playa_name` `permanent` before any write; an equal key with a different spelling is written and audited (`Fields [playa_name]`); an identical string is dropped by the existing "nothing changed" path, so the form can send the whole profile and a no-op save neither writes nor audits. `Update` by
@@ -948,42 +792,22 @@ Declared as `people.Settings` in the settings core area `people` (D39; titles ar
   - **Deletion** removes the row and with it the index entry (decision 32); the orphan cleanup after `LinkAccount` deletes only nameless rows, so it never frees a name.
   - **Never logged:** the key is treated as the name (`Person.LogValue` stays ID-only; `telemetrytest` asserts no key in logs or spans).
   - `peopletest.Fake` gains `SetName` and `RenameByManager` (an accepted deviation, D51; the spec had said the fake is unchanged), which apply the permanence and uniqueness rules in memory; `Fake.Add` still does not enforce uniqueness, so a module test that seeds two people with one key is seeding a state P1 makes impossible and should use distinct names.
-- **Concurrency.** The service holds no mutable state beyond the cooldown map (mutex) and the `Link` slices (set once). Profile updates are last-write-wins (a profile is edited by one person at a time in practice; an `If-Match` precondition can be added without a migration). The one cross-person race, two claims of one playa name, is decided by `person_playa_name_key_idx` (above).
+- **Concurrency.** The service holds no mutable state beyond the `Link` slices (set once). Profile updates are last-write-wins (a profile is edited by one person at a time in practice; an `If-Match` precondition can be added without a migration). The one cross-person race, two claims of one playa name, is decided by `person_playa_name_key_idx` (above).
 - **Lifecycle.** `New` subscribes; `Link` once; nothing to start or stop; no goroutines.
 - **Telemetry.** A span per use case (`people.<name>`) with `telemetry.ID("person_id")` and `telemetry.Token` outcomes (`people.me` also `first_prompt`); `people.section` per provider with the module token; metrics above; never a name, address or phone on any of them (`telemetrytest` asserts).
 
-**Export document** (`ExportFormat` 1), one JSON object:
+**Export document and deletion report:** `datarights.md`, Behavior. The people source contributes the `person`, `emergency_contacts` and `consents` keys of the export and the `people` count of the report.
 
-```json
-{
-  "format": 1,
-  "exported_at": "...",
-  "person": { "id": "...", "playa_name": "...", "pronouns": "...", "language": "...", "legal_name": "...", "phone": "...", "contact_email": "...", "name_prompted_at": "...", "created_at": "...", "updated_at": "..." },
-  "emergency_contacts": [ { "name": "...", "phone": "...", "relationship": "...", "position": 1 } ],
-  "consents": [ { "purpose": "...", "granted": true, "changed_at": "..." } ],
-  "requests": [ { "kind": "delete", "status": "declined", "note": "...", "created_at": "...", "decision_note": "..." } ],
-  "identity": { "account": { } },
-  "access": { },
-  "modules": { "<name>": { } }
-}
-```
-
-`identity` and `access` are the raw messages those services return; `modules` holds each module's `Export.Data` by name (an empty object for a module holding nothing). Audit rows are not included (audit "Export of a person").
-
-**Deletion report** (JSON and the command's lines): `{"person": "...", "people": n, "identity": n, "access": n, "modules": {"<name>": {"deleted": n, "anonymized": n, "kept": [...]}}, "kept": [{"kind": "audit.entry", "count": n}]}`.
-
-**Delivery by milestone.** M2: everything above, including the commands (09 §11 moves "basic" export and deletion here; decision 19). M4: `ChangeEmail` on the profile (identity), notify on `people.deletion-requested`, retries of the account-created handler through `jobs`, the `people.retention.unused` setting and job. Later: `ViewsOf` on the profile (D22), merging two people, a department-scoped extent for contacts (volunteers' membership contract), an export request kind.
+**Delivery by milestone.** M2: everything above (the data-rights part, with the commands, is `datarights.md`'s since boundaries step 12; decision 19 there). M4: `ChangeEmail` on the profile (identity), retries of the account-created handler through `jobs`, the `people.retention.unused` setting and job. Later: `ViewsOf` on the profile (D22), merging two people, a department-scoped extent for contacts (volunteers' membership contract).
 
 ### Accepted implementation deviations (M2 build, 2026-10-18)
 
-- **Leaf package.** `people/rows`, aliased as `ContactID` and `RequestID`.
-- **Extra exports.** `PublishedSignals`, `SubscribedSignals`, `ParseRequestStatus`, `RequestStatus.String` and the `Field` constants. `personpage.SectionTimeout` is also exported.
+- **Leaf package.** `people/rows`, aliased as `ContactID` (and, until step 12, `RequestID`, which now belongs to `datarights`).
+- **Extra exports.** `PublishedSignals`, `SubscribedSignals`, `ParseRequestStatus`, `RequestStatus.String` (both moved to `datarights` at step 12) and the `Field` constants. `personpage.SectionTimeout` is also exported.
 - **Profile updates.** `Update` on your own ID delegates to `UpdateMe`, except that a holder of `people.profiles.manage` changing their own set playa name is a manager rename (decision 30, F78). `Create` and `Update` return a profile built like `Get`'s, with a read audit when the viewer holds `people.contacts.read`. The section timeout is a real context deadline.
 - **Search.** Search by contact address is an exact, case-insensitive match. The store passes no paging cursors (first page, limit 200).
-- **Concurrency.** `UpdateMe`'s repair takes the deletion lock and re-checks the account before validating, so a deleted person always gets `Unauthenticated`. `LinkAccount` takes the deletion lock first. `Delete` loads the person with `GetForUpdate`.
+- **Concurrency.** `UpdateMe`'s repair takes the deletion lock and re-checks the account before validating, so a deleted person always gets `Unauthenticated`. `LinkAccount` takes the deletion lock first. (`Delete`, which loaded the person with `GetForUpdate`, is `datarights`'.)
 - **Orphans on link.** The cleanup runs outside the transaction and records `people.person.deleted` with the system actor and reason `link`.
-- **Export.** The cooldown is kept on `Canceled` and once the audit entry is written.
-- **Commands.** The `DeleteCommand` report has one line per part. `export` and `delete` exit 2 only for a malformed person ID, and 1 otherwise.
 - **SQL.** The `(lower(playa_name) COLLATE "C", id)` index; the partial contact-email index; the position key is `DEFERRABLE INITIALLY IMMEDIATE`; `delete_orphan_person` is stricter; `data_request_decided_chk`.
 
 ## Failure modes
@@ -991,7 +815,7 @@ Declared as `people.Settings` in the settings core area `people` (D39; titles ar
 | # | Method | Condition | errs kind | Caller is expected to | Test |
 |---|---|---|---|---|---|
 | F1 | `New` | a nil dependency | Invalid (`people.<dep>`) | app exits 2 | `TestNew_NilDependency_ReturnsInvalid` |
-| F2 | `Link` | called twice, or a nil provider or exporter | Internal | app exits 1 | `TestLink_Twice_ReturnsInternal` |
+| F2 | `Link` | called twice, or a nil provider | Internal | app exits 1 | `TestLink_Twice_ReturnsInternal` |
 | F3 | every use case | no actor, restricted session, or `InDelivery` (except `NamesOf`, `ConsentOf`) | Unauthenticated | 401 | `TestUseCases_NoActor_ReturnsUnauthenticated` |
 | F4 | `Me` | no row yet | nil (empty, incomplete profile) | show the first-sign-in state | `TestMe_NoRow_ReturnsEmptyProfileWithoutWrite` |
 | F5 | `UpdateMe`, `Create` | playa name empty after trim | Invalid (`playa_name` `required`) | field error | `TestUpdateMe_EmptyPlayaName_ReturnsInvalid` |
@@ -1000,7 +824,7 @@ Declared as `people.Settings` in the settings core area `people` (D39; titles ar
 | F8 | `UpdateMe`, `Update`, `Create` | a `FieldHidden` field present in the body | Invalid (`<field>` `hidden`) | field error | `TestUpdateMe_HiddenPhone_ReturnsInvalid` |
 | F9 | `Update`, `Create` with `ContactEmail` | person has an account | Invalid (`contact_email` `has_account`) | field error | `TestUpdate_ContactEmailWithAccount_ReturnsInvalid` |
 | F10 | `Get`, `Search` | `people.directory.read` held nowhere | Permission | forbidden state | `TestGet_NoDirectoryRead_ReturnsPermission` |
-| F11 | `Get`, `Update`, contacts, `LinkAccount`, `Export`, `Delete` | unknown person | NotFound | not-found state | `TestGet_UnknownPerson_ReturnsNotFound` |
+| F11 | `Get`, `Update`, contacts, `LinkAccount` | unknown person | NotFound | not-found state | `TestGet_UnknownPerson_ReturnsNotFound` |
 | F12 | `Get` | viewer without `people.contacts.read` | nil; personal fields and contacts omitted; no audit entry | render what came | `TestGet_NoContactsRead_OmitsPersonalFieldsAndDoesNotAudit` |
 | F13 | `Get` | viewer with `people.contacts.read`, `Record` fails | the recorder's kind (Unavailable) | error state | `TestGet_AuditFails_FailsRead` |
 | F14 | `Create`, `Update`, others' contacts and consents, `LinkAccount` | no `people.profiles.manage` | Permission | hidden buttons; 403 | `TestUpdate_NoManage_ReturnsPermission` |
@@ -1017,49 +841,22 @@ Declared as `people.Settings` in the settings core area `people` (D39; titles ar
 | F25 | `LinkAccount` | person already has an account | Conflict (`has_account`) | message | `TestLinkAccount_HasAccount_ReturnsConflict` |
 | F26 | `LinkAccount` | the address is a superuser account | Conflict (`superuser`) | message | `TestLinkAccount_Superuser_ReturnsConflict` |
 | F27 | `LinkAccount` | orphan not empty or referenced | nil; `OrphanDeleted: false` | tell the admin | `TestLinkAccount_OrphanWithData_Kept` |
-| F28 | `Export` (self) | within `ExportCooldown` | Unavailable wrapping `httpx.ErrRateLimited` | 429 toast | `TestExport_SelfWithinCooldown_ReturnsRateLimited` |
-| F29 | `Export` (other) | no `people.data.export` | Permission | hidden button | `TestExport_NoPermission_ReturnsPermission` |
-| F30 | `Export` | a source fails | the source's kind, wrapped with its name | error state; nothing written | `TestExport_ModuleFails_FailsWhole` |
-| F31 | `Export`, `Delete` | before `Link` | Internal | 500 | `TestExport_BeforeLink_ReturnsInternal` |
-| F32 | `Delete`, `FulfilRequest` | no `people.data.delete` | Permission | hidden | `TestDelete_NoPermission_ReturnsPermission` |
-| F33 | `Delete`, `FulfilRequest` | the person is the actor | Invalid (`person` `self`) | message | `TestDelete_Self_ReturnsInvalid` |
-| F34 | `Delete` | authz refuses (last access admin) | Conflict (`last_access_admin`) | message; nothing deleted | `TestDelete_LastAccessAdmin_RollsBack` |
-| F35 | `Delete` | identity refuses (superuser account) | Permission | message; nothing deleted | `TestDelete_SuperuserPerson_RollsBack` |
-| F36 | `Delete` | a module's `DeletePerson` fails | the module's kind, wrapped with its name | message; nothing deleted | `TestDelete_ModuleFails_RollsBack` |
-| F37 | `Delete` | a foreign key still references the person | Conflict (`in_use` + constraint) | message naming the constraint | `TestDelete_ForeignKeyLeft_ReturnsConflict` (integration) |
-| F38 | `Delete` | read-only copy | Unavailable wrapping `db.ErrReadOnly` | 503 read_only | `TestDelete_ReadOnly_ReturnsUnavailable` |
-| F39 | `Delete` | `Record` fails | the recorder's kind; transaction rolled back | error | `TestDelete_AuditFails_RollsBack` |
-| F40 | `RequestDeletion` | an open request exists | Conflict (`duplicate`) | show the open one | `TestRequestDeletion_Open_ReturnsConflict` |
-| F41 | `RequestDeletion`, `DeclineRequest` | note too long | Invalid (`note` `too_long {max}`) | field error | `TestRequestDeletion_LongNote_ReturnsInvalid` |
-| F42 | `WithdrawRequest` | not own, or not open | NotFound / Conflict (`status`) | refresh | `TestWithdrawRequest_NotOpen_ReturnsConflict` |
-| F43 | `DeclineRequest`, `FulfilRequest` | not open | Conflict (`status`) | refresh | `TestDeclineRequest_NotOpen_ReturnsConflict` |
-| F44 | `ListRequests`, `DeclineRequest` | no `people.data.delete` | Permission | hidden | `TestListRequests_NoPermission_ReturnsPermission` |
 | F45 | account-created handler | row exists | nil; nothing published | — | `TestHandleAccountCreated_Twice_InsertsOnce` |
 | F46 | account-created handler | read-only copy | Unavailable wrapping `db.ErrReadOnly` (signals counts `read_only`) | — | `TestHandleAccountCreated_ReadOnly_ReturnsUnavailable` |
 | F47 | account-created handler | payload without `person` | Invalid | signals logs it | `TestHandleAccountCreated_BadPayload_ReturnsInvalid` |
 | F48 | `Get`/`Me` sections | a provider fails or exceeds `SectionTimeout` | nil; `Section{Failed: true}` | show the failed card | `TestGet_ProviderFails_SectionMarkedFailed` |
 | F49 | `PlayaNameOf` | no row | NotFound | identity shows "" | `TestPlayaNameOf_NoRow_ReturnsNotFound` |
-| F50 | `ExportCommand`, `DeleteCommand` | malformed ID | Invalid | app exits 2 | `TestDeleteCommand_BadID_ReturnsInvalid` |
 | F51 | `Policy.Validate` | `EmergencyContacts == FieldRequired` | Invalid (`people.emergency_contacts` `one_of`) | settings refuses | `TestPolicy_RequiredContacts_ReturnsInvalid` |
 | F52 | every store method | database down, deadline | Unavailable, Timeout, Canceled (`db.Wrap`) | 503/504 | `TestStore_Unavailable_Propagates` |
 | F53 | handlers | any error | `httpx.Fail` problem body | shell states | `TestHandlers_Errors_MapToProblem` |
 | F54 | `UpdateMe` | body sets only `language` and a `FieldRequired` field is empty | nil; language saved (D37) | none | `TestUpdateMe_LanguageOnly_SkipsRequiredCheck` |
 | F55 | `SetConsent` | granted or withdrawn | nil; audit `Reason` is `granted:<purpose>`/`withdrawn:<purpose>`, `Fields` `[purpose]` (D37, D38 (s)). | none | `TestSetConsent_RecordsPurposeAndDirection` |
 | F56 | `LinkAccount` | person had a `contact_email` | nil; `contact_email` cleared (D37) | none | `TestLinkAccount_ClearsContactEmail` |
-| F57 | `ListRequests` | a returned request has a note | nil; one `people.request.read` per returned request with a note, `Subject` the requester; `Record` error fails the read (D37, D38 (u)) | none | `TestListRequests_WithNote_RecordsRead` |
-| F58 | `Export`, `Delete` | no person row, an account exists | nil; identity, authz and module steps run (D37) | none | `TestDelete_AccountWithoutPersonRow_RunsIdentityAndAuthz` |
-| F59 | `Delete` | the person held grants | nil; authz publishes `access.grant-revoked` per grant (D37) | none | authz's F66 test `TestDeletePerson_PublishesGrantRevokedPerGrant` (`internal/core/authz/integration_person_test.go`); people's own tests use a fake `Access` |
-| F60 | `RequestDeletion` | `Notify` or `Holders` nil, or `Send` answers `Unsupported` | nil; the request is created; one info log | nothing | `TestRequestDeletion_NoEmail_RequestStillCreated` |
-| F61 | `RequestDeletion` | `HoldersOf` returns nobody | nil; request created; nothing sent; one info log | nothing | `TestRequestDeletion_NoHolders_NothingSent` |
-| F62 | `RequestDeletion` | `HoldersOf` or `Send` fails other than `Unsupported` | its kind; the transaction rolls back; no request row | retry | `TestRequestDeletion_NotifyFails_RollsBack` |
-| F63 | `RequestDeletion` | success with holders | the holders are `To`, `Key` is the request ID, `Link` is `/people/admin/requests`, no `Vars` (asserted from `notifytest.Fake.Sent()`) | nothing | `TestRequestDeletion_SendsNoticeToHolders` |
-| F64 | `RequestDeletion` | the request is a duplicate | `Conflict`; nothing sent | show the open one | `TestRequestDeletion_Duplicate_NothingSent` |
 | F65 | `LanguageOf`, `ContactEmailOf` | zero person; no row or no address | Invalid; NotFound | notify uses the site default / reports `no_address` | `TestLanguageOf_Table`, `TestContactEmailOf_Table`, `TestLookup_ContactEmailOf_Deleted_ReturnsNotFound` |
 | F66 | `Settings` | `emergency_contacts` set to `required` | Invalid (`people.emergency_contacts`, `one_of`) | settings refuses the change | `TestSettings_EmergencyContactsRequired_Invalid` |
 | F67 | `LegalNamesOf` | the actor lacks `people.contacts.read` in every extent | Permission | show forbidden | `TestLegalNamesOf_NoContactsRead_ReturnsPermission` |
 | F68 | `LegalNamesOf` | more than `MaxNames` IDs | Invalid | batch | `TestLegalNamesOf_TooManyIDs_ReturnsInvalid` |
 | F69 | `LegalNamesOf` | a person without a legal name | (omitted from the map, no audit entry for them) | treat as absent | `TestLegalNamesOf_NoLegalName_OmitsAndDoesNotAudit` |
-| F70 | `Delete` | a module left a file about the person | Conflict (`in_use`, naming the module) | fix the module's `DeletePerson` | `TestDelete_ModuleLeftFile_ReturnsConflictInUse` |
 | F71 | `Get`, `Search` | a department-scoped extent and providers present | (only members of the department are reached); `Get` answers `NotFound` for a person outside a department-scoped directory extent; a provider failure fails the call closed with its kind. `Search` over-fetches up to `MaxSearchResults` and filters, so pages can be short (known limitation; a later contract method `MembersOf` could filter in SQL) | nothing | `TestSearch_DepartmentExtent_ReachesOnlyMembers` |
 | F72 | `LegalNamesOf` | the regional's legal-name mode is hidden | (empty map; no store call, no audit) | treat as absent | `TestLegalNamesOf_LegalNameHidden_ReturnsNoneAndAuditsNothing` and `TestLegalNamesOf_LegalNameHidden_ReturnsNoneAndAuditsNothing_Integration` |
 | F73 | `Get`, `Search`, `LegalNamesOf` | the actor holds `people.contacts.read` only in department scope (a `department-admin`) and no `people.membership` provider is registered (D45) | `Get`: internal fields only for others, no personal fields, no audit entry; `Search`: no personal-field match (no error, no leak), no `people.search.read` entry; `LegalNamesOf`: empty map for others, the actor's own name still answered (D46), no audit, no `Permission` (the permission is held) | render what came | `TestGet_DepartmentContactsReadNoProvider_OmitsPersonalFields`, `TestSearch_DepartmentContactsReadNoProvider_NoPersonalMatch`, `TestLegalNamesOf_DepartmentContactsReadNoProvider_ReturnsSelfOnly` |
@@ -1078,7 +875,6 @@ Declared as `people.Settings` in the settings core area `people` (D39; titles ar
 | F86 | `Delete`, then `UpdateMe` by someone else | the deleted person's name | nil for the second claim (the name is free, decision 32) | none | `TestDelete_FreesPlayaName` |
 | F87 | migration `0003` (integration) | server encoding is not UTF-8 | the migration fails naming the encoding; nothing applied | the operator fixes the database | `TestMigration0003_NonUTF8_Fails` (skipped where the container cannot create such a database; the SQL is asserted to contain the check) |
 | F88 | migration `0003` (integration) | `lower()` cannot fold non-ASCII (`LC_CTYPE=C`, or an ICU-provider database where `lower(E'İ') <> 'i'` or `lower('ΑΣ') <> 'ασ'`) and an existing playa name holds non-ASCII (D51) | the migration fails naming the locale; nothing applied | the operator uses a UTF-8 locale such as `C.UTF-8` or `en_US.UTF-8` | `TestMigration0003_SQLChecksUTF8` asserts the guard is in the SQL; the failing case is skipped where the container cannot create such a database |
-| F89 | `Delete`, `FulfilRequest`, `DeleteCommand` | identity refuses with `Permission` `protected` (a shared demo account) | Conflict `protected`; nothing deleted | message | `TestDelete_ProtectedAccount_ReturnsConflict_RollsBack` |
 | F90 | `LinkAccount` | identity refuses with `Permission` `protected` (a shared demo account) | Conflict `protected`; nothing linked | message | `TestLinkAccount_ProtectedAccount_ReturnsConflict` |
 | F91 | `Me` | no name, first read of this session (column NULL or before `IssuedAt`) | nil; `FirstPrompt true`; column = `GREATEST(now, IssuedAt)`; `updated_at` untouched; nothing audited | send the person to `/people/me?first=1` | `TestMe_Unnamed_FirstReadPrompts`, `TestMe_Prompt_NothingAudited` |
 | F92 | `Me` | no name, a second read in the same session | nil; `FirstPrompt false`; no write | nothing | `TestMe_SecondReadSameSession_NoPrompt` |
@@ -1096,7 +892,9 @@ Declared as `people.Settings` in the settings core area `people` (D39; titles ar
 | F104 | `Me` | a signed-in actor with no session in ctx (D58 review) | Internal (wiring error) | fix the wiring | `TestPromptName_NoSessionForAnActor_IsInternal` |
 | F105 | `Me` | the profile build fails after a prompt was found due (D58 review) | the build's error; no mark is written, so the next `/me` still prompts | retry | `TestMe_BuildFails_LeavesNoMark` |
 
-`MyRequests`, `ListRequests` (beyond permission), `ConsentOf` (beyond F23), `Routes`, `OpenAPI` have no further modes: fixed reads or pure. `Purpose.Owner`, `FieldMode.String`, `Person.LogValue` cannot fail (pure).
+Rows F28 to F44, F50, F57 to F64, F70 and F89 (export, deletion, requests, the notice, the commands) moved to `datarights.md` with their numbers and test names (boundaries step 12); G1 to G5 there are new. `Export`, `Delete` and the requests use cases have no rows here.
+
+`ConsentOf` (beyond F23), `Routes`, `OpenAPI` have no further modes: fixed reads or pure. `Purpose.Owner`, `FieldMode.String`, `Person.LogValue` cannot fail (pure).
 
 ## Lock-in check
 
@@ -1105,20 +903,18 @@ NFKC)` and `regexp_replace` are core PostgreSQL (≥ 13, UTF-8 databases) and ar
 
 ## Test plan
 
-- **Unit** (`internal/core/people`, no infrastructure): a hand-written fake store; `clock.NewFake`; `audittest.NewFake("people")`; `signalstest.NewFake("people", {person-created, person-deleted, deletion-requested}, {identity.account-created})` with `Deliver` driving the handler;
-  `authztest.NewFake()` with `Grant`/`GrantIn`/`Superuser`; fakes for `Accounts`, `Access`, `AuditCounter`, a fake `settings.Reader` (`settingstest.NewFake`), `PersonData` sources and `personpage.Provider` (one that fails, one that blocks until its ctx ends, so the timeout path runs without real time); `telemetrytest.New(t)`
+- **Unit** (`internal/core/people`, no infrastructure): a hand-written fake store; `clock.NewFake`; `audittest.NewFake("people")`; `signalstest.NewFake("people", {person-created, person-deleted}, {identity.account-created})` with `Deliver` driving the handler;
+  `authztest.NewFake()` with `Grant`/`GrantIn`/`Superuser`; fakes for `Accounts`, a fake `settings.Reader` (`settingstest.NewFake`), `personpage.Provider` (one that fails, one that blocks until its ctx ends, so the timeout path runs without real time); `telemetrytest.New(t)`
   asserting no name, address or phone appears in logs, spans or the recorder's `Reason`/`Fields`. Every F row; the visibility matrix (self / directory.read / contacts.read / manage / superuser × each field group); the policy matrix (hidden / optional / required × own save / admin save).
 - **Permission tests:** each use case has `_NoPermission_ReturnsPermission` (or `_NotFound` where the record must stay invisible); `Search` proves no personal-field match leaks without `people.contacts.read`. A `department-admin` holding `people.contacts.read` only in department scope, with no `people.membership` provider, sees no personal fields, no personal-field `Search` matches and no `LegalNamesOf` results for others (F73, D45).
-- **Integration** (`//go:build integration`, `dbtest.TempDB`): migrations apply on an empty database; the deletion transaction across a fake module table with a foreign key (F37, F34 rollback leaves every row); the open-request partial index under two concurrent requests; the advisory lock under two concurrent deletions (one `NotFound`); keyset-free search ordering; read-only paths with `SetReadOnly`.
+- **Integration** (`//go:build integration`, `dbtest.TempDB`): migrations apply on an empty database; `PeopleSource.DeletePerson` against a fake module table with a foreign key (G4); keyset-free search ordering; read-only paths with `SetReadOnly`.
 - **Conformance:** `peopletest.Fake` answers the same `NamesOf`/`ConsentOf` cases as the service (`TestFake_MatchesService`); `moduletest.Conformance` supplies it as `Deps.People` (Proposed change 2).
-- **app end-to-end** (Proposed change 1): sign up → `GET /api/people/me` is empty and incomplete → `PUT /me` with a playa name → `GET /api/accounts/session` carries it; the account admin creates a person, links a second sign-up's account to them, the orphan is removed; `bms export <id>` prints the
-  document with `hello` inside; the admin deletes a person who saved a hello greeting and the report counts it; `bms delete` on the last access admin's person exits 1 with `last_access_admin`; the profile screen and the person page render at the phone viewport.
+- **app end-to-end** (Proposed change 1): sign up → `GET /api/people/me` is empty and incomplete → `PUT /me` with a playa name → `GET /api/accounts/session` carries it; the account admin creates a person, links a second sign-up's account to them, the orphan is removed (the export and deletion flows are `datarights.md`'s); the profile screen and the person page render at the phone viewport.
 - **Web** (`web/src/core/people/`): component tests for every screen's loading, empty, error, forbidden and read-only states and the first-sign-in banner; axe checks; the Playwright smoke run adds "fill in the playa name, see it in the header" and "search a person, open their page" at the phone viewport.
 - **Playa name.** Unit: `TestNameKey_Table` (F82); `UpdateMe`, `Create`, `Update` with the fake store answering the index violation (F74 to F81, F83, F84); `telemetrytest` asserting no key appears in logs, spans or audit `Fields`/`Reason`. Integration (`dbtest.TempDB`): migration `0003` on an empty
   database, on a database with distinct names, and on one with two rows sharing a key (F85: the error names the IDs and the set stays at version 2); `TestNameKey_MatchesMigrationBackfill` runs the F82 table through the SQL expression and `NameKey` and asserts equality;
   `TestUpdateMe_NameRace_OneWins` (F80: two people, same key, started together; exactly one `Conflict taken`, no deadlock, one row holds the key); `TestDelete_FreesPlayaName` (F86). Web: the field is read-only once set with its explanation; the `taken` error renders inline under the field on My
   profile, New person and the manager's edit form; the first-sign-in banner's new wording; the smoke run adds "a second account tries the first one's playa name and sees the taken message" at the phone viewport.
-- **Notice (D39).** The notice tests use `notifytest.NewFake("people")`, a fake `Holders` and `telemetrytest.New(t)` asserting no person ID of a requester or note text appears in the message or any log; the Mailpit end-to-end run files a request and reads the notice.
 - **First-sign-in prompt (P-W1, decisions 34 to 36).** Unit: F91 to F98, F100 to F102, F104 and F105 with a fake store and contexts built with `identity.WithSession` and `identity.SessionFrom`, or a closure returning a fixed `IssuedAt`; every `Options` fixture sets `Session`. Integration: F99 and
   F103 (`TestMigrations_Apply` expects version 4). End-to-end: reload after Continue: no second prompt; sign in again: one prompt. Web (`web/src/shell/me.test.tsx` or `people.test.tsx`): "a fresh mount whose `/me` answers `first_prompt: false` never navigates" (the reload case), "`first_prompt:
   true` navigates once with `next`, and not again on the next route change", "a sign-out then a new sign-in acts on the new answer", "nothing is written to `sessionStorage` or `localStorage` except `bms.lang`" (storage spies). The `people.test.tsx` cases that mount with an empty `playa_name` set
@@ -1131,6 +927,7 @@ Amendment narratives (D39, D44, D45, D46, P1 (D48, D51), D53, P-W1 (D57, D58)), 
 
 - **2026-11-01, boundaries step 5:** `Options.Settings` (a `settings.Reader` scoped to `people`, required) replaces `Policy PolicySource`; the `PolicySource` type is removed and people's own mapping (moved from `app`'s `peoplePolicy`) builds the `Policy`. `Lookup` is step 8; the other `Options` removals (`Access`, `AuditCount`, `Notify`, `Holders`) land with step 12 (see the step 8 note below).
 - **2026-11-01, boundaries step 8:** `people.NewLookup(LookupOptions{DB, Tracer})` holds `NamesOf`, `PlayaNameOf`, `LanguageOf`, `ConsentOf` and `ContactEmailOf` (no permission, no audit, `NotFound` as before); `Options.Lookup` is required and the Service forwards the five reads to it. `LegalNamesOf` (audited, `people.contacts.read`) and the `Directory` contract stay on the Service. The removals of `Access`, `AuditCount`, `Notify` and `Holders` are not step 8's: they land with step 12 (datarights), since they serve the data-rights code that moves there (datarights' `Options` takes `Access`, `AuditLog` (for `CountAbout`), `Notify` and `Holders`). `Options.Accounts` stays (`LinkAccount`, export, deletion). `LookupOptions` has no `Meter` (it was accepted but unused and is dropped): the reads carry no metric. Test: `TestLookup_ContactEmailOf_Deleted_ReturnsNotFound`.
+- **2026-11-01, boundaries step 12:** the data-rights code moves to `datarights.md` (Proposed change 14): export, deletion, deletion requests and the notice, the `export` and `delete` commands, their routes (now `/api/datarights/...`), the use cases and the 28 failure rows F28 to F44, F50, F57 to F64, F70 and F89 (numbers and test names unchanged), the export document and deletion report, `core.data_request` (the table and its migration `0002` stay in people's set), the permissions `people.data.export` and `people.data.delete` (names unchanged), the signal `people.deletion-requested` (now `datarights.deletion-requested`) and the audit actions `people.person.exported` and `people.request.*` (now `datarights.export` and `datarights.request.*`; old entries keep their names). Key decisions 10, 11, 12, 19, 24, 25, 26 and 27 are `datarights.md` decisions 1 to 8. `Options` loses `Access`, `AuditCount`, `Notify` and `Holders`, and `Link` loses the modules' sources; `Accounts` is narrowed to `EmailOf` and `LinkAccount`; `*Service` gains the `datarights.PeopleSource` methods `ExportPerson`, `DeletePerson` and `Exists`, and still publishes `people.person-deleted` (inside datarights' deletion transaction, after commit). `people` still asks `Allow` for the two `people.data.*` names to fill `Capabilities.Export` and `Capabilities.Delete`. New tests: `TestDeletePerson_ModuleStillReferences_ReturnsConflict` (G4, in people).
 
 ## Open questions
 

@@ -3,7 +3,6 @@ package people_test
 import (
 	"context"
 	"errors"
-	"io"
 	"testing"
 
 	"github.com/jackc/pgx/v5"        //nolint:depguard // failDB must implement db.DB, whose Query returns pgx.Rows
@@ -41,7 +40,6 @@ type useCase struct {
 func allUseCases() []useCase {
 	other := newPerson()
 	cid := model.NewID[people.ContactID]()
-	rid := model.NewID[people.RequestID]()
 	in := people.ProfileInput{PlayaName: str("Dusty Ember")}
 	ci := people.ContactInput{Name: "Orville Tansy", Phone: "+1 555 0188"}
 	email := model.Email("link.target@example.org")
@@ -73,26 +71,6 @@ func allUseCases() []useCase {
 		}},
 		{"LinkAccount", func(ctx context.Context, s *people.Service) error {
 			_, err := s.LinkAccount(ctx, other, email)
-			return keep(err)
-		}},
-		{"Export", func(ctx context.Context, s *people.Service) error { _, err := s.Export(ctx, other); return keep(err) }},
-		{"Delete", func(ctx context.Context, s *people.Service) error { _, err := s.Delete(ctx, other); return keep(err) }},
-		{"RequestDeletion", func(ctx context.Context, s *people.Service) error {
-			_, err := s.RequestDeletion(ctx, "")
-			return keep(err)
-		}},
-		{"MyRequests", func(ctx context.Context, s *people.Service) error { _, err := s.MyRequests(ctx); return keep(err) }},
-		{"WithdrawRequest", func(ctx context.Context, s *people.Service) error { return s.WithdrawRequest(ctx, rid) }},
-		{"ListRequests", func(ctx context.Context, s *people.Service) error {
-			_, err := s.ListRequests(ctx, people.RequestQuery{})
-			return keep(err)
-		}},
-		{"DeclineRequest", func(ctx context.Context, s *people.Service) error {
-			_, err := s.DeclineRequest(ctx, rid, "")
-			return keep(err)
-		}},
-		{"FulfilRequest", func(ctx context.Context, s *people.Service) error {
-			_, err := s.FulfilRequest(ctx, rid)
 			return keep(err)
 		}},
 	}
@@ -148,8 +126,7 @@ func TestNamesOfAndConsentOf_ServeTheSystem(t *testing.T) {
 func TestUseCases_NoGrants_ReturnsPermission(t *testing.T) {
 	protected := map[string]bool{
 		"Get": true, "Create": true, "Update": true, "Search": true, "AddContact": true, "UpdateContact": true,
-		"RemoveContact": true, "SetConsent": true, "LinkAccount": true, "Export": true, "Delete": true,
-		"ListRequests": true, "DeclineRequest": true, "FulfilRequest": true,
+		"RemoveContact": true, "SetConsent": true, "LinkAccount": true,
 	}
 	for _, uc := range allUseCases() {
 		if !protected[uc.name] {
@@ -176,18 +153,11 @@ func TestUseCases_WrongPermission_ReturnsPermission(t *testing.T) {
 		grant func(r *rig, p model.PersonID)
 		use   string
 	}{
-		{"export cannot delete", func(r *rig, p model.PersonID) { r.az.Grant(p, permExport) }, "Delete"},
-		{"export cannot list requests", func(r *rig, p model.PersonID) { r.az.Grant(p, permExport) }, "ListRequests"},
-		{"export cannot fulfil", func(r *rig, p model.PersonID) { r.az.Grant(p, permExport) }, "FulfilRequest"},
-		{"export cannot decline", func(r *rig, p model.PersonID) { r.az.Grant(p, permExport) }, "DeclineRequest"},
-		{"delete cannot export", func(r *rig, p model.PersonID) { r.az.Grant(p, permDelete) }, "Export"},
 		{"delete cannot update", func(r *rig, p model.PersonID) { r.az.Grant(p, permDelete) }, "Update"},
 		{"delete cannot link", func(r *rig, p model.PersonID) { r.az.Grant(p, permDelete) }, "LinkAccount"},
 		{"delete cannot search", func(r *rig, p model.PersonID) { r.az.Grant(p, permDelete) }, "Search"},
 		{"manage cannot get", func(r *rig, p model.PersonID) { r.az.Grant(p, permManage) }, "Get"},
 		{"manage cannot search", func(r *rig, p model.PersonID) { r.az.Grant(p, permManage) }, "Search"},
-		{"manage cannot export", func(r *rig, p model.PersonID) { r.az.Grant(p, permManage) }, "Export"},
-		{"manage cannot delete", func(r *rig, p model.PersonID) { r.az.Grant(p, permManage) }, "Delete"},
 		{"contacts alone cannot get", func(r *rig, p model.PersonID) { r.az.Grant(p, permContacts) }, "Get"},
 		{"contacts alone cannot search", func(r *rig, p model.PersonID) { r.az.Grant(p, permContacts) }, "Search"},
 		{"directory cannot update", func(r *rig, p model.PersonID) { r.az.Grant(p, permDirectory) }, "Update"},
@@ -198,9 +168,6 @@ func TestUseCases_WrongPermission_ReturnsPermission(t *testing.T) {
 		// people.profiles.manage, export and delete are site permissions: a department
 		// grant does not count.
 		{"department manage is not enough", func(r *rig, p model.PersonID) { r.az.GrantIn(p, permManage, model.NewID[model.DepartmentID]()) }, "Update"},
-		{"department export is not enough", func(r *rig, p model.PersonID) { r.az.GrantIn(p, permExport, model.NewID[model.DepartmentID]()) }, "Export"},
-		{"department delete is not enough", func(r *rig, p model.PersonID) { r.az.GrantIn(p, permDelete, model.NewID[model.DepartmentID]()) }, "Delete"},
-		{"department delete cannot list requests", func(r *rig, p model.PersonID) { r.az.GrantIn(p, permDelete, model.NewID[model.DepartmentID]()) }, "ListRequests"},
 	}
 	byName := map[string]useCase{}
 	for _, uc := range allUseCases() {
@@ -357,20 +324,6 @@ func TestPlayaNameOf_NoRow_ReturnsNotFound(t *testing.T) {
 	wantKind(t, err, errs.NotFound)
 }
 
-// F50
-func TestCommands_BadID_ReturnsInvalid(t *testing.T) {
-	for _, bad := range []string{"", "not-a-uuid", "12345", "zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz"} {
-		t.Run("delete/"+bad, func(t *testing.T) {
-			u := newUnit(t)
-			wantKind(t, u.svc.DeleteCommand(ctxT(t), io.Discard, bad), errs.Invalid)
-		})
-		t.Run("export/"+bad, func(t *testing.T) {
-			u := newUnit(t)
-			wantKind(t, u.svc.ExportCommand(ctxT(t), io.Discard, bad), errs.Invalid)
-		})
-	}
-}
-
 // F38 and the writes of the read-only family.
 func TestWrites_ReadOnly_ReturnUnavailable(t *testing.T) {
 	me := newPerson()
@@ -389,14 +342,6 @@ func TestWrites_ReadOnly_ReturnUnavailable(t *testing.T) {
 		}},
 		{"SetConsent", nil, func(ctx context.Context, s *people.Service) error {
 			_, err := s.SetConsent(ctx, me, "volunteers.share-contact", true)
-			return keep(err)
-		}},
-		{"RequestDeletion", nil, func(ctx context.Context, s *people.Service) error {
-			_, err := s.RequestDeletion(ctx, "")
-			return keep(err)
-		}},
-		{"Delete", []authz.Permission{permDelete}, func(ctx context.Context, s *people.Service) error {
-			_, err := s.Delete(ctx, newPerson())
 			return keep(err)
 		}},
 	}
@@ -471,7 +416,7 @@ func TestStore_Unavailable_Propagates(t *testing.T) {
 	calls := []useCase{}
 	for _, uc := range allUseCases() {
 		switch uc.name {
-		case "Me", "UpdateMe", "MyRequests", "RequestDeletion":
+		case "Me", "UpdateMe":
 			calls = append(calls, uc)
 		}
 	}
@@ -496,10 +441,6 @@ func TestStore_Unavailable_Propagates(t *testing.T) {
 			_, err := s.Get(ctx, newPerson())
 			return keep(err)
 		}},
-		useCase{"ListRequests", func(ctx context.Context, s *people.Service) error {
-			_, err := s.ListRequests(ctx, people.RequestQuery{})
-			return keep(err)
-		}},
 	)
 	for _, kind := range kinds {
 		for _, uc := range calls {
@@ -507,7 +448,6 @@ func TestStore_Unavailable_Propagates(t *testing.T) {
 				r := newRig(t, failDB{err: errs.E("test.failDB", kind, errors.New("down"))})
 				r.link()
 				r.az.Grant(me, permDirectory)
-				r.az.Grant(me, permDelete)
 				err := uc.call(asPerson(ctxT(t), me), r.svc)
 				wantKind(t, err, kind)
 			})

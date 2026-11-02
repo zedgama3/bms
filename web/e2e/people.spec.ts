@@ -39,7 +39,7 @@ test.describe("people: the signed-in person's screens", () => {
       r.fulfill({ json: { ...me, playa_name: "" } }),
     );
     let saved = "";
-    await page.route("**/api/people/me/requests", (r) => r.fulfill({ json: { requests: [] } }));
+    await page.route("**/api/datarights/me/requests", (r) => r.fulfill({ json: { requests: [] } }));
     await page.route("**/api/people/me", (r) => {
       if (r.request().method() === "PUT") {
         saved = (r.request().postDataJSON() as { playa_name: string }).playa_name;
@@ -88,8 +88,10 @@ test.describe("people: the signed-in person's screens", () => {
         ],
         sections: [{ key: "hello.unavailable", items: [], failed: true }],
       });
-      await page.route("**/api/people/me/requests", (r) => r.fulfill({ json: { requests: [] } }));
-      await page.route("**/api/people/me/export", (r) =>
+      await page.route("**/api/datarights/me/requests", (r) =>
+        r.fulfill({ json: { requests: [] } }),
+      );
+      await page.route("**/api/datarights/me/export", (r) =>
         r.fulfill({
           status: 429,
           headers: { "Retry-After": "420" },
@@ -124,8 +126,8 @@ test.describe("people: the signed-in person's screens", () => {
     const isPhone = info.project.name === "phone";
     await page.route("**/api/accounts/session", (r) => r.fulfill({ json: me }));
     await mockMe(page);
-    await page.route("**/api/people/me/requests", (r) => r.fulfill({ json: { requests: [] } }));
-    await page.route("**/api/people/me/export", (r) => r.fulfill({ json: { format: 1 } }));
+    await page.route("**/api/datarights/me/requests", (r) => r.fulfill({ json: { requests: [] } }));
+    await page.route("**/api/datarights/me/export", (r) => r.fulfill({ json: { format: 1 } }));
     await page.goto("/people/me");
     const download = page.waitForEvent("download");
     await press(page.getByRole("button", { name: "Download my data" }), isPhone);
@@ -138,7 +140,7 @@ test.describe("people: the signed-in person's screens", () => {
     await page.route("**/api/accounts/session", (r) => r.fulfill({ json: me }));
     await mockMe(page);
     let open = false;
-    await page.route("**/api/people/me/requests", (r) => {
+    await page.route("**/api/datarights/me/requests", (r) => {
       if (r.request().method() === "POST") {
         open = true;
         return r.fulfill({ status: 201, json: {} });
@@ -161,7 +163,7 @@ test.describe("people: the signed-in person's screens", () => {
         },
       });
     });
-    await page.route(`**/api/people/me/requests/${REQ}/withdraw`, (r) => {
+    await page.route(`**/api/datarights/me/requests/${REQ}/withdraw`, (r) => {
       open = false;
       return r.fulfill({ status: 204 });
     });
@@ -284,7 +286,7 @@ test.describe("people: directory, person page and deletion requests", () => {
     const isPhone = info.project.name === "phone";
     await page.route("**/api/accounts/session", (r) => r.fulfill({ json: holder }));
     await mockMe(page);
-    await page.route("**/api/people/requests?**", (r) =>
+    await page.route("**/api/datarights/requests?**", (r) =>
       r.fulfill({
         json: {
           requests: [
@@ -304,7 +306,7 @@ test.describe("people: directory, person page and deletion requests", () => {
     await page.route("**/api/people/names?**", (r) =>
       r.fulfill({ json: { names: { [PAT]: "Pat Dust" } } }),
     );
-    await page.route(`**/api/people/requests/${REQ}/fulfil`, (r) =>
+    await page.route(`**/api/datarights/requests/${REQ}/fulfil`, (r) =>
       r.fulfill({
         json: {
           person: PAT,

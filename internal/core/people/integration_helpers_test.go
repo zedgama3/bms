@@ -293,10 +293,6 @@ func (r *irig) consentRows(p model.PersonID) int {
 	return r.scalarInt("SELECT count(*) FROM core.person_consent WHERE person_id = $1", [16]byte(p))
 }
 
-func (r *irig) requestRows(p model.PersonID) int {
-	return r.scalarInt("SELECT count(*) FROM core.data_request WHERE person_id = $1", [16]byte(p))
-}
-
 func (r *irig) accountRows(p model.PersonID) int {
 	return r.scalarInt("SELECT count(*) FROM core.account WHERE person_id = $1", [16]byte(p))
 }
@@ -333,14 +329,6 @@ func (r *irig) create(ctx context.Context, playa string) people.Profile {
 }
 
 // ---- helpers only the integration tests use ----------------------------------------------
-
-func wantRateLimited(t testing.TB, err error) {
-	t.Helper()
-	wantKind(t, err, errs.Unavailable)
-	if !errors.Is(err, httpx.ErrRateLimited) {
-		t.Fatalf("error does not wrap httpx.ErrRateLimited: %v", err)
-	}
-}
 
 func (l *callLog) all() []string {
 	l.mu.Lock()
@@ -467,3 +455,19 @@ type idleAlerts struct{}
 func (idleAlerts) SendAlert(context.Context, notify.Message) error {
 	return errs.E("test.SendAlert", errs.Unsupported, errors.New("no alert address"))
 }
+
+// deletePerson deletes p's rows through the PeopleSource contract: people's DeletePerson in
+// a Write transaction, as datarights runs it after the modules, files, notify, access and
+// identity. It stands in for datarights.Delete in tests that only need the person gone.
+func (r *irig) deletePerson(p model.PersonID) {
+	r.t.Helper()
+	wantNoErr(r.t, r.pool.Transact(ctxT(r.t), db.Write, func(ctx context.Context) error {
+		_, err := r.svc.DeletePerson(ctx, p)
+		return err //nolint:wrapcheck // a test closure
+	}))
+}
+
+const (
+	sigCreated signals.Name = "people.person-created"
+	sigDeleted signals.Name = "people.person-deleted"
+)

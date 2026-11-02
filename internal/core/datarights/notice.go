@@ -1,4 +1,4 @@
-package people
+package datarights
 
 import (
 	"context"
@@ -8,25 +8,24 @@ import (
 	"log/slog"
 	"slices"
 
-	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/notify"
 	"github.com/zedgama3/bms/internal/lib/errs"
-	"github.com/zedgama3/bms/internal/model"
 )
 
 //go:embed templates/*.tmpl
 var embeddedTemplates embed.FS
 
-// Templates holds people's notification templates, deletion-requested (en, es), in the
+// Templates holds datarights' notification templates, deletion-requested (en, es), in the
 // layout notify.Register reads: files <ident>.<lang>.tmpl at the root. app registers it
-// under the owner "people". The template says only that a request is waiting: it names no
-// person and carries no note (people.md decision 27).
+// under the owner "datarights" (it moved from people with the request notice). The template
+// says only that a request is waiting: it names no person and carries no note (people.md
+// decision 27).
 var Templates fs.FS
 
 func init() {
 	sub, err := fs.Sub(embeddedTemplates, "templates")
 	if err != nil {
-		panic("people: embedded templates missing: " + err.Error())
+		panic("datarights: embedded templates missing: " + err.Error())
 	}
 	Templates = sub
 }
@@ -34,31 +33,20 @@ func init() {
 // The deletion-request notice (people.md, "Amendment 2026-10-19 (D39)").
 const (
 	// TemplateDeletionRequested is the notify template RequestDeletion sends.
-	TemplateDeletionRequested notify.Template = "people.deletion-requested"
+	TemplateDeletionRequested notify.Template = "datarights.deletion-requested"
 
 	// deletionRequestsLink is the page of requests, a path under the site URL.
 	deletionRequestsLink = "/people/admin/requests"
 )
 
-// Holders is authz's seam for "who is appointed to this job": *authz.Service. It returns
-// the persons who hold the permission site-wide now through an explicit grant (never the
-// base role), superusers excluded.
-type Holders interface {
-	HoldersOf(ctx context.Context, p authz.Permission) ([]model.PersonID, error)
-}
-
 // notifyDeletionRequested tells the holders of people.data.delete that a request is
 // waiting. Call it inside the Write transaction that filed the request, so a failure rolls
-// the request back. A nil Notify or Holders, no holders, or e-mail not configured
+// the request back. No holders, or e-mail not configured
 // (Configured false, or a first Send answering Unsupported) sends nothing and succeeds with
 // one info line carrying a count or a reason and never a person. Unsupported after an
 // earlier batch was queued fails errs.Unavailable, so the request and the batch roll back.
 // Any other Configured, HoldersOf or Send error is returned with its kind.
 func (s *Service) notifyDeletionRequested(ctx context.Context, op string, request RequestID) error {
-	if s.notify == nil || s.holders == nil {
-		s.logger.InfoContext(ctx, "deletion request filed; no e-mail notice is wired", slog.String("reason", "not_wired"))
-		return nil
-	}
 	// Ask once, before any recipient work, whether e-mail is on: a notice is all or nothing.
 	configured, err := s.notify.Configured(ctx)
 	if err != nil {

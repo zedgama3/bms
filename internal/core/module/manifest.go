@@ -22,7 +22,7 @@ var nameRE = regexp.MustCompile(`^[a-z][a-z0-9]{1,31}$`)
 // signals and permissions are prefixed by one.
 var coreAreas = []string{
 	"core", "people", "accounts", "access", "identity", "authz", "departments", "events",
-	"signals", "notify", "audit", "auditlog", "files", "jobs", "settings", "regional", "telemetry", "db", "module",
+	"signals", "notify", "audit", "auditlog", "files", "jobs", "settings", "regional", "datarights", "telemetry", "db", "module",
 	"demo",
 	"modules",
 }

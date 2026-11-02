@@ -16,6 +16,7 @@ import (
 	"github.com/zedgama3/bms/internal/config"
 	"github.com/zedgama3/bms/internal/core/auditlog"
 	"github.com/zedgama3/bms/internal/core/authz"
+	"github.com/zedgama3/bms/internal/core/datarights"
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/demo"
 	"github.com/zedgama3/bms/internal/core/departments"
@@ -112,8 +113,10 @@ type assembly struct {
 	// Beyond the spec's list: the parts, what they built that a command calls, and what the
 	// lifecycle has started.
 	identity *identity.Service // the identity part's service (create-superuser); nil before its build
-	authz    *authz.Service    // the authz part's service (migrate's seed, people's Access); nil before its build
-	people   *people.Service   // the people part's service (export, delete); nil before its build
+	authz    *authz.Service    // the authz part's service (migrate's seed, datarights' Access); nil before its build
+	people   *people.Service   // the people part's service (profiles, linking, and datarights' PeopleSource); nil before its build
+
+	datarights *datarights.Service // the datarights part's service (the export and delete commands); nil before its build
 
 	settings *settings.Service // the settings part's service (identity, people, notify and files read their areas through it); nil before its build
 

@@ -1,6 +1,6 @@
 //go:build integration
 
-package people_test
+package datarights_test
 
 // Amendment P-W1 (Data section): the export carries name_prompted_at once a prompt has been
 // recorded, and omits it before. Every person is invented.
@@ -9,12 +9,14 @@ import (
 	"encoding/json"
 	"testing"
 	"time"
+
+	"github.com/zedgama3/bms/internal/core/identity"
 )
 
 func TestExport_NamePromptedAt_AbsentBeforeAndPresentAfterAPrompt(t *testing.T) {
 	r := newIRig(t, false)
 	r.link()
-	p := r.unnamed()
+	p := r.insertPerson(seed{})
 	_, actx := r.admin(permExport)
 
 	read := func() (string, bool) {
@@ -37,10 +39,16 @@ func TestExport_NamePromptedAt_AbsentBeforeAndPresentAfterAPrompt(t *testing.T) 
 		t.Fatalf("name_prompted_at = %s before any prompt, want it omitted", v)
 	}
 
-	if !r.me(r.ctxIssued(p, r.clk.Now().Add(-time.Hour), false)).FirstPrompt {
+	// A session issued before now prompts for a playa name on its first read (people P-W1).
+	sess := sessionOf(p, false)
+	sess.IssuedAt, sess.ExpiresAt = r.clk.Now().Add(-time.Hour), r.clk.Now().Add(7*time.Hour)
+	prof, err := r.ppl.Me(identity.WithSession(ctxT(t), sess))
+	wantNoErr(t, err)
+	if !prof.FirstPrompt {
 		t.Fatal("setup: the first read did not prompt")
 	}
-	want := r.promptedAt(p)
+	var want *time.Time
+	wantNoErr(t, r.pool.QueryRow(ctxT(t), "SELECT name_prompted_at FROM core.person WHERE id = $1", [16]byte(p)).Scan(&want))
 	if want == nil {
 		t.Fatal("setup: name_prompted_at is NULL after a prompt")
 	}

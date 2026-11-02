@@ -37,7 +37,7 @@ export function YourData() {
 
   const q = useQuery({
     queryKey: KEY,
-    queryFn: ({ signal }) => api.GET("/api/people/me/requests", { signal }),
+    queryFn: ({ signal }) => api.GET("/api/datarights/me/requests", { signal }),
   });
   const error = q.error instanceof ApiError ? q.error : null;
   const requests = q.data?.requests ?? [];
@@ -47,7 +47,7 @@ export function YourData() {
 
   const download = () => {
     void exporting.run(async () => {
-      const data = await api.GET("/api/people/me/export");
+      const data = await api.GET("/api/datarights/me/export");
       saveJson(data, "bms-export.json");
       toast.show(t("core.people.data.downloaded"));
     });
@@ -57,7 +57,7 @@ export function YourData() {
     e.preventDefault();
     const note = text(new FormData(e.currentTarget).get("note")).trim();
     void request.run(async () => {
-      await api.POST("/api/people/me/requests", {
+      await api.POST("/api/datarights/me/requests", {
         body: { kind: "delete", ...(note ? { note } : {}) },
       });
       setAsking(false);
@@ -68,7 +68,7 @@ export function YourData() {
 
   const cancel = (id: string) => {
     void withdraw.run(async () => {
-      await api.POST("/api/people/me/requests/{request}/withdraw", {
+      await api.POST("/api/datarights/me/requests/{request}/withdraw", {
         params: { path: { request: id } },
       });
       toast.show(t("core.people.data.withdrawn"));

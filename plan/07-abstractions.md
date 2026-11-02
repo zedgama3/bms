@@ -28,7 +28,7 @@ is tracked in [design/README.md](design/README.md).
      ┌──────────────────────────────────────────────────────────────────────────┐
      │ core contracts: module · db · identity · authz · people · departments ·  │   core
      │ events · signals · notify · audit · files · jobs · settings · privacy ·  │
-     │ telemetry · demo · auditlog · regional                                   │
+     │ telemetry · demo · auditlog · regional · datarights                      │
      └──────────────────────────────────┬───────────────────────────────────────┘
                                         │ implemented by
        local, oidc (identity) · email (notify) · disk, s3-compatible (objects) · postgres (db)
@@ -133,7 +133,7 @@ None.
   interfaces, `Deps` (what the core gives a module), the registry, `Resolve` (graph check,
   build order, graph for the admin screen), `Build` (schema check per D17, verification
   against the manifest, linking), `Set` (start and stop in order), and the mandatory
-  `PersonData` (export and deletion of one person's data).
+  `PersonData` (export and deletion of one person's data; aliases of `datarights`' types).
 - **Doesn't do:** run migrations (`db`), mount routes (api shell), authorize (`authz`).
 - **Spec:** [design/module-contract.md](design/module-contract.md), Approved. Module names
   are letters and digits only (`afterreports`).
@@ -179,13 +179,11 @@ None.
 - **Owns:** profiles (playa name, pronouns, language; legal name, phone, a contact address for
   people without an account), emergency contacts, consents by purpose, the person row behind
   every account (`identity.account-created`) and account-less people with `LinkAccount`, name
-  lookup and search, the person page with `people.person-page`, export and deletion across
-  identity, authz and every module (`PersonData`) with deletion requests, the `export` and
-  `delete` commands, the `people` routes and screens, signals
-  `people.person-created|deleted|deletion-requested`, `Directory.LegalNamesOf` (audited, `people.contacts.read`), and the contracts `contracts/personpage` and `contracts/membership` (D44), the installation-wide uniqueness and permanence of playa names (`NameKey`, `playa_name_key`), the once-per-session first-sign-in prompt mark (`name_prompted_at`, D57), `people.NewLookup` (the system reads `NamesOf`, `PlayaNameOf`, `LanguageOf`, `ConsentOf`, `ContactEmailOf`: no permission, no audit; the Service forwards them; notify's `Profiles`).
+  lookup and search, the person page with `people.person-page`, the `people` routes and screens, signals
+  `people.person-created|deleted`, `PeopleSource` (`ExportPerson`, `DeletePerson`, `Exists`: its own rows as one more `datarights` source, last in the deletion order), `Directory.LegalNamesOf` (audited, `people.contacts.read`), and the contracts `contracts/personpage` and `contracts/membership` (D44), the installation-wide uniqueness and permanence of playa names (`NameKey`, `playa_name_key`), the once-per-session first-sign-in prompt mark (`name_prompted_at`, D57), `people.NewLookup` (the system reads `NamesOf`, `PlayaNameOf`, `LanguageOf`, `ConsentOf`, `ContactEmailOf`: no permission, no audit; the Service forwards them; notify's `Profiles`).
 - **Doesn't do:** module-specific data about a person; the login address (`identity`); who may
   see a profile (`authz`); the person's own view of who read their data (`audit`, Later);
-  department membership (a module contributes it through `people.membership`; `volunteers` first); retiring or approving names (Later).
+  department membership (a module contributes it through `people.membership`; `volunteers` first); retiring or approving names (Later); export and deletion across the system, deletion requests and the `export` and `delete` commands (`datarights`).
 
 ### departments and events
 - **Purpose:** the regional's standing departments and its events (one per burn, D24), kept
@@ -232,6 +230,11 @@ None.
 - **Owns:** the `regional.*` settings area (`name`, `contact_email`, `public_url`, `language`, `timezone`, `color_primary`, `color_primary_dark`) and `Profile`; the public document, `theme.css`, and the logo (`LogoRef`, `MaxLogoBytes`, `SetLogo`, `RemoveLogo`, `OpenLogo`), served under `/api/regional/` (`GET public|theme.css|logo` public; `PUT|DELETE logo` with `settings.manage`); audit actions `regional.logo.changed|removed` (old entries keep `settings.logo.*`). The logo's files owner stays `"settings"`. Split from `settings` so that `settings` no longer imports `files`. Spec: `plan/design/regional.md`.
 - **Doesn't do:** store values, the revision, terminology or the admin screens (`settings`); store or serve bytes (`files`); send mail (`notify`, which reads `Profile`); permissions (`settings.manage` is `settings`'); personal data.
 
+### datarights: a person's right to their data
+- **Purpose:** carry out a person's right to their data across the core and every module.
+- **Owns:** the export of one person (one JSON document: identity, access, notify, files, the people rows and every module), the deletion of one person (one transaction in the order modules, files, notify, access, identity, people; audit rows stay and are reported as kept), the deletion requests (`core.data_request`: request, withdraw, decline, fulfil) and the notice to the holders of `people.data.delete`, the `export` and `delete` commands, the types `module` aliases (`PersonData`, `Export`, `Deletion`, `Kept`, plus `Source`), the permissions `people.data.export` and `people.data.delete` (names unchanged), the signal `datarights.deletion-requested`, the audit actions `datarights.export|delete|request.*` (old entries keep `people.person.exported|deleted` and `people.request.*`), and the routes under `/api/datarights/` (`me/export`, `me/requests`, `requests`, `people/{person}`). Split from `people`. Spec: `plan/design/datarights.md`.
+- **Doesn't do:** the person row, contacts and consents (`people`, which answers as `PeopleSource`); a module's records (its `PersonData`); the screens (`web/src/core/people/`); counting audit entries (`auditlog.CountAbout`); sending the notice (`notify`); retention jobs (`jobs`, Later).
+
 ### files: attachments
 - **Purpose:** keep the bytes a module attaches to one of its records, with the record's permissions deciding who may read them.
 - **Owns:** the object-store contract `objects.Store` (a simplified S3: bucket, key, Put/Get/Head/Delete/List, SHA-256 verified at Put; never the database, D43) with the `disk` (default) and `s3` implementations and their conformance suite; the `Store` seam modules get as `Deps.Files`; the metadata (`core.file`, `core.file_tombstone`); the catalogue of accepted kinds (images and PDF), metadata stripping, the safe `Serve`, the audit of content reads, the person-data export and deletion backstop, the reap and sweep jobs, `bms files verify`, the settings `files.max_bytes|quota_bytes|max_per_record` (it declares them as `files.Settings`, replacing the deleted `filesettings`, and reads them through its own `settings.Reader`), `Options.Ceiling` (maximums over the settings-derived policy; `demo.FileCeiling` in demo mode) and `Purge` (every scoped bucket and the temp dir; demo's reset), config `files.*`. Spec: `plan/design/files.md`.
@@ -245,7 +248,7 @@ None.
 ### privacy: who sees which field
 - **Purpose:** decide, field by field, which of a record's fields a viewer gets back.
 - **Owns:** the `privacy` struct tag, field groups and their `visibility_<group>` settings, the viewer's audiences, `Filter` and what it reports for audit, the `views_tagged` conformance rule. Spec: `plan/design/privacy-tags.md`.
-- **Doesn't do:** action permissions and record visibility (`authz`, each service), recording the audit entry (the caller), column sensitivity, retention, export and deletion (each spec, `people`).
+- **Doesn't do:** action permissions and record visibility (`authz`, each service), recording the audit entry (the caller), column sensitivity, retention, export and deletion (each spec; `datarights` orchestrates).
 
 ### telemetry: logs, traces, metrics and client error reports (D20)
 - **Purpose:** let a maintainer find what happened in any one request from the reference

@@ -1087,6 +1087,3 @@ func (s *Service) searchWithin(ctx context.Context, op string, q rows.SearchQuer
 	}
 	return out, nil
 }
-
-func personRef(id model.PersonID) signals.Entry { return signals.Ref(PayloadPerson, id) }
-func requestRef(id RequestID) signals.Entry     { return signals.Ref(PayloadRequest, id) }

@@ -223,6 +223,8 @@ linters:
               desc: "app never imports a package's store (boundaries.md app-no-stores)"
             - pkg: github.com/zedgama3/bms/internal/core/authz/postgres
               desc: "app never imports a package's store (boundaries.md app-no-stores)"
+            - pkg: github.com/zedgama3/bms/internal/core/datarights/postgres
+              desc: "app never imports a package's store (boundaries.md app-no-stores)"
             - pkg: github.com/zedgama3/bms/internal/core/demo/postgres
               desc: "app never imports a package's store (boundaries.md app-no-stores)"
             - pkg: github.com/zedgama3/bms/internal/core/departments/postgres

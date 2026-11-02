@@ -473,20 +473,6 @@ func TestHandleAccountCreated_TwoNamelessRows_BothInserted(t *testing.T) {
 	wantNoErr(t, err)
 }
 
-// F86
-func TestDelete_FreesPlayaName(t *testing.T) {
-	f := newDelFixture(t, false)
-	name := f.nameOf(f.target)
-	_, err := f.svc.Delete(f.ctx, f.target)
-	wantNoErr(t, err)
-	claimant := newPerson()
-	_, err = f.svc.UpdateMe(asPerson(ctxT(t), claimant), people.ProfileInput{PlayaName: str(name)})
-	wantNoErr(t, err)
-	if f.nameOf(claimant) != name {
-		t.Error("the freed name was not saved")
-	}
-}
-
 // The key is internal: it is never in the profile JSON, logs, spans or audit.
 func TestPlayaNameKey_NeverExposed(t *testing.T) {
 	r := newIRig(t, false)

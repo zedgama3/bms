@@ -437,6 +437,143 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/datarights/me/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download everything bms holds about you as one JSON attachment (bms-export-<person>.json). Audited; once every ten minutes (429 with Retry-After). */
+        get: operations["datarightsExportMe"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/datarights/me/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Your own deletion requests, newest first. */
+        get: operations["datarightsMyRequests"];
+        put?: never;
+        /** Ask for your data to be deleted. A holder of people.data.delete fulfils or declines it. 409 (field request, code duplicate) while one is open; 400 note too_long. */
+        post: operations["datarightsRequestDeletion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/datarights/me/requests/{request}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw your own open request. 404 when it is not yours; 409 (field request, code status) when it is not open. */
+        post: operations["datarightsWithdrawRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/datarights/people/{person}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a person and everything about them across identity, access and every module, in one transaction. Needs people.data.delete. 400 self; 403 for a superuser account; 404; 409 last_access_admin or in_use. Audit rows stay and are counted. */
+        delete: operations["datarightsDelete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/datarights/people/{person}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download everything bms holds about a person as one JSON attachment. Needs people.data.export. Audited. */
+        get: operations["datarightsExport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/datarights/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Deletion requests by status (default open), oldest first. Needs people.data.delete. */
+        get: operations["datarightsListRequests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/datarights/requests/{request}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decline an open request with a note for the person. Needs people.data.delete. 409 (field request, code status) when it is not open. */
+        post: operations["datarightsDeclineRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/datarights/requests/{request}/fulfil": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Delete the request's person as DELETE /people/{person} does. Needs people.data.delete. 409 last_access_admin, in_use, status; 400 self. */
+        post: operations["datarightsFulfilRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/departments/": {
         parameters: {
             query?: never;
@@ -1042,58 +1179,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/people/me/export": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Download everything bms holds about you as one JSON attachment (bms-export-<person>.json). Audited; once every ten minutes (429 with Retry-After). */
-        get: operations["peopleExportMe"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/people/me/requests": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Your own deletion requests, newest first. */
-        get: operations["peopleMyRequests"];
-        put?: never;
-        /** Ask for your data to be deleted. A holder of people.data.delete fulfils or declines it. 409 (field request, code duplicate) while one is open; 400 note too_long. */
-        post: operations["peopleRequestDeletion"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/people/me/requests/{request}/withdraw": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Withdraw your own open request. 404 when it is not yours; 409 (field request, code status) when it is not open. */
-        post: operations["peopleWithdrawRequest"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/people/names": {
         parameters: {
             query?: never;
@@ -1105,57 +1190,6 @@ export interface paths {
         get: operations["peopleNames"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/people/requests": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Deletion requests by status (default open), oldest first. Needs people.data.delete. */
-        get: operations["peopleListRequests"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/people/requests/{request}/decline": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Decline an open request with a note for the person. Needs people.data.delete. 409 (field request, code status) when it is not open. */
-        post: operations["peopleDeclineRequest"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/people/requests/{request}/fulfil": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Delete the request's person as DELETE /{person} does. Needs people.data.delete. 409 last_access_admin, in_use, status; 400 self. */
-        post: operations["peopleFulfilRequest"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1191,8 +1225,7 @@ export interface paths {
         /** Change another person's profile. Needs people.profiles.manage; the regional's required modes are not enforced. Your own ID behaves as PUT /me, except that a holder of people.profiles.manage may rename their own set playa name. A set playa name may be changed (audited with the reason rename) but not cleared (400 playa_name required); 409 (field playa_name, code taken) when another person already uses the name. 404 for an unknown person. */
         put: operations["peopleUpdate"];
         post?: never;
-        /** Delete a person and everything about them across identity, access and every module, in one transaction. Needs people.data.delete. 400 self; 403 for a superuser account; 404; 409 last_access_admin or in_use. Audit rows stay and are counted. */
-        delete: operations["peopleDelete"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1245,23 +1278,6 @@ export interface paths {
         post?: never;
         /** Remove a person's emergency contact. Needs people.profiles.manage (or your own ID). 404 when it is not theirs. */
         delete: operations["peopleRemoveContact"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/people/{person}/export": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Download everything bms holds about a person as one JSON attachment. Needs people.data.export. Audited. */
-        get: operations["peopleExport"];
-        put?: never;
-        post?: never;
-        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2189,6 +2205,50 @@ export interface components {
         ClientEventBatch: {
             events: components["schemas"]["ClientEvent"][];
         };
+        DatarightsDecisionInput: {
+            note?: string;
+        };
+        DatarightsDeletionReport: {
+            access: number;
+            identity: number;
+            kept: components["schemas"]["DatarightsKept"][];
+            modules: {
+                [key: string]: {
+                    anonymized: number;
+                    deleted: number;
+                    kept: components["schemas"]["DatarightsKept"][];
+                };
+            };
+            people: number;
+            person: components["schemas"]["ID"];
+        };
+        DatarightsKept: {
+            count: number;
+            kind: string;
+        };
+        DatarightsRequest: {
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            decided_at?: string;
+            decided_by?: components["schemas"]["ID"];
+            decision_note: string;
+            id: components["schemas"]["ID"];
+            /** @enum {string} */
+            kind: "delete";
+            note: string;
+            person_id: components["schemas"]["ID"];
+            /** @enum {string} */
+            status: "open" | "withdrawn" | "declined";
+        };
+        DatarightsRequestInput: {
+            /** @enum {string} */
+            kind: "delete";
+            note?: string;
+        };
+        DatarightsRequestList: {
+            requests: components["schemas"]["DatarightsRequest"][];
+        };
         Department: {
             archived: boolean;
             /**
@@ -2538,27 +2598,6 @@ export interface components {
             phone: string;
             relationship?: string;
         };
-        PeopleDecisionInput: {
-            note?: string;
-        };
-        PeopleDeletionReport: {
-            access: number;
-            identity: number;
-            kept: components["schemas"]["PeopleKept"][];
-            modules: {
-                [key: string]: {
-                    anonymized: number;
-                    deleted: number;
-                    kept: components["schemas"]["PeopleKept"][];
-                };
-            };
-            people: number;
-            person: components["schemas"]["ID"];
-        };
-        PeopleKept: {
-            count: number;
-            kind: string;
-        };
         PeopleLinkInput: {
             email: string;
         };
@@ -2631,29 +2670,6 @@ export interface components {
             playa_name?: string | null;
             /** @description Absent or null leaves the field unchanged; an empty string clears it. */
             pronouns?: string | null;
-        };
-        PeopleRequest: {
-            /** Format: date-time */
-            created_at: string;
-            /** Format: date-time */
-            decided_at?: string;
-            decided_by?: components["schemas"]["ID"];
-            decision_note: string;
-            id: components["schemas"]["ID"];
-            /** @enum {string} */
-            kind: "delete";
-            note: string;
-            person_id: components["schemas"]["ID"];
-            /** @enum {string} */
-            status: "open" | "withdrawn" | "declined";
-        };
-        PeopleRequestInput: {
-            /** @enum {string} */
-            kind: "delete";
-            note?: string;
-        };
-        PeopleRequestList: {
-            requests: components["schemas"]["PeopleRequest"][];
         };
         PeopleSection: {
             failed: boolean;
@@ -4181,6 +4197,290 @@ export interface operations {
             };
         };
     };
+    datarightsExportMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The export document, format 1. */
+            200: {
+                headers: {
+                    "Content-Disposition"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    datarightsMyRequests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Requests. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatarightsRequestList"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    datarightsRequestDeletion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DatarightsRequestInput"];
+            };
+        };
+        responses: {
+            /** @description Filed. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatarightsRequest"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    datarightsWithdrawRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Withdrawn. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    datarightsDelete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                person: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What was deleted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatarightsDeletionReport"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    datarightsExport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                person: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The export document, format 1. */
+            200: {
+                headers: {
+                    "Content-Disposition"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    datarightsListRequests: {
+        parameters: {
+            query?: {
+                /** @description Default open. */
+                status?: "open" | "withdrawn" | "declined";
+                /** @description Only this person's requests. */
+                person?: components["schemas"]["ID"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Requests. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatarightsRequestList"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    datarightsDeclineRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DatarightsDecisionInput"];
+            };
+        };
+        responses: {
+            /** @description Declined. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatarightsRequest"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    datarightsFulfilRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request: components["schemas"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What was deleted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatarightsDeletionReport"];
+                };
+            };
+            /** @description An error. The body is a Problem. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     departmentsList: {
         parameters: {
             query?: {
@@ -5619,127 +5919,6 @@ export interface operations {
             };
         };
     };
-    peopleExportMe: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The export document, format 1. */
-            200: {
-                headers: {
-                    "Content-Disposition"?: string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": Record<string, never>;
-                };
-            };
-            /** @description An error. The body is a Problem. */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
-    };
-    peopleMyRequests: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Requests. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PeopleRequestList"];
-                };
-            };
-            /** @description An error. The body is a Problem. */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
-    };
-    peopleRequestDeletion: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PeopleRequestInput"];
-            };
-        };
-        responses: {
-            /** @description Filed. */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PeopleRequest"];
-                };
-            };
-            /** @description An error. The body is a Problem. */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
-    };
-    peopleWithdrawRequest: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                request: components["schemas"]["ID"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Withdrawn. */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description An error. The body is a Problem. */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
-    };
     peopleNames: {
         parameters: {
             query?: {
@@ -5759,106 +5938,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PeopleNames"];
-                };
-            };
-            /** @description An error. The body is a Problem. */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
-    };
-    peopleListRequests: {
-        parameters: {
-            query?: {
-                /** @description Default open. */
-                status?: "open" | "withdrawn" | "declined";
-                /** @description Only this person's requests. */
-                person?: components["schemas"]["ID"];
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Requests. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PeopleRequestList"];
-                };
-            };
-            /** @description An error. The body is a Problem. */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
-    };
-    peopleDeclineRequest: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                request: components["schemas"]["ID"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PeopleDecisionInput"];
-            };
-        };
-        responses: {
-            /** @description Declined. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PeopleRequest"];
-                };
-            };
-            /** @description An error. The body is a Problem. */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
-    };
-    peopleFulfilRequest: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                request: components["schemas"]["ID"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description What was deleted. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PeopleDeletionReport"];
                 };
             };
             /** @description An error. The body is a Problem. */
@@ -5959,37 +6038,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PeopleProfile"];
-                };
-            };
-            /** @description An error. The body is a Problem. */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
-    };
-    peopleDelete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                person: components["schemas"]["ID"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description What was deleted. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PeopleDeletionReport"];
                 };
             };
             /** @description An error. The body is a Problem. */
@@ -6129,38 +6177,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-            /** @description An error. The body is a Problem. */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
-    };
-    peopleExport: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                person: components["schemas"]["ID"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The export document, format 1. */
-            200: {
-                headers: {
-                    "Content-Disposition"?: string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": Record<string, never>;
-                };
             };
             /** @description An error. The body is a Problem. */
             default: {

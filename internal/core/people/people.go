@@ -1,7 +1,6 @@
 package people
 
 import (
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"regexp"
@@ -40,21 +39,15 @@ const (
 	MaxSearchResults     = 50
 	DefaultSearchResults = 20
 	MaxNames             = 200
-	ExportCooldown       = 10 * time.Minute
-	MaxTrackedExports    = 10000
 	SectionTimeout       = personpage.SectionTimeout
 
-	// ExportFormat is the "format" of the export document.
-	ExportFormat = 1
-
-	// maxRequestsListed bounds MyRequests (a person's requests are finite: one open at a
-	// time, the rest decided).
-	maxRequestsListed   = 200
 	maxPurposeBytes     = 64
 	maxContactNameBytes = 200
 )
 
-// The permissions people declares; app adds Permissions to corePerms.
+// The permissions people declares; app adds Permissions to corePerms. The last two are
+// declared by datarights (boundaries.md decision 12: the names stay people's); people keeps
+// the constants for the capabilities its person page reports.
 const (
 	PermissionDirectoryRead  authz.Permission = "people.directory.read"  // search; internal fields of any person
 	PermissionContactsRead   authz.Permission = "people.contacts.read"   // personal fields and emergency contacts of others
@@ -63,7 +56,7 @@ const (
 	PermissionDataDelete     authz.Permission = "people.data.delete"     // delete a person; decide deletion requests
 )
 
-// Permissions lists the declarations of the five permissions above, with their starter
+// Permissions lists the declarations of the three permissions people owns, with their starter
 // roles (people.md, "Permissions" and decisions 9 and 20, amended by D44). Note that
 // department-admin holds people.contacts.read from D44, and until a module contributes
 // people.membership a department extent reaches every person (decision 9).
@@ -80,56 +73,47 @@ var Permissions = []authz.PermissionDecl{
 		Name: PermissionProfilesManage, Scope: authz.ScopeSite, Reaches: model.SensitivityPersonal,
 		StarterRoles: []string{authz.RoleAccountAdmin},
 	},
-	{
-		Name: PermissionDataExport, Scope: authz.ScopeSite, Reaches: model.SensitivitySensitive,
-		StarterRoles: []string{authz.RoleAccountAdmin},
-	},
-	{
-		Name: PermissionDataDelete, Scope: authz.ScopeSite, Reaches: model.SensitivitySensitive,
-		StarterRoles: []string{authz.RoleAccountAdmin},
-	},
 }
 
 // The signals people publishes (payload keys below) and the one it subscribes to.
 const (
-	SignalPersonCreated     signals.Name = "people.person-created"     // {person}
-	SignalPersonDeleted     signals.Name = "people.person-deleted"     // {person}
-	SignalDeletionRequested signals.Name = "people.deletion-requested" // {request, person}
+	SignalPersonCreated signals.Name = "people.person-created" // {person}
+	SignalPersonDeleted signals.Name = "people.person-deleted" // {person}
 
-	PayloadPerson  = "person"
-	PayloadRequest = "request"
+	PayloadPerson = "person"
 )
 
 // PublishedSignals lists the signals people publishes, for app's scope and
 // Env.CoreSignals; SubscribedSignals the ones it subscribes to. Callers must not modify
 // them.
 var (
-	PublishedSignals  = []signals.Name{SignalPersonCreated, SignalPersonDeleted, SignalDeletionRequested}
+	PublishedSignals  = []signals.Name{SignalPersonCreated, SignalPersonDeleted}
 	SubscribedSignals = []signals.Name{identity.SignalAccountCreated}
+)
+
+// The reasons recorded on people's own entries: tokens, never free text (decision 16).
+const (
+	reasonLink = "link" // the empty row sign-up minted, dropped by LinkAccount
+
+	reasonGranted   = "granted"   // a consent change: the person agreed (SetConsent)
+	reasonWithdrawn = "withdrawn" // a consent change: the person took their agreement back
 )
 
 // The audit actions people records, and the record kinds they point at.
 const (
-	actionRead             audit.Action = "people.person.read"
-	actionCreated          audit.Action = "people.person.created"
-	actionChanged          audit.Action = "people.person.changed"
-	actionDeleted          audit.Action = "people.person.deleted"
-	actionLinked           audit.Action = "people.person.linked"
-	actionExported         audit.Action = "people.person.exported"
-	actionSearchRead       audit.Action = "people.search.read"
-	actionContactCreated   audit.Action = "people.contact.created"
-	actionContactChanged   audit.Action = "people.contact.changed"
-	actionContactDeleted   audit.Action = "people.contact.deleted"
-	actionConsentChanged   audit.Action = "people.consent.changed"
-	actionRequestCreated   audit.Action = "people.request.created"
-	actionRequestRead      audit.Action = "people.request.read"
-	actionRequestWithdraw  audit.Action = "people.request.withdrawn"
-	actionRequestDeclined  audit.Action = "people.request.declined"
-	actionRequestFulfilled audit.Action = "people.request.fulfilled"
+	actionRead           audit.Action = "people.person.read"
+	actionCreated        audit.Action = "people.person.created"
+	actionChanged        audit.Action = "people.person.changed"
+	actionDeleted        audit.Action = "people.person.deleted"
+	actionLinked         audit.Action = "people.person.linked"
+	actionSearchRead     audit.Action = "people.search.read"
+	actionContactCreated audit.Action = "people.contact.created"
+	actionContactChanged audit.Action = "people.contact.changed"
+	actionContactDeleted audit.Action = "people.contact.deleted"
+	actionConsentChanged audit.Action = "people.consent.changed"
 
 	kindPerson  = "people.person"
 	kindContact = "people.contact"
-	kindRequest = "people.request"
 )
 
 // Set is the migration set app adds to coreSets (db.md Proposed change 10).
@@ -150,21 +134,28 @@ const (
 	codeHasAccount = "has_account"   // contact_email for a person who has an account
 	codeSelf       = "self"          // an action aimed at oneself that must not be
 	codeUnknown    = "unknown"       // an address no account has
-	codeDuplicate  = "duplicate"     // an open request exists
-	codeStatus     = "status"        // the request is not open
-	codeInUse      = "in_use"        // a foreign key still references the person
-	codeSuperuser  = "superuser"
-	codeProtected  = "protected" // identity's Guard refuses: a shared demo account
-	codeLastAdmin  = "last_access_admin"
+	codeProtected  = "protected"     // identity's Guard refuses: a shared demo account
 )
+
+// isProtected reports identity's refusal of a shared demo account: Permission carrying the
+// field "account" with the code "protected" (identity.md F105). The shape is read from the
+// error, so people does not import identity's types for it.
+func isProtected(err error) bool {
+	if !errs.Is(err, errs.Permission) {
+		return false
+	}
+	for _, fe := range validate.Fields(err) {
+		if fe.Field == "account" && fe.Code == codeProtected {
+			return true
+		}
+	}
+	return false
+}
 
 // ---- identifiers ------------------------------------------------------------------------
 
 // ContactID identifies an emergency contact.
 type ContactID = rows.ContactID
-
-// RequestID identifies a deletion request.
-type RequestID = rows.RequestID
 
 // ---- Purpose ----------------------------------------------------------------------------
 
@@ -349,50 +340,6 @@ type Consent struct {
 	ChangedAt  time.Time
 }
 
-// RequestStatus is where a deletion request stands. The zero value is not a status.
-type RequestStatus uint8
-
-// The statuses.
-const (
-	RequestOpen RequestStatus = iota + 1
-	RequestWithdrawn
-	RequestDeclined
-)
-
-var requestStatusWords = [...]string{RequestOpen: rows.StatusOpen, RequestWithdrawn: rows.StatusWithdrawn, RequestDeclined: rows.StatusDeclined}
-
-func (s RequestStatus) valid() bool { return s >= RequestOpen && s <= RequestDeclined }
-
-// String returns "open", "withdrawn", "declined" or "RequestStatus(<n>)". Cannot fail.
-func (s RequestStatus) String() string {
-	if s.valid() {
-		return requestStatusWords[s]
-	}
-	return fmt.Sprintf("RequestStatus(%d)", uint8(s))
-}
-
-// ParseRequestStatus returns the status spelled as String spells it. Fails errs.Invalid.
-func ParseRequestStatus(w string) (RequestStatus, error) {
-	if s := statusOf(w); s != 0 {
-		return s, nil
-	}
-	return 0, fieldInvalid("people.ParseRequestStatus", "status", codeOneOf, "must be one of: open, withdrawn, declined")
-}
-
-// Request is a person's deletion request. Kind is "delete" in M2. Note and DecisionNote are
-// personal.
-type Request struct {
-	ID           RequestID
-	Person       model.PersonID
-	Kind         string
-	Status       RequestStatus
-	Note         string
-	CreatedAt    time.Time
-	DecidedAt    time.Time // zero while open
-	DecidedBy    model.PersonID
-	DecisionNote string
-}
-
 // Capabilities tells the shell which actions the viewer may take on this profile. The
 // server checks again on every call.
 type Capabilities struct {
@@ -461,48 +408,12 @@ type Match struct {
 	Pronouns  string
 }
 
-// RequestQuery selects requests for ListRequests.
-type RequestQuery struct {
-	Status RequestStatus  // zero = open
-	Person model.PersonID // zero = any
-}
-
 // LinkResult is what LinkAccount reports.
 type LinkResult struct {
 	Account       model.AccountID
 	Orphan        model.PersonID // the row sign-up minted for the account; zero if none
 	OrphanDeleted bool
 }
-
-// Export is a module's exported data, ModuleDeletion what its DeletePerson did and Kept a
-// kind of record it kept: structural twins of module.Export, module.Deletion and module.Kept
-// (this package never imports core/module; app converts).
-type Export struct{ Data json.RawMessage }
-
-// Kept is one kind of record that deletion left in place, with how many.
-type Kept struct {
-	Kind  string
-	Count int
-}
-
-// ModuleDeletion is what one module's DeletePerson did.
-type ModuleDeletion struct {
-	Deleted, Anonymized int
-	Kept                []Kept
-}
-
-// DeletionReport is what Delete, FulfilRequest and the delete command return.
-type DeletionReport struct {
-	Person   model.PersonID
-	People   int                       // rows this package deleted
-	Identity int                       // account rows
-	Access   int                       // grant rows
-	Modules  map[string]ModuleDeletion // by module name
-	Kept     []Kept                    // always includes {"audit.entry", n} when n > 0
-}
-
-// auditEntryKind is the Kept kind of the audit rows deletion leaves (audit decision 10).
-const auditEntryKind = "audit.entry"
 
 // ---- text validation --------------------------------------------------------------------
 
@@ -647,14 +558,4 @@ func (in ContactInput) normalize(op string) (ContactInput, error) {
 		return ContactInput{}, err //nolint:wrapcheck // Err already carries Op and errs.Invalid
 	}
 	return out, nil
-}
-
-// checkNote validates a request or decision note and returns the trimmed text.
-func checkNote(op, field, s string) (string, error) {
-	v := validate.Errors{Op: op}
-	s = checkText(&v, field, s, MaxNoteBytes)
-	if err := v.Err(); err != nil {
-		return "", err //nolint:wrapcheck // Err already carries Op and errs.Invalid
-	}
-	return s, nil
 }

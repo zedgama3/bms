@@ -1,6 +1,6 @@
 //go:build integration
 
-package people_test
+package datarights_test
 
 import (
 	"bytes"
@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zedgama3/bms/internal/contracts/personpage"
 	"github.com/zedgama3/bms/internal/core/audit"
+	"github.com/zedgama3/bms/internal/core/datarights"
 	"github.com/zedgama3/bms/internal/core/people"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/lib/validate"
@@ -27,12 +27,12 @@ func (r *irig) tableSource(name string) *fakeSource {
 	r.t.Helper()
 	r.exec("CREATE TABLE core.zz_" + name + " (person_id uuid NOT NULL REFERENCES core.person(id) ON DELETE RESTRICT)")
 	s := &fakeSource{name: name, log: r.log, data: json.RawMessage(`{"rows":1}`)}
-	s.del = func(ctx context.Context, p model.PersonID) (people.ModuleDeletion, error) {
+	s.del = func(ctx context.Context, p model.PersonID) (datarights.Deletion, error) {
 		tag, err := r.pool.Exec(ctx, "DELETE FROM core.zz_"+name+" WHERE person_id = $1", [16]byte(p))
 		if err != nil {
-			return people.ModuleDeletion{}, err //nolint:wrapcheck // a test module
+			return datarights.Deletion{}, err //nolint:wrapcheck // a test module
 		}
-		return people.ModuleDeletion{Deleted: int(tag.RowsAffected())}, nil
+		return datarights.Deletion{Deleted: int(tag.RowsAffected())}, nil
 	}
 	return s
 }
@@ -98,17 +98,17 @@ func (f *delFixture) intact() {
 	if n := f.tableRows("beta"); n != 1 {
 		f.t.Errorf("beta has %d rows, want 1: a module's deletion was not rolled back", n)
 	}
-	for _, s := range f.published(sigDeleted) {
+	for _, s := range f.publishedByPeople(sigDeleted) {
 		if payloadPerson(s) == f.target {
 			f.t.Error("people.person-deleted was published for a person who is still there")
 		}
 	}
-	if f.count("people.person.deleted") != 0 {
-		f.t.Error("people.person.deleted was recorded for a person who is still there")
+	if f.count("datarights.delete") != 0 {
+		f.t.Error("datarights.delete was recorded for a person who is still there")
 	}
 }
 
-func keptCount(kept []people.Kept, kind string) int {
+func keptCount(kept []datarights.Kept, kind string) int {
 	for _, k := range kept {
 		if k.Kind == kind {
 			return k.Count
@@ -117,11 +117,9 @@ func keptCount(kept []people.Kept, kind string) int {
 	return 0
 }
 
-// ---- delete -----------------------------------------------------------------------------
-
 func TestDelete_AcrossModules_OneTransaction_ReportsKept(t *testing.T) {
 	f := newDelFixture(t, false)
-	f.alpha.del = wrapKept(f.alpha.del, people.Kept{Kind: "alpha.note", Count: 3})
+	f.alpha.del = wrapKept(f.alpha.del, datarights.Kept{Kind: "alpha.note", Count: 3})
 	rep, err := f.svc.Delete(f.ctx, f.target)
 	wantNoErr(t, err)
 	if rep.Person != f.target {
@@ -149,18 +147,18 @@ func TestDelete_AcrossModules_OneTransaction_ReportsKept(t *testing.T) {
 		t.Error("module rows survive")
 	}
 	order := f.log.all()
-	want := []string{"module.alpha.delete", "module.beta.delete", "access.delete", "accounts.delete"}
+	want := []string{"module.alpha.delete", "module.beta.delete", "files.delete", "notify.delete", "access.delete", "accounts.delete", "people.delete"}
 	if strings.Join(order, ",") != strings.Join(want, ",") {
-		t.Errorf("order of deletion = %v, want modules in build order, then access, then identity", order)
+		t.Errorf("order of deletion = %v, want modules in build order, then files, notify, access, identity, people", order)
 	}
-	e := f.only("people.person.deleted")
+	e := f.only("datarights.delete")
 	if e.Subject != f.target || e.Reason != "admin" || e.Outcome != audit.Succeeded {
 		t.Errorf("entry = %+v", e)
 	}
 	if e.Record.Kind != "people.person" || e.Record.ID != [16]byte(f.target) {
 		t.Errorf("entry record = %+v", e.Record)
 	}
-	sigs := f.published(sigDeleted)
+	sigs := f.publishedByPeople(sigDeleted)
 	if len(sigs) != 1 || payloadPerson(sigs[0]) != f.target {
 		t.Errorf("published %v", sigs)
 	}
@@ -170,8 +168,8 @@ func TestDelete_AcrossModules_OneTransaction_ReportsKept(t *testing.T) {
 	}
 }
 
-func wrapKept(inner func(context.Context, model.PersonID) (people.ModuleDeletion, error), k people.Kept) func(context.Context, model.PersonID) (people.ModuleDeletion, error) {
-	return func(ctx context.Context, p model.PersonID) (people.ModuleDeletion, error) {
+func wrapKept(inner func(context.Context, model.PersonID) (datarights.Deletion, error), k datarights.Kept) func(context.Context, model.PersonID) (datarights.Deletion, error) {
+	return func(ctx context.Context, p model.PersonID) (datarights.Deletion, error) {
 		d, err := inner(ctx, p)
 		d.Kept = append(d.Kept, k)
 		return d, err
@@ -194,9 +192,9 @@ func TestDelete_IsIdempotentAsNotFound(t *testing.T) {
 	wantNoErr(t, err)
 	_, err = f.svc.Delete(f.ctx, f.target)
 	wantKind(t, err, errs.NotFound)
-	_, err = f.svc.Get(asSuper(ctxT(t), newPerson()), f.target)
+	_, err = f.ppl.Get(asSuper(ctxT(t), newPerson()), f.target)
 	wantKind(t, err, errs.NotFound)
-	got, err := f.svc.NamesOf(ctxT(t), []model.PersonID{f.target})
+	got, err := f.ppl.NamesOf(ctxT(t), []model.PersonID{f.target})
 	wantNoErr(t, err)
 	if len(got) != 0 {
 		t.Error("the deleted person still has a name")
@@ -271,8 +269,8 @@ func TestDelete_ModuleFails_RollsBack(t *testing.T) {
 		t.Run(kind.String(), func(t *testing.T) {
 			f := newDelFixture(t, false)
 			boom := errs.E("beta.DeletePerson", kind, errors.New("beta is unhappy"))
-			f.beta.del = func(context.Context, model.PersonID) (people.ModuleDeletion, error) {
-				return people.ModuleDeletion{}, boom
+			f.beta.del = func(context.Context, model.PersonID) (datarights.Deletion, error) {
+				return datarights.Deletion{}, boom
 			}
 			_, err := f.svc.Delete(f.ctx, f.target)
 			wantKind(t, err, kind)
@@ -375,8 +373,8 @@ func TestDelete_Concurrent_OneSucceedsTheOtherNotFound(t *testing.T) {
 	if n != 1 {
 		t.Errorf("a module's DeletePerson ran %d times, want once", n)
 	}
-	if f.count("people.person.deleted") != 1 {
-		t.Errorf("%d deleted entries, want 1", f.count("people.person.deleted"))
+	if f.count("datarights.delete") != 1 {
+		t.Errorf("%d deleted entries, want 1", f.count("datarights.delete"))
 	}
 }
 
@@ -385,7 +383,7 @@ func TestDelete_ReferencesToThePersonAsActor_DoNotBlock(t *testing.T) {
 	r.link()
 	mgr, mctx := r.admin(permManage, permDirectory)
 	created := r.create(mctx, "Walk On").Person.ID
-	_, err := r.svc.SetConsent(mctx, created, "volunteers.share-contact", true)
+	_, err := r.ppl.SetConsent(mctx, created, "volunteers.share-contact", true)
 	wantNoErr(t, err)
 	// a request the manager decided
 	req, err := r.svc.RequestDeletion(asPerson(ctxT(t), created), "")
@@ -403,7 +401,7 @@ func TestDelete_ReferencesToThePersonAsActor_DoNotBlock(t *testing.T) {
 	if n := r.scalarInt("SELECT count(*) FROM core.person WHERE id = $1 AND created_by IS NULL", [16]byte(created)); n != 1 {
 		t.Error("created_by was not cleared")
 	}
-	ok, err := r.svc.ConsentOf(ctxT(t), created, "volunteers.share-contact")
+	ok, err := r.ppl.ConsentOf(ctxT(t), created, "volunteers.share-contact")
 	wantNoErr(t, err)
 	if !ok {
 		t.Error("deleting the manager who recorded a consent removed the consent")
@@ -412,8 +410,6 @@ func TestDelete_ReferencesToThePersonAsActor_DoNotBlock(t *testing.T) {
 		t.Error("deleting the decider removed the request")
 	}
 }
-
-// ---- export -----------------------------------------------------------------------------
 
 type exportFixture struct {
 	*irig
@@ -485,7 +481,7 @@ func TestExport_Self_ReturnsTheDocument(t *testing.T) {
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		t.Fatalf("the export is not the documented JSON: %v\n%s", err, raw)
 	}
-	if doc.Format != people.ExportFormat || !doc.ExportedAt.Equal(epoch) {
+	if doc.Format != datarights.ExportFormat || !doc.ExportedAt.Equal(epoch) {
 		t.Errorf("format/exported_at = %d/%v", doc.Format, doc.ExportedAt)
 	}
 	p := doc.Person
@@ -518,7 +514,7 @@ func TestExport_Self_ReturnsTheDocument(t *testing.T) {
 	if !ok || strings.TrimSpace(string(beta)) != "{}" {
 		t.Errorf("modules.beta = %q (present %v), want an empty object", beta, ok)
 	}
-	if bytes.Contains(raw, []byte("people.person.exported")) || bytes.Contains(raw, []byte("audit")) {
+	if bytes.Contains(raw, []byte("datarights.export")) || bytes.Contains(raw, []byte("audit")) {
 		t.Error("audit rows are not part of the export")
 	}
 }
@@ -527,7 +523,7 @@ func TestExport_RecordsOneSensitiveEntry_ForSelfToo(t *testing.T) {
 	f := newExportFixture(t)
 	_, err := f.svc.Export(asPerson(ctxT(t), f.me), f.me)
 	wantNoErr(t, err)
-	e := f.only("people.person.exported")
+	e := f.only("datarights.export")
 	if e.Subject != f.me || e.Level != model.SensitivitySensitive || len(e.Fields) != 1 || e.Fields[0] != "all" || e.Outcome != audit.Succeeded {
 		t.Errorf("entry = %+v", e)
 	}
@@ -535,7 +531,7 @@ func TestExport_RecordsOneSensitiveEntry_ForSelfToo(t *testing.T) {
 	_, actx := f.admin(permExport)
 	_, err = f.svc.Export(actx, f.me)
 	wantNoErr(t, err)
-	if es := f.entries("people.person.exported"); len(es) != 2 || es[1].Subject != f.me {
+	if es := f.entries("datarights.export"); len(es) != 2 || es[1].Subject != f.me {
 		t.Errorf("entries = %+v", es)
 	}
 	f.noLeak(allMarkers()...)
@@ -558,7 +554,7 @@ func TestExport_RunsInNoWriteTransaction_AndCallsEachPartOnce(t *testing.T) {
 		}
 		return -1
 	}
-	for _, c := range []string{"accounts.export", "access.export", "module.alpha.export", "module.beta.export"} {
+	for _, c := range []string{"accounts.export", "access.export", "files.export", "notify.export", "people.export", "module.alpha.export", "module.beta.export"} {
 		if idx(c) < 0 {
 			t.Errorf("%s was not called (calls: %v)", c, calls)
 		}
@@ -577,7 +573,7 @@ func TestExport_SelfWithinCooldown_ReturnsRateLimited(t *testing.T) {
 	_, err = f.svc.Export(ctx, f.me)
 	wantRateLimited(t, err)
 
-	wantNoErr(t, f.clk.Advance(people.ExportCooldown-time.Second))
+	wantNoErr(t, f.clk.Advance(datarights.ExportCooldown-time.Second))
 	_, err = f.svc.Export(ctx, f.me)
 	wantRateLimited(t, err)
 
@@ -625,7 +621,7 @@ func TestExport_NoPermission_ReturnsPermission(t *testing.T) {
 	f.grant(other, permDirectory, permContacts, permManage, permDelete)
 	_, err := f.svc.Export(asPerson(ctxT(t), other), f.me)
 	wantKind(t, err, errs.Permission)
-	if f.count("people.person.exported") != 0 || len(f.log.all()) != 0 {
+	if f.count("datarights.export") != 0 || len(f.log.all()) != 0 {
 		t.Error("a refused export recorded an entry or called a source")
 	}
 }
@@ -655,14 +651,14 @@ func TestExport_AccountWithoutPersonRow_ReturnsDocumentWithoutPerson(t *testing.
 			t.Errorf("the document lacks %q", key)
 		}
 	}
-	if f.count("people.person.exported") != 1 {
+	if f.count("datarights.export") != 1 {
 		t.Error("the export was not recorded")
 	}
 	// No row and no account: NotFound, and nothing recorded.
 	_, actx := f.admin(permExport)
 	_, err = f.svc.Export(actx, newPerson())
 	wantKind(t, err, errs.NotFound)
-	if f.count("people.person.exported") != 1 {
+	if f.count("datarights.export") != 1 {
 		t.Error("an export that found nothing was recorded")
 	}
 }
@@ -712,8 +708,6 @@ func TestExport_AuditFails_NoBody(t *testing.T) {
 	}
 }
 
-// ---- the commands -----------------------------------------------------------------------
-
 func TestExportCommand_WritesTheDocument_AsTheOperator(t *testing.T) {
 	f := newExportFixture(t)
 	var out bytes.Buffer
@@ -725,7 +719,7 @@ func TestExportCommand_WritesTheDocument_AsTheOperator(t *testing.T) {
 	if string(doc["format"]) != "1" {
 		t.Errorf("format = %s", doc["format"])
 	}
-	e := f.only("people.person.exported")
+	e := f.only("datarights.export")
 	if e.Actor.Kind != audit.ActorOperator || e.Reason != "command" || e.Subject != f.me {
 		t.Errorf("entry = %+v, want the operator and Reason command", e)
 	}
@@ -743,7 +737,7 @@ func TestDeleteCommand_DeletesAsTheOperator_WritesOneLinePerPart(t *testing.T) {
 	if f.rowExists(f.target) || f.tableRows("alpha") != 0 {
 		t.Error("the person survives the command")
 	}
-	e := f.only("people.person.deleted")
+	e := f.only("datarights.delete")
 	if e.Actor.Kind != audit.ActorOperator || e.Reason != "command" || e.Subject != f.target {
 		t.Errorf("entry = %+v, want the operator and Reason command", e)
 	}
@@ -782,134 +776,14 @@ func TestCommands_BeforeLink_ReturnInternal(t *testing.T) {
 	}
 }
 
-// ---- the person page's sections ---------------------------------------------------------
-
-func TestGet_ProviderFails_SectionMarkedFailed(t *testing.T) {
-	r := newIRig(t, false)
-	good := providerFunc(func(_ context.Context, ids []model.PersonID) (map[model.PersonID][]personpage.Section, error) {
-		return map[model.PersonID][]personpage.Section{ids[0]: {{Key: "hello.greeting", Items: []personpage.Item{{Label: "module.hello.item.count", Value: "3"}}}}}, nil
-	})
-	bad := providerFunc(func(context.Context, []model.PersonID) (map[model.PersonID][]personpage.Section, error) {
-		return nil, errs.E("camps.Sections", errs.Unavailable, errors.New("down"))
-	})
-	later := providerFunc(func(_ context.Context, ids []model.PersonID) (map[model.PersonID][]personpage.Section, error) {
-		return map[model.PersonID][]personpage.Section{ids[0]: {{Key: "later.note"}}}, nil
-	})
-	wantNoErr(t, r.svc.Link(nil, []people.SectionProvider{
-		{Module: "hello", Provider: good}, {Module: "camps", Provider: bad}, {Module: "later", Provider: later},
-	}, nil))
-	me := r.insertPerson(seed{Playa: "Dusty Ember"})
-	prof, err := r.svc.Me(asPerson(ctxT(t), me))
-	wantNoErr(t, err)
-	if len(prof.Sections) != 3 {
-		t.Fatalf("sections = %+v, want three in build order", prof.Sections)
-	}
-	if prof.Sections[0].Key != "hello.greeting" || prof.Sections[0].Failed || len(prof.Sections[0].Items) != 1 {
-		t.Errorf("section 0 = %+v", prof.Sections[0])
-	}
-	if prof.Sections[1].Key != "camps.unavailable" || !prof.Sections[1].Failed || len(prof.Sections[1].Items) != 0 {
-		t.Errorf("section 1 = %+v, want camps.unavailable, Failed", prof.Sections[1])
-	}
-	if prof.Sections[2].Key != "later.note" || prof.Sections[2].Failed {
-		t.Errorf("section 2 = %+v: a failing provider stopped the next", prof.Sections[2])
-	}
-	if got := r.measured("bms.people.sections", map[string]string{"module": "camps", "outcome": "failed"}); got != 1 {
-		t.Errorf("bms.people.sections{camps,failed} = %v, want 1", got)
-	}
-}
-
-// F48: a provider that blocks until its ctx ends is cut off after SectionTimeout and the
-// page still renders, with a Failed section.
-func TestGet_ProviderBlocks_SectionTimesOut(t *testing.T) {
-	r := newIRig(t, false)
-	entered := make(chan struct{})
-	blocking := providerFunc(func(ctx context.Context, _ []model.PersonID) (map[model.PersonID][]personpage.Section, error) {
-		close(entered)
-		<-ctx.Done()
-		return nil, errs.E("slow.Sections", errs.KindOf(ctx.Err()), ctx.Err())
-	})
-	wantNoErr(t, r.svc.Link(nil, []people.SectionProvider{{Module: "slow", Provider: blocking}}, nil))
-	me := r.insertPerson(seed{Playa: "Dusty Ember"})
-
-	type result struct {
-		prof people.Profile
-		err  error
-	}
-	done := make(chan result, 1)
-	go func() {
-		prof, err := r.svc.Me(asPerson(ctxT(t), me))
-		done <- result{prof, err}
-	}()
-	<-entered
-	waitCtx, cancel := context.WithTimeout(ctxT(t), 15*time.Second)
-	defer cancel()
-	// If the service times a provider out on the injected clock, a timer is armed and we
-	// pass SectionTimeout on it; if it uses a context deadline, nothing is armed and the
-	// page returns after SectionTimeout of real time. Either way no test code sleeps.
-	probe, stop := context.WithTimeout(waitCtx, 500*time.Millisecond)
-	if err := r.clk.BlockUntil(probe, 1); err == nil {
-		wantNoErr(t, r.clk.Advance(people.SectionTimeout))
-	}
-	stop()
-	select {
-	case res := <-done:
-		wantNoErr(t, res.err)
-		if len(res.prof.Sections) != 1 || !res.prof.Sections[0].Failed || res.prof.Sections[0].Key != "slow.unavailable" {
-			t.Errorf("sections = %+v", res.prof.Sections)
-		}
-		if got := r.measured("bms.people.sections", map[string]string{"module": "slow", "outcome": "failed"}); got != 1 {
-			t.Errorf("bms.people.sections{slow,failed} = %v, want 1", got)
-		}
-	case <-waitCtx.Done():
-		t.Fatal("the page did not return after SectionTimeout passed on the injected clock")
-	}
-}
-
-func TestGet_Providers_SeeTheViewerAndOnePerson(t *testing.T) {
-	r := newIRig(t, false)
-	target := r.insertPerson(seed{Playa: "Dusty Ember"})
-	viewer, vctx := r.admin(permDirectory)
-	var seenViewer model.PersonID
-	var seenIDs []model.PersonID
-	var calls int
-	spy := providerFunc(func(ctx context.Context, ids []model.PersonID) (map[model.PersonID][]personpage.Section, error) {
-		calls++
-		seenIDs = ids
-		seenViewer = viewerOf(ctx)
-		return nil, nil // a person with nothing to show is simply absent
-	})
-	wantNoErr(t, r.svc.Link(nil, []people.SectionProvider{{Module: "spy", Provider: spy}}, nil))
-	prof, err := r.svc.Get(vctx, target)
-	wantNoErr(t, err)
-	if calls != 1 || len(seenIDs) != 1 || seenIDs[0] != target {
-		t.Errorf("provider called %d times with %v, want once with the page's person", calls, seenIDs)
-	}
-	if seenViewer != viewer {
-		t.Errorf("the provider saw viewer %v, want %v", seenViewer, viewer)
-	}
-	if len(prof.Sections) != 0 {
-		t.Errorf("sections = %+v for a provider with nothing to show", prof.Sections)
-	}
-}
-
-func TestSections_NotLinked_PageCarriesNone(t *testing.T) {
-	r := newIRig(t, false)
-	me := r.insertPerson(seed{Playa: "Dusty Ember"})
-	prof, err := r.svc.Me(asPerson(ctxT(t), me))
-	wantNoErr(t, err)
-	if len(prof.Sections) != 0 {
-		t.Errorf("sections before Link: %+v", prof.Sections)
-	}
-}
-
 // F58
 func TestDelete_AccountWithoutPersonRow_RunsIdentityAndAuthz(t *testing.T) {
 	f := newDelFixture(t, false)
 	ghost := newPerson()
 	f.accts.mu.Lock()
-	f.accts.byPerson[ghost] = fakeAccount{acct: model.NewID[model.AccountID](), email: "ghost.holder@example.org"}
+	f.accts.byPerson[ghost] = fakeAccount{email: "ghost.holder@example.org"}
 	f.accts.mu.Unlock()
-	before := len(f.published(sigDeleted))
+	before := len(f.publishedByPeople(sigDeleted))
 	rep, err := f.svc.Delete(f.ctx, ghost)
 	wantNoErr(t, err)
 	if rep.Person != ghost || rep.People != 0 {
@@ -918,17 +792,34 @@ func TestDelete_AccountWithoutPersonRow_RunsIdentityAndAuthz(t *testing.T) {
 	if rep.Identity != 1 || rep.Access != 2 {
 		t.Errorf("Identity/Access = %d/%d, want the seams' counts 1/2", rep.Identity, rep.Access)
 	}
-	want := []string{"module.alpha.delete", "module.beta.delete", "access.delete", "accounts.delete"}
+	want := []string{"module.alpha.delete", "module.beta.delete", "files.delete", "notify.delete", "access.delete", "accounts.delete"}
 	if got := f.log.all(); strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Errorf("calls = %v, want %v", got, want)
 	}
-	if len(f.published(sigDeleted)) != before {
+	if len(f.publishedByPeople(sigDeleted)) != before {
 		t.Error("people.person-deleted was published for a person who had no row")
 	}
-	if e := f.only("people.person.deleted"); e.Subject != ghost {
+	if e := f.only("datarights.delete"); e.Subject != ghost {
 		t.Errorf("entry = %+v", e)
 	}
 	// Idempotent: the account is gone now, so a second call is NotFound.
 	_, err = f.svc.Delete(f.ctx, ghost)
 	wantKind(t, err, errs.NotFound)
+}
+
+// F86
+func TestDelete_FreesPlayaName(t *testing.T) {
+	f := newDelFixture(t, false)
+	var name string
+	wantNoErr(t, f.pool.QueryRow(ctxT(t), "SELECT playa_name FROM core.person WHERE id = $1", [16]byte(f.target)).Scan(&name))
+	_, err := f.svc.Delete(f.ctx, f.target)
+	wantNoErr(t, err)
+	claimant := newPerson()
+	_, err = f.ppl.UpdateMe(asPerson(ctxT(t), claimant), people.ProfileInput{PlayaName: str(name)})
+	wantNoErr(t, err)
+	var got string
+	wantNoErr(t, f.pool.QueryRow(ctxT(t), "SELECT playa_name FROM core.person WHERE id = $1", [16]byte(claimant)).Scan(&got))
+	if got != name {
+		t.Error("the freed name was not saved")
+	}
 }

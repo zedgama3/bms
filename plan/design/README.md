@@ -39,6 +39,7 @@ The order follows dependencies: foundation first, then the core, then modules.
 | 19c | `boundaries.md` | Boundary cleanup: ownership drift out of `app`, the runtime cycles behind the `lazy*` adapters, `auditlog`, `regional` and `datarights` split out, the seam table and the guards that keep it so | Approved |
 | 19d | `auditlog.md` | reading, exporting and expiring the audit log (split from `audit`, boundaries decision 3) | Approved (via boundaries.md, 2026-10-31) |
 | 19e | `regional.md` | the regional's profile, public document, theme and logo (split from `settings`, boundaries decision 4) | Approved (via boundaries.md, 2026-10-31) |
+| 19f | `datarights.md` | a person's export, deletion and deletion requests across the core and every module (split from `people`, boundaries decision 5) | Approved (via boundaries.md, 2026-10-31) |
 | 20 | `module-registrations.md` | registrations module | Not started |
 | 21 | `module-incidents.md` | incidents module | Not started |
 | 22 | `module-after-reports.md` | after-burn reports module | Not started |

@@ -73,7 +73,7 @@ func (f *memberFixture) linkProviders(provs ...*memberProvider) {
 	for i, p := range provs {
 		ms = append(ms, people.MembershipProvider{Module: "volunteers" + string(rune('a'+i)), Provider: p})
 	}
-	wantNoErr(f.t, f.svc.Link(nil, nil, ms))
+	wantNoErr(f.t, f.svc.Link(nil, ms))
 }
 
 // deptViewer is a person holding perms only for the given departments.

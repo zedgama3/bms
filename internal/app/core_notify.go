@@ -2,17 +2,15 @@ package app
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
 
+	"github.com/zedgama3/bms/internal/core/datarights"
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/notify"
-	"github.com/zedgama3/bms/internal/core/people"
 	"github.com/zedgama3/bms/internal/lib/errs"
-	"github.com/zedgama3/bms/internal/model"
 )
 
 // notifyPart is core part 9: the e-mail outbox, the SMTP channel and the templates every
@@ -43,9 +41,9 @@ func declareNotify(a *assembly) error {
 }
 
 // notifyOwners are the core areas that hold a Notifier: identity (the password reset and the
-// superuser alert) and people (the deletion-request notice). Each is scoped in build, because
+// superuser alert) and datarights (the deletion-request notice). Each is scoped in build, because
 // Scoped fails once Run has started, and handed to its part, which is built next.
-var notifyOwners = []string{accountsOwner, peopleArea}
+var notifyOwners = []string{accountsOwner, datarights.Area}
 
 // accountsOwner is the owner identity's templates and messages carry: "identity" (the
 // settings and route area of identity is "accounts").
@@ -98,7 +96,7 @@ func buildNotify(_ context.Context, a *assembly) error {
 	for _, t := range []struct {
 		owner string
 		files fs.FS
-	}{{accountsOwner, identity.Templates}, {peopleArea, people.Templates}} {
+	}{{accountsOwner, identity.Templates}, {datarights.Area, datarights.Templates}} {
 		if err := svc.Register(t.owner, t.files); err != nil {
 			return fmt.Errorf("%s: templates of %s: %w", op, t.owner, err)
 		}
@@ -121,8 +119,8 @@ func buildNotify(_ context.Context, a *assembly) error {
 
 // linkNotify registers the template defaults of every built module that ships any. It runs
 // after module Build, so a module's templates are registered before Run starts; a bad
-// template fails the build with errs.Invalid naming the file. The outbox joins a person's
-// export and deletion in linkPeople, which calls people.Link once with every source.
+// template fails the build with errs.Invalid naming the file. The outbox is datarights'
+// notify source (Options.Outbox), passed as the service itself.
 func linkNotify(_ context.Context, a *assembly) error {
 	const op = "app.notify.link"
 	if a.notify == nil || a.plan == nil {
@@ -191,46 +189,4 @@ func (r *notifyRunner) stop(ctx context.Context) error {
 	case <-ctx.Done():
 		return errs.E(op, errs.KindOf(ctx.Err()), fmt.Errorf("the notify sender did not stop: %w", ctx.Err()))
 	}
-}
-
-// ---- the outbox in a person's export and deletion ----------------------------------------
-
-// notifyData adapts notify's ExportPerson and DeletePerson to people's PersonData (people
-// cannot import notify's twin types, and notify cannot import people).
-type notifyData struct{ svc personOutbox }
-
-// personOutbox is notify.Service's ExportPerson and DeletePerson.
-type personOutbox interface {
-	ExportPerson(ctx context.Context, person model.PersonID) (json.RawMessage, error)
-	DeletePerson(ctx context.Context, person model.PersonID) (int, error)
-}
-
-var (
-	_ personOutbox      = (*notify.Service)(nil)
-	_ people.PersonData = notifyData{}
-)
-
-// notifySource is the "notify" source of people's export and deletion: the outbox rows of
-// the person.
-func notifySource(svc personOutbox) people.Source {
-	return people.Source{Name: "notify", Exporter: notifyData{svc: svc}}
-}
-
-// ExportPerson is notify's export (the person's outbox rows, never a body or an address) as
-// people's Export.
-func (n notifyData) ExportPerson(ctx context.Context, person model.PersonID) (people.Export, error) {
-	raw, err := n.svc.ExportPerson(ctx, person)
-	if err != nil {
-		return people.Export{}, err //nolint:wrapcheck // people names the source
-	}
-	return people.Export{Data: raw}, nil
-}
-
-// DeletePerson deletes the person's outbox rows and counts them.
-func (n notifyData) DeletePerson(ctx context.Context, person model.PersonID) (people.ModuleDeletion, error) {
-	deleted, err := n.svc.DeletePerson(ctx, person)
-	if err != nil {
-		return people.ModuleDeletion{}, err //nolint:wrapcheck // people names the source
-	}
-	return people.ModuleDeletion{Deleted: deleted}, nil
 }

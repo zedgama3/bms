@@ -1,0 +1,464 @@
+{
+  "tags": [
+    {
+      "name": "datarights",
+      "description": "Export and deletion of everything held about a person, across the core and every module, and the deletion requests people file."
+    }
+  ],
+  "paths": {
+    "/me/export": {
+      "get": {
+        "tags": [
+          "datarights"
+        ],
+        "operationId": "datarightsExportMe",
+        "summary": "Download everything bms holds about you as one JSON attachment (bms-export-<person>.json). Audited; once every ten minutes (429 with Retry-After).",
+        "responses": {
+          "200": {
+            "description": "The export document, format 1.",
+            "headers": {
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/requests": {
+      "get": {
+        "tags": [
+          "datarights"
+        ],
+        "operationId": "datarightsMyRequests",
+        "summary": "Your own deletion requests, newest first.",
+        "responses": {
+          "200": {
+            "description": "Requests.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatarightsRequestList"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "datarights"
+        ],
+        "operationId": "datarightsRequestDeletion",
+        "summary": "Ask for your data to be deleted. A holder of people.data.delete fulfils or declines it. 409 (field request, code duplicate) while one is open; 400 note too_long.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DatarightsRequestInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Filed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatarightsRequest"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/requests/{request}/withdraw": {
+      "post": {
+        "tags": [
+          "datarights"
+        ],
+        "operationId": "datarightsWithdrawRequest",
+        "summary": "Withdraw your own open request. 404 when it is not yours; 409 (field request, code status) when it is not open.",
+        "parameters": [
+          {
+            "name": "request",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Withdrawn."
+          }
+        }
+      }
+    },
+    "/requests": {
+      "get": {
+        "tags": [
+          "datarights"
+        ],
+        "operationId": "datarightsListRequests",
+        "summary": "Deletion requests by status (default open), oldest first. Needs people.data.delete.",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "open",
+                "withdrawn",
+                "declined"
+              ]
+            },
+            "description": "Default open."
+          },
+          {
+            "name": "person",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            },
+            "description": "Only this person's requests."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Requests.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatarightsRequestList"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/requests/{request}/decline": {
+      "post": {
+        "tags": [
+          "datarights"
+        ],
+        "operationId": "datarightsDeclineRequest",
+        "summary": "Decline an open request with a note for the person. Needs people.data.delete. 409 (field request, code status) when it is not open.",
+        "parameters": [
+          {
+            "name": "request",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DatarightsDecisionInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Declined.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatarightsRequest"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/requests/{request}/fulfil": {
+      "post": {
+        "tags": [
+          "datarights"
+        ],
+        "operationId": "datarightsFulfilRequest",
+        "summary": "Delete the request's person as DELETE /people/{person} does. Needs people.data.delete. 409 last_access_admin, in_use, status; 400 self.",
+        "parameters": [
+          {
+            "name": "request",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "What was deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatarightsDeletionReport"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/people/{person}/export": {
+      "get": {
+        "tags": [
+          "datarights"
+        ],
+        "operationId": "datarightsExport",
+        "summary": "Download everything bms holds about a person as one JSON attachment. Needs people.data.export. Audited.",
+        "parameters": [
+          {
+            "name": "person",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The export document, format 1.",
+            "headers": {
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/people/{person}": {
+      "delete": {
+        "tags": [
+          "datarights"
+        ],
+        "operationId": "datarightsDelete",
+        "summary": "Delete a person and everything about them across identity, access and every module, in one transaction. Needs people.data.delete. 400 self; 403 for a superuser account; 404; 409 last_access_admin or in_use. Audit rows stay and are counted.",
+        "parameters": [
+          {
+            "name": "person",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "What was deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatarightsDeletionReport"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "DatarightsRequest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "person_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "delete"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "withdrawn",
+              "declined"
+            ]
+          },
+          "note": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "decided_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "decided_by": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "decision_note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "person_id",
+          "kind",
+          "status",
+          "note",
+          "created_at",
+          "decision_note"
+        ]
+      },
+      "DatarightsRequestList": {
+        "type": "object",
+        "properties": {
+          "requests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DatarightsRequest"
+            }
+          }
+        },
+        "required": [
+          "requests"
+        ]
+      },
+      "DatarightsRequestInput": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "delete"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "DatarightsDecisionInput": {
+        "type": "object",
+        "properties": {
+          "note": {
+            "type": "string",
+            "maxLength": 500
+          }
+        }
+      },
+      "DatarightsDeletionReport": {
+        "type": "object",
+        "properties": {
+          "person": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "people": {
+            "type": "integer"
+          },
+          "identity": {
+            "type": "integer"
+          },
+          "access": {
+            "type": "integer"
+          },
+          "modules": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "deleted": {
+                  "type": "integer"
+                },
+                "anonymized": {
+                  "type": "integer"
+                },
+                "kept": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DatarightsKept"
+                  }
+                }
+              },
+              "required": [
+                "deleted",
+                "anonymized",
+                "kept"
+              ]
+            }
+          },
+          "kept": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DatarightsKept"
+            }
+          }
+        },
+        "required": [
+          "person",
+          "people",
+          "identity",
+          "access",
+          "modules",
+          "kept"
+        ]
+      },
+      "DatarightsKept": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "count"
+        ]
+      }
+    }
+  }
+}

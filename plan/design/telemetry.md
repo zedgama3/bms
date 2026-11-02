@@ -1311,8 +1311,8 @@ Browser telemetry uses two routes because the two kinds of data have different s
 | `bms.identity.sessions_rejected` | counter, `{request}` | `reason` = `malformed`, `expired`, `revoked`, `disabled`, `unknown` | `identity` |
 | `bms.identity.rate_limited` | counter, `{request}` | `bucket` = `address`, `email`, `reset_address` or `reset_email` (the last two for password-reset requests; identity.md decision 22, D40) | `identity` |
 | `bms.authz.decisions` | counter, `{decision}` | `outcome` = `allowed`, `denied`, `superuser`, `unauthenticated`, `error` | `authz` |
-| `bms.people.exports` | counter, `{export}` | `outcome` (a token: `ok` or the failure's kind) | `people` |
-| `bms.people.deletions` | counter, `{deletion}` | `outcome` (a token: `ok` or the failure's kind) | `people` |
+| `bms.datarights.exports` | counter, `{export}` | `outcome` (a token: `ok` or the failure's kind) | `datarights` (was `bms.people.exports`, boundaries step 12) |
+| `bms.datarights.deletions` | counter, `{deletion}` | `outcome` (a token: `ok` or the failure's kind) | `datarights` (was `bms.people.deletions`, boundaries step 12) |
 | `bms.events.setup` | counter, `{setup}` | `module` (the module name), `outcome` (a token: `ok` or the failure's kind) | `events` |
 | `bms.people.sections` | counter, `{section}` | `module` (the module name), `outcome` (a token: `ok` or the failure's kind) | `people` |
 | `bms.notify.enqueued` | counter, `{message}` | `owner` (the owner's name, a token) | `notify` (after commit) |
@@ -1615,6 +1615,8 @@ asserts `!c.Contains(marker)`; invented people only):
 violation (Proposed change 1).
 
 ## Amendments
+
+Amendment 2026-11-01 (boundaries step 12): the export and deletion counters are `bms.datarights.exports` and `bms.datarights.deletions` (scope `datarights`; same attributes), moved with the data-rights code from `people`.
 
 Amendment T1 (Implemented 2026-10-30; Approved 2026-10-28, D54), the amendment notes of 2026-10-17 to 2026-10-23 and the accepted implementation deviations of 2026-10-29 are folded into the text above. Their narratives, reasons and superseded wording are in `plan/design/history/telemetry.md`; the headings T1.1 to T1.9 cited in this spec are the ones in that file.
 

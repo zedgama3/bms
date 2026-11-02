@@ -314,9 +314,7 @@ func TestNamesOf_DeletedPersonOmitted(t *testing.T) {
 	r := newIRig(t, false)
 	r.link()
 	p := r.insertPerson(seed{Playa: "Dusty Ember"})
-	_, ctx := r.admin(permDelete)
-	_, err := r.svc.Delete(ctx, p)
-	wantNoErr(t, err)
+	r.deletePerson(p)
 	got, err := r.svc.NamesOf(ctxT(t), []model.PersonID{p})
 	wantNoErr(t, err)
 	if len(got) != 0 {
@@ -480,9 +478,7 @@ func TestConsentOf_UnknownAndDeleted_False(t *testing.T) {
 	p := r.insertPerson(seed{Playa: "Dusty Ember"})
 	_, err = r.svc.SetConsent(asPerson(ctxT(t), p), p, "volunteers.share-contact", true)
 	wantNoErr(t, err)
-	_, ctx := r.admin(permDelete)
-	_, err = r.svc.Delete(ctx, p)
-	wantNoErr(t, err)
+	r.deletePerson(p)
 	ok, err = r.svc.ConsentOf(ctxT(t), p, "volunteers.share-contact")
 	wantNoErr(t, err)
 	if ok {

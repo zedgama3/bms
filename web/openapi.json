@@ -917,6 +917,169 @@
         ],
         "type": "object"
       },
+      "DatarightsDecisionInput": {
+        "properties": {
+          "note": {
+            "maxLength": 500,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "DatarightsDeletionReport": {
+        "properties": {
+          "access": {
+            "type": "integer"
+          },
+          "identity": {
+            "type": "integer"
+          },
+          "kept": {
+            "items": {
+              "$ref": "#/components/schemas/DatarightsKept"
+            },
+            "type": "array"
+          },
+          "modules": {
+            "additionalProperties": {
+              "properties": {
+                "anonymized": {
+                  "type": "integer"
+                },
+                "deleted": {
+                  "type": "integer"
+                },
+                "kept": {
+                  "items": {
+                    "$ref": "#/components/schemas/DatarightsKept"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "deleted",
+                "anonymized",
+                "kept"
+              ],
+              "type": "object"
+            },
+            "type": "object"
+          },
+          "people": {
+            "type": "integer"
+          },
+          "person": {
+            "$ref": "#/components/schemas/ID"
+          }
+        },
+        "required": [
+          "person",
+          "people",
+          "identity",
+          "access",
+          "modules",
+          "kept"
+        ],
+        "type": "object"
+      },
+      "DatarightsKept": {
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "kind": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "count"
+        ],
+        "type": "object"
+      },
+      "DatarightsRequest": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "decided_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "decided_by": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "decision_note": {
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "kind": {
+            "enum": [
+              "delete"
+            ],
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "person_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "status": {
+            "enum": [
+              "open",
+              "withdrawn",
+              "declined"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "person_id",
+          "kind",
+          "status",
+          "note",
+          "created_at",
+          "decision_note"
+        ],
+        "type": "object"
+      },
+      "DatarightsRequestInput": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "delete"
+            ],
+            "type": "string"
+          },
+          "note": {
+            "maxLength": 500,
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "type": "object"
+      },
+      "DatarightsRequestList": {
+        "properties": {
+          "requests": {
+            "items": {
+              "$ref": "#/components/schemas/DatarightsRequest"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "requests"
+        ],
+        "type": "object"
+      },
       "Department": {
         "properties": {
           "archived": {
@@ -1988,86 +2151,6 @@
         ],
         "type": "object"
       },
-      "PeopleDecisionInput": {
-        "properties": {
-          "note": {
-            "maxLength": 500,
-            "type": "string"
-          }
-        },
-        "type": "object"
-      },
-      "PeopleDeletionReport": {
-        "properties": {
-          "access": {
-            "type": "integer"
-          },
-          "identity": {
-            "type": "integer"
-          },
-          "kept": {
-            "items": {
-              "$ref": "#/components/schemas/PeopleKept"
-            },
-            "type": "array"
-          },
-          "modules": {
-            "additionalProperties": {
-              "properties": {
-                "anonymized": {
-                  "type": "integer"
-                },
-                "deleted": {
-                  "type": "integer"
-                },
-                "kept": {
-                  "items": {
-                    "$ref": "#/components/schemas/PeopleKept"
-                  },
-                  "type": "array"
-                }
-              },
-              "required": [
-                "deleted",
-                "anonymized",
-                "kept"
-              ],
-              "type": "object"
-            },
-            "type": "object"
-          },
-          "people": {
-            "type": "integer"
-          },
-          "person": {
-            "$ref": "#/components/schemas/ID"
-          }
-        },
-        "required": [
-          "person",
-          "people",
-          "identity",
-          "access",
-          "modules",
-          "kept"
-        ],
-        "type": "object"
-      },
-      "PeopleKept": {
-        "properties": {
-          "count": {
-            "type": "integer"
-          },
-          "kind": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "kind",
-          "count"
-        ],
-        "type": "object"
-      },
       "PeopleLinkInput": {
         "properties": {
           "email": {
@@ -2326,89 +2409,6 @@
             ]
           }
         },
-        "type": "object"
-      },
-      "PeopleRequest": {
-        "properties": {
-          "created_at": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "decided_at": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "decided_by": {
-            "$ref": "#/components/schemas/ID"
-          },
-          "decision_note": {
-            "type": "string"
-          },
-          "id": {
-            "$ref": "#/components/schemas/ID"
-          },
-          "kind": {
-            "enum": [
-              "delete"
-            ],
-            "type": "string"
-          },
-          "note": {
-            "type": "string"
-          },
-          "person_id": {
-            "$ref": "#/components/schemas/ID"
-          },
-          "status": {
-            "enum": [
-              "open",
-              "withdrawn",
-              "declined"
-            ],
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "person_id",
-          "kind",
-          "status",
-          "note",
-          "created_at",
-          "decision_note"
-        ],
-        "type": "object"
-      },
-      "PeopleRequestInput": {
-        "properties": {
-          "kind": {
-            "enum": [
-              "delete"
-            ],
-            "type": "string"
-          },
-          "note": {
-            "maxLength": 500,
-            "type": "string"
-          }
-        },
-        "required": [
-          "kind"
-        ],
-        "type": "object"
-      },
-      "PeopleRequestList": {
-        "properties": {
-          "requests": {
-            "items": {
-              "$ref": "#/components/schemas/PeopleRequest"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "requests"
-        ],
         "type": "object"
       },
       "PeopleSection": {
@@ -5104,6 +5104,383 @@
         ]
       }
     },
+    "/api/datarights/me/export": {
+      "get": {
+        "operationId": "datarightsExportMe",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The export document, format 1.",
+            "headers": {
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Download everything bms holds about you as one JSON attachment (bms-export-\u003cperson\u003e.json). Audited; once every ten minutes (429 with Retry-After).",
+        "tags": [
+          "datarights"
+        ]
+      }
+    },
+    "/api/datarights/me/requests": {
+      "get": {
+        "operationId": "datarightsMyRequests",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatarightsRequestList"
+                }
+              }
+            },
+            "description": "Requests."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Your own deletion requests, newest first.",
+        "tags": [
+          "datarights"
+        ]
+      },
+      "post": {
+        "operationId": "datarightsRequestDeletion",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DatarightsRequestInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatarightsRequest"
+                }
+              }
+            },
+            "description": "Filed."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Ask for your data to be deleted. A holder of people.data.delete fulfils or declines it. 409 (field request, code duplicate) while one is open; 400 note too_long.",
+        "tags": [
+          "datarights"
+        ]
+      }
+    },
+    "/api/datarights/me/requests/{request}/withdraw": {
+      "post": {
+        "operationId": "datarightsWithdrawRequest",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Withdrawn."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Withdraw your own open request. 404 when it is not yours; 409 (field request, code status) when it is not open.",
+        "tags": [
+          "datarights"
+        ]
+      }
+    },
+    "/api/datarights/people/{person}": {
+      "delete": {
+        "operationId": "datarightsDelete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "person",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatarightsDeletionReport"
+                }
+              }
+            },
+            "description": "What was deleted."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Delete a person and everything about them across identity, access and every module, in one transaction. Needs people.data.delete. 400 self; 403 for a superuser account; 404; 409 last_access_admin or in_use. Audit rows stay and are counted.",
+        "tags": [
+          "datarights"
+        ]
+      }
+    },
+    "/api/datarights/people/{person}/export": {
+      "get": {
+        "operationId": "datarightsExport",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "person",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The export document, format 1.",
+            "headers": {
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Download everything bms holds about a person as one JSON attachment. Needs people.data.export. Audited.",
+        "tags": [
+          "datarights"
+        ]
+      }
+    },
+    "/api/datarights/requests": {
+      "get": {
+        "operationId": "datarightsListRequests",
+        "parameters": [
+          {
+            "description": "Default open.",
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "enum": [
+                "open",
+                "withdrawn",
+                "declined"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only this person's requests.",
+            "in": "query",
+            "name": "person",
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatarightsRequestList"
+                }
+              }
+            },
+            "description": "Requests."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Deletion requests by status (default open), oldest first. Needs people.data.delete.",
+        "tags": [
+          "datarights"
+        ]
+      }
+    },
+    "/api/datarights/requests/{request}/decline": {
+      "post": {
+        "operationId": "datarightsDeclineRequest",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DatarightsDecisionInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatarightsRequest"
+                }
+              }
+            },
+            "description": "Declined."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Decline an open request with a note for the person. Needs people.data.delete. 409 (field request, code status) when it is not open.",
+        "tags": [
+          "datarights"
+        ]
+      }
+    },
+    "/api/datarights/requests/{request}/fulfil": {
+      "post": {
+        "operationId": "datarightsFulfilRequest",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatarightsDeletionReport"
+                }
+              }
+            },
+            "description": "What was deleted."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An error. The body is a Problem."
+          }
+        },
+        "summary": "Delete the request's person as DELETE /people/{person} does. Needs people.data.delete. 409 last_access_admin, in_use, status; 400 self.",
+        "tags": [
+          "datarights"
+        ]
+      }
+    },
     "/api/departments/": {
       "get": {
         "operationId": "departmentsList",
@@ -6970,148 +7347,6 @@
         ]
       }
     },
-    "/api/people/me/export": {
-      "get": {
-        "operationId": "peopleExportMe",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            },
-            "description": "The export document, format 1.",
-            "headers": {
-              "Content-Disposition": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "default": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "An error. The body is a Problem."
-          }
-        },
-        "summary": "Download everything bms holds about you as one JSON attachment (bms-export-\u003cperson\u003e.json). Audited; once every ten minutes (429 with Retry-After).",
-        "tags": [
-          "people"
-        ]
-      }
-    },
-    "/api/people/me/requests": {
-      "get": {
-        "operationId": "peopleMyRequests",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PeopleRequestList"
-                }
-              }
-            },
-            "description": "Requests."
-          },
-          "default": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "An error. The body is a Problem."
-          }
-        },
-        "summary": "Your own deletion requests, newest first.",
-        "tags": [
-          "people"
-        ]
-      },
-      "post": {
-        "operationId": "peopleRequestDeletion",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PeopleRequestInput"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PeopleRequest"
-                }
-              }
-            },
-            "description": "Filed."
-          },
-          "default": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "An error. The body is a Problem."
-          }
-        },
-        "summary": "Ask for your data to be deleted. A holder of people.data.delete fulfils or declines it. 409 (field request, code duplicate) while one is open; 400 note too_long.",
-        "tags": [
-          "people"
-        ]
-      }
-    },
-    "/api/people/me/requests/{request}/withdraw": {
-      "post": {
-        "operationId": "peopleWithdrawRequest",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "request",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/ID"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Withdrawn."
-          },
-          "default": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "An error. The body is a Problem."
-          }
-        },
-        "summary": "Withdraw your own open request. 404 when it is not yours; 409 (field request, code status) when it is not open.",
-        "tags": [
-          "people"
-        ]
-      }
-    },
     "/api/people/names": {
       "get": {
         "operationId": "peopleNames",
@@ -7148,152 +7383,6 @@
           }
         },
         "summary": "Playa names of the given people, for the access and audit screens. Any signed-in person. Unknown IDs are omitted. 400 ids too_many {max} over 200.",
-        "tags": [
-          "people"
-        ]
-      }
-    },
-    "/api/people/requests": {
-      "get": {
-        "operationId": "peopleListRequests",
-        "parameters": [
-          {
-            "description": "Default open.",
-            "in": "query",
-            "name": "status",
-            "schema": {
-              "enum": [
-                "open",
-                "withdrawn",
-                "declined"
-              ],
-              "type": "string"
-            }
-          },
-          {
-            "description": "Only this person's requests.",
-            "in": "query",
-            "name": "person",
-            "schema": {
-              "$ref": "#/components/schemas/ID"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PeopleRequestList"
-                }
-              }
-            },
-            "description": "Requests."
-          },
-          "default": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "An error. The body is a Problem."
-          }
-        },
-        "summary": "Deletion requests by status (default open), oldest first. Needs people.data.delete.",
-        "tags": [
-          "people"
-        ]
-      }
-    },
-    "/api/people/requests/{request}/decline": {
-      "post": {
-        "operationId": "peopleDeclineRequest",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "request",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/ID"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PeopleDecisionInput"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PeopleRequest"
-                }
-              }
-            },
-            "description": "Declined."
-          },
-          "default": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "An error. The body is a Problem."
-          }
-        },
-        "summary": "Decline an open request with a note for the person. Needs people.data.delete. 409 (field request, code status) when it is not open.",
-        "tags": [
-          "people"
-        ]
-      }
-    },
-    "/api/people/requests/{request}/fulfil": {
-      "post": {
-        "operationId": "peopleFulfilRequest",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "request",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/ID"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PeopleDeletionReport"
-                }
-              }
-            },
-            "description": "What was deleted."
-          },
-          "default": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "An error. The body is a Problem."
-          }
-        },
-        "summary": "Delete the request's person as DELETE /{person} does. Needs people.data.delete. 409 last_access_admin, in_use, status; 400 self.",
         "tags": [
           "people"
         ]
@@ -7351,45 +7440,6 @@
       }
     },
     "/api/people/{person}": {
-      "delete": {
-        "operationId": "peopleDelete",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "person",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/ID"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PeopleDeletionReport"
-                }
-              }
-            },
-            "description": "What was deleted."
-          },
-          "default": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "An error. The body is a Problem."
-          }
-        },
-        "summary": "Delete a person and everything about them across identity, access and every module, in one transaction. Needs people.data.delete. 400 self; 403 for a superuser account; 404; 409 last_access_admin or in_use. Audit rows stay and are counted.",
-        "tags": [
-          "people"
-        ]
-      },
       "get": {
         "operationId": "peopleGet",
         "parameters": [
@@ -7684,54 +7734,6 @@
           }
         },
         "summary": "Replace a person's emergency contact. Needs people.profiles.manage (or your own ID). 404 when it is not theirs.",
-        "tags": [
-          "people"
-        ]
-      }
-    },
-    "/api/people/{person}/export": {
-      "get": {
-        "operationId": "peopleExport",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "person",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/ID"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            },
-            "description": "The export document, format 1.",
-            "headers": {
-              "Content-Disposition": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "default": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "An error. The body is a Problem."
-          }
-        },
-        "summary": "Download everything bms holds about a person as one JSON attachment. Needs people.data.export. Audited.",
         "tags": [
           "people"
         ]
@@ -9802,8 +9804,12 @@
       "name": "accounts"
     },
     {
-      "description": "Who each participant is: profiles, emergency contacts, consents, search, and export or deletion of a person's data.",
+      "description": "Who each participant is: profiles, emergency contacts, consents and search.",
       "name": "people"
+    },
+    {
+      "description": "Export and deletion of everything held about a person, across the core and every module, and the deletion requests people file.",
+      "name": "datarights"
     }
   ]
 }

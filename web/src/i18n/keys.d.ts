@@ -296,6 +296,8 @@ export interface GeneratedKeys {
   "core.audit.superuser": true;
   "core.audit.title": true;
   "core.audit.to": true;
+  "core.datarights.template.deletion-requested.title": true;
+  "core.datarights.title": true;
   "core.demo.account.access-admin": true;
   "core.demo.account.access-admin.description": true;
   "core.demo.account.account-admin": true;
@@ -1022,6 +1024,11 @@ export interface GeneratedKeys {
   "module.audit.title": true;
   "module.core.permission.modules.read.title": true;
   "module.core.title": true;
+  "module.datarights.field.duplicate": true;
+  "module.datarights.field.in_use": true;
+  "module.datarights.field.last_access_admin": true;
+  "module.datarights.field.self": true;
+  "module.datarights.field.status": true;
   "module.departments.field.archived": true;
   "module.departments.field.control_chars": true;
   "module.departments.field.not_archived": true;
@@ -1070,14 +1077,9 @@ export interface GeneratedKeys {
   "module.notify.permission.templates.manage.title": true;
   "module.notify.title": true;
   "module.people.field.control_chars": true;
-  "module.people.field.duplicate": true;
   "module.people.field.has_account": true;
   "module.people.field.hidden": true;
-  "module.people.field.in_use": true;
-  "module.people.field.last_access_admin": true;
   "module.people.field.permanent": true;
-  "module.people.field.self": true;
-  "module.people.field.status": true;
   "module.people.field.superuser": true;
   "module.people.field.taken": true;
   "module.people.field.too_many": true;

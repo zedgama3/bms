@@ -12,24 +12,10 @@ import (
 
 type (
 	contact struct{}
-	request struct{}
 )
 
 // ContactID identifies an emergency contact. people re-exports it under the same name.
 type ContactID = model.ID[contact]
-
-// RequestID identifies a data request. people re-exports it under the same name.
-type RequestID = model.ID[request]
-
-// The request statuses, as core.data_request.status holds them.
-const (
-	StatusOpen      = "open"
-	StatusWithdrawn = "withdrawn"
-	StatusDeclined  = "declined"
-)
-
-// KindDelete is the only core.data_request.kind in M2.
-const KindDelete = "delete"
 
 // Person is a row of core.person. ContactEmail is stored as entered; "" is NULL. A zero
 // CreatedBy is NULL.
@@ -74,19 +60,6 @@ type Consent struct {
 	Granted    bool
 	RecordedBy model.PersonID
 	ChangedAt  time.Time
-}
-
-// Request is a row of core.data_request. A zero DecidedAt and DecidedBy are NULL.
-type Request struct {
-	ID           RequestID
-	Person       model.PersonID
-	Kind         string
-	Status       string
-	Note         string
-	CreatedAt    time.Time
-	DecidedAt    time.Time
-	DecidedBy    model.PersonID
-	DecisionNote string
 }
 
 // SearchQuery is one search. Q is the text as the person typed it, trimmed; the SQL
