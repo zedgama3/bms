@@ -61,28 +61,28 @@ func TestPing_ContextDone_ReturnsCanceled(t *testing.T) {
 	}
 }
 
-func TestStart_Healthy_ReturnsNil(t *testing.T) {
+func TestProbe_Healthy_ReturnsNil(t *testing.T) {
 	r := newRig(t)
-	wantNoErr(t, r.svc.Start(ctxT(t)))
+	wantNoErr(t, r.svc.Probe(ctxT(t)))
 	if n := r.store.count("ping"); n == 0 {
 		t.Error("Start did not probe the store")
 	}
 }
 
-func TestStart_PublicBucket_ReturnsInvalid(t *testing.T) { // F54, decision 20
+func TestProbe_PublicBucket_ReturnsInvalid(t *testing.T) { // F54, decision 20
 	r := newRig(t)
 	r.store.fail("ping", publicStoreErr())
-	err := r.svc.Start(ctxT(t))
+	err := r.svc.Probe(ctxT(t))
 	wantKind(t, err, errs.Invalid)
 	if !errors.Is(err, objects.ErrPublic) {
 		t.Errorf("err %v does not wrap objects.ErrPublic", err)
 	}
 }
 
-func TestStart_StoreUnreachable_LogsAndContinues(t *testing.T) { // F55
+func TestProbe_StoreUnreachable_LogsAndContinues(t *testing.T) { // F55
 	r := newRig(t)
 	r.store.down()
-	wantNoErr(t, r.svc.Start(ctxT(t)))
+	wantNoErr(t, r.svc.Probe(ctxT(t)))
 	logged := false
 	for _, rec := range r.cap.Records() {
 		if rec.Level >= 8 { // slog.LevelError
@@ -94,20 +94,20 @@ func TestStart_StoreUnreachable_LogsAndContinues(t *testing.T) { // F55
 	}
 }
 
-func TestStart_TempDirUnwritable_LogsAndContinues(t *testing.T) { // F55
+func TestProbe_TempDirUnwritable_LogsAndContinues(t *testing.T) { // F55
 	r := newRig(t, withTempDir(filepath.Join(t.TempDir(), "gone", "away")))
-	wantNoErr(t, r.svc.Start(ctxT(t)))
+	wantNoErr(t, r.svc.Probe(ctxT(t)))
 }
 
-func TestStart_Forbidden_LogsAndContinues(t *testing.T) { // F55: forbidden is not a positive public finding
+func TestProbe_Forbidden_LogsAndContinues(t *testing.T) { // F55: forbidden is not a positive public finding
 	r := newRig(t)
 	r.store.fail("ping", errs.E("test.Ping", errs.Permission, errors.New("403")))
-	wantNoErr(t, r.svc.Start(ctxT(t)))
+	wantNoErr(t, r.svc.Probe(ctxT(t)))
 }
 
-func TestStart_WritesNoRow(t *testing.T) {
+func TestProbe_WritesNoRow(t *testing.T) {
 	r := newRig(t)
-	wantNoErr(t, r.svc.Start(ctxT(t)))
+	wantNoErr(t, r.svc.Probe(ctxT(t)))
 	for _, c := range r.fake.Calls() {
 		u := strings.ToUpper(c.SQL)
 		if strings.Contains(u, "INSERT") || strings.Contains(u, "UPDATE") || strings.Contains(u, "DELETE") {

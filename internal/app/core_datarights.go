@@ -56,9 +56,9 @@ func buildDatarights(_ context.Context, a *assembly) error {
 		a.auditlog == nil || a.files == nil || a.notify == nil || a.people == nil {
 		return errs.E(op, errs.Internal, errors.New("datarights is built after audit, authz, identity, notify, auditlog, files and people"))
 	}
-	notifier, ok := a.notifiers[datarights.Area]
-	if !ok {
-		return errs.E(op, errs.Internal, errors.New("datarights is built after notify, which scopes its Notifier"))
+	notifier, err := a.notify.Scoped(datarights.Area)
+	if err != nil {
+		return fmt.Errorf("%s: notify scope: %w", op, err)
 	}
 	rec, err := a.deps.audit.Scoped(datarights.Area)
 	if err != nil {

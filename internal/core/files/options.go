@@ -7,6 +7,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/audit"
 	"github.com/zedgama3/bms/internal/core/authz"
 	"github.com/zedgama3/bms/internal/core/db"
+	"github.com/zedgama3/bms/internal/core/jobs"
 	"github.com/zedgama3/bms/internal/core/objects"
 	"github.com/zedgama3/bms/internal/core/settings"
 	"github.com/zedgama3/bms/internal/core/telemetry"
@@ -35,11 +36,14 @@ type Options struct {
 	// Zero means no ceiling. It is a constant of the deployment, not a setting, so a
 	// settings-admin cannot lift it (demo.FileCeiling in demo mode).
 	Ceiling Policy
+	// Jobs is a Registrar scoped "files": required. Start registers files.reap and
+	// files.sweep-orphans with it.
+	Jobs jobs.Registrar
 }
 
 // Validate fails errs.Invalid joining one FieldError per problem: a nil dependency (fields
 // files.db, files.clock, files.logger, files.tracer, files.audit, files.actor,
-// files.objects, files.settings), an empty TempDir (files.temp_dir) or a negative field of
+// files.objects, files.settings, files.jobs), an empty TempDir (files.temp_dir) or a negative field of
 // Ceiling (files.ceiling).
 func (o Options) Validate() error {
 	v := validate.Errors{Op: "files.Options.Validate"}
@@ -55,6 +59,7 @@ func (o Options) Validate() error {
 		{"files.actor", o.Actor == nil},
 		{"files.objects", o.Objects == nil},
 		{"files.settings", o.Settings == nil},
+		{"files.jobs", o.Jobs == nil},
 	} {
 		if d.isNil {
 			v.Addf(d.field, validate.CodeRequired, "must be set")

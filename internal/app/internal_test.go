@@ -239,8 +239,8 @@ func TestAssembly_CorePermsStartWithModulesRead(t *testing.T) {
 
 // ---- F28: parts and commands ----
 
-// coreOrder is the order in which the core's services plug in (app.md "How later core
-// services plug in"); coreParts must be a subsequence of it.
+// coreOrder is the order in which the core's services plug in (app.md "The build
+// order"); coreParts must be a subsequence of it.
 var coreOrder = []string{"audit", "authz", "settings", "jobs", "auditlog", "departments", "events", "files", "regional", "notify", "identity", "people", "datarights", "demo"}
 
 func TestParts_OrderAndNames_Pinned(t *testing.T) {
@@ -1034,7 +1034,7 @@ func (f schemaFunc) CheckSchema(ctx context.Context, name string, files fs.FS) e
 	return f(ctx, name, files)
 }
 
-func TestImporter_StartCreatesSpoolDirAndStopWaits(t *testing.T) {
+func TestAuditRunnable_StartCreatesSpoolDirAndStopWaits(t *testing.T) {
 	a := builtCore(t)
 	r := a.runnables[0]
 	ctx := context.Background()
@@ -1056,14 +1056,18 @@ func TestImporter_StartCreatesSpoolDirAndStopWaits(t *testing.T) {
 	}
 }
 
-func TestImporter_StartWithUnusableDataDir_ReturnsInvalid(t *testing.T) {
+func TestAuditRunnable_StartWithUnusableDataDir_ReturnsInvalid(t *testing.T) {
 	a := builtCore(t)
 	blocker := filepath.Join(t.TempDir(), "file")
 	if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	im := &importer{log: a.deps.audit, logger: a.logger, dir: filepath.Join(blocker, "audit", "spool")}
-	if err := im.start(context.Background()); !errs.Is(err, errs.Invalid) {
+	rn, err := newRunner("audit importer", a.deps.audit.Run, nil, a.logger)
+	if err != nil {
+		t.Fatalf("newRunner: %v", err)
+	}
+	r := auditRunnable(rn, filepath.Join(blocker, "audit", "spool"))
+	if err := r.start(context.Background()); !errs.Is(err, errs.Invalid) {
 		t.Fatalf("start under a regular file: err = %v, want Invalid", err)
 	}
 }

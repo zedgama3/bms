@@ -40,7 +40,7 @@ const (
 	// MaxFilesPerRecordCeiling is the largest files.max_per_record.
 	MaxFilesPerRecordCeiling = 200
 
-	// JobReap and JobSweepOrphans are the two jobs app registers through the jobs runner.
+	// JobReap and JobSweepOrphans are the two jobs Start registers through Options.Jobs.
 	JobReap         = "files.reap"
 	ReapEvery       = time.Hour
 	JobSweepOrphans = "files.sweep-orphans"

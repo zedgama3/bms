@@ -14,7 +14,7 @@ import (
 )
 
 // peoplePart is core part 5: profiles, contacts, consents, search and linking (people.md;
-// app.md "How later core services plug in", row 5). It is built after authz, whose service
+// app.md "The build order"). It is built after authz, whose service
 // it takes. The export and deletion of a person across the core and every module are
 // datarights', which takes people as one more source (boundaries step 12).
 var peoplePart = part{

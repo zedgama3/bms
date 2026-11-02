@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/zedgama3/bms/internal/config"
-	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/lib/errs"
 	"github.com/zedgama3/bms/internal/lib/validate"
 )
@@ -108,9 +107,11 @@ func runServe(ctx context.Context, p *process) int {
 	a.loadUI(ctx)
 	a.logUsage(ctx)
 
-	opts, err := a.apiOptions(a.version, a.pool, func(ctx context.Context) ([]db.Status, error) {
-		return a.migrator.Status(ctx, a.setsFor(a.plan.Order()))
-	})
+	schema, err := newSchemaStatus(a.migrator, a.setsFor(a.plan.Order()))
+	if err != nil {
+		return bail(err, ExitFailure)
+	}
+	opts, err := a.apiOptions(a.version, a.pool, schema.Status)
 	if err != nil {
 		return bail(err, ExitFailure)
 	}

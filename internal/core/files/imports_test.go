@@ -37,7 +37,7 @@ func importsOf(t *testing.T, dir string) map[string][]string {
 const mod = "github.com/zedgama3/bms/internal/"
 
 func TestImports_FilesAndObjectsRespectTheLayers(t *testing.T) {
-	forbidFiles := []string{"core/identity", "core/module", "core/jobs", "api", "app", "config", "modules/", "core/objects/disk", "core/objects/s3", "core/people"}
+	forbidFiles := []string{"core/identity", "core/module", "api", "app", "config", "modules/", "core/objects/disk", "core/objects/s3", "core/people"}
 	forbidObjects := []string{"core/files", "core/db", "core/audit", "core/authz", "core/identity", "core/settings", "core/module", "core/jobs", "api", "app", "config", "modules/"}
 	check := func(dir string, forbid []string, skipSub ...string) {
 		for imp, srcs := range importsOf(t, dir) {

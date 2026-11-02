@@ -6,19 +6,20 @@ import (
 	"github.com/zedgama3/bms/internal/lib/errs"
 )
 
-// boundaries.md step 8: identity and datarights take their Notifier from notify's scoped set, so
-// they are built after notify. A missing set is a wiring bug (Internal), not a nil panic.
-func TestBuildIdentity_NotifiersNil_ReturnsInternal(t *testing.T) {
+// boundaries.md step 13: identity and datarights scope their own Notifier from the notify
+// service, so they are built after notify. A missing service is a wiring bug (Internal), not a
+// nil panic.
+func TestBuildIdentity_NotifyNil_ReturnsInternal(t *testing.T) {
 	a := builtCore(t)
-	a.notifiers = nil
+	a.notify = nil
 	if err := buildIdentity(t.Context(), a); !errs.Is(err, errs.Internal) {
 		t.Errorf("buildIdentity err = %v, want Internal", err)
 	}
 }
 
-func TestBuildDatarights_NotifiersNil_ReturnsInternal(t *testing.T) {
+func TestBuildDatarights_NotifyNil_ReturnsInternal(t *testing.T) {
 	a := builtCore(t)
-	a.notifiers = nil
+	a.notify = nil
 	if err := buildDatarights(t.Context(), a); !errs.Is(err, errs.Internal) {
 		t.Errorf("buildDatarights err = %v, want Internal", err)
 	}

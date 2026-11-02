@@ -1,22 +1,7 @@
 # app: the composition root
 
 - **Status:** Implemented (2026-10-17); Approved (2026-10-17)
-- **Amended 2026-11-01 (boundaries step 9, `boundaries.md` Proposed change 10, in part):** "The superuser alert" moves to `identity.md` and leaves a one-line pointer here; `internal/app/alert.go` and `lazyAlerter` go. The rest of change 10 (the part table, the lazy amendments, Imports) lands at step 13; the `notify` row and the Proposed change 20 below still describe the old adapter until then.
-- **Amended 2026-10-30 (owner, D57; module-volunteers Amendment V3 in `plan/design/history/module-volunteers.md`, Proposed change 19):** `settingsAreas` builds an area for a module that declares settings or terms; two catalogue tests (F44). See "Amendment 2026-10-30" before Open questions.
-- **Amended 2026-10-28 (D53, D54, owner approval of demo and telemetry T1):** the `demo` part (11) and the commands `demo seed|reset` (demo.md Proposed change 2), and the client-telemetry wiring (telemetry.md Proposed change 21: `web.ClientManifest`, `api.RouteTokens`, `intake.NewUsage`, the `usage counts:` lines); section "Amendment 2026-10-28" before Open questions; F38 to F43.
-- **Amended 2026-10-17 (owner):** `check` ignores a never-migrated disabled module and exits 2 without a session key; `openapi` prints indented JSON; `migrate` creates the data directory only when it writes the secrets file; the part-name check uses `module.IsCoreArea`; debug logging is announced (decision 18); reviewer-accepted implementation deviations are recorded ("Accepted deviations").
-- **Amended 2026-10-18 (owner approval of audit/identity):** core part order is audit 1, identity 2 (identity's `build` takes the audit recorder; audit needs nothing from identity at build time); the audit and identity rows of "How later core services plug in" are filled in (audit.md Proposed change 1, identity.md Proposed change 3).
-- **Amended 2026-10-18 (owner approval of authz/people):** the `authz` and `people` rows of "How later core services plug in" are filled in (authz.md Proposed change 1, people.md Proposed change 1): the actor closure, the lazy adapters for identity, the `migrate` `seed` step, the `export` and `delete` commands, `link` for `PersonData` and the page contributors.
-- **Amended 2026-10-30 (D58; people P-W1 Proposed change 30, jobs J-W1 Proposed change 19, in `plan/design/history/jobs.md`):** the `people` row sets `people.Options.Session = identity.SessionFrom`; the catalogue tests gain `TestMessageCatalogues_EnglishCoversJobs` and its fixture test (F30a); `bms check` is unchanged. See "Amendment 2026-10-30 (D58)" before Open questions.
-- **Amended 2026-10-18 (M1 build, accepted deviations):** implementation deviations recorded in Behavior, "Accepted implementation deviations (M1 build, 2026-10-18)"; `serve` step 8 and the shutdown closer list updated (a seventh closer, `audit`).
-- **Amended 2026-10-18 (M2 build, accepted deviations):** implementation deviations recorded in Behavior, "Accepted implementation deviations (M2 build, 2026-10-18)": operator attribution, `migrate` and its exit statuses, command pre-parsing, new exported surface (`api.Permissions`, `core.modules.read`), the Imports list, and three open spec gaps for the architect.
-- **Amended 2026-10-19 (D39, owner approval of settings and notify):** the `settings` (part 3) and `notify` (part 9) rows of "How later core services plug in" are filled in (settings.md Proposed change 3, notify.md Proposed change 3); `internal/app/alert.go` implements `identity.Alerter` (notify.md Proposed change 7); the adapters `settingsPolicy`, `smtpSource`, `siteSource`, `retentionSource`, `lazyAlerter` and `lazyNotifier` are named; `coreSetOrder` gains `notify`; `bms check` prints the e-mail lines. No existing behaviour changes.
-- **Amendment 2026-10-19 (approved, owner, 2026-10-20, D40):** part 3 (`settings`) receives `Authz: lazyAuthorizer{a}` over `a.authz`, which part 4 sets, so no part is reordered (settings.md amendment of the same date, in `plan/design/history/settings.md`); F31 to F33. `api.Options.PublicOrigin` waits (api.md amendment); when it lands `app` fills it over `a.settings.Regional`. See "Amendment 2026-10-19 (approved, owner, 2026-10-20, D40): `lazyAuthorizer` for settings" before Open questions.
-- **Amended 2026-10-20 (D44, owner approval of files):** the `files` row (part 10) of "How later core services plug in" is filled in (files.md Proposed change 4): the store from `cfg.Files`, `people.Source`, the two jobs, `migrate` creating `<files.dir>`, `check` printing the store, `bms files verify`, `svc.Start` failing on a public bucket; the files directory is part of the data directory's contents.
-- **Amended 2026-10-20 (D43, owner approval of jobs):** the `jobs` row (part 8) of "How later core services plug in" is filled in (jobs.md Proposed change 2): built after audit, settings and authz, `signals.New` receives `lazyDeferrer{a}` (no setter), `link` registers `audit.purge`, `auditActor` answers `ActorSystem` inside a job, `bms check` prints the registered jobs; Proposed change 8 applied.
-- **Amended 2026-10-21 (D47, owner approval of the settings logo amendment; settings.md Proposed change 14):** part 3 receives `Files: lazyFilesStore{a}` (a lazy `files.Store` scoped `settings` over `a.files`, `Unavailable` before the files part is built), and `settingsRoutes` copies `MaxBodyBytes` and `Timeout` from `settings.Route` to `module.Route`; F36, F37. See "Amendment 2026-10-21 (D47): `lazyFilesStore` for the settings logo" before Open questions.
-- **Amendment 2026-10-20 (approved, D44; jobs Q-JOBS6):** `auditActor` answers `{Kind: audit.ActorSystem}, true` when `jobs.InJob(ctx)`, checked before the session and the operator; it depends on audit.md's amendment of the same date (the `ActorFunc` may answer the system), without which every `Record` from a module's job handler is `Internal`. Section "Amendment 2026-10-20" below; F34, F35.
-- **Accepted 2026-10-20 (owner, D40):** the implementation deviations marked "(implementation, 2026-10-19)" in this spec are accepted as written; no text changed.
+- **Amended 2026-11-01 (boundaries step 13, `boundaries.md` Proposed change 10):** the body is rewritten to describe `app` as it now is: it wires, it never decides. The lazy adapters, the old part table, the superuser alert, the demo adapters and the per-amendment narratives are gone from it; every superseded text is kept verbatim in `plan/design/history/app.md`, and "Amendments" below points there. Decision numbers, F-numbers and test names are kept.
 - **Package:** `internal/app` (Go module `github.com/zedgama3/bms`), plus the helper package
   `internal/app/secrets` (the generated-secrets file) and the binary `cmd/bms`. **UI:**
   none of its own; `serve` hands the built web shell to `api`.
@@ -41,60 +26,62 @@
   `PermissionModulesRead`, Proposed change 11. `web-shell.md` (Approved): `web.FS`,
   `web.Version`, the Makefile targets, Proposed change 4. The leaf type
   `authz.PermissionDecl` (module-contract "Leaf types").
+  **Also depends on:** `boundaries.md` (Approved): the tenets "App wires, it never decides" and "No hidden two-way dependencies", the build order, the seam table (`07-abstractions.md`, "Late-bound seams").
   **Used by:** `cmd/bms` (`Main`), the operator (the commands), `check-runner` and CI (the
   Makefile targets), `module-hello.md` (its integration test runs through `Main`), every
-  later core spec (`identity`, `authz`, `audit`, `settings`, `people`,
-  `departments`, `events`, `jobs`, `notify`, `files`: each plugs in through one *part*, see
-  "How later core services plug in").
+  core spec (each plugs in through one *part*, see "The build order").
 
 ## Summary
 
-**Purpose:** run the command the operator asked for over the core assembled from its configuration. Composition root: `internal/app`, helper `internal/app/secrets`, binary `cmd/bms` (a one-liner over `app.Main`). The open questions are answered (owner, 2026-10-17).
+**Purpose:** run the command the operator asked for over the core assembled from its configuration. Composition root: `internal/app`, helper `internal/app/secrets`, binary `cmd/bms` (a one-liner over `app.Main`). App wires, it never decides (boundaries tenet): it calls constructors with values from `config`, from other parts' outputs and from the plan; converts shapes (`module.CoreRoutes`); collects declarations; orders the lifecycle; maps errors to exit statuses.
 
 **Exported (`app`):**
 - `Main(ctx, args, environ []string, stdout, stderr io.Writer) int` runs one command in process, never panics on operator input, never calls `os.Exit`.
-- `Version() (string, error)`: `-ldflags -X ...internal/app.version`, else `debug.ReadBuildInfo`, else `dev`; must be a telemetry token of at most 64 bytes.
-- Exit statuses (pinned, `TestExitCodes_Pinned`): `ExitOK=0` (also `serve` stopped by signal), `ExitFailure=1` (runtime failure, closer failed, interrupted), `ExitUsage=2` (bad config/OTEL variable/unknown module name/registry or routing problem/missing session key, also for `check`), `ExitSchema=3` (schema behind or ahead, changed migration file, lock held).
+- `Version() (string, error)`: `-ldflags -X ...internal/app.version`, else `debug.ReadBuildInfo`, else `dev`; a telemetry token of at most 64 bytes.
+- Exit statuses (pinned, `TestExitCodes_Pinned`): `ExitOK=0` (also `serve` stopped by signal), `ExitFailure=1`, `ExitUsage=2` (bad config, OTEL variable, module name, registry or routing problem, missing session key, also for `check`), `ExitSchema=3` (schema behind or ahead, changed migration file, lock held).
 - `secrets.Ensure(ctx, path, fields) (created []string, err)`: creates the secrets file once (0600, dir 0700, 64 random bytes base64 per field), adds missing fields, never overwrites, atomic replace; `secrets.FieldBytes = 64`.
-- Unexported seams every later core spec writes against: `command{name, summary, usage, run}`, `process`, `assembly` (cfg, tel, dbc, pool, migrator, disp, plan, set, ui, coreSignals, corePoints, coreSets, corePerms, routeSets, authenticator, permissions, deps, runnables, commands), `coreDeps`, `part{name, declare, build, link}`, `runnable{name, start, stop}`, `closer`, `shutdown(...)`, `provision`, `skipSchema`.
+- Unexported, written against by every core spec: `command{name, summary, usage, run}`, `process`, `assembly`, `coreDeps`, `part{name, declare, build, link, seed}`, `runnable{name, start, stop}`, `closer`, `shutdown(...)`, `provision`, `skipSchema`.
 
-**Commands:** `serve`, `migrate`, `check`, `openapi`, `version`, `help` (later `create-superuser`, `rotate-secret` from identity; `export`, `delete` from people; `files verify` from files, `demo seed|reset` from demo (D53), added through parts).
+**What app owns:** config (`config.Load` once per command, sections copied into each package's options); telemetry, the database pool and migrator, the signals dispatcher (built over `jobs.NewDeferrer`); the Lookups (built before any part); the parts list and build order; route sets (core areas converted with `module.CoreRoutes`); commands and exit statuses; runnables and the shutdown order; the web shell and client-manifest wiring; the module list (`modules.go`); `provision`; the secrets file; the tests only the root can run.
+
+**What app does not do:** parse a setting (each package reads its own area through a `settings.Reader`); hold a rule a burner or operator could name; implement another package's interface except by forwarding to a built service; import a package's store or delivery channel (depguard `app-no-stores`). Late-bound seams: **None.** (`07-abstractions.md`, "Late-bound seams"; `TestSeamTable_MatchesApp` and `TestSeamTable_IsEmpty`).
+
+**Build order** (see "The build order"; `TestParts_OrderAndNames_Pinned`): telemetry, config, db, migrator; `jobs.NewDeferrer`, then `signals.New`; the Lookups (departments, authz, identity, people); then the parts in `coreParts` order: audit, authz, settings, jobs, auditlog, departments, events, files, regional, notify, identity, people, datarights, demo; then the modules (`Build`) and every part's `link`; then api.
+
+**Commands** (exit statuses in "Commands and exit statuses"): `serve`, `migrate`, `check`, `openapi`, `version`, `help`; from parts `create-superuser` (identity), `export`, `delete` (datarights), `files verify` (files), `demo seed|reset` (demo). `check` probes through `notify.Probe`, `demo.StateOf` and `audit.SpoolCounts`; it opens no store.
 
 **Key decisions:**
-- D1 `app.Main` owns command line, config loading and exit status; second SIGINT/SIGTERM terminates immediately with the OS default (escape hatch; owner, 2026-10-17).
+- D1 `app.Main` owns command line, config loading and exit status; a second SIGINT/SIGTERM terminates immediately with the OS default (owner, 2026-10-17).
 - D2 commands are a table that parts' `declare` appends to; names unique.
-- D3 exactly four exit statuses; `check` uses the same numbers as `serve` would for everything it can observe without starting: configuration, telemetry, the registry, the database, the schema, the build and `api.New`; what only `serve` does (`Set.Start` against a real database, the files probe, listening) is reported, not scored (Q-JOBS10, D44).
-- D4 `serve` logs to stdout; all other commands log to stderr so stdout carries the command's output alone (owner, 2026-10-17; D20 clarification).
+- D3 exactly four exit statuses; `check` uses the same numbers as `serve` for everything it can observe without starting; what only `serve` does (`Set.Start` on a real database, the files probe, listening) is reported, not scored (Q-JOBS10, D44).
+- D4 `serve` logs to stdout; all other commands log to stderr (owner, 2026-10-17; D20 clarification).
 - D5 each command loads config itself; `version`, `help`, `openapi` load none.
 - D6 `serve` requires the session key from M0 (owner, 2026-10-17).
 - D7 `openapi` and `check` build modules against `db.None()` with the schema check skipped; a factory that reads the database fails.
 - D8 missing or stale web build and a missing collector are warnings/nothing, never fatal.
 - D9 start order: config, telemetry, registry, database, signals, parts, modules, HTTP shell, `Set.Start`, runnables, `Listen`.
-- D10 stop order HTTP, runnables, signals, modules, database, telemetry within `http.shutdown_timeout`; HTTP gets `max(1s, 2*budget/3)`; every closer is called even after failure; shutdown ctx is `WithoutCancel`.
+- D10 stop order HTTP, runnables, signals, modules, audit, database, telemetry within `http.shutdown_timeout`; HTTP gets `max(1s, 2*budget/3)`; every closer is called even after failure; shutdown ctx is `WithoutCancel`.
 - D11 `serve` starts on a read-only copy; `migrate` refuses one.
-- (D57) `settingsAreas` builds an area for a module that declares settings or terms; the catalogue tests check module terms (F44).
-- D12 later core services plug in as ordered parts with `declare`, `build`, `link`, `start`/`stop` (order: audit, identity, settings, authz, people, departments, events, jobs, notify, files, demo; D37, D53), not a registry. Settings' `Options.Files` is `lazyFilesStore{a}` (resolved on first use, D47), like `lazyAuthorizer`.
+- D12 core services plug in as ordered parts with `declare`, `build`, `link`, `seed` and runnables, not a registry; the order is the build order. Amended 2026-11-01: no part is late-bound (`lazyFilesStore`, `lazyAuthorizer` and the other adapters are gone, superseded by the Lookups and build-order changes in `boundaries.md`).
 - D13 end-to-end test runs the real assembly in process through `Main`, plus one subprocess signal test.
-- D14 `migrate` creates data dir and secrets file before touching the database, only when `cfg.Session.Key` is unset (a read-only filesystem with `BMS_SESSION_KEY` injected works), then reloads config.
+- D14 `migrate` creates data dir and secrets file before touching the database, only when `cfg.Session.Key` is unset, then reloads config.
 - D15 the module list is `internal/app/modules.go` (blank imports) mirrored by `web/src/modules/index.ts`.
 - D16 `TestMessageCatalogues_EnglishCoversManifests` lives here and requires `messages/en.json` for every registered module.
-- D58 (2026-10-30) `people.Options.Session` is `identity.SessionFrom` (people decision 34); `internal/app` also holds `TestMessageCatalogues_EnglishCoversJobs`, which requires `module.<owner>.title` and `module.<owner>.job.<ident>.title` in the English catalogues for every job a `Start` registers (jobs decision 24).
-- D17 no drain delay in M0 (owner, 2026-10-17); `http.drain_delay` and `api.Server.BeginDrain()` are designed with Phase 1 packaging if a regional needs them.
-- D18 debug logging is announced (owner, 2026-10-17): `serve` warns after "bms starting" (`log.level=debug`), other commands print the same warning to stderr, `check` prints `log level: debug (logs may contain personal data)`; scrubbing stays on at every level. `check` without a session key exits 2 like `serve`; a never-migrated disabled module is not a `check` problem; `openapi` prints indented JSON.
-- D19 accepted deviations (reviewed, 2026-10-17) listed under Behavior "Accepted deviations" (Version `+` to `-`, per-closer "step stopped" and one final "stopped", wall-time shutdown deadlines, `check` with a broken `OTEL_*` still runs later sections, "interrupted: rerun the command", `Load`/`Ensure` under `checkTimeout`, temp file + `link(2)`, `e2ehang` module in `internal/app`, `make check` needs Node, `openapi-check` temp file).
+- D17 no drain delay in M0 (owner, 2026-10-17).
+- D18 debug logging is announced (owner, 2026-10-17); scrubbing stays on at every level.
+- D19 accepted deviations (reviewed, 2026-10-17) listed under Behavior "Accepted deviations".
+- D57 (2026-10-30) `settingsAreas` builds an area for a module that declares settings or terms; the catalogue tests check module terms (F44).
+- D58 (2026-10-30) `people.Options.Session` is `identity.SessionFrom`; `TestMessageCatalogues_EnglishCoversJobs` requires the job titles in the English catalogues (F30a).
 
-**Errors callers handle:** `Main` converts everything to exit statuses (F3 config `Invalid` to 2; F4 OTEL `Invalid` to 2; F5 unknown `BMS_MODULES_DISABLED` name to 2; F6 no session key to 2; F7 `Resolve` failure to 2; F8 `db.Open` `Invalid` to 2, `Unavailable` to 1; F9 `Build`: `Conflict` from `CheckSchema` to 3, `Invalid` to 2, others to 1; F10 `api.New` to 2; F11-F13 start/listen/serve failures to 1 after stopping what started; F19 read-only `migrate` to 1; F20 migrate `Conflict` to 3). `Version` and `secrets.Ensure`: `Invalid` (never echoes content or path contents), `Internal` (rand failure), `Canceled`/`Timeout`. F28 duplicate part/command names are `Internal`.
+**Errors callers handle:** `Main` converts everything to exit statuses (F3 config `Invalid` to 2; F4 OTEL `Invalid` to 2; F5 unknown `BMS_MODULES_DISABLED` name to 2; F6 no session key to 2; F7 `Resolve` failure to 2; F8 `db.Open` `Invalid` to 2, `Unavailable` to 1; F9 `Build`: `Conflict` from `CheckSchema` to 3, `Invalid` to 2, others to 1; F10 `api.New` to 2; F11-F13 start/listen/serve failures to 1 after stopping what started; F19 read-only `migrate` to 1; F20 migrate `Conflict` to 3). `Version` and `secrets.Ensure`: `Invalid` (never echoes content), `Internal`, `Canceled`/`Timeout`. F28 duplicate part/command names are `Internal`.
 
-**Owns (config, files, constants, no permissions/signals/settings):** consumes `config.Config` (all sections) and copies sections into each package's options; writes `cfg.Secrets.File` (default `<data.dir>/secrets.json`) and creates `cfg.Data.Dir` (0700). Registers permission `core.modules.read` for `api` via `authz`'s part. Part names are checked with `module.IsCoreArea` (F28). Constants (not keys): `buildTimeout` 30s, `startTimeout` 30s, `listenTimeout` 5s, `migrateTimeout` 30m, `checkTimeout` 30s, `signals.HandlerTimeout` 5s, `openapi` `info.version` `dev`. Log lines: "bms starting", the debug-logging warning (D18), "listening", "stopping", "stopped" (fields `version, instance, go_version, exporting, addr, modules, read_only, ui, ui_version`). Makefile targets: `fmt vet build test lint test-integration imports web-check web-build openapi-check bin run migrate test-e2e check check-go up observe down ps`.
+**Owns (config, files, constants, no permissions/signals/settings):** consumes `config.Config` (all sections); writes `cfg.Secrets.File` (default `<data.dir>/secrets.json`) and creates `cfg.Data.Dir` (0700). Part names are checked with `module.IsCoreArea` (F28). Constants (not keys): `buildTimeout` 30s, `startTimeout` 30s, `listenTimeout` 5s, `migrateTimeout` 30m, `checkTimeout` 30s, `signals.HandlerTimeout` 5s, `openapi` `info.version` `dev`. Log lines: "bms starting", the debug-logging warning (D18), "listening", "stopping", "stopped". Makefile targets: `fmt vet build test lint test-integration imports arch-report web-check web-build openapi-check bin run migrate test-e2e check check-go up observe down ps`.
 
-**Expects of dependencies:** config (`Load`, `Keys`, `SecretsFieldSessionKey`, decisions 7/12, F22/F22b); module-contract (`Registry`, `Resolve`, `Plan`, `Provision`, `Deps` incl. `Tracer`, `SchemaChecker`, `Set`, `ModuleRoutes`); db (`Open`, `Migrator`, `Pool.Ping/ReadOnly/Close`, `ErrReadOnly`, plus the proposed `db.None()` and `ErrNoDatabase`); telemetry (`New` with `Stdout`/`Environ`, `Close` last); signals (`New`, `Scope`, `Close`); api (`New`, `Listen`, `Serve`, `Shutdown`, `OpenAPI`); web (`web.FS`, `web.Version`); authz (`PermissionDecl`); from 2026-10-28 (D53, D54): demo (`demo.New`, `Link`, `Protected`, `Channel`, `Policy`), identity `Guard`, notify `ChannelFactory`, files `PolicySource`, api `Options.NoIndex` and `Options.Usage`, `api.RouteTokens`, `web.ClientManifest`, telemetry `intake.NewUsage`.
+**Expects of dependencies:** config (`Load`, `Keys`, `SecretsFieldSessionKey`); module-contract (`Registry`, `Resolve`, `Plan`, `Provision`, `Deps`, `SchemaChecker`, `Set`, `ModuleRoutes`, `CoreRoutes`); db (`Open`, `Migrator`, `Pool`, `db.None()`); telemetry (`New`, `Close` last, `intake.New`, `intake.NewUsage`); signals (`New` over a `jobs.Deferrer`); every core package's `New` validates its dependencies and does no I/O (D7), its own settings area is read through a `settings.Reader`, and its probes (`notify.Probe`, `demo.StateOf`, `audit.SpoolCounts`) are what `check` calls; api (`New`, `Listen`, `Serve`, `Shutdown`, `OpenAPI`, `RouteTokens`); web (`web.FS`, `web.Version`, `web.ClientManifest`).
 
-**Open questions:**
-- None. Answered by the owner (2026-10-17): no drain delay in M0 (D17); non-`serve` commands log to stderr (D4); `serve` requires the session key from M0 (D6); a second signal terminates immediately (D1).
+**Open questions:** None. Answered by the owner (2026-10-17): no drain delay in M0 (D17); non-`serve` commands log to stderr (D4); `serve` requires the session key from M0 (D6); a second signal terminates immediately (D1).
 
-**Proposed changes elsewhere (2026-10-17):** items 11 (settings, notify) applied 2026-10-19 (D39) as the part 3 and part 9 rows, plus 18 to 20 below. Applied to config, module-contract, db, telemetry, signals, web-shell, api, 07-abstractions, 09 §1, add-module and go-conventions; items 9 (identity) and the audit part of 11 applied 2026-10-18; item 10 (people) and 11 (authz) applied 2026-10-18 (owner approval of authz/people). Item 10 (departments-events) applied 2026-10-18 (D37): parts 6 `departments` and 7 `events`, jobs 8, notify 9, files 10. Item 8 (jobs) applied 2026-10-20 (D43). Pending: files (target not written), the D20 clarification (plan-keeper), the Makefile targets and `scripts/e2e.sh` (implementation, created when app is built), `docs/operating.md`.
-
-**M2 build deviations (2026-10-18).** authz is part 4 and people part 5; the audit actor is the system inside a job (`jobs.InJob`; amendment 2026-10-20, approved D44), else the session's person, else operator while `a.operator` is set (create-superuser, export, delete, migrate); `migrate` builds the parts and seeds after Migrate; `export`/`delete` pre-parse the ID (exit 2); commands build modules but do not start them; `api.Permissions` and `core.modules.read` (`StarterRoles: authz.SiteAdminRoles`) are exported. Three open spec gaps are listed in Behavior.
+**Proposed changes elsewhere:** all applied or recorded (see the section); the references in them to "How later core services plug in" mean the table in `plan/design/history/app.md`.
 
 ## Purpose
 
@@ -123,10 +110,10 @@ Run the command the operator asked for over the core assembled from its configur
 - **The operator's view.** `bms check`: report configuration, telemetry, modules, database,
   schema state, API, jobs and UI without starting, and exit with the status `serve` would
   reach before it starts the modules (decision 3).
-- **The seams for the rest of the core.** Define where each later core service hooks in (a
-  *part*) so that `identity`, `authz`, `audit`, `settings`, `people`,
-  `departments`, `events`, `jobs`, `notify` and `files` arrive as one new file each and no
-  change to the commands or the lifecycle.
+- **The parts and the build order.** Hold the ordered list of core parts (`declare`, `build`,
+  `link`, `seed`, runnables) and the order in which the Lookups, parts, modules and api are
+  built, so that each core service arrives as one new file and no change to the commands or
+  the lifecycle, and nothing takes anything built after it ("The build order").
 - **Tests that need everything.** Host the tests only the composition root can run: the
   message-catalogue check over every registered manifest (web-shell.md Proposed change 4),
   the compile-time `SchemaChecker` assertion (db.md), and the end-to-end start, request
@@ -143,9 +130,11 @@ Run the command the operator asked for over the core assembled from its configur
 | Delivering signals, scoping, the after-commit hook | `signals` (`signals.md`). `app` builds one `Dispatcher`, scopes it per module and per core publisher, and closes it. |
 | Routing, the middleware chain, the error mapper, OpenAPI assembly, serving the UI, `/healthz`, `/readyz` | `api` (`api.md`). `app` builds `api.Options`, calls `Listen`, `Serve` and `Shutdown`, and decides the shutdown deadline and order. |
 | The browser application, its build, `dist/`, `version.txt` | `web-shell.md`. `app` embeds the result through the `web` package and warns when it is missing or stale. |
-| Sessions, the superuser, `create-superuser`, `rotate-secret` | `identity` (`identity.md`). The commands are registered through `app`'s command table by `identity`'s part. |
-| Permissions and the `Authorizer`; registering the declared permissions | `authz` (`authz.md`). `app` hands it `Plan.Permissions()` and the core's declarations (`api.PermissionModulesRead`) through its part. |
-| Export and deletion of one person across modules; the `export` and `delete` commands | `people` (`people.md`), over `Set.PersonData()`, through its part. |
+| Sessions, the superuser, `create-superuser`, `rotate-secret`, the superuser alert | `identity` (`identity.md`). The commands are registered through `app`'s command table by `identity`'s part. |
+| Permissions and the `Authorizer`; registering the declared permissions | `authz` (`authz.md`). `app` hands its `Lookup` the core's and the modules' declarations (`api.PermissionModulesRead` among them). |
+| Export and deletion of one person across modules; the `export` and `delete` commands | `datarights` (`datarights.md`), over `Set.PersonData()`, through its part. |
+| Parsing any setting; any rule; the actor order; the delivery and retention rules; the probes' logic | the package that declares the key or the rule (`boundaries.md`, F1). `app` forwards. |
+| Any package's store or delivery channel | the package itself; depguard `app-no-stores` denies the import. |
 | Background work; running jobs only on the writing copy; retrying signal deliveries | `jobs` (`jobs.md`), a core part with `start` and `stop`. |
 | Any module's behaviour; what a module needs from another | the module's spec; contracts and signals (D19). `app` never calls a module beyond the contract. |
 | Packaging: the container image, systemd unit, compose file for production, backups, upgrades | `docs/operating.md` and `deploy/` (Phase 1 roadmap item). This spec fixes what they rely on: the commands, exit statuses, signals and the shutdown budget. |
@@ -164,7 +153,8 @@ Run the command the operator asked for over the core assembled from its configur
 | `openapi` | Print the assembled OpenAPI document with no configuration and no I/O. | For `make openapi-check`; builds the modules against a database that refuses every statement. |
 | `version`, `help` | Print the build version; print usage. | No configuration, no I/O. |
 | Assembly and `provision` | Build the core in order and give each module its scoped `Deps`. | `assembly` is the one struct every part and every command works on. |
-| Parts | The seam each later core service plugs into: `declare`, `build`, `link`, `start`, `stop`, in a fixed order. | M0 has no parts; the table is the design. |
+| Parts | The seam each core service plugs into: `declare`, `build`, `link`, `seed`, in `coreParts` order. | One file `core_<name>.go` each; "The build order". |
+| Runnables | A service's background work, started after `Set.Start` and stopped before `signals.Close`. | `runnable{name, start, stop}`; see "Runnables". |
 | Lifecycle (`run`, `shutdown`) | Start in order; stop in reverse within `http.shutdown_timeout`, HTTP first with a sub-deadline. | A pure function over named closers, so the order is tested with fakes. |
 | `secrets.Ensure` | Create the generated-secrets file once, 0600, and add missing fields without ever overwriting one. | config.md decision 7 and Proposed change 3. |
 | `modules.go` | The list of compiled-in modules, one blank import each. | D5: a fork adds one line. |
@@ -242,103 +232,56 @@ const FieldBytes = 64
 func Ensure(ctx context.Context, path string, fields []string) (created []string, err error)
 ```
 
-### The internal shape later core specs hook into
+### The internal shape the core specs hook into
 
 These identifiers are unexported: nothing outside `internal/app` uses them. They are in
-the spec because every later core spec says where it plugs in, and a reviewer must be able
-to check that against something written down. Fields typed by specs that are not yet
-Approved are listed as comments, as module-contract does for `Deps`.
+the spec because every core spec says where it plugs in, and a reviewer must be able to
+check that against something written down.
 
 ```go
 // command is one entry of the command table. Core parts add theirs in declare (identity:
-// create-superuser, rotate-secret; people: export, delete). Names are "[a-z][a-z0-9-]*".
+// create-superuser; datarights: export, delete; files: files; demo: demo). Names are
+// "[a-z][a-z0-9-]*".
 type command struct {
 	name    string
 	summary string // one English line for `bms help` (operator text, like log lines)
-	// usage is the argument synopsis, "" when the command takes none: "<person-id>".
-	usage string
-	// run does the work. p carries the writers, the environment, the registry, the parts
-	// and the clock; it loads configuration itself when it needs it (decision 5). It
-	// returns the exit status and never calls os.Exit.
-	run func(ctx context.Context, p *process) int
+	usage   string // the argument synopsis, "" when the command takes none: "<person-id>"
+	run     func(ctx context.Context, p *process) int // loads config itself (decision 5); never calls os.Exit
 }
 
-// process is one invocation of Main: what every command starts from.
-type process struct {
-	args     []string
-	environ  []string
-	lookup   func(key string) (string, bool) // over environ; telemetry.Options.Environ
-	stdout   io.Writer
-	stderr   io.Writer
-	clock    clock.Clock      // clock.Real() in Main; a fake in tests
-	registry *module.Registry // module.Default() in Main; a fresh one in tests
-	parts    []part           // coreParts in Main; a test's own in tests
-	version  string           // Version()
-}
+// process is one invocation of Main: the args, environ and lookup, the writers, the
+// clock, the registry (module.Default() in Main, a fresh one in tests), the parts
+// (coreParts in Main) and the version.
+type process struct{ /* ... */ }
 
 // assembly is the core being built: what the commands fill in and what the parts read and
-// extend. One per command run. It is not safe for concurrent use; it is built on one
-// goroutine before anything serves.
-type assembly struct {
-	cfg      config.Config
-	version  string
-	clock    clock.Clock
-	tel      *telemetry.Telemetry
-	logger   *slog.Logger // tel.Logger().With("component", "app")
-	dbc      db.DB        // *db.Pool for serve, migrate, check; db.None() for openapi (decision 7)
-	pool     *db.Pool     // nil in openapi
-	migrator *db.Migrator // nil in openapi
-	disp     *signals.Dispatcher
-	plan     *module.Plan // after Resolve
-	set      *module.Set  // after Build
-	ui       fs.FS        // the web build, or nil (decision 8)
-
-	// What parts contribute, in part order.
-	coreSignals   []signals.Name              // Env.CoreSignals (people, departments, events)
-	corePoints    []module.ExtensionPointDecl // Env.CoreExtensionPoints
-	coreSets      []db.Set                    // the core's migration sets, in part order (identity, people, authz, departments, events, audit, settings, jobs, files; db.md Proposed change 5)
-	corePerms     []authz.PermissionDecl      // the core's permission declarations: api.PermissionModulesRead first, then each part's
-	routeSets     []module.ModuleRoutes       // one per core area with routes (accounts, people, ...); Module is the area name
-	authenticator api.Authenticator           // identity (M1); nil until then
-	permissions   api.PermissionChecker       // authz (M2); nil until then
-	deps          coreDeps                    // copied into every module's Deps by provision
-	runnables     []runnable                  // started after Set.Start, stopped before Set.Stop (jobs, M4)
-	commands      []command                   // added by declare
-}
+// extend. One per command run; built on one goroutine before anything serves; not safe for
+// concurrent use. It holds config, telemetry, the database (dbc, pool, migrator), the
+// dispatcher, the plan and the built set, the ui, the core* declaration slices (signals,
+// extension points, migration sets, permissions), routeSets, authenticator,
+// deps (coreDeps), runnables and commands, the built Lookups and the
+// services a command calls (identity, authz, people, datarights, settings, departments,
+// events, notify, regional, files, auditlog, jobs, demo). It holds no store, and no type
+// in app holds an *assembly field except assembly's own methods.
+type assembly struct{ /* ... */ }
 
 // coreDeps holds the Deps fields the core provides to every module beyond Logger, Tracer,
-// Clock, Links, DB and Signals (module-contract "Deps fields by spec"). Each field is
-// added here, and copied in provision, when its spec is Approved:
-//   Settings settings.Reader   (scoped per module by provision)   settings.md
-//   Authz    authz.Authorizer                                      authz.md
-//   People   people.Directory                                      people.md
-//   Audit    audit.Recorder                                        audit.md
-//   Jobs     jobs.Registrar    (scoped per module by provision)    jobs.md
-//   Notify   notify.Notifier   (scoped per module by provision)    notify.md
-//   Files    files.Store                                           files.md
-type coreDeps struct{}
+// Clock, Links, DB and Signals: audit, settings, notify, jobs and files (scoped per
+// module by provision), authz, people, departments and events (shared).
+type coreDeps struct{ /* ... */ }
 
-// part is how one core service plugs in. Every func is optional (nil means nothing to
-// do). The order of coreParts is fixed (Behavior: "How later core services plug in") and
-// a part never reads another part's output except through the assembly fields above.
+// part is how one core service plugs in. Every func is optional. A part never reads another
+// part's output except through the assembly fields set by an earlier part or by buildLookups.
 type part struct {
-	name string // a reserved core area name (module-contract "Reserved module names"); unique
-	// declare runs for every command that resolves the registry, before Resolve, with no
-	// I/O: it appends to coreSignals, corePoints, coreSets, corePerms and commands.
-	declare func(a *assembly) error
-	// build runs after Resolve and before module Build, in serve, check and openapi: it
-	// constructs the service from a.cfg, a.dbc, a.disp (a scope for its own signals),
-	// a.plan (Permissions, Settings) and a.tel, and sets deps, authenticator, permissions,
-	// routeSets and runnables. It does no I/O beyond reads and succeeds against db.None()
-	// (decision 7).
-	build func(ctx context.Context, a *assembly) error
-	// link runs after module Build, before api.New, in serve and openapi: it receives
-	// a.set (people: PersonData; definers: contributions) and may add route sets.
-	link func(ctx context.Context, a *assembly) error
+	name string // a reserved core area name (module.IsCoreArea); unique
+	declare func(a *assembly) error // before Resolve, no I/O: appends to coreSignals, corePoints, coreSets (addCoreSet, in coreSetOrder), corePerms, commands
+	build   func(ctx context.Context, a *assembly) error // after Resolve, before module Build, in serve, check, openapi, migrate: constructs the service; no I/O beyond reads; succeeds against db.None()
+	link    func(ctx context.Context, a *assembly) error // after module Build, before api.New: the modules' sources and contributions; may add runnables and route sets
+	seed    func(ctx context.Context, a *assembly) error // `bms migrate`, after the migrations, on the writing copy (authz: starter roles)
 }
 
-// runnable is a core component with background work, started after the modules and
-// stopped before them. jobs is the first (M4).
+// runnable is a core component with background work: started after Set.Start, stopped
+// before signals.Close (in reverse registration order).
 type runnable struct {
 	name  string
 	start func(ctx context.Context) error
@@ -349,8 +292,7 @@ type runnable struct {
 // (HTTP) under max(1s, 2*budget/3), every other under the shared deadline start+budget;
 // each is called even after an earlier failure or an exhausted deadline (every closer is
 // idempotent and returns at once on a done ctx); errors are joined and returned (F15,
-// F16). ctx is detached from cancellation (context.WithoutCancel): the signal that
-// started the shutdown must not cut it short. Consumers: serve; the lifecycle tests.
+// F16). ctx is detached from cancellation (context.WithoutCancel).
 type closer struct {
 	name  string
 	close func(ctx context.Context) error
@@ -358,8 +300,7 @@ type closer struct {
 
 func shutdown(ctx context.Context, logger *slog.Logger, clk clock.Clock, budget time.Duration, steps []closer) error
 
-// provision is the module.Provision for this assembly (module-contract Proposed change
-// 9; telemetry.md and signals.md Proposed change 5): Logger = tel.Logger().With("module",
+// provision is the module.Provision for this assembly: Logger = tel.Logger().With("module",
 // m.Name); Tracer = tel.Tracer("module." + m.Name); Clock = a.clock; DB = a.dbc; Signals
 // = a.disp.Scope(m.Name, m.Publishes, m.Subscribes); plus a.deps, scoped where the field's
 // spec says so. It fails with the kind of whatever refused (F29).
@@ -378,7 +319,7 @@ type skipSchema struct{}
 | `Main` | `cmd/bms`; every test in `app` | `args[0]` is a command name or absent | one exit status; nothing left running |
 | `Version` | `Main` (start-up line, `telemetry.Options.Version`, `api.Options.Version`), `bms version`, the web-version comparison | the build set it, or not | a token |
 | `secrets.Ensure`, `FieldBytes` | `migrate` (only when `cfg.Session.Key` is unset) | `cfg.Secrets.File` resolved by `config.Load` | the file holds every field; created names returned |
-| `command`, `process` | the five built-in commands; later parts' commands | — | — |
+| `command`, `process` | the six built-in commands; the parts' commands | — | — |
 | `assembly`, `coreDeps` | every command; every part; `provision` | — | — |
 | `part`, `runnable` | the later core specs, one each | — | — |
 | `closer`, `shutdown` | `serve`; `TestShutdown_*` | — | every step called once, in order |
@@ -421,11 +362,11 @@ never their values (db.md decision 14).
 
 None. Every command runs on the host as the operator, with no actor; the operating
 system's access to the environment, the data directory and the database URL is the
-control. Commands that act on a person's data (`export`, `delete`, M2) are `people.md`'s:
+control. Commands that act on a person's data (`export`, `delete`) are `datarights.md`'s:
 it names the permission the command is audited under and `app` only dispatches them.
 `app` registers one permission on behalf of `api`: `core.modules.read`
-(`api.PermissionModulesRead`, scope site, reaches internal), handed to `authz` with the
-core's other declarations through `authz`'s part (api.md Proposed change 10).
+(`api.PermissionModulesRead`, scope site, reaches internal), gathered first in `corePerms`
+and handed to `authz` with the core's other declarations (api.md Proposed change 10).
 
 ## Signals
 
@@ -578,18 +519,17 @@ stale bundle apart from a bug.
     before applying anything (db.md F36); `app` turns that into "run `bms migrate` on the
     copy that writes" and `ExitFailure`. `check` reports the mode. The e2e test proves
     `serve` on a database frozen with `default_transaction_read_only = on`.
-12. **Later core services plug in as parts with a fixed order and five optional hooks,
-    not as a plugin registry.** The core is a known, finite list; each service needs the
-    plan (authz: `Permissions()`), the built set (people: `PersonData()`), or neither, and
-    some have background work (jobs). Five hooks (`declare`, `build`, `link`, and the
-    runnable's `start`/`stop`) cover every case named in the plan, and an ordered slice
-    in `core.go` with one file per part (`core_identity.go`, ...) means adding a service
-    is one file plus one line, and the commands and the lifecycle are not touched
-    (Responsibilities: "The seams for the rest of the core"). A `init`-time registry for
-    core parts was rejected: the core is not forkable the way modules are, and an
-    explicit order is what the dependencies between parts need (authz after identity,
-    people after authz, jobs after signals). The table in "How later core services plug
-    in" is the contract each later spec writes against.
+12. **Core services plug in as parts with a fixed order and four optional hooks, not as a
+    plugin registry.** The core is a known, finite list; each service needs the plan
+    (authz: `Permissions()`), the built set (datarights: `PersonData()`), or neither, and
+    some have background work (jobs). Four hooks (`declare`, `build`, `link`, `seed`) and
+    the `runnable` cover every case, and an ordered slice in `core.go` with one file per
+    part (`core_identity.go`, ...) means adding a service is one file plus one line, and the
+    commands and the lifecycle are not touched. An `init`-time registry for core parts was
+    rejected: the core is not forkable the way modules are, and an explicit order is what
+    the dependencies between parts need. The order is the build order below, a dependency
+    order in which nothing takes anything built after it; no part is late-bound (amended
+    2026-11-01, boundaries step 13; the earlier wording is in `history/app.md`).
 13. **The e2e start and stop test runs the real assembly in process through `Main`, and
     one subprocess test proves the signal path.** In-process is where the order of
     closers, the exit status and the log lines can be asserted without parsing a child's
@@ -682,24 +622,27 @@ The reviewers accepted these differences from the text above; they are the behav
    Tracer: tel.Tracer("db"), Meter: tel.Meter("db")}, p.clock, tel.Logger().With(
    "component", "db"))` (F8). `db.NewMigrator(pool, logger)`. Log `read_only` from
    `pool.ReadOnly()`.
-6. `signals.New(signals.Options{Logger: ...With("component", "signals"), Tracer:
-   tel.Tracer("signals"), Meter: tel.Meter("signals"), Clock: p.clock, HandlerTimeout:
-   5 * time.Second, Deferrer: lazyDeferrer{a} /* jobs, M4: resolves a.jobs at call time */})`.
-7. Run every part's `build` (F28); the registry's and the parts' permission
-   declarations are gathered as `corePerms` with `api.PermissionModulesRead` first.
-8. `checkSchemas` first checks the core sets (exit 3 when one is behind; only then does it also name the module sets); then `a.plan.Build(ctx /* buildTimeout */, migrator, a.provision)` (F9 stays with `Plan.Build`). Run every part's
-   `link` (people takes `set.PersonData()`).
-9. `web.FS()`: ok → `a.ui`; `NotFound` → nil and warn "serving without a UI" (F17).
+6. `jobs.NewDeferrer(jobs.DeferrerOptions{DB, Clock, Instance})`, then `signals.New(signals.Options{Logger:
+   ...With("component", "signals"), Tracer: tel.Tracer("signals"), Meter: tel.Meter("signals"),
+   Clock: p.clock, HandlerTimeout: 5 * time.Second, Deferrer: the Deferrer})`. The Deferrer needs
+   only the database and the clock, so nothing here waits for the job runner.
+7. `checkSchemas` first checks the core sets (exit 3 when one is behind; only then does it also
+   name the module sets). Then the Lookups (`buildLookups`: departments, authz, identity,
+   people) and every part's `build` in `coreParts` order (F28); the registry's and the parts'
+   permission declarations are gathered as `corePerms` with `api.PermissionModulesRead` first.
+8. `a.plan.Build(ctx /* buildTimeout */, migrator, a.provision)` (F9 stays with `Plan.Build`).
+   Run every part's `link` (datarights takes `set.PersonData()`; people, notify and demo take
+   their contributions).
    `web.Version()`: compare with `version`; warn once when missing, invalid or
    different, only when a UI is present (F18).
 10. `intake.New(intake.Options{Logger: ...With("component", "intake"), Meter:
     tel.Meter("intake"), Clock: p.clock})`. `api.New(api.Options{Addr, RequestTimeout,
     MaxBodyBytes, TrustedProxies, AllowPlaintext from cfg.HTTP; Logger:
     ...With("component", "api"); Tracer: tel.Tracer("api"); Meter: tel.Meter("api");
-    Clock; Version; Routes: append(set.Routes(), a.routeSets...); Database: pool; Intake;
-    Graph: plan.Graph(); Schema: a status func over migrator.Status with the core sets
-    and the module sets; Authenticator: a.authenticator; Permissions: a.permissions; UI:
-    a.ui})` (F10).
+    Graph: plan.Graph(); Schema: `schemaStatus.Status`
+    (`internal/app/schema.go`, `newSchemaStatus(migrator, sets)`, the sets computed once from
+    `setsFor(plan.Order())` after `buildModules`; boundaries.md D1); Authenticator:
+    a.authenticator; Permissions: `a.authzLookup`; UI: a.ui})` (F10).
 11. `set.Start(ctx /* startTimeout */)` (F11); then each runnable's `start` in order
     (F11; on failure the started runnables are stopped in reverse and `set.Stop` runs).
 12. `srv.Listen(ctx /* listenTimeout */)` (F12). Log at info "listening" with `addr` (the
@@ -799,7 +742,7 @@ and the exit status is the worst one found (`ExitUsage` > `ExitSchema` > `ExitFa
    `ExitUsage`). `signals.New` as in `serve`. `a.dbc = db.None()`. The parts' `build`;
    `Build` with `skipSchema`; `link` (F25, F9 for a factory error).
 3. `api.New` with the options of `serve` except `Database`: the stub; `Schema`: returns
-   `nil, nil`; `Authenticator`, `Permissions`: nil; `UI`: nil; `Version`: `dev` (F10).
+   `nil, nil`; `Authenticator`: nil; `Permissions`: the authz.Lookup, as in `serve`; `UI`: nil; `Version`: `dev` (F10).
 4. Write `srv.OpenAPI()` to stdout as indented JSON, followed by one newline; `ExitOK`. (`openapi` loads no configuration and logs at warn, so no debug warning.)
 
 ### `version` and `help`
@@ -813,42 +756,156 @@ line alone. An unknown command prints `unknown command "<name>"` and the usage t
 and returns `ExitUsage` (F1). A command given arguments it does not take, or missing ones
 it needs, is F1 too.
 
-### How later core services plug in
+### The build order
 
-Each row is one `part` in `coreParts` (`internal/app/core.go`), in this order, defined in
-`internal/app/core_<name>.go` when its spec is Approved. The order is a dependency order:
-a later part may read what an earlier one set on the `assembly`.
+`serve`, `check`, `openapi` and the operator commands build in this order
+(`boundaries.md`, "The build order"; `TestParts_OrderAndNames_Pinned` pins the part order and that
+every name is a reserved core area name). Each item names what it takes; nothing takes anything
+built later. Rows 0 to 3 happen before any part: the Lookups (departments, authz, identity,
+people) are built first by `buildLookups`, because audit, authz's service, settings, identity,
+notify, the api shell and every module read them; the parts then run in `coreParts` order:
+**audit, authz, settings, jobs, auditlog, departments, events, files, regional, notify,
+identity, people, datarights, demo**. The row numbers below are the boundaries.md table's
+numbers; the order of rows 12 to 16 is the as-built part order's constraint (notify before
+identity and people), not row order.
 
-| Order | Part | `declare` | `build` | `link` | Runnable | Deps field |
-|---|---|---|---|---|---|---|
-| 1 | `audit` (M1) | migration set `audit` (`coreSets` order unchanged: no foreign keys); `corePerms` += `audit.Permissions`; settings declarations | `audit.New` over `cfg.Instance.Name`, `cfg.Data.Dir`, the pool, clock, telemetry, the actor closure (over `identity.SessionFrom`, called per request only), and `a.titles`/`a.permissions` (nil until authz's part sets them: read lazily through small adapters); `a.deps.Audit` left unscoped and scoped in `provision` with `Scoped(m.Name)`; route set `audit` from `Routes()`/`OpenAPI()` as `module.ModuleRoutes{Module: "audit"}` (`audit.Route` converted to `module.Route`) | — | `Run` (the spool importer) starts after `Set.Start` and stops with the runnables; `Close` after `Set.Stop`, before `db.Close` | `Audit` (scoped per module) |
-| 2 | `identity` (M1) | `identity.Set` in `coreSets` at its place in db.md's fixed order (identity first; part order does not change migration order); `identity.Permissions` to `corePerms`; `SignalAccountCreated` to `coreSignals`; command `create-superuser` (`usage: <email>`; `rotate-secret` later) | `identity.New` over `cfg.Session.Key`, `cfg.HTTP.AllowPlaintext`, `a.dbc`, the clock, telemetry, `audit.Scoped("identity")` (audit is built first), `a.disp.Scope("identity", {SignalAccountCreated}, nil)`, every seam nil; sets `a.authenticator` and route set `accounts` (`identity.Route` converted to `module.Route`); the audit actor closure is `func(ctx) (audit.Actor, bool)` over `identity.SessionFrom` (`{Kind: ActorPerson, Person, Superuser}`; a restricted session is still the person for audit) | — | — | — |
-| 3 | `settings` (M4; D39) | `settings.Set` in `coreSets` (set name `settings`, schema `core`, already in db's fixed order); `settings.Permissions` to `corePerms`; route set `settings` | `settings.New` over `a.dbc`, the clock, telemetry scope `settings`, `audit.Scoped("settings")`, the authz actor closure, `Authz: lazyAuthorizer{a}` (amendment 2026-10-19, pending: over `a.authz`, which part 4 sets), `Areas`: the core areas `identity.Settings` (with `identity.CheckSettings`), `people.Settings`, `auditsettings.Settings` (leaf package `internal/core/audit/auditsettings`; `settings` imports `audit`, so `audit` cannot import `settings`; implementation, 2026-10-19) and `notify.Settings` (`Core: true`) and `a.plan.Settings()` converted to `[]settings.Area{Core: false}`, `Files: lazyFilesStore{a}` (D47: over `a.files`, which part 10 sets), and `SealingKey: a.cfg.Settings.SealingKey`; sets `a.settings` and `a.deps.settings`; the `PolicySource` adapters `settingsPolicy{r}` for identity (over `Scoped("accounts")`) and for people (over `Scoped("people")`), set as lazy adapters because both are built earlier; route set `settings` (`settings.Route` converted to `module.Route`, the public routes with `Access: AccessPublic`, `MaxBodyBytes` and `Timeout` copied; D47) | — | `Run` (the refresher) starts after `Set.Start` and stops with the runnables | `Settings` (`provision` sets `Deps.Settings = a.deps.settings.Scoped(m.Name)`) |
-| 4 | `authz` (M2) | `authz.Set` in `coreSets` (set name `authz`, already in db's fixed order); `authz.Permissions` to `corePerms`; core signals `access.grant-created`, `access.grant-revoked`; a `seed` step for `migrate` | `authz.New` over `a.dbc`, the clock, telemetry scope `authz`, `audit.Scoped("access")`, `a.disp.Scope("access", {the two}, nil)`, the actor closure `func(ctx) (authz.Actor, bool)` over `identity.PersonFrom` and `identity.SessionFrom` (`Superuser` from the session), `Declared: append(a.corePerms, a.plan.Permissions()...)`, `Departments: lazyDepartments{a}` (D37; answers `Unsupported` until part 6 is built); sets `a.permissions`, `a.titles`, `a.lister`, `a.deps.authz` (`provision` copies it, unscoped); route set `access`. identity is built before authz, so its `Permissions` and `Lister` are the lazy adapters (`lazyPermissions`, `lazyLister`, in a shared file) | — | `migrate` runs each part's `seed func(ctx, *assembly) error` after `db.Migrate` on the writer: authz calls `Seed(ctx, declared)` and prints `access: <n> starter permissions seeded` when `n > 0` | `Authz` |
-| 5 | `people` (M2) | `people.Set` in `coreSets` (set name `people`); `people.Permissions` to `corePerms`; core signals `people.person-created`, `people.person-deleted`, `people.deletion-requested`; extension point `people.person-page` (`Accepts`: a `personpage.Provider`); commands `export` and `delete` (`usage: <person-id>`; both require the session key like `create-superuser`; run `ExportCommand`/`DeleteCommand` after `Build` and `Link`) | `people.New` over `a.dbc`, the clock, telemetry scope `people`, `audit.Scoped("people")`, `a.disp.Scope("people", {the three}, {identity.SignalAccountCreated})`, `a.deps.authz`, the authz actor closure, `Accounts: a.identity`, `Access: a.authz`, `AuditCount: a.audit`, `Session: identity.SessionFrom` (D58, people decision 34), `Policy: nil` (settings' part sets a lazy adapter); sets `a.deps.people`; route set `people`; identity's `build` gets `Names: lazyNames{a}` (empty until `a.names` is set) | `link` converts `a.set.PersonData()` to `[]people.Source` and `a.set.Contributors(personpage.Point)` to `[]people.SectionProvider` and calls `Link` (Proposed change 2(a)) | — | `People` |
-| 6 | `departments` (M3; D37) | migration set `departments` (already in db's fixed order); `departments.Permissions` to `corePerms`; core signals `departments.department-created`, `departments.department-archived`, `departments.department-restored` | `departments.New` over `a.dbc`, the clock, telemetry scope `departments`, `audit.Scoped("departments")`, `a.disp.Scope("departments", published, nil)`, `a.deps.authz`, the authz actor closure; sets `a.departments` and `a.deps.departments`; route set `departments`; `lazyDepartments{a}` (in `core_adapters.go`) is what `buildAuthz` passes as authz's `Departments` | — | — | `Departments` (unscoped) |
-| 7 | `events` (M3; D37) | migration set `events`; `events.Permissions` to `corePerms`; core signals `events.event-created`, `events.event-changed`, `events.event-closed`, `events.event-reopened`; extension point `events.event-setup` (`module.ExtensionPointDecl{Name: eventsetup.Point, Accepts: a eventsetup.Provider}`) | `events.New` likewise (scope `events`, `SetupTimeout: events.DefaultSetupTimeout`); sets `a.events` and `a.deps.events`; route set `events`; `import _ "time/tzdata"` (in `app` or `cmd/bms`) so zone names resolve without system data | `a.set.Contributors(eventsetup.Point)` converted to `[]events.SetupProvider`, passed to `Link` | — | `Events` (unscoped) |
-| 8 | `jobs` (M4; D43) | migration set `jobs`; route set `jobs`; `jobs.Permissions` to `corePerms` | built after audit, settings and authz: `jobs.New` over the pool and `ReadOnly()`, `audit.Scoped("jobs")`, `a.deps.authz`, the actor closure, `a.disp` as `Redeliverer`, `cfg.Instance.Name` and the constants of Q-JOBS7 (`Workers` 2, `PollInterval` 10 s, `Lease` 2 m, `RunTimeout` 5 m); `signals.New` still runs before the parts and receives `Deferrer: lazyDeferrer{a}` (resolves `a.jobs` at call time, `Unavailable` before it is built), so no setter is needed; `a.deps.jobs` is scoped per module in `provision`; `auditActor` answers `ActorSystem` when `jobs.InJob(ctx)`, before the session and the operator (Q-JOBS6 as corrected; audit's amendment of 2026-10-20, D44) | `link` registers `audit.purge` (hourly) through `a.jobs.Scoped("audit")` with a closure over `a.deps.audit.Purge` and `a.settings.Scoped("audit").Duration("retention")` (0 = skip); `bms check` prints the registered jobs in its jobs section, and a module whose `Start` fails there (called under `db.None()`) is printed as a problem line and does not set `ExitFailure` (jobs Q-JOBS10, D44; `serve` still stops on a failing `Start`); `migrate` is unaffected | `Run`/`Close`: started after `Set.Start`, stopped after HTTP drained and before `signals.Close` (the first of the runnables to stop) | `Jobs` (scoped) |
-| 9 | `notify` (M4; D39) | migration set `notify` (`coreSetOrder` in `internal/app/core.go` gains `"notify"` after `"jobs"`); `notify.Permissions` to `corePerms` | `notify.New` over `a.dbc`, `a.clock`, `a.tel`, `audit.Scoped("notify")`, `a.authz`, the actor closure, the settings adapters `smtpSource` and `retentionSource` (over `Scoped("notify")`) and `siteSource` (over `Regional` and `TermsFor`), the recipient adapters (`AddressSource`: the account's address first, then people's `ContactEmailOf` on `NotFound` or empty; `LanguageSource` and `NameSource` over people's `LanguageOf` and `PlayaNameOf`), `Hostname` from `cfg.Instance.Name`; registers `identity.Templates`, `people.Templates` and `notify.Templates`; sets `a.notify`, `a.deps.notify` (scoped by `provision`: `Deps.Notify = a.deps.notify.Scoped(m.Name)`) and route set `notify`; the lazy adapters `lazyAlerter{a}` (identity's `Alerter`, `internal/app/alert.go`) and `lazyNotifier{a, owner: "people"}` (people's `Notify`) resolve `a.notify` at call time | `link` registers each built module's `Manifest.Templates`; `linkPeople` (not notify's `link`) adds `people.Source{Name: "notify", Exporter: a.notify}` (implementation, 2026-10-19; the part order puts notify after events, because jobs isn't built yet) | `Run`/`Close`: started after `Set.Start`, stopped after HTTP drained and before `signals.Close` (notify decision 2: its own sender loop, not `jobs`) | `Notify` (scoped) |
-| 10 | `files` (M4; D44) | migration set `files` (`coreSetOrder` after `jobs`); `filesettings.Settings` as core area `files`; `files.Permissions` if any | the `objects.Store` from `cfg.Files` (`disk.New(filepath.Join(cfg.Files.Dir, "store"))` or `s3.New`); `files.New` with `audit.Scoped("files")`, the actor closure, `TempDir` `<files.dir>/tmp` and a `PolicySource` over a `files` `Reader`; `provision` sets `a.deps.Files = svc.Scoped(m.Name)` | appends `people.Source{Name: "files", Exporter: adapter}` after the modules; gives settings a lazy `files.Store` scoped `settings`; registers through `runner.Scoped("files")` the `jobs.Decl`s `files.reap` (`Every: files.ReapEvery`) and `files.sweep-orphans` (`Every: files.SweepEvery`), both `Timeout: files.JobTimeout`, closures over `svc.Reap` and `svc.SweepOrphans` (as `audit.purge`); `migrate` creates `<files.dir>`, `<files.dir>/tmp` and, for `disk`, `<files.dir>/store` (0700); `check` prints `files: <store> ok` or the `Ping` error; command `bms files verify` (prints the four counts; exit 0 when nothing is missing or mismatched, 1 otherwise, 2 on config) | `start` calls `svc.Start`; `Invalid` wrapping `objects.ErrPublic` is a start failure (exit 1, message under files.md Behavior), an unreachable store is not | `Files` (scoped) |
-| 11 | `demo` (D53) | migration set `demo` (`coreSetOrder` after `files`); `demo.Permissions` is empty (none owned); the command `demo` with subcommands `seed` and `reset` (`usage: seed | reset`; both require the session key like `create-superuser`; run `Seed`/`Reset` after `Build` and `Link`); `demoseed.Point` in `Env.CoreExtensionPoints` (`Accepts`: a `demoseed.Provider`) | `demo.New` over `cfg.Demo`, `a.dbc`, the clock, telemetry scope `demo`, `audit.Scoped("demo")`, the authz actor closure (`ListMail`'s viewer), the seams as adapters over the real services (`Accounts` and `Addresses` over identity, `Access` over authz, `Profiles` over people, `Departments`, `Events`, `Settings`), `Schemas` from the core set order plus the plan's manifests, `Schema` = the `migrate` step, `Objects` over the `objects.Store` and `cfg.Files.Dir`, `Files` the settings-backed `PolicySource`; when `cfg.Demo.Enabled`: identity's `Guard` = a lazy adapter over `demo.Protected`, notify's `ChannelFactory` = `func(SMTPConfig) (Channel, error) { return demo.Channel(), nil }`, files' `PolicySource` = the demo service over the settings-backed one, `api.Options.NoIndex` = true; route set `demo` | `Link` over `a.set.Contributors(demoseed.Point)` | none | none |
-
-**The demo part (D53).** Built and linked in every process; with `cfg.Demo.Enabled` false it declares its tables and the command and does nothing else, so a production install never sees it. `serve` logs `demo mode on` (warn) after "bms starting"; `check` prints `demo: off` or `demo: on (seeded <time>|not seeded|seeding)` (a failed state read prints `demo: on (state unknown: <kind>)` and is not a failure). Exit statuses for the two commands: 2 for `Unsupported` and `Conflict` `seeded`, `not_empty` or `not_demo`, 3 for the migrator's `Conflict`, else 1. The actor closures already prefer a session in ctx over the operator, which is what lets the seed act as the demo accounts (M2 deviations). `TestDemo_ChangesOnlyTheListed` (permission catalogue, settings catalogue, signal names and route list differ from the production assembly only by the `demo` route set) and the end-to-end demo test live here.
-
-**The superuser alert (D39)** moved to identity (boundaries step 9): see `identity.md`, "The superuser alert". `app` holds no alert code.
-
-**`bms check` and e-mail (D39).** `check` prints `e-mail: configured host:port (security)` or `e-mail: not configured`, the outbox counts, and `smtp: ok` or the `Ping` failure; none of these fails the check.
+| # | Component | Takes |
+|---|---|---|
+| 0 | telemetry, config, db, migrator | as today |
+| 1 | `jobs.NewDeferrer`; `signals.New(Deferrer)` | db |
+| 2 | `departments.NewLookup` | db |
+| 3 | `authz.NewLookup` | db, declared permissions, departments.Lookup, `identity.Actor` |
+| 4 | `audit.New` | db, `identity.AuditActor`, authz.Lookup (titles) |
+| 5 | `authz.New` | audit, signals, authz.Lookup |
+| 6 | `settings.New` | audit, authz.Lookup, the areas (declarations only) |
+| 7 | `jobs.New` | audit, authz.Lookup, the dispatcher |
+| 8 | `auditlog.New` | audit (none at build: its own store), authz.Lookup, settings "audit", jobs "audit" |
+| 9 | `departments.New`, `events.New` | audit, signals, authz.Lookup, departments.Lookup |
+| 10 | `files.New` | audit, authz.Lookup, settings "files", objects, jobs "files", `demo.FileCeiling` when demo mode |
+| 11 | `regional.New` | audit, authz.Lookup, db (ReadOnly), settings "regional", settings (revision, `Revise`, terms), files "settings" |
+| 12 | `identity.NewLookup`, `people.NewLookup` | db (built with the other Lookups, departments' and authz's, by app's `buildLookups` before any part; they take only the db and a tracer) |
+| 13 | `demo.NewGuard`, `demo.NewCapture` (demo mode only) | db |
+| 14 | `notify.New` | audit, authz.Lookup, settings "notify", regional, settings (terms), identity.Lookup, people.Lookup, Capture or nil |
+| 15 | `identity.New` | audit, signals, authz.Lookup, people.Lookup, settings "accounts", notify "identity", alerts "identity", Guard or nil |
+| 16 | `people.New` | audit, signals, authz.Lookup, people.Lookup, identity (`EmailOf`, `LinkAccount`), settings "people" |
+| 17 | `datarights.New` | audit, signals, authz.Lookup, identity, authz.Service, notify "datarights", auditlog, files, people |
+| 18 | modules (`Build`), then `Link`: datarights (module sources), people (person page, membership), notify (templates), demo (seed contributors) | |
+| 19 | `demo.New` | every service (built last; routes only in demo mode) |
+| 20 | api | authenticator (identity), permission checker (authz.Lookup), route sets, schema-status reader |
 
 Rules every part keeps: `declare` does no I/O; `build` does no I/O beyond reads and
 succeeds against `db.None()` (decision 7) and on a read-only copy; a part's signals scope
 comes from `a.disp.Scope(<area>, publishes, subscribes)`; a route set's `Module` is the
 area name, never `core`, `modules` or `admin` (api.md F10); a part that needs a
-configuration key proposes it to `config.md` and reads it from `a.cfg`. Because `jobs`
-must exist before `signals.New` and the dispatcher must exist before `provision`, `serve`
-step 6 is placed after the parts whose `build` the dispatcher does not need; in M0–M3 the
-distinction is moot and the implementation may call `build` for parts 1–7, then
-`signals.New`, then `build` for parts 8–10. `TestParts_OrderAndNames_Pinned` pins the
-order and that every name is a reserved core area name.
+configuration key proposes it to `config.md` and reads it from `a.cfg`; a package's own
+settings area is read by that package through a `settings.Reader` in its `Options`; `Start`
+methods that register jobs never write.
+
+### What app wires and what it does not
+
+App wires, it never decides (boundaries tenet). It calls constructors with values from
+`config`, from other parts' outputs and from the plan; it converts shapes
+(`module.CoreRoutes`); it collects declarations (`settingsAreas`, `declaredPermissions`, the
+`link*` functions, `demoSchemas`); it orders the lifecycle; it maps errors to exit statuses
+(`statusOf`, `demoStatus`). It parses no setting, implements no interface another package
+declares except by forwarding to a built service, imports no package's store or channel
+(depguard `app-no-stores`; only `core/db` and the object-store implementations app picks from
+configuration), and holds no rule. A test of app proves wiring (a service receives what it was
+given), never a rule. Kept in app because it wires: `check.go` (the order, the printing and the
+status ranking), `usage.go` (the client manifest into the two intake services' allowlists),
+`runDemo`, `demoStatus`, `demoSchema` (the reset's migrate step is `bms migrate` re-run: app's own
+command sequence) and `logDemo`.
+
+### Late-bound seams
+
+None. No type in `internal/app` is named `lazy*`, none holds an `*assembly` field except
+`assembly` itself, and no closure over the assembly is returned or stored in a package's
+`Options`. The seam table is in `plan/07-abstractions.md`, "Late-bound seams", and reads
+"None."; `internal/app/seams_test.go` (`TestSeamTable_MatchesApp`, part of `make imports`)
+fails on a candidate that is not in the table and on a stale row, and `TestSeamTable_IsEmpty`
+asserts that the table is empty and that app has no candidate. A new late-bound adapter needs
+its own spec amendment first (the design checklist: "what does this need that is built after
+it?").
+
+### Runnables
+
+A `runnable{name, start, stop}` is a service's background work under app's lifecycle: `start`
+runs after `Set.Start` (modules register their jobs in `Start`), `stop` runs after the HTTP
+server drained and before `signals.Close`, in the reverse of the order they were started
+(D10). Registration order: the audit importer, the settings refresher, the notify sender, the
+files probe, then the jobs runner, appended last in `link` so it starts last and stops first.
+A failed `start` stops those already started (F11). The services' `Run` and `Close` are theirs
+(`audit.md`, `settings.md`, `notify.md`, `files.md`, `jobs.md`); app only launches the goroutine
+and waits for it to end within the deadline.
+
+One generic `runner` (`internal/app/runner.go`) serves the audit importer, the settings refresher,
+the notify sender and the jobs runner: `newRunner(label, run, close, logger)` and `runnable(name)`.
+`start` launches `run` under a context detached from start's deadline and cancelled by `stop`;
+`stop` calls `close` (if any), then cancels, then waits, and returns `close`'s error or the
+context's kind (`Timeout`/`Canceled`); `stop` before `start` returns nil. A `Run` failure is
+logged with the error value (all four). The audit importer's `start` still creates the spool
+directory first (`auditRunnable`). The files probe stays its own `startFiles`, which calls `files.Probe` (the jobs are registered earlier, at link time, by `files.Start`; boundaries D7). Start order: audit,
+settings, notify, the files probe, jobs; stop in the reverse.
+
+`internal/app` is 4,793 production lines (5,673 when `boundaries.md` was written, F1).
+
+### Commands and exit statuses
+
+| Command | From | Exit statuses |
+|---|---|---|
+| `serve` | app | 0 stopped by signal; 1 runtime failure or a closer failed; 2 input; 3 schema |
+| `migrate` | app | 0; 1 (read-only copy, a failing file, interrupted); 2 (config, secrets path); 3 (conflict) |
+| `check` | app | the worst status found, `ExitUsage` > `ExitSchema` > `ExitFailure` > `ExitOK` |
+| `openapi` | app | 0; 1 (a factory reads the database); 2 (registry or routing problem) |
+| `version`, `help` | app | 0; 2 for an unknown command or a bad build version (F1, F2) |
+| `create-superuser <email>` | identity | 2 config, key or input; 3 schema; 1 otherwise (including a read-only copy) |
+| `export <person-id>`, `delete <person-id>` | datarights | 2 malformed id or config; 3 schema behind; 1 otherwise (`delete` refuses a read-only copy) |
+| `files verify` | files | 0 nothing missing or different; 1 something is, or the store cannot be read; 2 config; 3 schema |
+| `demo seed`, `demo reset` | demo | 2 `Unsupported`, or `Conflict` `seeded`, `not_empty`, `not_demo`; 3 the migrator's `Conflict`; else 1 |
+
+Every part command builds the parts and the modules the way `serve` does but does not start
+the modules; the audit actor of a command is the operator (identity's `WithOperator`, set by
+the command), per `audit.md`.
+
+### `bms check`'s probes
+
+`check` opens no store and holds no rule. It calls `notify.Probe` (e-mail configured,
+host:port, security; the outbox counts; `smtp: ok` or the kind of the failure; it prints no
+address, user name or password and never fails the check), `demo.StateOf` (`demo: off`,
+`demo: on (seeded <time>|not seeded|seeding)`, or `demo: on (state unknown: <kind>)`; never a
+failure) and `audit.SpoolCounts` (`audit spool: empty` or `N waiting, M failed`; an unreadable
+spool path is `ExitUsage`). It prints the jobs the built set registered (D3, F24), the usage-counts and
+client-manifest lines (F41, F43), the UI line and `result:`. Printing and the status ranking are
+app's; what each probe means is its package's.
+
+### Client telemetry and demo wiring
+
+After `web.FS()`, `app` calls `web.ClientManifest()` (`NotFound` or `Invalid`: one warning and
+empty lists; `bms check` prints `client manifest: missing` as a failure in a build that has a UI
+and as a note in one that has none, F41). It builds `intake.New` with `Options.Screens` (the
+manifest's patterns) and `Options.Routes` (`api.RouteTokens(routes)`), builds `intake.NewUsage`
+with `UsageOptions{Enabled: cfg.Telemetry.Usage, Screens, Actions, Modules, Logger, Meter, clock}` and passes it as
+`api.Options.Usage`; the two services take the separate meter scopes `intake` and `usage`, and
+`openapi` builds both with `Enabled: false` and empty lists (F42). `UsageOptions.Modules` (screen
+pattern to the screen set that owns it) is filled from the manifest's `set` field; the `module`
+attribute falls back to the pattern's first path segment, or `shell` for `/`; `api.RouteTokens`
+excludes `/healthz` and `/readyz`. The demo part is built and linked in every process; with
+`cfg.Demo.Enabled` false it declares its tables and the command and does nothing else. When it
+is on, `serve` logs `demo mode on` (warn), identity gets `demo.NewGuard`, notify gets
+`demo.NewCapture` as its channel, files gets `demo.FileCeiling`, and `api.Options.NoIndex` is
+true. `TestDemo_ChangesOnlyTheListed` (the permission catalogue, settings catalogue, signal
+names and route list differ from the production assembly only by the `demo` route set) and the
+end-to-end demo test live here.
+
+### Areas for modules that declare terms (D57)
+
+`settingsAreas` builds an area for a module that declares settings *or* terms, carrying
+`Plan.Settings()`'s `Terms`. The catalogue test gains `TestCatalogue_ModuleTerms_MatchManifestDefaults`
+(the four `module.<name>.term.*` keys exist and equal the manifest's `en` defaults) and
+`TestCatalogue_TermsUsed_AreDeclared` (every `{term_<x>...}` in a module's `messages/en.json` and
+`{{term "<x>"}}` in its templates is in `CoreTerms` or that module's `Terms`); F44. D58:
+`people.Options.Session = identity.SessionFrom`, and `TestMessageCatalogues_EnglishCoversJobs`
+(F30a) sits beside `TestMessageCatalogues_EnglishCoversManifests`.
 
 ### `provision`, step by step
 
@@ -871,7 +928,8 @@ decision 20). The listing below is what the Makefile becomes (Proposed change 12
 |---|---|---|
 | `fmt`, `vet`, `build`, `test`, `lint` | as today (`build` stays `go build ./...`: compiling needs no Node, since `web/dist/.gitkeep` makes the embed compile; web-shell.md Proposed change 9) | Go |
 | `test-integration` | `go test -race -tags integration ./...` | `make up` and `.env` loaded |
-| `imports` | `scripts/check-module-imports.sh` and `scripts/check-web-module-imports.sh` | Go; shell |
+| `imports` | `scripts/check-module-imports.sh`, `scripts/check-web-module-imports.sh` and the seam test (`TestSeamTable_MatchesApp`) | Go; shell |
+| `arch-report` | `scripts/arch-report.sh`: import edges, package sizes, `Options` field counts and the seam test, for the architecture review | Go; shell |
 | `web-check` | `pnpm -C web check` | Node LTS, pnpm |
 | `web-build` | `BMS_VERSION=$(VERSION) pnpm -C web build` (writes `web/dist/`, including `version.txt`) | Node LTS, pnpm |
 | `openapi-check` | `go run ./cmd/bms openapi > web/openapi.json && pnpm -C web generate:api && git diff --exit-code web/openapi.json web/src/api/schema.d.ts` | Go, Node |
@@ -903,42 +961,26 @@ exit ends (decision 10).
 `app`: standard library (`context`, `errors`, `fmt`, `io`, `io/fs`, `log/slog`, `net`,
 `os`, `path/filepath`, `runtime`, `runtime/debug`, `strings`, `time`), `internal/config`,
 `internal/lib/*`, `internal/model`, `internal/core/module`, `internal/core/db`,
-`internal/core/telemetry`, `internal/core/telemetry/intake`, `internal/core/signals`,
-`internal/core/authz`, `internal/core/identity`, `internal/core/audit`, `internal/core/people`, `internal/contracts/personpage`, `internal/api`, `web`, `internal/app/secrets`,
-and in `modules.go` every shipped module as a blank import (`_ ".../internal/modules/
-hello"`). Never pgx (depguard `storage-seam`: that is why `db.None()` must live in `db`),
-never `go.opentelemetry.io`, never `dbtest` or `telemetrytest` outside test files.
+`internal/core/telemetry`, `internal/core/telemetry/intake`, `internal/core/signals`, and the
+core services it builds: `internal/core/audit`, `auditlog`, `authz`, `settings`, `jobs`,
+`departments`, `events`, `files`, `regional`, `notify`, `identity`, `people`, `datarights`,
+`demo`, `internal/core/objects` with `objects/disk` and `objects/s3` (the object store is
+configuration, not a package's internals), the contracts it collects from
+(`internal/contracts/personpage`, `eventsetup`, `membership`, `demoseed`), `internal/api`,
+`web`, `internal/app/secrets`, and in `modules.go` every shipped module as a blank import
+(`_ ".../internal/modules/hello"`). Never a package's `postgres` store, `core/notify/smtp` or
+`core/notify/channel` (depguard `app-no-stores`), never pgx (depguard `storage-seam`: that is
+why `db.None()` must live in `db`), never `go.opentelemetry.io`, never `dbtest` or
+`telemetrytest` outside test files.
 `secrets`: standard library (`context`, `crypto/rand`, `encoding/base64`, `encoding/json`,
 `errors`, `fmt`, `io`, `os`, `path/filepath`), `internal/lib/errs`, `internal/config`
 (constants only). `cmd/bms`: `context`, `os`, `os/signal`, `syscall`, `internal/app`.
 `forbidigo` bans `fmt.Print*`; command output goes through `fmt.Fprint*` on the writers
 `Main` was given, which it does not ban.
 
-### Accepted implementation deviations (M1 build, 2026-10-18)
+## Accepted implementation deviations
 
-- **F11:** a runnable start failure maps through `statusOf`, so an Invalid spool directory exits 2.
-- `checkSchemas` checks the core sets before the build: exit 3, and only when a core set is behind does it also name the module sets (F9 stays with `Plan.Build`). Serve step 8 says so.
-- `openapi` passes a nil `Authenticator`. `openapi` and `check` use a non-secret `placeholderSessionKey`; `requireSessionKey` refuses that exact value.
-- A seventh closer, `audit`, in the order http, runnables, signals, modules, audit, db, telemetry (steps 14 and F15 updated).
-- The audit runnable's start creates `<data.dir>/audit/spool` (0700) before `Run`.
-- `lazyTitles` and the `a.titles` field are there for authz in M2.
-- `create-superuser` resolves modules before building parts, so a `BMS_MODULES_DISABLED` typo exits 2.
-- `check` prints `audit spool: N waiting, M failed`, or `empty`, via `audit.SpoolCounts`.
-- **Open spec drift (for the architect, not fixed here):** the part table gives `notify` a migration set, but db.md's fixed set order has no `notify`.
-
-**M2 build (2026-10-18):**
-
-- **Part order.** authz is part 4 and people is part 5.
-- **Operator attribution.** The audit actor is the session's person, else operator while `a.operator` is set. `a.operator` is set by `create-superuser`, `export`, `delete` and `migrate`. (Amendment 2026-10-20, approved D44: the system inside a job comes first; see below.)
-- **`migrate`.** It builds the parts and seeds after `Migrate`. `migrateStatus`: a failing migration file exits 1 whatever its kind, and a migrator `Conflict` exits 3.
-- **`export` and `delete`.** They pre-parse the ID (exit 2) and `delete` refuses a read-only copy.
-- **Commands build modules but do not start them.**
-- **New exported surface.** `api.Permissions`, and the exported `core.modules.read` declaration with `StarterRoles: authz.SiteAdminRoles` (also noted in api.md).
-- **Imports.** The `app` list gains `internal/core/identity`, `internal/core/audit`, `internal/core/authz` (beyond `PermissionDecl`), `internal/core/people` and `internal/contracts/personpage`.
-- **Open spec gaps (for the architect, not resolved here):**
-  - `people.person-deleted` published by `bms delete` reaches no module handler, because modules subscribe in `Start`.
-  - A module's `PersonData` must work on a built but unstarted module.
-  - `migrate`'s seed step must reuse `serve`'s split sequence once `jobs` arrives (M4).
+The M1 and M2 build deviations (2026-10-18) are in `plan/design/history/app.md`; the ones still true are folded into this section's text (the audit closer, the `check` spool line, `export` and `delete` pre-parsing the ID, commands that build modules but do not start them, `api.Permissions` and `core.modules.read`). Demo and telemetry build (2026-10-29): see "Client telemetry and demo wiring".
 
 ## Failure modes
 
@@ -978,6 +1020,15 @@ never `go.opentelemetry.io`, never `dbtest` or `telemetrytest` outside test file
 | F29 | `provision` | `Tracer` or `Scope` refuses (a name the registry already validated) | the refuser's kind, wrapped with the module name (module-contract F24) | fix app | `TestProvision_ScopeConflict_ReturnsKind` (a dispatcher already holding the scope) |
 | F30a | `TestMessageCatalogues_EnglishCoversJobs` (D58, jobs F64) | a job registered by a compiled-in module's or a core owner's `Start` (learned under `db.None()`, the path `bms check` uses) has no `module.<owner>.job.<ident>.title`, or its owner no `module.<owner>.title`, in the union of the shell's `en` catalogue and every `web/src/{modules,core}/*/messages/en.json`; a `Start` that fails under `db.None()` fails the test (it cannot vouch for that module); `zq*` test modules skipped | a test failure naming owner and key; skipped when `web/src` is absent | add the key | the test itself; `TestMessageCatalogues_FixtureMissingJobTitle_Fails` over a fixture |
 | F30 | `TestMessageCatalogues_EnglishCoversManifests` | a registered module lacks `web/src/modules/<name>/messages/en.json`, or the file lacks a key module-contract decision 8 derives (`module.<name>.title`, `.description`, `.permission.<rest>.title`/`.description`, `.setting.<key>.title`/`.description`/`.option.<opt>`, `.signal.<rest>.title` for each published name, `.template.<ident>.title` for each `Manifest.Templates` ident (module-hello amendment, approved 2026-10-20, D40)) | a test failure naming module and key (not a runtime path); skipped when `web/src` is absent | add the key | the test itself; `TestMessageCatalogues_FixtureMissingKey_Fails` over a fixture |
+| F38 | `demo` command | `Seed`/`Reset` return `Unsupported` or `Conflict` `seeded`/`not_empty`/`not_demo` | as returned | exit 2 | `TestDemoCommand_ExitStatuses` |
+| F39 | `demo` command | the migrator's `Conflict` (schema ahead or behind) | `Conflict` | exit 3 | `TestDemoCommand_MigratorConflict_Exit3` |
+| F41 | `serve`, `check` | `web.ClientManifest` is `NotFound` or `Invalid` | warning (serve starts); `check` fails in a build with a UI | build the web bundle | `TestServe_ClientManifestMissing_WarnsAndStarts`, `TestCheck_ClientManifestMissing_Fails` |
+| F42 | `openapi` | builds `intake` and `Usage` | - | both with `Enabled: false` and empty lists | `TestOpenAPI_UsageBuiltDisabled` |
+| F43 | `check` | `telemetry.usage` on or off | - | prints `usage counts: on (<n> screens, <m> actions)` / `off` | `TestCheck_PrintsUsageCounts` |
+| F44 (D57) | `settingsAreas`; catalogue test | a module declares terms but no settings; a `module.<name>.term.<key>[.<form>]` entry is missing or differs from the manifest's `en` default; a module message or template names a term that is neither core nor its own | the module still gets an area (its terms appear on `/settings/terms`); the two catalogue failures are test failures, not runtime errors | fix `en.json` or the manifest | `TestSettingsAreas_TermsOnlyModule_HasArea`, `TestCatalogue_ModuleTerms_MatchManifestDefaults`, `TestCatalogue_TermsUsed_AreDeclared` |
+| F45 | `TestSeamTable_MatchesApp`, `TestSeamTable_IsEmpty` | a `lazy*` type, a type with an `*assembly` field, a returned or stored capture of the assembly, or a stored func literal appears in `internal/app`, or the table in `07-abstractions.md` is not "None." | a test failure naming the candidate | name the split or remove it (boundaries tenet) | the two tests |
+
+F31 to F37 (`lazyAuthorizer`, `lazyFilesStore`, `auditActor` in a job) and F40 (the demo adapters) are superseded: those adapters no longer exist; the rows are in `plan/design/history/app.md`. The system-actor rule is `audit.md`'s and `jobs.md`'s; the demo wiring is `demo.md`'s plus F40's replacement `TestDemo_ChangesOnlyTheListed`.
 
 Behaviours that are not failures but are proven: `serve` starts on a read-only database
 (`TestServe_ReadOnlyDatabase_StartsAndReadyzSaysReadOnly`, integration); a down or absent
@@ -1038,6 +1089,7 @@ test; invented module names, no people):
 - Catalogues: F30 (the real test over the real tree; a fixture test for the checker).
 - Compile-time: `var _ module.SchemaChecker = (*db.Migrator)(nil)` in
   `schema_test.go` (db.md Proposed change 5); `var _ module.SchemaChecker = skipSchema{}`.
+- Wiring and boundaries (boundaries.md): `TestParts_OrderAndNames_Pinned` (the part order and that every name is a core area name); `TestSeamTable_MatchesApp` and `TestSeamTable_IsEmpty` (F45); the `core_wiring_test` and per-part tests (a service receives what it was given, never a rule); `make arch-report` and depguard `app-no-stores` as review aids.
 - Lint: passes every rule; `app` has no depguard restriction, and the test
   `TestOnlyAppImportsWebAndConfig` is not needed because depguard already denies `web`
   and `config` everywhere else.
@@ -1094,101 +1146,9 @@ server's exit status is not `0`.
 **Conformance:** none of its own. Every module's `moduletest.Conformance` runs in its own
 package; `app`'s e2e test is the one place a module is proven inside the real assembly.
 
-## Amendment 2026-10-19 (approved, owner, 2026-10-20, D40): `lazyAuthorizer` for settings
+## Amendments
 
-Gap found while applying D39: part 3 (`settings`) needs `settings.Options.Authz` (required, settings F1) and authz is part 4. Decision: a lazy adapter, as for identity and audit (`lazyPermissions`), not a part reorder; the reason is in settings.md's amendment of the same date (settings consults the authorizer only on a request, after every part is built; a reorder renumbers four specs and the pinned order test for nothing).
-
-`internal/app/core_adapters.go` gains:
-
-```go
-// lazyAuthorizer is settings' authz.Authorizer over a.authz, which authz's part sets after
-// settings is built: until then every decision is denied (errs.Permission) and ExtentOf is
-// nowhere (a zero Extent, nil), as the services do when they are given no authorizer. It
-// does no I/O of its own. settings calls only Allow (every settings permission is
-// site-scoped); AllowIn and ExtentOf are implemented so the value is a complete Authorizer.
-type lazyAuthorizer struct{ a *assembly }
-
-func (l lazyAuthorizer) Allow(ctx context.Context, p authz.Permission) error
-func (l lazyAuthorizer) AllowIn(ctx context.Context, p authz.Permission, d model.DepartmentID) error
-func (l lazyAuthorizer) ExtentOf(ctx context.Context, p authz.Permission) (authz.Extent, error)
-```
-
-The part 3 row's `build` cell reads `Authz: lazyAuthorizer{a}` (over `a.authz`, nil before part 4's build). A request can never reach a settings use case before `Build` has run every part, so the denying branch is visible only to a test that builds part 3 alone. `TestParts_OrderAndNames_Pinned` is unchanged; `lazyPermissions` stays as it is (identity and audit need only `Allow`). When `api.Options.PublicOrigin` lands (api.md amendment of the same date, in `plan/design/history/api.md`; not M4), the api step of `serve` fills it with a closure over `a.settings.Regional(ctx).PublicURL`.
-
-### Failure modes (added)
-
-| # | Method | Condition | errs kind | Caller is expected to | Test |
-|---|---|---|---|---|---|
-| F31 | `lazyAuthorizer.Allow`, `AllowIn` | `a.authz` nil (authz's part not built) | Permission | cannot happen on a request; a test of part 3 alone sees 403 | `TestLazyAuthorizer_BeforeAuthz_DeniesAndEmptyExtent` |
-| F32 | `lazyAuthorizer.ExtentOf` | `a.authz` nil | zero `Extent`, nil | as above | the same test |
-| F33 | `lazyAuthorizer.*` | `a.authz` set | the service's own answer and error, unwrapped (`//nolint:wrapcheck` as the other adapters) | — | `TestLazyAuthorizer_AfterAuthz_Delegates` |
-
-## Amendment 2026-10-20 (approved, D44; jobs Q-JOBS6): the system actor inside a job
-
-Gap found while implementing jobs.md: Q-JOBS6 (approved, D43) has `auditActor` answer `ActorSystem` when `jobs.InJob(ctx)` "with no change to `audit`", but audit's `resolveActor` refuses anything from the `ActorFunc` but a person or the operator (`Internal`), so the wiring as approved would fail every `Record` in a module's job handler. audit.md's amendment of the same date widens the function's accepted answers by that one kind (and nothing else: an inconsistent system or operator is still `Internal`, F13b there). This amendment records `app`'s side, which is what Q-JOBS6 meant.
-
-`internal/app/core_audit.go`, `auditActor`, in this order:
-
-1. `jobs.InJob(ctx)`: `audit.Actor{Kind: audit.ActorSystem}, true`. A handler runs as the system with no session (jobs decision 5); this comes **before** the session because audit's own rule for a delivery is "the delivery beats the function", a runner's ctx never carries a session, and `jobstest.Fake.Run` runs a handler on the test's ctx, which may carry one: the entry must still say `system`.
-2. `actorFromSession(ctx)`: the person, as today.
-3. `a.operator`: the operator, as today.
-4. otherwise `audit.Actor{}, false` (audit records `anonymous`).
-
-`app` already imports `jobs` (part 8), so no import changes. The doc comment on `auditActor` drops "Audit asks it only outside a signal delivery": it is still true, but the sentence that matters is that the system is answered for a job here and for a delivery in audit, and the two are the same actor kind. `bms check` and the commands are unaffected: no job runs while `a.operator` is set (the runner starts only in `serve`), so rows 1 and 3 never meet.
-
-### Failure modes (added)
-
-`auditActor` cannot fail (it reads ctx and a field; no I/O); the rows are the answers it must give, since a wrong one is an `Internal` from audit on every job's `Record`.
-
-| # | Method | Condition | errs kind | Caller is expected to | Test |
-|---|---|---|---|---|---|
-| F34 | `auditActor` | `jobs.InJob(ctx)` true, with or without a session, with or without `a.operator` | `{Kind: ActorSystem}`, `true`, no `Person`, no `Superuser` (audit accepts it, amendment 2026-10-20) | — | `TestAuditActor_InJob_IsTheSystem` (table: a job ctx alone; a job ctx that also carries a session; a job ctx while `a.operator` is set; a job ctx from `jobstest.Fake.Run`) |
-| F35 | `auditActor` | `jobs.InJob(ctx)` false | as before: the session's person, else the operator while `a.operator`, else `false` | — | `TestAuditActor_Command_IsTheOperatorOnlyWithoutASession` (unchanged) |
-
-## Amendment 2026-10-21 (approved, owner, D47): `lazyFilesStore` for the settings logo
-
-The settings logo amendment (settings.md, D47) gives `settings.Options` a `Files files.Store` for the regional's logo. Files is part 10 and settings part 3, so the same pattern as `lazyAuthorizer` applies, with no part reordered. `internal/app/core_adapters.go` gains `lazyFilesStore{a *assembly}`: every `files.Store` method resolves `a.files.Scoped("settings")` on first use and delegates, returning the files service's answer and error unwrapped; before the files part is built each method answers `errs.Unavailable`. It does no I/O of its own. A request can never reach a settings use case before `Build` has run every part, so the `Unavailable` branch is visible only to a test that builds part 3 alone. The files part's `link` step no longer needs to hand settings anything (files.md Proposed change 4 said "a lazy `files.Store` scoped `settings`"; this is where it lives). `settingsRoutes` copies `MaxBodyBytes` and `Timeout` from `settings.Route` to `module.Route`. The e2e stack already runs the `disk` store, so the smoke run's logo round trip needs no profile.
-
-### Failure modes (added)
-
-| # | Method | Condition | errs kind | Caller is expected to | Test |
-|---|---|---|---|---|---|
-| F36 | `lazyFilesStore.*` | `a.files` nil (files' part not built) | Unavailable | cannot happen on a request; a test of part 3 alone sees 503 | `TestLazyFilesStore_BeforeFiles_ReturnsUnavailable` |
-| F37 | `lazyFilesStore.*` | `a.files` set | the files service's own answer and error, unwrapped (`//nolint:wrapcheck` as the other adapters) | — | `TestLazyFilesStore_AfterFiles_Delegates` |
-
-## Amendment 2026-10-28 (approved, owner, D53 and D54): demo part and client-telemetry wiring
-
-Demo: the `demo` row above, the `demo` command, the `Guard`, `ChannelFactory`, `PolicySource` and `NoIndex` wiring only when `cfg.Demo.Enabled` (demo.md decisions 1 and 2). Nothing else in `app` changes in demo mode.
-
-Client telemetry (telemetry.md T1, Proposed change 21): after `web.FS()`, `app` calls `web.ClientManifest()`. `NotFound` or `Invalid` gives one warning and empty lists; `bms check` prints `client manifest: missing` as a failure (`ExitFailure`) in a build that has a UI and as a note in one that has none. `app` builds `intake.New` with `Options.Screens` (the manifest's patterns) and `Options.Routes` (`api.RouteTokens(routes)`), builds `intake.NewUsage` with `UsageOptions{Enabled: cfg.Telemetry.Usage, Screens, Actions, Logger().With("component","usage"), Meter("usage"), clock}` and passes it as `api.Options.Usage`. `check` and the start-up line print `usage counts: on (<n> screens, <m> actions)` or `off`. The `openapi` command builds both services with `Enabled: false` and empty lists.
-
-### Failure modes (added)
-
-| # | Method | Condition | errs kind | Caller is expected to | Test |
-|---|---|---|---|---|---|
-| F38 | `demo` command | `Seed`/`Reset` return `Unsupported` or `Conflict` `seeded`/`not_empty`/`not_demo` | as returned | exit 2 | `TestDemoCommand_ExitStatuses` |
-| F39 | `demo` command | the migrator's `Conflict` (schema ahead or behind) | `Conflict` | exit 3 | `TestDemoCommand_MigratorConflict_Exit3` |
-| F40 | `build` | `cfg.Demo.Enabled` true | — | Guard, ChannelFactory, PolicySource and NoIndex are wired; false: none is | `TestDemo_EnabledWiresTheFourAdapters`, `TestDemo_ChangesOnlyTheListed` |
-| F41 | `serve`, `check` | `web.ClientManifest` is `NotFound` or `Invalid` | warning (serve starts); `check` fails in a build with a UI | build the web bundle | `TestServe_ClientManifestMissing_WarnsAndStarts`, `TestCheck_ClientManifestMissing_Fails` |
-| F42 | `openapi` | builds `intake` and `Usage` | — | both with `Enabled: false` and empty lists | `TestOpenAPI_UsageBuiltDisabled` |
-| F43 | `check` | `telemetry.usage` on or off | — | prints `usage counts: on (<n> screens, <m> actions)` / `off` | `TestCheck_PrintsUsageCounts` |
-| F44 (D57) | `settingsAreas`; catalogue test | a module declares terms but no settings; a `module.<name>.term.<key>[.<form>]` entry is missing or differs from the manifest's `en` default; a module message or template names a term that is neither core nor its own | the module still gets an area (its terms appear on `/settings/terms`); the two catalogue failures are test failures, not runtime errors | fix `en.json` or the manifest | `TestSettingsAreas_TermsOnlyModule_HasArea`, `TestCatalogue_ModuleTerms_MatchManifestDefaults`, `TestCatalogue_TermsUsed_AreDeclared` |
-
-## Accepted implementation deviations (demo and telemetry build, 2026-10-29)
-
-- `UsageOptions.Modules map[string]string` (screen pattern to the screen set that owns it) is filled by `app` from the client manifest's `set` field; the `module` attribute falls back to the pattern's first path segment, or `shell` for `/` (telemetry.md T1.3).
-- The two intake services take separate meter scopes, `intake` (client errors) and `usage` (client events).
-- `bms check` prints `client manifest: N screens, M actions`, or `client manifest: missing`, then the usage-counts line (F43). A missing manifest is `ExitFailure` only when the build has a UI (`missing (no UI is built)` otherwise).
-- `bms demo` has the usage `seed|reset`; `bms check` reads the marker through `demo.Service.State`.
-- `api.RouteTokens` (given to intake) excludes `/healthz` and `/readyz`.
-
-## Amendment 2026-10-30 (approved, owner, D57): areas for modules that declare terms
-
-From module-volunteers Amendment V3 (Proposed change 19). `settingsAreas` builds an area for a module that declares settings *or* terms (today a module with no settings has no area), carrying `Plan.Settings()`'s `Terms`. The catalogue test (`catalogue_test.go`) gains `TestCatalogue_ModuleTerms_MatchManifestDefaults` (the four `module.<name>.term.*` keys exist and equal the manifest's `en` defaults) and `TestCatalogue_TermsUsed_AreDeclared` (every `{term_<x>...}` in a module's `messages/en.json` and `{{term "<x>"}}` in its templates is in `CoreTerms` or that module's `Terms`).
-
-## Amendment 2026-10-30 (D58): the people session seam and the job-title check
-
-Applied from people Amendment P-W1 (Proposed change 30; `plan/design/history/people.md`) and jobs Amendment J-W1 (Proposed change 19; `plan/design/history/jobs.md`, W1.12), approved 2026-10-30 (D58). (1) `core_people.go` passes `people.Options.Session = identity.SessionFrom` (`Options.Validate` fails `people.session` when nil, people F102). (2) The `internal/app` catalogue tests gain `TestMessageCatalogues_EnglishCoversJobs` (F30a), beside `TestMessageCatalogues_EnglishCoversManifests`, and a fixture test; `bms check` is unchanged.
+The amendments to this spec are folded into the body above. Their narratives (the `lazyAuthorizer`, `lazyFilesStore`, system-actor and demo-adapter amendments of 2026-10-19 to 2026-10-28, the demo and telemetry build deviations of 2026-10-29, the 2026-10-30 notes), the old part table, the M1 and M2 build deviations and the earlier Summary are in `plan/design/history/app.md`.
 
 ## Open questions
 
@@ -1197,6 +1157,8 @@ decision 17 (not in M0); the stderr logging of `migrate`, `check` and `openapi` 
 4; the session key from M0 is decision 6; the second signal is decision 1.
 
 ## Proposed changes elsewhere
+
+All items below are applied, or recorded as pending in their own text. References in them to "How later core services plug in" mean the part table in `plan/design/history/app.md`; the current order is "The build order".
 
 1. **`plan/design/config.md` (row 3):** (applied 2026-10-17) in `Load`'s consumer wording and "Who needs each
    member", `cmd/bms` becomes "`app.Main` on `cmd/bms`'s behalf, once per command that

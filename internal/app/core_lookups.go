@@ -63,7 +63,6 @@ func (a *assembly) buildLookups() error {
 	a.identityLookup = il
 	a.peopleLookup = pl
 	a.authzLookup = al
-	a.permissions = al
 	a.deps.authz = al
 	return nil
 }

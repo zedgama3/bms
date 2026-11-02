@@ -53,9 +53,12 @@ func buildIdentity(_ context.Context, a *assembly) error {
 	if a.deps.audit == nil || a.authzLookup == nil || a.settings == nil || a.identityLookup == nil || a.peopleLookup == nil {
 		return errs.E(op, errs.Internal, errors.New("identity is built after audit, the authz lookup, settings and the identity and people lookups"))
 	}
-	notifier, ok := a.notifiers[accountsOwner]
-	if !ok || a.notify == nil {
+	if a.notify == nil {
 		return errs.E(op, errs.Internal, errors.New("identity is built after notify, which scopes its Notifier"))
+	}
+	notifier, err := a.notify.Scoped(accountsOwner)
+	if err != nil {
+		return fmt.Errorf("%s: notify scope: %w", op, err)
 	}
 	alerts, err := a.notify.Alerts(accountsOwner)
 	if err != nil {

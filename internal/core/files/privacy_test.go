@@ -90,7 +90,7 @@ func TestStage_NameNeverLeaks(t *testing.T) {
 	}
 	// start-up and sweep logs
 	r.store.down()
-	wantNoErr(t, r.svc.Start(ctxT(t)))
+	wantNoErr(t, r.svc.Probe(ctxT(t)))
 	r.store.up()
 	r.clk.Advance(files.OrphanAge + time.Hour) //nolint:errcheck,gosec // fake clock
 	_, err = r.svc.SweepOrphans(ctxT(t))

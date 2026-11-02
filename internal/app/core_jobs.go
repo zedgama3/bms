@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 
 	"github.com/zedgama3/bms/internal/core/identity"
 	"github.com/zedgama3/bms/internal/core/jobs"
@@ -92,62 +91,10 @@ func linkJobs(_ context.Context, a *assembly) error {
 	if a.jobs == nil {
 		return errs.E(op, errs.Internal, errors.New("jobs is linked after it is built"))
 	}
-	r := &jobsRunner{svc: a.jobs, logger: a.component("jobs")}
-	a.runnables = append(a.runnables, runnable{name: "jobs", start: r.start, stop: r.stop})
+	rn, err := newRunner("job runner", a.jobs.Run, a.jobs.Close, a.component("jobs"))
+	if err != nil {
+		return err
+	}
+	a.runnables = append(a.runnables, rn.runnable("jobs"))
 	return nil
-}
-
-// loopService is jobs.Runner's Run and Close, the two calls the runnable makes.
-type loopService interface {
-	Run(ctx context.Context) error
-	Close(ctx context.Context) error
-}
-
-var _ loopService = (*jobs.Runner)(nil)
-
-// jobsRunner runs jobs.Runner.Run in a goroutine of its own: start launches it, stop closes
-// the runner (which cancels the runs in flight and gives their rows back) and waits.
-type jobsRunner struct {
-	svc    loopService
-	logger *slog.Logger
-
-	cancel context.CancelFunc
-	done   chan struct{}
-}
-
-// start launches Run. The goroutine exits when stop ends it; a failure (Run fails only when
-// started twice) is logged there, once.
-func (r *jobsRunner) start(ctx context.Context) error {
-	// Run outlives start's own deadline: it stops on stop.
-	runCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
-	r.cancel = cancel
-	r.done = make(chan struct{})
-	go func() {
-		defer close(r.done)
-		if err := r.svc.Run(runCtx); err != nil {
-			r.logger.ErrorContext(runCtx, "the job runner stopped",
-				slog.String("error.kind", errs.KindOf(err).String()))
-		}
-	}()
-	return nil
-}
-
-// stop ends Run and waits for it. It fails with ctx's kind when ctx ends first; the leases of
-// rows still running then lapse and another process takes them.
-func (r *jobsRunner) stop(ctx context.Context) error {
-	const op = "app.jobs.runner.stop"
-	if r.cancel == nil {
-		return nil
-	}
-	if err := r.svc.Close(ctx); err != nil {
-		r.cancel()
-		return fmt.Errorf("%s: %w", op, err)
-	}
-	r.cancel()
-	select {
-	case <-r.done:
-		return nil
-	case <-ctx.Done():
-		return errs.E(op, errs.KindOf(ctx.Err()), fmt.Errorf("the job runner did not stop: %w", ctx.Err()))
-	}
 }

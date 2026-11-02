@@ -1,8 +1,8 @@
 package app
 
 // Logo wiring (settings.md amendment 2026-10-21, L9 and Proposed change 14), moved with the
-// logo to regional (boundaries step 7). The lazy files store is gone: regional is built after
-// files and takes the scoped store directly, so TestLazyFilesStore_* have no seam to test.
+// logo to regional (boundaries step 7). Regional is built after files and takes the scoped
+// store directly, so there is no seam between them to test.
 
 import (
 	"net/http"

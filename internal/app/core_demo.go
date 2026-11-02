@@ -20,7 +20,7 @@ import (
 )
 
 // demoPart is core part 11: the public demo's seed, reset, guard, mail capture and upload
-// cap (demo.md, D53; app.md row 11). It is built after files. With cfg.Demo.Enabled false it
+// cap (demo.md, D53; app.md "The build order"). It is built after files. With cfg.Demo.Enabled false it
 // declares its tables and its command and wires nothing else: a production install never
 // sees it.
 var demoPart = part{

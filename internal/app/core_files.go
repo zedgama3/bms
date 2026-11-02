@@ -16,7 +16,6 @@ import (
 	"github.com/zedgama3/bms/internal/core/demo"
 	"github.com/zedgama3/bms/internal/core/files"
 	"github.com/zedgama3/bms/internal/core/identity"
-	"github.com/zedgama3/bms/internal/core/jobs"
 	"github.com/zedgama3/bms/internal/core/objects"
 	"github.com/zedgama3/bms/internal/core/objects/disk"
 	"github.com/zedgama3/bms/internal/core/objects/s3"
@@ -24,7 +23,7 @@ import (
 )
 
 // filesPart is core part 10: the attachment service and the object store under it (files.md;
-// app.md "How later core services plug in", row 10). It is built after jobs and notify.
+// app.md "The build order"). It is built after jobs and notify.
 var filesPart = part{
 	name:    "files",
 	declare: declareFiles,
@@ -115,6 +114,13 @@ func buildFiles(_ context.Context, a *assembly) error {
 	if err != nil {
 		return fmt.Errorf("%s: settings scope: %w", op, err)
 	}
+	if a.jobs == nil {
+		return errs.E(op, errs.Internal, errors.New("files is built after jobs"))
+	}
+	reg, err := a.jobs.Scoped(filesArea)
+	if err != nil {
+		return fmt.Errorf("%s: jobs scope: %w", op, err)
+	}
 	tr, m, err := a.scopes("files")
 	if err != nil {
 		return err
@@ -138,6 +144,7 @@ func buildFiles(_ context.Context, a *assembly) error {
 		Objects:  store,
 		TempDir:  filepath.Join(dir, "tmp"),
 		Settings: rd,
+		Jobs:     reg,
 	}
 	if a.cfg.Demo.Enabled {
 		opts.Ceiling = demo.FileCeiling // the demo's caps, whatever the settings say
@@ -151,36 +158,18 @@ func buildFiles(_ context.Context, a *assembly) error {
 	return nil
 }
 
-// linkFiles registers the two jobs through the jobs runner and the start-up probe as a
-// runnable. It runs after the modules were built; the runnable goes in before the jobs
-// runner's, which must start last (after every registration is in).
-func linkFiles(_ context.Context, a *assembly) error {
+// linkFiles registers the two housekeeping jobs (files.Start never writes) and adds the
+// start-up probe as a runnable. It runs after the modules were built; the runnable goes in
+// before the jobs runner's, which must start last (after every registration is in).
+func linkFiles(ctx context.Context, a *assembly) error {
 	const op = "app.files.link"
-	if a.files == nil || a.jobs == nil {
-		return errs.E(op, errs.Internal, errors.New("files is linked after it and the jobs runner are built"))
+	if a.files == nil {
+		return errs.E(op, errs.Internal, errors.New("files is linked after it is built"))
 	}
-	reg, err := a.jobs.Scoped(filesArea)
-	if err != nil {
-		return fmt.Errorf("%s: scope jobs: %w", op, err)
+	if err := a.files.Start(ctx); err != nil {
+		return fmt.Errorf("%s: %w", op, err)
 	}
-	svc := a.files
-	reap := func(ctx context.Context, _ jobs.Job) error {
-		_, err := svc.Reap(ctx)
-		return err //nolint:wrapcheck // files names itself
-	}
-	sweep := func(ctx context.Context, _ jobs.Job) error {
-		_, err := svc.SweepOrphans(ctx)
-		return err //nolint:wrapcheck // files names itself
-	}
-	for _, d := range []jobs.Decl{
-		{Name: files.JobReap, Every: files.ReapEvery, Timeout: files.JobTimeout, Handler: reap},
-		{Name: files.JobSweepOrphans, Every: files.SweepEvery, Timeout: files.JobTimeout, Handler: sweep},
-	} {
-		if err := reg.Register(d); err != nil {
-			return fmt.Errorf("%s: register %s: %w", op, d.Name, err)
-		}
-	}
-	r := runnable{name: "files", start: startFiles(svc)}
+	r := runnable{name: "files", start: startFiles(a.files)}
 	at := slices.IndexFunc(a.runnables, func(x runnable) bool { return x.name == "jobs" })
 	if at < 0 {
 		at = len(a.runnables)
@@ -193,11 +182,11 @@ func linkFiles(_ context.Context, a *assembly) error {
 // anonymous reads fails the start (exit 1): the process must not add files to it.
 func startFiles(svc *files.Service) func(context.Context) error {
 	return func(ctx context.Context) error {
-		err := svc.Start(ctx)
+		err := svc.Probe(ctx)
 		if errors.Is(err, objects.ErrPublic) {
 			return errs.E("app.files.start", errs.Unavailable, fmt.Errorf("the S3 bucket answers anonymous reads; fix its policy: %w", err))
 		}
-		return err //nolint:wrapcheck // Start names itself
+		return err //nolint:wrapcheck // Probe names itself
 	}
 }
 

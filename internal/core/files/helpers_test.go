@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"github.com/zedgama3/bms/internal/core/jobs/jobstest"
 	"io"
 	"os"
 	"path/filepath"
@@ -357,6 +358,7 @@ func newRig(t testing.TB, opts ...rigOption) *rig {
 	o := files.Options{
 		DB: r.db, Clock: r.clk, Logger: r.cap.Logger(), Tracer: r.cap.Tracer("files"), Meter: r.cap.Meter("files"),
 		Audit: r.audit, Actor: actorFromCtx, Objects: r.store, TempDir: r.tmp, Settings: r.policy,
+		Jobs: jobstest.NewFake("files"),
 	}
 	for _, f := range opts {
 		f(r, &o)

@@ -15,6 +15,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/db"
 	"github.com/zedgama3/bms/internal/core/files/postgres"
 	"github.com/zedgama3/bms/internal/core/files/rows"
+	"github.com/zedgama3/bms/internal/core/jobs"
 	"github.com/zedgama3/bms/internal/core/objects"
 	"github.com/zedgama3/bms/internal/core/telemetry"
 	"github.com/zedgama3/bms/internal/lib/clock"
@@ -50,7 +51,7 @@ var _ store = (*postgres.Store)(nil)
 // Tuning that is a constant, not a setting.
 const (
 	removalBudget   = 5 * time.Second  // the whole after-commit object removal of one Delete
-	pingTimeout     = 10 * time.Second // Start's probe
+	pingTimeout     = 10 * time.Second // Probe's probe
 	batchSize       = 1000             // tombstones, sweep keys and verify rows per page
 	exportBatch     = 100              // export rows per page
 	stuckAttempts   = 24               // a tombstone tried this often is stuck
@@ -71,6 +72,7 @@ type Service struct {
 	tempDir string
 	policy  readerPolicy // the mapping of Options.Settings
 	ceiling Policy       // Options.Ceiling: zero is none
+	jobs    jobs.Registrar
 
 	metrics metrics
 
@@ -102,6 +104,7 @@ func New(o Options) (*Service, error) {
 		tempDir: o.TempDir,
 		policy:  readerPolicy{r: o.Settings},
 		ceiling: o.Ceiling,
+		jobs:    o.Jobs,
 		owners:  map[string]struct{}{},
 	}
 	s.tombstones.Store(-1)

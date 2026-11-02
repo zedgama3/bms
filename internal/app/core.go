@@ -68,7 +68,7 @@ func (a *assembly) addCoreSet(s db.Set) error {
 }
 
 // part is how one core service plugs in. Every func is optional (nil means nothing to
-// do). The order of coreParts is fixed (app.md "How later core services plug in") and a
+// do). The order of coreParts is fixed (app.md "The build order") and a
 // part never reads another part's output except through the assembly fields.
 type part struct {
 	name string // a reserved core area name (module-contract "Reserved module names"); unique

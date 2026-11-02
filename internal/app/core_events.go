@@ -18,7 +18,7 @@ import (
 
 // eventsPart is core part 7: the regional's events, kinds and schedule, the Directory
 // modules label their records with, and the event-setup extension point (departments-events.md;
-// app.md "How later core services plug in", row 7; D37). It is built after authz.
+// app.md "The build order"; D37). It is built after authz.
 var eventsPart = part{
 	name:    "events",
 	declare: declareEvents,

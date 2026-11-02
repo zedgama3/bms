@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/zedgama3/bms/internal/core/audit"
+	"github.com/zedgama3/bms/internal/core/jobs"
 	"github.com/zedgama3/bms/internal/core/objects"
 	"github.com/zedgama3/bms/internal/core/telemetry"
 	"github.com/zedgama3/bms/internal/lib/errs"
@@ -358,13 +359,38 @@ func (s *Service) Ping(ctx context.Context) error {
 	return nil
 }
 
-// Start runs the store probe once, for serve. Only a positive finding that the bucket is
+// Start registers files.reap (every ReapEvery) and files.sweep-orphans (every SweepEvery),
+// each with Timeout JobTimeout, with Options.Jobs. It does no I/O and never writes, so it
+// succeeds on a read-only copy. Fails with the Registrar's kinds (errs.Conflict when a name
+// is registered twice).
+func (s *Service) Start(_ context.Context) error {
+	const op = "files.Service.Start"
+	reap := func(ctx context.Context, _ jobs.Job) error {
+		_, err := s.Reap(ctx)
+		return err
+	}
+	sweep := func(ctx context.Context, _ jobs.Job) error {
+		_, err := s.SweepOrphans(ctx)
+		return err
+	}
+	for _, d := range []jobs.Decl{
+		{Name: JobReap, Every: ReapEvery, Timeout: JobTimeout, Handler: reap},
+		{Name: JobSweepOrphans, Every: SweepEvery, Timeout: JobTimeout, Handler: sweep},
+	} {
+		if err := s.jobs.Register(d); err != nil {
+			return fmt.Errorf("%s: register %s: %w", op, d.Name, err)
+		}
+	}
+	return nil
+}
+
+// Probe runs the store probe once, for serve. Only a positive finding that the bucket is
 // publicly readable fails it (errs.Invalid wrapping objects.ErrPublic): the process must not
 // add files to an exposed bucket. Any other failure is logged once at error level and Start
 // returns nil, so the rest of bms serves while an operator fixes storage. It never writes a
 // row.
-func (s *Service) Start(ctx context.Context) error {
-	const op = "files.Service.Start"
+func (s *Service) Probe(ctx context.Context) error {
+	const op = "files.Service.Probe"
 	pctx, cancel := context.WithTimeout(ctx, pingTimeout)
 	defer cancel()
 	err := s.Ping(pctx)

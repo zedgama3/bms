@@ -3,8 +3,6 @@ package app
 import (
 	"context"
 	"errors"
-	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -14,7 +12,7 @@ import (
 	"github.com/zedgama3/bms/internal/lib/errs"
 )
 
-// auditPart is core part 1 (app.md "How later core services plug in"): the audit log. It
+// auditPart is core part 1 (app.md "The build order"): the audit log. It
 // is built before identity because identity's build takes the audit recorder; audit needs
 // nothing from identity at build time, only a closure over identity's ctx accessor that is
 // called per request.
@@ -58,60 +56,26 @@ func buildAudit(_ context.Context, a *assembly) error {
 		return err //nolint:wrapcheck // audit.New names itself
 	}
 	a.deps.audit = log
-	im := &importer{
-		log:    log,
-		logger: a.component("audit"),
-		dir:    filepath.Join(a.cfg.Data.Dir, filepath.FromSlash(audit.SpoolDirName)),
+	rn, err := newRunner("audit importer", log.Run, nil, a.component("audit"))
+	if err != nil {
+		return err
 	}
-	a.runnables = append(a.runnables, runnable{name: "audit", start: im.start, stop: im.stop})
+	a.runnables = append(a.runnables, auditRunnable(rn, filepath.Join(a.cfg.Data.Dir, filepath.FromSlash(audit.SpoolDirName))))
 	return nil
 }
 
-// importer runs audit.Log.Run in a goroutine of its own: start launches it, stop cancels it
-// and waits for it, within the ctx it is given.
-type importer struct {
-	log    *audit.Log
-	logger *slog.Logger
-	dir    string
-
-	cancel context.CancelFunc
-	done   chan struct{}
-}
-
-// start creates the spool directory and launches Run. The goroutine exits when stop (or
-// the log's Close) ends it; its failure, if any, is logged there, once.
-func (im *importer) start(ctx context.Context) error {
-	const op = "app.audit.importer.start"
-	if err := os.MkdirAll(im.dir, dataDirMode); err != nil {
-		return fieldInvalid(op, config.Prefix+"DATA_DIR", "cannot create the audit spool directory", err)
-	}
-	// Run outlives start's own deadline: it stops on stop or on Close.
-	runCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
-	im.cancel = cancel
-	im.done = make(chan struct{})
-	go func() {
-		defer close(im.done)
-		if err := im.log.Run(runCtx); err != nil {
-			im.logger.ErrorContext(runCtx, "the audit importer stopped",
-				slog.String("error.kind", errs.KindOf(err).String()), slog.Any("error", err))
+// auditRunnable is the importer's runner with one step before Run: it creates the spool
+// directory, and an unusable data directory fails the start with errs.Invalid under
+// BMS_DATA_DIR (audit F33).
+func auditRunnable(rn *runner, dir string) runnable {
+	r := rn.runnable("audit")
+	launch := r.start
+	r.start = func(ctx context.Context) error {
+		const op = "app.audit.importer.start"
+		if err := os.MkdirAll(dir, dataDirMode); err != nil {
+			return fieldInvalid(op, config.Prefix+"DATA_DIR", "cannot create the audit spool directory", err)
 		}
-	}()
-	return nil
-}
-
-// stop ends Run and waits for it. It fails errs.Timeout or errs.Canceled when ctx ends
-// first; the goroutine then exits on its own when Run notices (the log's Close, which
-// follows, also ends it).
-func (im *importer) stop(ctx context.Context) error {
-	const op = "app.audit.importer.stop"
-	if im.cancel == nil {
-		return nil
+		return launch(ctx)
 	}
-	im.cancel()
-	select {
-	case <-im.done:
-		return nil
-	case <-ctx.Done():
-		return errs.E(op, errs.KindOf(ctx.Err()), fmt.Errorf("the audit importer did not stop: %w", ctx.Err()))
-	}
+	return r
 }

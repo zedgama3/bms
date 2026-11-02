@@ -2,109 +2,13 @@ package app
 
 import (
 	"bytes"
-	"context"
 	"errors"
-	"log/slog"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/zedgama3/bms/internal/core/notify"
 	"github.com/zedgama3/bms/internal/lib/errs"
 )
-
-// ---- the runnable ----
-
-// loopFake is a senderLoop whose Run blocks until Close or its ctx ends.
-type loopFake struct {
-	started  chan struct{}
-	closed   chan struct{}
-	closeErr error
-	hang     bool // Run ignores Close and its ctx until released
-	release  chan struct{}
-}
-
-func newLoopFake() *loopFake {
-	return &loopFake{started: make(chan struct{}), closed: make(chan struct{}), release: make(chan struct{})}
-}
-
-func (f *loopFake) Run(ctx context.Context) error {
-	close(f.started)
-	if f.hang {
-		<-f.release
-		return nil
-	}
-	select {
-	case <-f.closed:
-	case <-ctx.Done():
-	}
-	return nil
-}
-
-func (f *loopFake) Close(context.Context) error {
-	select {
-	case <-f.closed:
-	default:
-		close(f.closed)
-	}
-	return f.closeErr
-}
-
-func newRunner(f senderLoop) *notifyRunner {
-	return &notifyRunner{svc: f, logger: slog.New(slog.DiscardHandler)}
-}
-
-func TestNotifyRunner_StartThenStop_RunEndsAndStopReturnsNil(t *testing.T) {
-	f := newLoopFake()
-	r := newRunner(f)
-	if err := r.start(t.Context()); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	<-f.started
-	if err := r.stop(t.Context()); err != nil {
-		t.Errorf("stop: %v", err)
-	}
-	select {
-	case <-r.done:
-	default:
-		t.Error("stop returned before Run's goroutine ended")
-	}
-}
-
-func TestNotifyRunner_StopWithoutStart_ReturnsNil(t *testing.T) {
-	if err := newRunner(newLoopFake()).stop(t.Context()); err != nil {
-		t.Errorf("stop: %v", err)
-	}
-}
-
-func TestNotifyRunner_CloseFails_StopReturnsItsKind(t *testing.T) {
-	f := newLoopFake()
-	f.closeErr = errs.E("test", errs.Timeout, errors.New("slow"))
-	r := newRunner(f)
-	if err := r.start(t.Context()); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	if err := r.stop(t.Context()); !errs.Is(err, errs.Timeout) {
-		t.Errorf("stop err = %v, want Timeout", err)
-	}
-}
-
-func TestNotifyRunner_RunDoesNotEnd_StopFailsWhenCtxEnds(t *testing.T) {
-	f := newLoopFake()
-	f.hang = true
-	r := newRunner(f)
-	if err := r.start(t.Context()); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	<-f.started
-	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
-	defer cancel()
-	if err := r.stop(ctx); !errs.Is(err, errs.Timeout) {
-		t.Errorf("stop err = %v, want Timeout", err)
-	}
-	close(f.release)
-	<-r.done
-}
 
 // ---- bms check's e-mail lines ----
 

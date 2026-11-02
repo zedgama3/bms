@@ -30,6 +30,7 @@ func TestNew_MissingDependency_ReturnsInvalid(t *testing.T) {
 		{"files.actor", func(o *files.Options) { o.Actor = nil }},
 		{"files.objects", func(o *files.Options) { o.Objects = nil }},
 		{"files.temp_dir", func(o *files.Options) { o.TempDir = "" }},
+		{"files.jobs", func(o *files.Options) { o.Jobs = nil }},
 		{"files.ceiling", func(o *files.Options) { o.Ceiling = files.Policy{MaxBytes: -1} }},
 		{"files.ceiling", func(o *files.Options) { o.Ceiling = files.Policy{QuotaBytes: -1} }},
 		{"files.ceiling", func(o *files.Options) { o.Ceiling = files.Policy{MaxPerRecord: -1} }},
@@ -63,7 +64,7 @@ func TestNew_AllMissing_NamesEveryField(t *testing.T) {
 	err := (files.Options{}).Validate()
 	wantKind(t, err, errs.Invalid)
 	named := strings.Join(fieldsOf(err), ",")
-	for _, f := range []string{"files.db", "files.clock", "files.logger", "files.tracer", "files.audit", "files.actor", "files.objects", "files.temp_dir"} {
+	for _, f := range []string{"files.db", "files.clock", "files.logger", "files.tracer", "files.audit", "files.actor", "files.objects", "files.jobs", "files.temp_dir"} {
 		if !strings.Contains(named, f) {
 			t.Errorf("missing %s in %s", f, named)
 		}

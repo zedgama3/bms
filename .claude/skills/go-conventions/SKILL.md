@@ -41,6 +41,7 @@ web                         the built web shell (embed)   imports: stdlib, lib/e
   sees stored fields, not retained arguments.
 - A core package reads its own settings area through a `settings.Reader` in its `Options`; it
   never receives a parsed policy from app.
+- A core area's `Routes()` returns `[]httpx.Route`; app converts it with `module.CoreRoutes`.
 
 ## Module package layout
 

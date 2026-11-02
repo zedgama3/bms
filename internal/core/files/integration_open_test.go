@@ -252,7 +252,7 @@ func TestOpen_StoreUnreachable_ReturnsUnavailable(t *testing.T) {
 	_, err = r.svc.ExportPerson(ctxT(t), subject)
 	wantKind(t, err, errs.Unavailable)
 	wantKind(t, r.svc.Ping(ctxT(t)), errs.Unavailable)
-	wantNoErr(t, r.svc.Start(ctxT(t)))
+	wantNoErr(t, r.svc.Probe(ctxT(t)))
 	// Reap and the sweep fail Unavailable (jobs retries them).
 	_, err = r.svc.SweepOrphans(ctxT(t))
 	wantKind(t, err, errs.Unavailable)

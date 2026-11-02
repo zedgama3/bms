@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 
 	"github.com/zedgama3/bms/internal/core/auditlog"
 	"github.com/zedgama3/bms/internal/core/files"
@@ -17,7 +16,7 @@ import (
 )
 
 // settingsPart is the settings core part: the typed, validated, audited values a regional configures
-// while bms runs (settings.md; app.md "How later core services plug in", row 3). It is
+// while bms runs (settings.md; app.md "The build order"). It is
 // built after audit, whose recorder it takes, and after the authz.Lookup, which it takes as
 // its Authz.
 var settingsPart = part{
@@ -82,8 +81,11 @@ func buildSettings(_ context.Context, a *assembly) error {
 	if err := a.addCoreRoutes(settingsArea, svc.Routes(), svc.OpenAPI()); err != nil {
 		return err
 	}
-	r := &refresher{svc: svc, logger: a.component("settings")}
-	a.runnables = append(a.runnables, runnable{name: "settings", start: r.start, stop: r.stop})
+	rn, err := newRunner("settings refresher", svc.Run, nil, a.component("settings"))
+	if err != nil {
+		return err
+	}
+	a.runnables = append(a.runnables, rn.runnable("settings"))
 	return nil
 }
 
@@ -110,47 +112,4 @@ func settingsAreas(a *assembly) []settings.Area {
 		areas = append(areas, settings.Area{Name: ms.Module, Decls: ms.Settings, Terms: ms.Terms})
 	}
 	return areas
-}
-
-// refresher runs settings.Service.Run in a goroutine of its own: start launches it, stop
-// cancels it and waits for it, within the ctx it is given.
-type refresher struct {
-	svc    *settings.Service
-	logger *slog.Logger
-
-	cancel context.CancelFunc
-	done   chan struct{}
-}
-
-// start launches Run. The goroutine exits when stop ends it; a failure, if any (Run fails
-// only when started twice), is logged there, once.
-func (r *refresher) start(ctx context.Context) error {
-	// Run outlives start's own deadline: it stops on stop.
-	runCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
-	r.cancel = cancel
-	r.done = make(chan struct{})
-	go func() {
-		defer close(r.done)
-		if err := r.svc.Run(runCtx); err != nil {
-			r.logger.ErrorContext(runCtx, "the settings refresher stopped",
-				slog.String("error.kind", errs.KindOf(err).String()), slog.Any("error", err))
-		}
-	}()
-	return nil
-}
-
-// stop ends Run and waits for it. It fails errs.Timeout or errs.Canceled when ctx ends
-// first; the goroutine then exits on its own when Run notices its canceled context.
-func (r *refresher) stop(ctx context.Context) error {
-	const op = "app.settings.refresher.stop"
-	if r.cancel == nil {
-		return nil
-	}
-	r.cancel()
-	select {
-	case <-r.done:
-		return nil
-	case <-ctx.Done():
-		return errs.E(op, errs.KindOf(ctx.Err()), fmt.Errorf("the settings refresher did not stop: %w", ctx.Err()))
-	}
 }

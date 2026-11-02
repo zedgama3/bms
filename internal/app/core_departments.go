@@ -11,9 +11,8 @@ import (
 )
 
 // departmentsPart is core part 6: the regional's standing departments and the Directory
-// modules label their records with (departments-events.md; app.md "How later core services
-// plug in", row 6; D37). It is built after authz, whose service it takes, and fills the
-// DepartmentSource seam authz was built with.
+// modules label their records with (departments-events.md; app.md "The build order"; D37). It
+// is built after authz, whose service it takes.
 var departmentsPart = part{
 	name:    "departments",
 	declare: declareDepartments,

@@ -166,7 +166,9 @@ None.
   from `PermissionDecl.StarterRoles`); grants (site-wide or for one department, optional end
   date); separation-of-duties rules (D23) checked at grant time and on every decision; the
   `Authorizer` (`Allow`, `AllowIn`, `ExtentOf` as the batch primitive); `PermissionsOf` for the
-  session and `TitlesOf` for audit; the `access` routes and screens; signals
+  session and `TitlesOf` for audit; the `Lookup` (`NewLookup`: the decisions, `PermissionsOf`,
+  `HoldersOf`, `TitlesOf`, `StarterRoleIDs`; the read side, built below `audit`, which the
+  `Service` forwards to and which is what `api` and every module read as the `Authorizer`); the `access` routes and screens; signals
   `access.grant-created|revoked`; and the `Permission`, `Scope` and `PermissionDecl` types.
 - **Doesn't do:** authentication, audit logging, creating or marking the superuser
   (`identity`); own-record checks (each service, through `identity.PersonFrom`); whether a
@@ -191,7 +193,8 @@ None.
   parts (`departments`, `events`), one spec (`departments-events`).
 - **Owns:** `departments`: the standing departments (name, description, shared mailbox),
   archiving and restoring, `Directory` (`NamesOf`, `Active`) which is also authz's
-  `DepartmentSource`, the `departments` routes and screens, signals
+  `DepartmentSource`, `Lookup` (`NewLookup`: the `Directory` over `core.department` alone, built
+  before authz), the `departments` routes and screens, signals
   `departments.department-created|archived|restored`. `events`: the events (name, kind,
   dates as instants plus zone, schedule items), kinds, closing and reopening, `Directory`
   (`InfoOf`), the extension point `events.event-setup` (`contracts/eventsetup`), the
@@ -334,8 +337,10 @@ None.
   of it); the module list (`modules.go`); the installer step (`secrets.Ensure`, migrations
   in order); the core-part seam each later core service plugs into; the tests only the root
   can run.
-- **Doesn't do:** anything any assembled package does; packaging; configuration reload; a
-  drain delay (not in M0).
+- **Doesn't do:** anything any assembled package does; parse a setting; implement a
+  package's seam except by forwarding to a built service; hold a rule; import a package's
+  store (depguard `app-no-stores`); packaging; configuration reload; a drain delay (not in
+  M0). It has no late-bound adapter ("Late-bound seams": None).
 - **Spec:** [design/app.md](design/app.md).
 
 ## Modules

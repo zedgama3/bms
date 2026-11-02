@@ -4,11 +4,9 @@ import (
 	"context"
 	"testing"
 	"time"
-
-	"github.com/zedgama3/bms/internal/lib/errs"
 )
 
-func TestRefresher_StartThenStop_Returns(t *testing.T) {
+func TestSettingsRunnable_StartThenStop_Returns(t *testing.T) {
 	a := builtCore(t)
 	var rn *runnable
 	for i := range a.runnables {
@@ -26,21 +24,5 @@ func TestRefresher_StartThenStop_Returns(t *testing.T) {
 	defer cancel()
 	if err := rn.stop(ctx); err != nil {
 		t.Fatalf("stop: %v", err)
-	}
-}
-
-func TestRefresher_StopBeforeStart_IsNil(t *testing.T) {
-	if err := (&refresher{}).stop(context.Background()); err != nil {
-		t.Errorf("stop before start: %v", err)
-	}
-}
-
-// Run is still running when the stop deadline passes: stop reports Timeout and does not hang.
-func TestRefresher_StopWithExpiredContext_ReturnsTimeout(t *testing.T) {
-	r := &refresher{cancel: func() {}, done: make(chan struct{})} // a Run that never finishes
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
-	defer cancel()
-	if err := r.stop(ctx); !errs.Is(err, errs.Timeout) {
-		t.Errorf("err = %v, want Timeout", err)
 	}
 }

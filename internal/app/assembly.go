@@ -104,7 +104,6 @@ type assembly struct {
 	corePerms     []authz.PermissionDecl      // api.PermissionModulesRead first, then each part's
 	routeSets     []module.ModuleRoutes       // one per core area with routes; Module is the area name
 	authenticator api.Authenticator           // identity (M1); nil until then
-	permissions   api.PermissionChecker       // the authz.Lookup; nil before buildLookups
 	deps          coreDeps                    // copied into every module's Deps by provision
 
 	runnables []runnable // started after Set.Start, stopped before it (jobs, M4)
@@ -122,18 +121,17 @@ type assembly struct {
 
 	departments *departments.Service // the departments part's service; nil before its build
 
-	departmentsLookup *departments.Lookup        // built by buildLookups; nil before it
-	identityLookup    *identity.Lookup           // built by buildLookups; notify takes it as Accounts, identity forwards EmailOf to it; nil before it
-	peopleLookup      *people.Lookup             // built by buildLookups; notify takes it as Profiles, identity as its names, people forwards to it; nil before it
-	authzLookup       *authz.Lookup              // built by buildLookups; audit, identity, settings and api take it; nil before it
-	events            *events.Service            // the events part's service; nil before its build
-	notify            *notify.Service            // the notify part's service (identity's AlertSender, the outbox in export); nil before its build
-	regional          *regional.Service          // the regional part's service (notify's site source); nil before its build
-	files             *files.Service             // the files part's service (the Start probe, bms check, bms files verify); nil before its build
-	auditlog          *auditlog.Service          // the auditlog part's service (people's deletion report, the audit routes); nil before its build
-	jobs              *jobs.Runner               // the jobs part's runner (audit.purge, bms check); nil before its build
-	notifiers         map[string]notify.Notifier // the Notifiers notify scoped for identity and people (Scoped fails once Run started); nil before its build
-	stdout            io.Writer                  // the command's standard output (migrate's seed line)
+	departmentsLookup *departments.Lookup // built by buildLookups; nil before it
+	identityLookup    *identity.Lookup    // built by buildLookups; notify takes it as Accounts, identity forwards EmailOf to it; nil before it
+	peopleLookup      *people.Lookup      // built by buildLookups; notify takes it as Profiles, identity as its names, people forwards to it; nil before it
+	authzLookup       *authz.Lookup       // built by buildLookups; audit, identity, settings and api take it; nil before it
+	events            *events.Service     // the events part's service; nil before its build
+	notify            *notify.Service     // the notify part's service (identity's AlertSender, the outbox in export); nil before its build
+	regional          *regional.Service   // the regional part's service (notify's site source); nil before its build
+	files             *files.Service      // the files part's service (the Start probe, bms check, bms files verify); nil before its build
+	auditlog          *auditlog.Service   // the auditlog part's service (people's deletion report, the audit routes); nil before its build
+	jobs              *jobs.Runner        // the jobs part's runner (audit.purge, bms check); nil before its build
+	stdout            io.Writer           // the command's standard output (migrate's seed line)
 	parts             []part
 	started           []runnable
 	srv               httpServer
@@ -499,6 +497,10 @@ func (a *assembly) apiOptions(version string, database api.Database, schema api.
 	if err != nil {
 		return api.Options{}, err
 	}
+	var perms api.PermissionChecker // the authz.Lookup; nil before buildLookups (a typed nil pointer would not be)
+	if a.authzLookup != nil {
+		perms = a.authzLookup
+	}
 	return api.Options{
 		Addr:           a.cfg.HTTP.Addr,
 		RequestTimeout: a.cfg.HTTP.RequestTimeout,
@@ -517,7 +519,7 @@ func (a *assembly) apiOptions(version string, database api.Database, schema api.
 		Graph:          a.plan.Graph(),
 		Schema:         schema,
 		Authenticator:  a.authenticator,
-		Permissions:    a.permissions,
+		Permissions:    perms,
 		UI:             a.ui,
 		NoIndex:        a.cfg.Demo.Enabled,
 	}, nil

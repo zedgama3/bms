@@ -26,6 +26,7 @@ import (
 	"github.com/zedgama3/bms/internal/core/db/dbtest"
 	"github.com/zedgama3/bms/internal/core/files"
 	"github.com/zedgama3/bms/internal/core/identity" //nolint:depguard // only its migration set: files and people tables reference core.account/person
+	"github.com/zedgama3/bms/internal/core/jobs/jobstest"
 	"github.com/zedgama3/bms/internal/core/objects/objectstest"
 	"github.com/zedgama3/bms/internal/core/people"
 	"github.com/zedgama3/bms/internal/core/regional"
@@ -217,7 +218,7 @@ func newRealLogoI(t *testing.T, policy files.Policy) *logoI {
 	fsvc, err := files.New(files.Options{
 		DB: pool, Clock: clock.NewFake(time.Now().UTC().Truncate(time.Microsecond)),
 		Logger: slog.New(slog.DiscardHandler), Tracer: telemetrytest.New(t).Tracer("files"), Audit: audittest.NewFake("files"),
-		Actor: actorOf, Objects: mem, TempDir: t.TempDir(), Settings: fset,
+		Actor: actorOf, Objects: mem, TempDir: t.TempDir(), Settings: fset, Jobs: jobstest.NewFake("files"),
 	})
 	wantNoErr(t, err)
 	store, err := fsvc.Scoped("settings")
