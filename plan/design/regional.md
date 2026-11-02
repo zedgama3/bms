@@ -1,6 +1,6 @@
 # Regional
 
-- **Status:** Approved (via boundaries.md, 2026-10-31)
+- **Status:** Implemented (via boundaries.md, 2026-11-01)
 - **Package:** `internal/core/regional` (service, `http.go`; the theme code is in `settings.go`)   **UI:** none of its own; the Regional form and the logo field stay in `web/src/core/settings/` (`settings.md`, UI), calling `/api/regional/...`
 - **Depends on specs:** `settings` (`Reader`, `Decl`, `Area`; the revision and the terms), `files` (`Store`, `Brand`, `LogoRecordKind`, `ReadUpload`, `Serve`), `audit` (`Recorder`, `Ref`), `authz` (`Authorizer`, `ActorFunc`), `db`, `telemetry`, `lib-errs`, `lib-core`, `model`, `api` (route mounting), `module-contract`
 - **Used by:** `notify` (the regional's name, public URL, language: `Profile`), the web shell (`GET /api/regional/public`, `theme.css`, `logo`), `api` (trusted origin, Later), `authz` (the regional's zone, Later), departments-events (the new-event form's default zone, through the public document)

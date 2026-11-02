@@ -36,10 +36,10 @@ The order follows dependencies: foundation first, then the core, then modules.
 | 18 | `app.md` | composition root and lifecycle | Implemented (2026-10-17) |
 | 19 | `module-volunteers.md` | volunteers module | Implemented (2026-10-23; V1 (D49), V2 (D50) and D51 included); Amendment V3 (regional words) Implemented 2026-10-30 (D57); Amendment V4 (shift navigation, compact list) Implemented 2026-10-30 (D58) |
 | 19b | `demo.md` | public demo mode: the switch, the banner, seed, reset, protected accounts, mail capture (owner's direction 2026-10-28, D53) | Implemented (2026-10-30; D53, Amendment D1 D56) |
-| 19c | `boundaries.md` | Boundary cleanup: ownership drift out of `app`, the runtime cycles behind the `lazy*` adapters, `auditlog`, `regional` and `datarights` split out, the seam table and the guards that keep it so | Approved |
-| 19d | `auditlog.md` | reading, exporting and expiring the audit log (split from `audit`, boundaries decision 3) | Approved (via boundaries.md, 2026-10-31) |
-| 19e | `regional.md` | the regional's profile, public document, theme and logo (split from `settings`, boundaries decision 4) | Approved (via boundaries.md, 2026-10-31) |
-| 19f | `datarights.md` | a person's export, deletion and deletion requests across the core and every module (split from `people`, boundaries decision 5) | Approved (via boundaries.md, 2026-10-31) |
+| 19c | `boundaries.md` | Boundary cleanup: ownership drift out of `app`, the runtime cycles behind the `lazy*` adapters, `auditlog`, `regional` and `datarights` split out, the seam table and the guards that keep it so | Implemented |
+| 19d | `auditlog.md` | reading, exporting and expiring the audit log (split from `audit`, boundaries decision 3) | Implemented (via boundaries.md) |
+| 19e | `regional.md` | the regional's profile, public document, theme and logo (split from `settings`, boundaries decision 4) | Implemented (via boundaries.md) |
+| 19f | `datarights.md` | a person's export, deletion and deletion requests across the core and every module (split from `people`, boundaries decision 5) | Implemented (via boundaries.md) |
 | 20 | `module-registrations.md` | registrations module | Not started |
 | 21 | `module-incidents.md` | incidents module | Not started |
 | 22 | `module-after-reports.md` | after-burn reports module | Not started |

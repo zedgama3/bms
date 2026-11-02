@@ -1,6 +1,6 @@
 # Auditlog
 
-- **Status:** Approved (via boundaries.md, 2026-10-31)
+- **Status:** Implemented (via boundaries.md, 2026-11-01)
 - **Package:** `internal/core/auditlog` (service, `http.go`, `postgres/` store with the search, export, count and purge queries)   **UI:** `web/src/core/audit/` (unchanged; the screen keeps its folder and its `core.audit.*` catalogue)
 - **Depends on specs:** `audit` (the vocabulary: `Query`, `Page`, `Cursor`, `Record`, `RecordID`, `Recorder`, `Action`; the table and its guard), `authz` (`Lookup`: `Authorizer`, `PermissionDecl`; `ActorFunc`), `settings` (`Reader`, `Decl`), `jobs` (`Registrar`), `db`, `telemetry`, `lib-errs`, `lib-core`, `api` (`httpx.Route`), `boundaries` (decisions 3, 6, 7)   **Used by:** `app` (constructor, `Start`, routes, link), `datarights` (`Export`, `CountAbout`), the web audit screen
 - **Split from:** `audit.md` (2026-11-01, boundaries step 6). The F-numbers below are `audit.md`'s, unchanged; B6 to B8 are from `boundaries.md`.

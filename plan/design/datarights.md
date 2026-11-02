@@ -1,6 +1,6 @@
 # Data rights
 
-- **Status:** Approved (via boundaries.md, 2026-10-31)
+- **Status:** Implemented (via boundaries.md, 2026-11-01)
 - **Package:** `internal/core/datarights` (service, `http.go`, `commands.go`, `Templates`)   **UI:** none of its own; the "Your data" section of My profile, the person page's export and delete buttons and the Deletion requests screen stay in `web/src/core/people/` (`YourData.tsx`, `screens/Requests.tsx`), calling `/api/datarights/...`
 - **Depends on specs:** `people` (`PeopleSource`, answered by `people.Service`), `identity` (`AccountSource`: `ExportPerson`, `DeletePerson`, `EmailOf`), `authz` (`Authorizer` from the `Lookup`; `RawSource` on `authz.Service`; `HoldersOf` on the `Lookup`), `auditlog` (`CountAbout`), `notify` (`Notifier`), `files` (`FilesSource`), `audit` (`Recorder`), `signals` (`Bus`), `db`, `telemetry`, `lib-errs`, `lib-core`, `model`, `api` (route mounting), `module-contract` (the aliases)
 - **Used by:** `module-contract` (`PersonData`, `Export`, `Deletion`, `Kept` are aliases of this package's types, so every module implements them), `moduletest.Conformance`, `app` (builds it, calls `Link`, runs the `export` and `delete` commands), the web shell (`/api/datarights/...`)

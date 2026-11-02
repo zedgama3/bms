@@ -26,6 +26,10 @@ copy and can fork it. Features are modules.
 
 - **Phase:** 1, first module (core M0–M4 done 2026-10-23)
 - **Last updated:** 2026-11-01
+- **Current (2026-11-01):**
+  1. Done 2026-11-01: the boundary cleanup (D61, design/boundaries.md, 13 steps) is implemented on
+     branch `feat/boundaries`, pending the owner's merge. Not pushed.
+  2. Next: packaging (container image, compose for operators) per D52.
 - **Done 2026-10-16:**
   - Repo scaffolded: plan, agents, skills, lint rules, dev compose. Methodology carried over
     from Sojourn (D7).

@@ -1,6 +1,6 @@
 # Boundary cleanup
 
-- **Status:** Approved
+- **Status:** Implemented (2026-11-01, branch feat/boundaries)
 - **Package:** `internal/app` (shrinks), `internal/core/*` (ownership moves), new `internal/core/auditlog`, `internal/core/regional`, `internal/core/datarights`; `internal/lib/httpx` (one type); `scripts/`, `Makefile`, `.golangci.yml` (guards)   **UI:** `web/src/core/settings`, `web/src/core/people`, `web/src/shell` (route paths only)
 - **Depends on specs:** app, audit, authz, identity, people, notify, settings, files, demo, jobs, signals, departments-events, module-contract, api (Summaries)   **Used by:** every later spec (the tenets and the seam table bind them)
 
@@ -884,7 +884,7 @@ Applied by `spec-editor` after approval, in the step that needs each.
 23. *(partly applied 2026-11-01, step 12: the four aliases, `datarights` as the orchestrator and as a reserved core area name; `CoreRoutes` applied 2026-11-01, step 13: fully applied)* **`plan/design/module-contract.md`**: `PersonData`, `Export`, `Deletion`, `Kept` are aliases of `datarights`'; `CoreRoutes`; `Deps` unchanged.
 24. *(partly applied 2026-11-01, step 7: route set `regional` reserved and the moved `/api/regional/` paths; partly applied 2026-11-01, step 12: route set `datarights` reserved and the moved `/api/datarights/` paths; `PermissionChecker` as `authz.Lookup` applied 2026-11-01, step 13: fully applied)* **`plan/design/api.md`**: `PermissionChecker` is the `authz.Lookup`; route sets `regional` and `datarights` added to the reserved core area names; the moved paths.
 25. *(applied 2026-11-01, step 7)* **`plan/design/web-shell.md`**: the public document, theme and logo come from `/api/regional/`.
-26. **`plan/03-decisions.md`** (by `plan-keeper` on approval): the two tenets, the path moves, the signal rename and the audit action renames as one decision with this spec as its source.
+26. *(applied 2026-11-01: D61 is this one decision, accepted 2026-10-31)* **`plan/03-decisions.md`** (by `plan-keeper` on approval): the two tenets, the path moves, the signal rename and the audit action renames as one decision with this spec as its source.
 
 ## Amendments
 
